@@ -1,0 +1,16 @@
+Manifest.toml
+Manifest-v*.toml
+*.toml.local
+
+*.cov
+*.jl.cov
+*.jl.mem
+deps/deps.jl
+deps/build.log
+/docs/build/
+
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
