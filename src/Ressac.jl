@@ -10,15 +10,22 @@ module Ressac
 
 include("core.jl")
 include("combinators.jl")
+include("algebra.jl")
+include("mininotation.jl")
+include("osc.jl")
+include("scheduler.jl")
+include("tui.jl")
 
 # Module includes added by upcoming milestones:
-#   M2: include("algebra.jl"); include("mininotation.jl")
-#   M3: include("osc.jl"); include("scheduler.jl")
-#   M4: include("tui.jl")
 #   M6: include("reservoir.jl")
 
 export Event, Pattern, query
 export pure, silence, fast, slow, density, rev, every
-# `stack` and `cat` extend Base; no re-export needed (always in scope).
+export mask
+export parse_minino, @p_str
+export OSCMessage, OSCBundle, OSCClient, encode, send_osc
+export Scheduler, start!, stop!, set_pattern!, set_cps!, hush!
+export live, d!, hush_all!, cps!
+# `stack`, `cat`, and arithmetic operators extend Base; no re-export needed.
 
 end # module Ressac

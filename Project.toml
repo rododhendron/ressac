@@ -4,8 +4,11 @@ authors = ["Rodolphe Marbot <rododhendron@hey.com>"]
 version = "0.1.0-DEV"
 
 [deps]
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
+TerminalUserInterfaces = "408767e4-586b-40c7-9657-f9758988469a"
 
 [compat]
+TerminalUserInterfaces = "0.8"
 julia = "1.10"
 
 [extras]
