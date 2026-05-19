@@ -40,8 +40,10 @@ A user session looks like:
 
 ### 3.1 Slot macros
 
-Generate `@d1`, `@d2`, …, `@d16` macros at module load. Each expands its
-body verbatim into a `Ressac._route_to_slot!(:dN, body)` call:
+Generate `@d1`, `@d2`, …, `@d64` macros at module load (64 covers any
+realistic live session — Tidal users rarely exceed 16, but slot numbers
+also serve as parallel "tracks" so the headroom is cheap). Each expands
+its body verbatim into a `Ressac._route_to_slot!(:dN, body)` call:
 
 ```julia
 @d1 p"bd hh sn hh" |> fast(2)
@@ -158,7 +160,8 @@ calls `Core.eval`; the scheduler thread only reads `patterns` /
     cursor_col::Int               = 1      # 1-based byte index into buffer[row]
     mode::Symbol                  = :insert # :insert | :normal | :visual_line | :command
     count_prefix::Int             = 0      # for `[N]e`, `Nyy`, etc.
-    pending_chord::Symbol         = :none  # :g, :d, :y → next char completes
+    pending_chord::Symbol         = :none  # :g, :gd, :d, :y → next char completes
+    chord_digits::String          = ""     # digit accumulator inside `:gd`
     last_eval_block::Dict{Symbol, NTuple{2,Int}} = Dict()  # slot → (row_start, row_end)
     last_search::Union{Nothing,Regex} = nothing  # unified for `gd`, `/`, `?`
     last_search_dir::Symbol       = :forward
@@ -229,7 +232,7 @@ digraph modes {
 | `e` | eval block at cursor, immediate |
 | `[N]e` | eval block at cursor, deferred to +N cycles |
 | `m` | toggle mute on the current line (see §4.5) |
-| `gd[1-9]` | goto last `@dN` def (see §4.6) |
+| `gd<digits>` | goto last `@dN` def (multi-digit; see §4.6) |
 | `n` / `N` | next / previous match of `last_search` |
 | `Ctrl+C` | quit (`:q` is the canonical form) |
 
@@ -255,19 +258,34 @@ muting at cycle boundary would feel laggy.
 
 ### 4.6 Goto definition
 
-`gd<digit>` is shorthand for building a regex search. The implementation
-seeds `last_search` with `r"^\s*@d<digit>\s"` and runs the search
-machinery (§4.10), so `n`/`N` cycling Just Works™.
+`gd<digits>` is shorthand for building a regex search. The chord
+enters a digit-collection sub-state on `gd`, accumulates digits in
+`chord_digits`, and resolves on the first non-digit key (or `Enter`).
+On resolution, it seeds `last_search` with `r"^\s*@d<digits>\s"` and
+runs the search machinery (§4.10), so `n`/`N` cycling Just Works™.
 
-On `gd<digit>`:
-1. Set `last_search = r"^\s*@d<digit>\s"`, `last_search_dir = :backward`
-   (we want the most-recent def, i.e. the lowest row from cursor going up).
-2. Run a backward search from cursor; if no match, run a forward
-   search from EOF.
-3. If found: move cursor to that row.
-4. If not found: log `[INFO] no def for d<digit>`; cursor stays put.
+The chord state machine:
 
-Slots 10–16 are reachable via `:goto d12` in command mode (§4.10).
+1. Normal mode, `g` pressed → `pending_chord = :g`.
+2. `:g`, `d` pressed → `pending_chord = :gd`, `chord_digits = ""`.
+3. `:gd`, digit pressed → append to `chord_digits`, stay in `:gd`.
+4. `:gd`, non-digit (including `Enter`) → resolve:
+   - If `chord_digits == ""` → log `[ERROR] gd: no slot given`, clear chord.
+   - Else parse N = `parse(Int, chord_digits)`. If `1 ≤ N ≤ 64`:
+     set `last_search = r"^\s*@d<N>\s"`, `last_search_dir = :backward`,
+     run backward search; if no match, wrap and search forward from EOF.
+     On success move cursor; on failure log
+     `[INFO] no def for d<N>`. Clear chord.
+   - Else (N out of range): log `[ERROR] slot d<N> out of range (1..64)`.
+   - If the resolver was a non-digit key other than `Enter`, replay it
+     as a normal-mode key after the chord clears (so `gd1j` does the
+     goto then moves down by one).
+
+`Enter` after digits is the explicit resolver; you can also just type
+the next motion key and the chord auto-completes. `gd<Esc>` cancels.
+
+`:goto d<N>` in command mode (§4.10) is an equivalent escape hatch for
+when typing the chord feels clunkier than the ex command.
 
 ### 4.7 Block (paragraph) detection
 
@@ -391,7 +409,7 @@ top frame. Fits an 80-col terminal even on small windows.
 | File | Status | Purpose |
 |---|---|---|
 | `src/tui.jl` | rewrite | Buffer/cursor/mode/render. Reduced to just the TUI shell. |
-| `src/live_api.jl` | new | `@d1`..`@d16` macros, `_route_to_slot!`, `_EVAL_MODE`. |
+| `src/live_api.jl` | new | `@d1`..`@d64` macros, `_route_to_slot!`, `_EVAL_MODE`. |
 | `src/scheduler.jl` | extend | `pending`, `schedule_pattern!`, `last_fired_at`, drain in `_step!`. |
 | `src/combinators.jl` | extend | Curried `fast(n)`, `slow(n)`, `every(n, f)`, `stack(q)`, `mask(q)`. |
 | `src/Ressac.jl` | extend | Include `live_api.jl`, export the new macros + curried forms. |
@@ -414,6 +432,10 @@ Unit tests cover, end-to-end (same approach as v1's e2e tests):
 - `_EVAL_MODE = (:immediate, 0)` → `set_pattern!` is called.
 - `_EVAL_MODE = (:deferred, 2)` → `schedule_pattern!` is called with
   `target = ceil(cur_cycle) + 2`.
+- `gd64<Enter>` resolves with `N=64` and seeds the right regex; `gdx`
+  (where `x` is non-digit, no digits collected) logs the error and
+  clears the chord; `gd1j` performs the goto then moves the cursor
+  down.
 - `schedule_pattern!` then `_step!` advancing across the apply_at
   cycle → the new pattern replaces the old in `s.patterns`.
 - Curried combinators: `fast(2)(p) == fast(2, p)`.
@@ -438,7 +460,6 @@ A manual smoke test plan lives in `docs/journal/20260519_multiline_tui_smoke.md`
 - Character-wise / block-wise visual modes (only line-wise `V` in v2).
 - Character-wise yank/paste, named registers, system clipboard.
 - Search-and-replace (`:s/foo/bar/`).
-- Multi-digit `gd<NN>` chord (use `:goto d<N>` for slots 10–16).
 - Vendoring `Chain.jl` for arg-capture placeholders.
 - Undo (`u`) — significant complexity, defer.
 - Reading a `.jl` file as the initial buffer — defer.
