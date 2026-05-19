@@ -15,3 +15,4 @@ deps/build.log
 .idea/
 .vscode/
 .remember/
+.direnv/

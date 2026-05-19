@@ -26,6 +26,14 @@ Install `p` at `slot` in the currently active live scheduler.
 d!(slot::Symbol, p::Pattern) = set_pattern!(_check_live(), slot, p)
 
 """
+    unset!(slot::Symbol)
+
+Remove the pattern at `slot` in the active live scheduler. The other slots
+keep playing.
+"""
+unset!(slot::Symbol) = unset_pattern!(_check_live(), slot)
+
+"""
     hush_all!()
 
 Silence every slot in the active live scheduler.
@@ -98,11 +106,18 @@ function TUI.update!(m::LiveModel, evt::TUI.KeyEvent)
 
     code  = TUI.keycode(evt)
     mods  = TUI.keymodifier(evt)
-    ctrl  = "Ctrl" ∈ mods
+    ctrl  = _has_ctrl(mods)
 
-    if ctrl && (code == "c" || code == "q")
+    # Debug trail so we can see what actually arrives — useful while ironing
+    # out the Crossterm modifier conventions on a given terminal. Remove once
+    # bindings feel stable.
+    _push_log!(m, "[KEY] code=$(repr(code)) mods=$(mods) ctrl=$(ctrl)")
+
+    if code == "Esc"
         m.quit = true
-    elseif ctrl && code == "h"
+    elseif ctrl && (code == "c" || code == "C" || code == "q" || code == "Q")
+        m.quit = true
+    elseif ctrl && (code == "h" || code == "H")
         try
             hush!(m.scheduler)
             _push_log!(m, "[INFO] hush")
@@ -121,6 +136,17 @@ function TUI.update!(m::LiveModel, evt::TUI.KeyEvent)
     end
 end
 
+# Crossterm's serialised modifier names vary by version/platform — be
+# permissive: accept any string whose lowercase form contains "ctrl" or
+# "control".
+function _has_ctrl(mods)
+    for m in mods
+        s = lowercase(String(m))
+        (occursin("ctrl", s) || occursin("control", s)) && return true
+    end
+    return false
+end
+
 # ---------------------------------------------------------------------------
 # View
 # ---------------------------------------------------------------------------
@@ -129,23 +155,29 @@ function TUI.view(m::LiveModel)
     status_text  = _status_line(m)
     history_text = isempty(m.history) ? "(no evaluations yet)" : join(last(m.history, 30), "\n")
     logs_text    = isempty(m.logs)    ? "(no logs yet)"        : join(last(m.logs, 10),     "\n")
-    prompt_text  = "> " * m.input * "▌"  # ▌ as a cheap cursor
+    prompt_text  = "> " * m.input * "▌"
 
-    status_words  = [TUI.Word(status_text,  TUI.Crayon(; bold = true))]
-    history_words = [TUI.Word(history_text, TUI.Crayon())]
-    logs_words    = [TUI.Word(logs_text,    TUI.Crayon(; foreground = :blue))]
-    prompt_words  = [TUI.Word(prompt_text,  TUI.Crayon(; foreground = :green))]
-
-    status  = TUI.Paragraph(TUI.Block(; title = "Ressac"),  status_words,  1, Ref{Int}(0))
-    history = TUI.Paragraph(TUI.Block(; title = "History"), history_words, 1, Ref{Int}(0))
-    prompt  = TUI.Paragraph(TUI.Block(; title = "Input"),   prompt_words,  1, Ref{Int}(0))
-    logs    = TUI.Paragraph(TUI.Block(; title = "Logs"),    logs_words,    1, Ref{Int}(0))
+    status  = _zone("Ressac",  status_text,  TUI.Crayon(; bold = true))
+    history = _zone("History", history_text, TUI.Crayon())
+    prompt  = _zone("Input",   prompt_text,  TUI.Crayon(; foreground = :green))
+    logs    = _zone("Logs",    logs_text,    TUI.Crayon(; foreground = :blue))
 
     TUI.Layout(;
         widgets = [status, history, prompt, logs],
         constraints = [TUI.Min(3), TUI.Percent(50), TUI.Min(3), TUI.Min(8)],
         orientation = :vertical,
     )
+end
+
+# Build a titled Paragraph from free-form text. `TUI.Paragraph` requires the
+# `words` vector to align 1-to-1 with whitespace-split tokens of the joined
+# text (it re-splits internally and indexes into `words` per token), so we
+# pre-split via `make_words`. An empty zone gets a single blank word so the
+# renderer has at least one element to index.
+function _zone(title::AbstractString, text::AbstractString, style)
+    words = TUI.make_words(text, style)
+    isempty(words) && push!(words, TUI.Word(" ", style))
+    return TUI.Paragraph(TUI.Block(; title = String(title)), words, 1, Ref{Int}(0))
 end
 
 function _status_line(m::LiveModel)
@@ -160,26 +192,79 @@ end
 # ---------------------------------------------------------------------------
 
 """
+    start_live!(; host="127.0.0.1", port=57120, cps=0.5, lookahead=0.05) -> Scheduler
+
+Start a live scheduler without a TUI: build a `Scheduler`, install it as the
+active scheduler for [`d!`](@ref) / [`hush_all!`](@ref) / [`cps!`](@ref), start
+its background loop, and return it. Call [`stop_live!`](@ref) to tear down.
+
+Use this from a plain Julia REPL to drive Ressac without the TUI in the way —
+useful for debugging and exploration.
+"""
+function start_live!(; host::AbstractString = "127.0.0.1",
+                       port::Integer = 57120,
+                       cps::Real = 0.5,
+                       lookahead::Real = 0.05)
+    if _LIVE_SCHEDULER[] !== nothing
+        @warn "A live session is already running — returning the existing scheduler. \
+               Call stop_live!() first if you want a fresh one."
+        return _LIVE_SCHEDULER[]
+    end
+    client = OSCClient(host, port)
+    sched = Scheduler(client; cps, lookahead)
+    _LIVE_SCHEDULER[] = sched
+    start!(sched)
+    return sched
+end
+
+"""
+    stop_live!()
+
+Stop the active live scheduler started by [`start_live!`](@ref) (or [`live`](@ref)):
+halt the loop, hush all patterns, and clear the module-level reference.
+"""
+function stop_live!()
+    s = _LIVE_SCHEDULER[]
+    if s !== nothing
+        stop!(s)
+        hush!(s)
+        _LIVE_SCHEDULER[] = nothing
+    end
+    return nothing
+end
+
+"""
+    restart_live!(; host="127.0.0.1", port=57120, cps=0.5, lookahead=0.05) -> Scheduler
+
+Tear down the current live session (if any) and start a fresh one with the
+given options. Equivalent to `stop_live!(); start_live!(; ...)`.
+"""
+function restart_live!(; kwargs...)
+    stop_live!()
+    return start_live!(; kwargs...)
+end
+
+"""
     live(; host="127.0.0.1", port=57120, cps=0.5, lookahead=0.05)
 
-Start a live coding session: build a `Scheduler` aimed at `host:port`, install
-it as the active scheduler for [`d!`](@ref) / [`hush_all!`](@ref) / [`cps!`](@ref),
-and launch the TUI. Returns after the user quits (Ctrl+Q or Ctrl+C in the TUI).
+Start a live coding session: build a `Scheduler` (via [`start_live!`](@ref))
+and launch the TUI on top of it. Returns after the user quits (Esc, Ctrl+Q,
+or Ctrl+C in the TUI).
+
+If a scheduler is already running (e.g. via [`start_live!`](@ref)), the TUI
+attaches to it and leaves it running on exit. Otherwise the scheduler is
+created here and torn down when the TUI closes.
 """
 function live(; host::AbstractString = "127.0.0.1",
                 port::Integer = 57120,
                 cps::Real = 0.5,
                 lookahead::Real = 0.05)
-    client = OSCClient(host, port)
-    sched = Scheduler(client; cps, lookahead)
-    _LIVE_SCHEDULER[] = sched
-    start!(sched)
+    existed = _LIVE_SCHEDULER[] !== nothing
+    sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     try
         TUI.app(LiveModel(; scheduler = sched))
     finally
-        stop!(sched)
-        hush!(sched)
-        _LIVE_SCHEDULER[] = nothing
+        existed || stop_live!()
     end
     return nothing
 end

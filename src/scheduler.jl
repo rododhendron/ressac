@@ -69,21 +69,31 @@ event_to_osc(ev::Event) = throw(ArgumentError(
     _step!(s::Scheduler, now::Float64)
 
 Process the lookahead window `(last_end_cycles, (now + lookahead) * cps]`:
-query every registered pattern, build a time-tagged OSC bundle per event,
-and ship it via `send_osc`. Updates `last_end_cycles` so the next call only
-touches the new slice (this is the canonical defence against double-fire).
+query every registered pattern **one whole cycle at a time** (so event arcs
+come back un-clipped) and fire each event whose natural onset falls in the
+new slice. Updates `last_end_cycles` so the next call only touches events
+that haven't yet been seen — this is the canonical defence against the
+"sub-window re-fire" bug where a single long event gets shipped repeatedly
+because each successive lookahead window contains a clipped fragment of it.
 """
 function _step!(s::Scheduler, now::Float64)
     lock(s.lock) do
         end_cycles = (now + s.lookahead) * s.cps
         start_cycles = s.last_end_cycles
         end_cycles > start_cycles || return
+        n_start = floor(Int, start_cycles)
+        n_stop  = ceil(Int, end_cycles)
         for pattern in values(s.patterns)
-            events = pattern(start_cycles, end_cycles)
-            for ev in events
-                fire_time = s.t_start + Float64(ev.start) / s.cps
-                bundle = OSCBundle(fire_time, [event_to_osc(ev)])
-                send_osc(s.osc, encode(bundle))
+            for n in n_start:(n_stop - 1)
+                events = pattern(Rational{Int64}(n), Rational{Int64}(n + 1))
+                for ev in events
+                    ev_start = Float64(ev.start)
+                    if start_cycles <= ev_start < end_cycles
+                        fire_time = s.t_start + ev_start / s.cps
+                        bundle = OSCBundle(fire_time, [event_to_osc(ev)])
+                        send_osc(s.osc, encode(bundle))
+                    end
+                end
             end
         end
         s.last_end_cycles = end_cycles
@@ -115,6 +125,18 @@ still fire on the synth, but no further events are scheduled.
 function hush!(s::Scheduler)
     lock(s.lock) do
         empty!(s.patterns)
+    end
+    return nothing
+end
+
+"""
+    unset_pattern!(s, slot)
+
+Remove the pattern at `slot`. No-op if the slot was unset. Thread-safe.
+"""
+function unset_pattern!(s::Scheduler, slot::Symbol)
+    lock(s.lock) do
+        delete!(s.patterns, slot)
     end
     return nothing
 end

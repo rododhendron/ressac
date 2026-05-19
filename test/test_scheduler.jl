@@ -20,6 +20,24 @@ Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
         @test length(mock.sent) == 1
     end
 
+    @testset "REGRESSION: small steps don't re-fire the same long event" begin
+        # The old scheduler queried each `(last_end, end)` window directly,
+        # and combinators clipped the event to that sub-window — so a single
+        # `pure(:bd)` got shipped on every tick covering its arc. Here we
+        # walk the entire first cycle in 25 ms slices (cps=1.0, lookahead
+        # 0.05): there must be exactly one fire, not dozens.
+        mock = MockOSCClient()
+        s = Scheduler(mock; cps=1.0, lookahead=0.05)
+        set_pattern!(s, :d1, pure(:bd))
+        s.t_start = 0.0
+        # Walk through the whole of cycle 0 in 25 ms ticks. Stop before the
+        # lookahead window touches cycle 1 (end_cycles = now + 0.05 < 1.0).
+        for now in 0.0:0.025:0.9
+            Ressac._step!(s, now)
+        end
+        @test length(mock.sent) == 1
+    end
+
     @testset "no double-fire across consecutive _step!s" begin
         mock = MockOSCClient()
         s = Scheduler(mock; cps=10.0, lookahead=0.1)
@@ -56,6 +74,19 @@ Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
         @test s.cps == 0.75
         @test_throws ArgumentError set_cps!(s, 0.0)
         @test_throws ArgumentError set_cps!(s, -1.0)
+    end
+
+    @testset "unset_pattern! removes one slot, leaves others alone" begin
+        mock = MockOSCClient()
+        s = Scheduler(mock)
+        set_pattern!(s, :d1, pure(:bd))
+        set_pattern!(s, :d2, pure(:sn))
+        unset_pattern!(s, :d1)
+        @test !haskey(s.patterns, :d1)
+        @test haskey(s.patterns, :d2)
+        # No-op for absent slot.
+        unset_pattern!(s, :nope)
+        @test haskey(s.patterns, :d2)
     end
 
     @testset "event_to_osc default: Event{Symbol} → /dirt/play" begin
