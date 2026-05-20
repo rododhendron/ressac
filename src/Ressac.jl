@@ -57,23 +57,30 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     p5 = parse_minino("bd!2 sn")
     p6 = parse_minino("[bd hh] sn")
 
-    # Combinator stack on a Pattern{Symbol}.
-    layered = fast(2, rev(stack(pure(:cp), p1)))
-    everyp  = every(3, x -> fast(2, x), p2)
-    catp    = cat([pure(:a), pure(:b)])
+    # Combinator stack + new curried forms via pipe.
+    layered  = pure(:cp) |> fast(2)
+    looped   = p1 |> every(3, rev)
+    mask_gate = Pattern{Bool}((s::Rational, e::Rational) -> begin
+        evs = Event{Bool}[]
+        push!(evs, Event{Bool}(0//1, 1//2, true))
+        push!(evs, Event{Bool}(1//2, 1//1, false))
+        filter!(ev -> ev.start < e && ev.stop > s, evs)
+        evs
+    end)
+    masked   = p1 |> mask(mask_gate)
+    stacked  = pure(:bd) |> stack(pure(:sn))
 
     # Numeric algebra path.
     np1 = pure(0) + 12
-    np2 = pure(1) * 2
-    np3 = pure(0.5) + pure(0.25)
 
-    # Full scheduler hot loop.
+    # Full scheduler hot loop incl. pending drain.
     sched = Scheduler(_PrecompileSink(); cps=0.5, lookahead=0.05)
     sched.t_start = 0.0
     set_pattern!(sched, :d1, p1)
     set_pattern!(sched, :d2, layered)
+    schedule_pattern!(sched, :d3, looped, 1 // 1)
     _step!(sched, 0.0)
-    _step!(sched, 0.1)
+    _step!(sched, 1.5)
     unset_pattern!(sched, :d1)
     hush!(sched)
 
@@ -82,6 +89,18 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     bytes = encode(msg)
     decode_message(bytes)
     encode(OSCBundle(0.0, [msg]))
+
+    # Live API: exercise _route_to_slot! both modes via the public macros.
+    _LIVE_SCHEDULER[] = sched
+    try
+        _EVAL_MODE[] = (:immediate, 0)
+        _route_to_slot!(:d4, p2)
+        _EVAL_MODE[] = (:deferred, 1)
+        _route_to_slot!(:d5, p3)
+    finally
+        _LIVE_SCHEDULER[] = nothing
+        _EVAL_MODE[] = (:immediate, 0)
+    end
 end
 
 end # module Ressac
