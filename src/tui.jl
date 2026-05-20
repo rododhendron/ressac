@@ -51,7 +51,7 @@ cps!(x::Real) = set_cps!(_check_live(), x)
 # Model
 # ---------------------------------------------------------------------------
 
-@kwdef mutable struct LiveModel <: TUI.Model
+@kwdef mutable struct LiveModelV1 <: TUI.Model
     scheduler::Scheduler
     input::String = ""
     history::Vector{String} = String[]   # rolling list of "> expr ⇒ result"
@@ -62,12 +62,12 @@ end
 const _MAX_HISTORY = 200
 const _MAX_LOGS    = 200
 
-function _push_history!(m::LiveModel, line::AbstractString)
+function _push_history!(m::LiveModelV1, line::AbstractString)
     push!(m.history, String(line))
     length(m.history) > _MAX_HISTORY && popfirst!(m.history)
 end
 
-function _push_log!(m::LiveModel, line::AbstractString)
+function _push_log!(m::LiveModelV1, line::AbstractString)
     push!(m.logs, String(line))
     length(m.logs) > _MAX_LOGS && popfirst!(m.logs)
 end
@@ -76,7 +76,7 @@ end
 # Eval
 # ---------------------------------------------------------------------------
 
-function _eval_input!(m::LiveModel)
+function _eval_input!(m::LiveModelV1)
     expr_text = strip(m.input)
     isempty(expr_text) && return
     try
@@ -96,11 +96,11 @@ _short(x) = sprint(io -> show(IOContext(io, :limit => true, :displaysize => (1, 
 # Update
 # ---------------------------------------------------------------------------
 
-function TUI.init!(m::LiveModel, ::TUI.TerminalBackend)
+function TUI.init!(m::LiveModelV1, ::TUI.TerminalBackend)
     _push_log!(m, "[INFO] Ressac live — Ctrl+H hush, Ctrl+Q quit")
 end
 
-function TUI.update!(m::LiveModel, evt::TUI.KeyEvent)
+function TUI.update!(m::LiveModelV1, evt::TUI.KeyEvent)
     # We only act on Press events; ignore Release/Repeat.
     evt.data.kind == "Press" || return
 
@@ -151,7 +151,7 @@ end
 # View
 # ---------------------------------------------------------------------------
 
-function TUI.view(m::LiveModel)
+function TUI.view(m::LiveModelV1)
     status_text  = _status_line(m)
     history_text = isempty(m.history) ? "(no evaluations yet)" : join(last(m.history, 30), "\n")
     logs_text    = isempty(m.logs)    ? "(no logs yet)"        : join(last(m.logs, 10),     "\n")
@@ -180,7 +180,7 @@ function _zone(title::AbstractString, text::AbstractString, style)
     return TUI.Paragraph(TUI.Block(; title = String(title)), words, 1, Ref{Int}(0))
 end
 
-function _status_line(m::LiveModel)
+function _status_line(m::LiveModelV1)
     s = m.scheduler
     slots = isempty(s.patterns) ? "—" : join(string.(keys(s.patterns)), ",")
     cycle_now = s.t_start == 0.0 ? 0.0 : (time() - s.t_start) * s.cps
@@ -262,7 +262,7 @@ function live(; host::AbstractString = "127.0.0.1",
     existed = _LIVE_SCHEDULER[] !== nothing
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     try
-        TUI.app(LiveModel(; scheduler = sched))
+        TUI.app(LiveModelV1(; scheduler = sched))
     finally
         existed || stop_live!()
     end

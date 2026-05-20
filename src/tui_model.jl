@@ -31,8 +31,6 @@ Backing model for the multi-line TUI. See
     quit::Bool                    = false
 end
 
-const _MAX_LOGS = 200
-
 function _push_log!(m::LiveModel, line::AbstractString)
     push!(m.logs, String(line))
     length(m.logs) > _MAX_LOGS && popfirst!(m.logs)

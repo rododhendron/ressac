@@ -31,7 +31,7 @@ const TUI = TerminalUserInterfaces
     @testset "LiveModel constructs and produces a view widget tree" begin
         mock = MockOSCClient()  # defined in test_scheduler.jl
         sched = Scheduler(mock; cps=0.5)
-        m = Ressac.LiveModel(; scheduler=sched)
+        m = Ressac.LiveModelV1(; scheduler=sched)
         # Just verify view runs without throwing — content is rendered by TUI.app.
         widget = TUI.view(m)
         @test widget !== nothing
@@ -40,7 +40,7 @@ const TUI = TerminalUserInterfaces
     @testset "_eval_input! pushes successful evaluations to history" begin
         mock = MockOSCClient()
         sched = Scheduler(mock)
-        m = Ressac.LiveModel(; scheduler=sched)
+        m = Ressac.LiveModelV1(; scheduler=sched)
         m.input = "1 + 1"
         Ressac._eval_input!(m)
         @test length(m.history) == 1
@@ -51,7 +51,7 @@ const TUI = TerminalUserInterfaces
     @testset "_eval_input! routes parse/runtime errors to logs" begin
         mock = MockOSCClient()
         sched = Scheduler(mock)
-        m = Ressac.LiveModel(; scheduler=sched)
+        m = Ressac.LiveModelV1(; scheduler=sched)
         m.input = "this is not valid Julia ((("
         Ressac._eval_input!(m)
         @test length(m.logs) >= 1
@@ -61,7 +61,7 @@ const TUI = TerminalUserInterfaces
     @testset "blank input is a no-op" begin
         mock = MockOSCClient()
         sched = Scheduler(mock)
-        m = Ressac.LiveModel(; scheduler=sched)
+        m = Ressac.LiveModelV1(; scheduler=sched)
         m.input = "   "
         Ressac._eval_input!(m)
         @test isempty(m.history)
@@ -127,7 +127,7 @@ const TUI = TerminalUserInterfaces
         sched = Scheduler(mock; cps=1.0)
         Ressac._LIVE_SCHEDULER[] = sched
         try
-            m = Ressac.LiveModel(; scheduler=sched)
+            m = Ressac.LiveModelV1(; scheduler=sched)
             m.input = "d!(:d1, p\"bd hh sn hh\")"
             Ressac._eval_input!(m)
             @test haskey(sched.patterns, :d1)
@@ -143,7 +143,7 @@ const TUI = TerminalUserInterfaces
         sched = Scheduler(mock; cps=0.5)
         Ressac._LIVE_SCHEDULER[] = sched
         try
-            m = Ressac.LiveModel(; scheduler=sched)
+            m = Ressac.LiveModelV1(; scheduler=sched)
             @test occursin("slots:—", Ressac._status_line(m))
             Core.eval(Main, Meta.parse("d!(:d1, p\"bd\")"))
             @test occursin("d1", Ressac._status_line(m))
