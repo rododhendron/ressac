@@ -164,6 +164,15 @@ function stack(ps::Pattern{T}...) where {T}
 end
 
 """
+    stack(q::Pattern{T}) -> (Pattern{T} -> Pattern{T})
+
+Curried form: `stack(q)(p) == stack(p, q)`. Note: existing
+`stack(ps::Vararg{Pattern{T}})` already covers `stack(p, q, r, …)`, so
+this single-arg version disambiguates as "curry on the lone arg".
+"""
+stack(q::Pattern{T}) where {T} = p::Pattern{T} -> stack(p, q)
+
+"""
     cat(ps::Vector{<:Pattern{T}}) -> Pattern{T}
     cat(ps::Pattern{T}...)        -> Pattern{T}
 

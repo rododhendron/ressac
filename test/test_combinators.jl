@@ -122,4 +122,9 @@ using Ressac
         @test query(pure(:bd) |> every(2, rev), 0, 2) ==
               query(every(2, rev, pure(:bd)), 0, 2)
     end
+
+    @testset "curried stack(q) is stack(_, q)" begin
+        @test query(pure(:bd) |> stack(pure(:sn)), 0, 1) ==
+              query(stack(pure(:bd), pure(:sn)), 0, 1)
+    end
 end
