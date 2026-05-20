@@ -86,3 +86,38 @@ function _paragraph_bounds(m::LiveModel)
     end
     return (start, stop)
 end
+
+"""
+    _move_cursor!(m, dx, dy)
+
+Move the cursor by `dx` columns and `dy` rows, clamping to buffer
+bounds. `col` clamps to `lastindex(line) + 1` (one past EOL).
+"""
+function _move_cursor!(m::LiveModel, dx::Int, dy::Int)
+    m.cursor_row = clamp(m.cursor_row + dy, 1, length(m.buffer))
+    line = m.buffer[m.cursor_row]
+    m.cursor_col = clamp(m.cursor_col + dx, 1, lastindex(line) + 1)
+    return nothing
+end
+
+function _line_start!(m::LiveModel)
+    m.cursor_col = 1
+    return nothing
+end
+
+function _line_end!(m::LiveModel)
+    m.cursor_col = lastindex(m.buffer[m.cursor_row]) + 1
+    return nothing
+end
+
+function _buffer_start!(m::LiveModel)
+    m.cursor_row = 1
+    m.cursor_col = 1
+    return nothing
+end
+
+function _buffer_end!(m::LiveModel)
+    m.cursor_row = length(m.buffer)
+    m.cursor_col = 1
+    return nothing
+end

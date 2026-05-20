@@ -88,4 +88,38 @@ using Ressac
         m.cursor_row = 3
         @test Ressac._paragraph_bounds(m) == (3, 2)
     end
+
+    @testset "_move_cursor! clamps to buffer bounds" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["abc", "de", "fghij"]
+        m.cursor_row = 1; m.cursor_col = 1
+        # Down off the end clamps col to line length+1.
+        Ressac._move_cursor!(m, 0, +1)
+        @test (m.cursor_row, m.cursor_col) == (2, 1)
+        # Right past end of "de" clamps.
+        m.cursor_col = 10
+        Ressac._move_cursor!(m, +1, 0)
+        @test m.cursor_col == 3  # one past 'e'
+        # Up wraps col within the longer line above.
+        m.cursor_row = 2; m.cursor_col = 2
+        Ressac._move_cursor!(m, 0, -1)
+        @test m.cursor_row == 1
+        @test m.cursor_col == 2
+    end
+
+    @testset "_line_start! / _line_end! / _buffer_start! / _buffer_end!" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["foo bar", "baz", "  quux"]
+        m.cursor_row = 1; m.cursor_col = 5
+        Ressac._line_start!(m)
+        @test m.cursor_col == 1
+        Ressac._line_end!(m)
+        @test m.cursor_col == lastindex("foo bar") + 1
+        Ressac._buffer_end!(m)
+        @test m.cursor_row == 3
+        @test m.cursor_col == 1
+        Ressac._buffer_start!(m)
+        @test m.cursor_row == 1
+        @test m.cursor_col == 1
+    end
 end
