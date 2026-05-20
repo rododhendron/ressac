@@ -27,6 +27,11 @@ export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
 export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, schedule_pattern!
 export live, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
+# Export every @d1..@d64 macro. Doing it here keeps the macro generator
+# in live_api.jl tidy.
+for n in 1:64
+    @eval export $(Symbol("@d", n))
+end
 # `stack`, `cat`, and arithmetic operators extend Base; no re-export needed.
 
 # ---------------------------------------------------------------------------

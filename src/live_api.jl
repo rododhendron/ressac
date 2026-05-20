@@ -35,3 +35,20 @@ function _route_to_slot!(slot::Symbol)
     unset_pattern!(_check_live(), slot)
     return nothing
 end
+
+# Generate @d1..@d64. Each expands to a `_route_to_slot!(:dN, body)` call,
+# or `_route_to_slot!(:dN)` when called with no body.
+for n in 1:64
+    macro_name = Symbol("d", n)
+    slot_name  = Symbol("d", n)
+    @eval begin
+        macro $(macro_name)(expr)
+            return Expr(:call, GlobalRef(@__MODULE__, :_route_to_slot!),
+                        QuoteNode($(QuoteNode(slot_name))), esc(expr))
+        end
+        macro $(macro_name)()
+            return Expr(:call, GlobalRef(@__MODULE__, :_route_to_slot!),
+                        QuoteNode($(QuoteNode(slot_name))))
+        end
+    end
+end

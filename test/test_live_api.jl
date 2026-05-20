@@ -50,4 +50,32 @@ using Ressac
             Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
+
+    @testset "@d1 macro expands to _route_to_slot!(:d1, body)" begin
+        # macroexpand returns the unescaped expression.
+        ex = @macroexpand @d1 pure(:bd)
+        # Look for a call to _route_to_slot! with :d1 as the first arg.
+        @test ex isa Expr && ex.head === :call
+        @test ex.args[1] === :(Ressac._route_to_slot!) || ex.args[1] === :_route_to_slot! ||
+              ex.args[1] == GlobalRef(Ressac, :_route_to_slot!)
+        @test ex.args[2] === :(:d1) || ex.args[2] === QuoteNode(:d1)
+    end
+
+    @testset "@d3 with no body unsets the slot" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=1.0)
+        set_pattern!(sched, :d3, pure(:bd))
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Core.eval(Main, :(@d3))
+            @test !haskey(sched.patterns, :d3)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "@d64 is the highest slot" begin
+        @test isdefined(Ressac, Symbol("@d64"))
+        @test !isdefined(Ressac, Symbol("@d65"))
+    end
 end
