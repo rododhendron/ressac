@@ -115,4 +115,11 @@ using Ressac
         @test curried isa Function
         @test query(pure(:bd) |> slow(2), 0, 2) == query(slow(2, pure(:bd)), 0, 2)
     end
+
+    @testset "curried every(n, f) is every(n, f, _)" begin
+        curried = every(2, rev)
+        @test curried isa Function
+        @test query(pure(:bd) |> every(2, rev), 0, 2) ==
+              query(every(2, rev, pure(:bd)), 0, 2)
+    end
 end

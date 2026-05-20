@@ -140,6 +140,13 @@ function every(n::Int, f, p::Pattern{T}) where {T}
 end
 
 """
+    every(n::Int, f) -> (Pattern -> Pattern)
+
+Curried form: `every(n, f)(p) == every(n, f, p)`.
+"""
+every(n::Int, f) = p::Pattern -> every(n, f, p)
+
+"""
     stack(ps::Pattern{T}...) -> Pattern{T}
 
 Layer patterns in parallel: every event of every input pattern is emitted.
