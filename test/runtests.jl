@@ -13,4 +13,5 @@ using Ressac
     include("test_osc.jl")
     include("test_scheduler.jl")
     include("test_tui.jl")
+    include("test_live_api.jl")
 end
