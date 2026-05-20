@@ -16,6 +16,7 @@ include("osc.jl")
 include("scheduler.jl")
 include("tui.jl")
 include("tui_model.jl")
+include("tui_buffer.jl")
 include("live_api.jl")
 
 # Module includes added by upcoming milestones:
