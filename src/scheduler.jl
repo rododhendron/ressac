@@ -121,7 +121,7 @@ function _step!(s::Scheduler, now::Float64)
                         fire_time = s.t_start + ev_start / s.cps
                         bundle = OSCBundle(fire_time, [event_to_osc(ev)])
                         send_osc(s.osc, encode(bundle))
-                        s.last_fired_at[slot] = fire_time
+                        s.last_fired_at[slot] = time()
                     end
                 end
             end
