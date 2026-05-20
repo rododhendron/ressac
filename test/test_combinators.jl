@@ -109,4 +109,10 @@ using Ressac
         # Pipe usage matches.
         @test query(pure(:bd) |> fast(2), 0, 1) == query(fast(2, pure(:bd)), 0, 1)
     end
+
+    @testset "curried slow(n) is slow(n, _)" begin
+        curried = slow(2)
+        @test curried isa Function
+        @test query(pure(:bd) |> slow(2), 0, 2) == query(slow(2, pure(:bd)), 0, 2)
+    end
 end

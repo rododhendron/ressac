@@ -69,6 +69,13 @@ Dilate time by factor `n`. Equivalent to `fast(1/n, p)`.
 slow(n::Real, p::Pattern{T}) where {T} = fast(inv(_to_rat(n)), p)
 
 """
+    slow(n::Real) -> (Pattern -> Pattern)
+
+Curried form: `slow(n)(p) == slow(n, p)`.
+"""
+slow(n::Real) = p::Pattern -> slow(n, p)
+
+"""
     density(n, p)
 
 Alias of [`fast`](@ref). Provided for TidalCycles compatibility.
