@@ -98,11 +98,15 @@ function _step!(s::Scheduler, now::Float64)
     lock(s.lock) do
         end_cycles = (now + s.lookahead) * s.cps
         # Drain any pending pattern swaps whose apply_at_cycle has arrived.
-        for (slot, (p, at)) in pairs(s.pending)
-            if Float64(at) <= end_cycles
-                s.patterns[slot] = p
-                delete!(s.pending, slot)
-            end
+        # Two-pass to avoid mutating `s.pending` while iterating it (Julia's
+        # Dict iteration order is not guaranteed under concurrent mutation).
+        to_install = Symbol[]
+        for (slot, (_, at)) in pairs(s.pending)
+            Float64(at) <= end_cycles && push!(to_install, slot)
+        end
+        for slot in to_install
+            s.patterns[slot] = s.pending[slot][1]
+            delete!(s.pending, slot)
         end
         start_cycles = s.last_end_cycles
         end_cycles > start_cycles || return
