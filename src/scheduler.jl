@@ -19,6 +19,8 @@ thread never sees a torn read.
 """
 mutable struct Scheduler{C}
     patterns::Dict{Symbol,Pattern}
+    pending::Dict{Symbol,Tuple{Pattern,Rational{Int64}}}
+    last_fired_at::Dict{Symbol,Float64}
     cps::Float64
     lookahead::Float64
     osc::C
@@ -33,6 +35,8 @@ function Scheduler(osc; cps::Real = 0.5, lookahead::Real = 0.05)
     lookahead > 0 || throw(ArgumentError("lookahead must be positive"))
     Scheduler{typeof(osc)}(
         Dict{Symbol,Pattern}(),
+        Dict{Symbol,Tuple{Pattern,Rational{Int64}}}(),
+        Dict{Symbol,Float64}(),
         Float64(cps),
         Float64(lookahead),
         osc,
@@ -41,6 +45,20 @@ function Scheduler(osc; cps::Real = 0.5, lookahead::Real = 0.05)
         0.0,
         ReentrantLock(),
     )
+end
+
+"""
+    schedule_pattern!(s, slot, p, at_cycle::Rational{Int64})
+
+Queue `p` to be installed at `slot` once cycle `at_cycle` enters the
+scheduler's lookahead window. Replaces any prior pending entry for the
+same slot. Thread-safe.
+"""
+function schedule_pattern!(s::Scheduler, slot::Symbol, p::Pattern, at_cycle::Rational{Int64})
+    lock(s.lock) do
+        s.pending[slot] = (p, at_cycle)
+    end
+    return nothing
 end
 
 # ---------------------------------------------------------------------------
@@ -79,11 +97,18 @@ because each successive lookahead window contains a clipped fragment of it.
 function _step!(s::Scheduler, now::Float64)
     lock(s.lock) do
         end_cycles = (now + s.lookahead) * s.cps
+        # Drain any pending pattern swaps whose apply_at_cycle has arrived.
+        for (slot, (p, at)) in pairs(s.pending)
+            if Float64(at) <= end_cycles
+                s.patterns[slot] = p
+                delete!(s.pending, slot)
+            end
+        end
         start_cycles = s.last_end_cycles
         end_cycles > start_cycles || return
         n_start = floor(Int, start_cycles)
         n_stop  = ceil(Int, end_cycles)
-        for pattern in values(s.patterns)
+        for (slot, pattern) in s.patterns
             for n in n_start:(n_stop - 1)
                 events = pattern(Rational{Int64}(n), Rational{Int64}(n + 1))
                 for ev in events

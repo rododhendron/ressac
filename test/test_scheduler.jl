@@ -110,4 +110,22 @@ Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
         @test s.running[] == false
         @test length(mock.sent) > 0
     end
+
+    @testset "schedule_pattern! queues, _step! installs at apply_at" begin
+        mock = MockOSCClient()
+        s = Scheduler(mock; cps=1.0, lookahead=0.05)
+        s.t_start = 0.0
+        # Schedule a pattern to apply at cycle 2.
+        schedule_pattern!(s, :d1, pure(:bd), 2 // 1)
+        @test haskey(s.pending, :d1)
+        @test !haskey(s.patterns, :d1)
+        # Step at now=0.0 (window [0, 0.05)): pending stays.
+        Ressac._step!(s, 0.0)
+        @test haskey(s.pending, :d1)
+        @test !haskey(s.patterns, :d1)
+        # Step at now=2.0 (window [≈last, 2.05)): drain.
+        Ressac._step!(s, 2.0)
+        @test !haskey(s.pending, :d1)
+        @test haskey(s.patterns, :d1)
+    end
 end

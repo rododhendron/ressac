@@ -24,7 +24,7 @@ export pure, silence, fast, slow, density, rev, every
 export mask
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
-export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!
+export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, schedule_pattern!
 export live, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
 # `stack`, `cat`, and arithmetic operators extend Base; no re-export needed.
 
