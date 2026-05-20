@@ -128,4 +128,17 @@ Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
         @test !haskey(s.pending, :d1)
         @test haskey(s.patterns, :d1)
     end
+
+    @testset "last_fired_at records the most recent event per slot" begin
+        mock = MockOSCClient()
+        s = Scheduler(mock; cps=1.0, lookahead=0.05)
+        s.t_start = 0.0
+        set_pattern!(s, :d1, pure(:bd))
+        @test !haskey(s.last_fired_at, :d1)
+        Ressac._step!(s, 0.0)
+        @test haskey(s.last_fired_at, :d1)
+        # The recorded time should be near (but past) t_start because the
+        # event fires at the start of cycle 0.
+        @test s.last_fired_at[:d1] ≈ s.t_start atol=0.1
+    end
 end
