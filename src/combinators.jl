@@ -54,6 +54,14 @@ function fast(n::Real, p::Pattern{T}) where {T}
 end
 
 """
+    fast(n::Real) -> (Pattern -> Pattern)
+
+Curried form: `fast(n)(p) == fast(n, p)`. Lets `p |> fast(n)` thread the
+pattern as the right-hand arg under Julia's native `|>`.
+"""
+fast(n::Real) = p::Pattern -> fast(n, p)
+
+"""
     slow(n, p) -> Pattern{T}
 
 Dilate time by factor `n`. Equivalent to `fast(1/n, p)`.
