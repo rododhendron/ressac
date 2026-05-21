@@ -15,4 +15,5 @@ using Ressac
     include("test_tui.jl")
     include("test_live_api.jl")
     include("test_tui_buffer.jl")
+    include("test_tui_eval.jl")
 end
