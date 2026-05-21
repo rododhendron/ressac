@@ -1,9 +1,10 @@
 # v2 LiveModel — backing struct for the multi-line modal TUI.
 # Spec: docs/journal/20260519_multiline_tui_design.md §4.1.
-#
-# This file is intentionally NOT included by src/Ressac.jl yet — the v1
-# `LiveModel` in src/tui.jl is still active. Task F1 will swap things
-# over and at that point this file will be included.
+
+using TerminalUserInterfaces
+const TUI = TerminalUserInterfaces
+
+const _MAX_LOGS = 200
 
 """
     LiveModel
