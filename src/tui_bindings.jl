@@ -74,6 +74,9 @@ function _handle_normal!(m::LiveModel, evt)
         if code == "d"
             m.pending_chord = :gd
             m.chord_digits = ""
+        elseif code == "g"
+            _buffer_start!(m)
+            m.pending_chord = :none
         else
             m.pending_chord = :none
         end

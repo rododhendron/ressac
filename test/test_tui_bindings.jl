@@ -155,6 +155,16 @@ end
         @test sched.cps == 0.75
     end
 
+    @testset "normal mode: gg jumps to first line" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["a", "b", "c"]; m.cursor_row = 3; m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        @test m.pending_chord === :g
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        @test m.cursor_row == 1
+        @test m.pending_chord === :none
+    end
+
     @testset "command mode: /@d1 jumps forward" begin
         m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
         m.buffer = ["foo", "@d1 pure(:bd)", "bar"]
