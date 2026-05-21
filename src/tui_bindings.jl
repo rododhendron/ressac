@@ -178,6 +178,8 @@ function _handle_normal!(m::LiveModel, evt)
         m.command_buffer = ""
     elseif length(code) == 1 && isdigit(only(code))
         m.count_prefix = m.count_prefix * 10 + parse(Int, code)
+    elseif code == "c" && _has_modifier(evt, "Ctrl") || code == "c" && _has_modifier(evt, "Control")
+        m.quit = true
     elseif code == "Esc"
         m.count_prefix = 0
         m.pending_chord = :none
@@ -336,4 +338,22 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
     else
         _push_log!(m, "[ERROR] unknown command: $body")
     end
+end
+
+"""
+    _has_modifier(evt, name)
+
+True if `name` (case-insensitive, accepts "Ctrl"/"Control" variants) appears in `evt.modifiers`.
+"""
+function _has_modifier(evt, name::AbstractString)
+    target = lowercase(name)
+    for m in evt.modifiers
+        s = lowercase(String(m))
+        s == target && return true
+        # Allow "ctrl"/"control" to alias each other.
+        if target in ("ctrl", "control") && s in ("ctrl", "control")
+            return true
+        end
+    end
+    return false
 end
