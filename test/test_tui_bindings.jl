@@ -191,4 +191,74 @@ end
         Ressac._dispatch_key!(m, _fake_key("Enter"))
         @test m.cursor_row == 2
     end
+
+    @testset "normal mode: gd64<Enter> resolves with N=64" begin
+        # Build a buffer with @d64 active.
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()),
+            buffer=["@d64 pure(:bd)"])
+        m.mode = :normal; m.cursor_row = 1
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        Ressac._dispatch_key!(m, _fake_key("d"))
+        for c in "64"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        @test m.chord_digits == "64"
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.pending_chord === :none
+        # last_search should be set to the d64 regex.
+        @test m.last_search !== nothing
+    end
+
+    @testset "normal mode: gd<non-digit> with no digits logs error" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        Ressac._dispatch_key!(m, _fake_key("d"))
+        # Now press a non-digit without typing any digits first.
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test any(l -> occursin("gd: no slot given", l), m.logs)
+    end
+
+    @testset "normal mode: gd<out of range> logs error" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        Ressac._dispatch_key!(m, _fake_key("d"))
+        for c in "999"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test any(l -> occursin("out of range", l), m.logs)
+    end
+
+    @testset "normal mode: P pastes before current line" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["one", "two"]; m.cursor_row = 2; m.mode = :normal
+        m.yank = ["X"]
+        Ressac._dispatch_key!(m, _fake_key("P"))
+        @test m.buffer == ["one", "X", "two"]
+    end
+
+    @testset "command mode: :goto d12 jumps to slot" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()),
+            buffer=["foo", "@d12 pure(:bd)", "bar"])
+        m.cursor_row = 1; m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "goto d12"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.cursor_row == 2
+    end
+
+    @testset "command mode: unknown :cmd logs error" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "fubar"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test any(l -> occursin("unknown command", l), m.logs)
+    end
 end
