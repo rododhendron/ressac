@@ -20,6 +20,7 @@ include("tui_buffer.jl")
 include("tui_eval.jl")
 include("tui_search.jl")
 include("tui_bindings.jl")
+include("tui_view.jl")
 include("live_api.jl")
 
 # Module includes added by upcoming milestones:
