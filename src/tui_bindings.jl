@@ -213,7 +213,8 @@ function _handle_visual!(m::LiveModel, evt)
         m.mode = :normal
         m.visual_anchor = nothing
     elseif code == "m"
-        for row in _visual_range(m)[1]:_visual_range(m)[2]
+        rs, re = _visual_range(m)
+        for row in rs:re
             m.cursor_row = row
             _toggle_mute!(m)
         end
