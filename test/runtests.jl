@@ -17,4 +17,5 @@ using Ressac
     include("test_tui_buffer.jl")
     include("test_tui_eval.jl")
     include("test_tui_search.jl")
+    include("test_tui_bindings.jl")
 end

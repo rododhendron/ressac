@@ -1,0 +1,336 @@
+"""
+    _dispatch_key!(m, evt)
+
+Mode-aware keystroke router. `evt` must expose `code::String`,
+`modifiers::Vector{String}`, `kind::String`. Only acts on Press events.
+"""
+function _dispatch_key!(m::LiveModel, evt)
+    evt.kind == "Press" || return
+    if m.mode === :insert
+        _handle_insert!(m, evt)
+    elseif m.mode === :normal
+        _handle_normal!(m, evt)
+    elseif m.mode === :visual_line
+        _handle_visual!(m, evt)
+    elseif m.mode === :command
+        _handle_command!(m, evt)
+    end
+end
+
+# ---------------------------------------------------------------------
+# Insert mode
+# ---------------------------------------------------------------------
+function _handle_insert!(m::LiveModel, evt)
+    code = evt.code
+    if code == "Esc"
+        m.mode = :normal
+        line = m.buffer[m.cursor_row]
+        m.cursor_col = clamp(m.cursor_col, 1, max(1, lastindex(line)))
+    elseif code == "Enter"
+        _split_line!(m)
+    elseif code == "Backspace"
+        _backspace!(m)
+    elseif code == "Left"
+        _move_cursor!(m, -1, 0)
+    elseif code == "Right"
+        _move_cursor!(m, +1, 0)
+    elseif code == "Up"
+        _move_cursor!(m, 0, -1)
+    elseif code == "Down"
+        _move_cursor!(m, 0, +1)
+    elseif length(code) == 1
+        _insert_char!(m, first(code))
+    end
+end
+
+# ---------------------------------------------------------------------
+# Normal mode
+# ---------------------------------------------------------------------
+function _handle_normal!(m::LiveModel, evt)
+    code = evt.code
+
+    # Chord resolution: if we're in :gd, gobble digits / non-digits.
+    if m.pending_chord === :gd
+        if length(code) == 1 && isdigit(only(code))
+            m.chord_digits *= code
+            return
+        else
+            digits = m.chord_digits
+            m.pending_chord = :none
+            m.chord_digits = ""
+            if isempty(digits)
+                _push_log!(m, "[ERROR] gd: no slot given")
+            else
+                _goto_slot!(m, parse(Int, digits))
+            end
+            if code != "Enter" && code != "Esc"
+                _handle_normal!(m, evt)
+            end
+            return
+        end
+    end
+
+    if m.pending_chord === :g
+        if code == "d"
+            m.pending_chord = :gd
+            m.chord_digits = ""
+        else
+            m.pending_chord = :none
+        end
+        return
+    end
+
+    if m.pending_chord === :d
+        if code == "d"
+            n = max(m.count_prefix, 1)
+            m.count_prefix = 0
+            _yank_lines!(m, n)
+            for _ in 1:n
+                length(m.buffer) == 1 && m.buffer[1] == "" && break
+                _delete_line!(m)
+            end
+        end
+        m.pending_chord = :none
+        return
+    end
+
+    if m.pending_chord === :y
+        if code == "y"
+            n = max(m.count_prefix, 1)
+            m.count_prefix = 0
+            _yank_lines!(m, n)
+        end
+        m.pending_chord = :none
+        return
+    end
+
+    if code == "i"
+        m.mode = :insert
+    elseif code == "a"
+        m.mode = :insert
+        line = m.buffer[m.cursor_row]
+        m.cursor_col = min(m.cursor_col + 1, lastindex(line) + 1)
+    elseif code == "o"
+        insert!(m.buffer, m.cursor_row + 1, "")
+        m.cursor_row += 1
+        m.cursor_col = 1
+        m.mode = :insert
+    elseif code == "O"
+        insert!(m.buffer, m.cursor_row, "")
+        m.cursor_col = 1
+        m.mode = :insert
+    elseif code == "h" || code == "Left"
+        _move_cursor!(m, -1, 0)
+    elseif code == "l" || code == "Right"
+        _move_cursor!(m, +1, 0)
+    elseif code == "j" || code == "Down"
+        _move_cursor!(m, 0, +1)
+    elseif code == "k" || code == "Up"
+        _move_cursor!(m, 0, -1)
+    elseif code == "0" && m.count_prefix == 0
+        _line_start!(m)
+    elseif code == "\$"
+        _line_end!(m)
+    elseif code == "g"
+        if m.pending_chord === :none
+            m.pending_chord = :g
+        end
+    elseif code == "G"
+        _buffer_end!(m)
+    elseif code == "d"
+        m.pending_chord = :d
+    elseif code == "y"
+        m.pending_chord = :y
+    elseif code == "x"
+        line = m.buffer[m.cursor_row]
+        if m.cursor_col <= lastindex(line)
+            m.buffer[m.cursor_row] =
+                line[1:prevind(line, m.cursor_col)] *
+                (m.cursor_col + 1 > lastindex(line) ? "" : line[nextind(line, m.cursor_col):end])
+        end
+    elseif code == "p"
+        _paste_lines!(m; before=false)
+    elseif code == "P"
+        _paste_lines!(m; before=true)
+    elseif code == "m"
+        _toggle_mute!(m)
+    elseif code == "V"
+        m.mode = :visual_line
+        m.visual_anchor = (m.cursor_row, m.cursor_col)
+    elseif code == "e"
+        n = m.count_prefix
+        m.count_prefix = 0
+        if n == 0
+            _eval_block!(m; mode=:immediate, n=0)
+        else
+            _eval_block!(m; mode=:deferred, n=n)
+        end
+    elseif code == "n"
+        _repeat_search!(m; reverse=false)
+    elseif code == "N"
+        _repeat_search!(m; reverse=true)
+    elseif code == ":" || code == "/" || code == "?"
+        m.mode = :command
+        m.command_prefix = first(code)
+        m.command_buffer = ""
+    elseif length(code) == 1 && isdigit(only(code))
+        m.count_prefix = m.count_prefix * 10 + parse(Int, code)
+    elseif code == "Esc"
+        m.count_prefix = 0
+        m.pending_chord = :none
+        m.chord_digits = ""
+    end
+end
+
+# ---------------------------------------------------------------------
+# Visual line mode
+# ---------------------------------------------------------------------
+function _handle_visual!(m::LiveModel, evt)
+    code = evt.code
+    if code == "Esc"
+        m.mode = :normal
+        m.visual_anchor = nothing
+    elseif code == "j" || code == "Down"
+        _move_cursor!(m, 0, +1)
+    elseif code == "k" || code == "Up"
+        _move_cursor!(m, 0, -1)
+    elseif code == "G"
+        _buffer_end!(m)
+    elseif code == "g"
+        _buffer_start!(m)
+    elseif code == "y"
+        _yank_selection!(m)
+        m.mode = :normal
+        m.visual_anchor = nothing
+    elseif code == "d"
+        _yank_selection!(m)
+        _delete_selection!(m)
+        m.mode = :normal
+        m.visual_anchor = nothing
+    elseif code == "m"
+        for row in _visual_range(m)[1]:_visual_range(m)[2]
+            m.cursor_row = row
+            _toggle_mute!(m)
+        end
+        m.mode = :normal
+        m.visual_anchor = nothing
+    elseif code == "e"
+        rs, re = _visual_range(m)
+        n = m.count_prefix
+        m.count_prefix = 0
+        m.cursor_row = rs
+        text = join(m.buffer[rs:re], "\n")
+        try
+            ex = Meta.parse(text)
+            slot = _block_slot(text)
+            prev = _EVAL_MODE[]
+            _EVAL_MODE[] = n == 0 ? (:immediate, 0) : (:deferred, n)
+            try
+                Core.eval(Main, ex)
+            finally
+                _EVAL_MODE[] = prev
+            end
+            slot === nothing || (m.last_eval_block[slot] = (rs, re))
+            _push_log!(m, "[INFO] eval block rows $rs:$re")
+        catch err
+            _push_log!(m, "[ERROR] $(sprint(showerror, err))")
+        end
+        m.mode = :normal
+        m.visual_anchor = nothing
+    end
+end
+
+_visual_range(m::LiveModel) =
+    let (ar, _) = m.visual_anchor
+        a, b = minmax(ar, m.cursor_row)
+        (a, b)
+    end
+
+function _yank_selection!(m::LiveModel)
+    rs, re = _visual_range(m)
+    m.yank = m.buffer[rs:re]
+end
+
+function _delete_selection!(m::LiveModel)
+    rs, re = _visual_range(m)
+    deleteat!(m.buffer, rs:re)
+    isempty(m.buffer) && push!(m.buffer, "")
+    m.cursor_row = clamp(rs, 1, length(m.buffer))
+    m.cursor_col = 1
+end
+
+function _yank_lines!(m::LiveModel, n::Int)
+    n = clamp(n, 1, length(m.buffer) - m.cursor_row + 1)
+    m.yank = m.buffer[m.cursor_row:(m.cursor_row + n - 1)]
+end
+
+function _paste_lines!(m::LiveModel; before::Bool=false)
+    isempty(m.yank) && return
+    insert_at = before ? m.cursor_row : m.cursor_row + 1
+    for (i, line) in enumerate(m.yank)
+        insert!(m.buffer, insert_at + i - 1, line)
+    end
+    m.cursor_row = insert_at
+    m.cursor_col = 1
+end
+
+# ---------------------------------------------------------------------
+# Command mode (:, /, ?)
+# ---------------------------------------------------------------------
+function _handle_command!(m::LiveModel, evt)
+    code = evt.code
+    if code == "Esc"
+        m.mode = :normal
+        m.command_buffer = ""
+    elseif code == "Enter"
+        _execute_command!(m)
+        m.mode = :normal
+        m.command_buffer = ""
+    elseif code == "Backspace"
+        isempty(m.command_buffer) && return
+        m.command_buffer = m.command_buffer[1:prevind(m.command_buffer, end)]
+    elseif length(code) == 1
+        m.command_buffer *= code
+    end
+end
+
+function _execute_command!(m::LiveModel)
+    prefix = m.command_prefix
+    body = m.command_buffer
+    if prefix == ':'
+        _execute_ex_command!(m, body)
+    elseif prefix == '/'
+        try
+            rx = Regex(body)
+            _run_search!(m, rx; dir=:forward)
+        catch err
+            _push_log!(m, "[ERROR] bad regex: $(sprint(showerror, err))")
+        end
+    elseif prefix == '?'
+        try
+            rx = Regex(body)
+            _run_search!(m, rx; dir=:backward)
+        catch err
+            _push_log!(m, "[ERROR] bad regex: $(sprint(showerror, err))")
+        end
+    end
+end
+
+function _execute_ex_command!(m::LiveModel, body::AbstractString)
+    body = strip(body)
+    if body == "q" || body == "quit"
+        m.quit = true
+    elseif startswith(body, "cps ")
+        try
+            x = parse(Float64, strip(body[5:end]))
+            set_cps!(m.scheduler, x)
+            _push_log!(m, "[INFO] cps = $x")
+        catch err
+            _push_log!(m, "[ERROR] cps: $(sprint(showerror, err))")
+        end
+    elseif (mt = match(r"^goto\s+d(\d+)$", body)) !== nothing
+        _goto_slot!(m, parse(Int, mt.captures[1]))
+    else
+        _push_log!(m, "[ERROR] unknown command: $body")
+    end
+end
