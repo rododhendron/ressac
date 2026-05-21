@@ -93,4 +93,77 @@ end
         # `gd1` from row 3: backward search finds row 1.
         @test m.cursor_row == 1
     end
+
+    @testset "visual: V + j extends selection; y yanks; Esc cancels" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["a", "b", "c", "d"]
+        m.cursor_row = 1; m.cursor_col = 1; m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("V"))
+        @test m.mode === :visual_line
+        @test m.visual_anchor == (1, 1)
+        Ressac._dispatch_key!(m, _fake_key("j"))
+        Ressac._dispatch_key!(m, _fake_key("j"))
+        Ressac._dispatch_key!(m, _fake_key("y"))
+        @test m.mode === :normal
+        @test m.yank == ["a", "b", "c"]
+    end
+
+    @testset "visual: d deletes selection and yanks" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["a", "b", "c", "d"]
+        m.cursor_row = 2; m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("V"))
+        Ressac._dispatch_key!(m, _fake_key("j"))
+        Ressac._dispatch_key!(m, _fake_key("d"))
+        @test m.buffer == ["a", "d"]
+        @test m.yank == ["b", "c"]
+        @test m.mode === :normal
+    end
+
+    @testset "yy / p round-trip a single line" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["one", "two"]
+        m.cursor_row = 1; m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("y"))
+        Ressac._dispatch_key!(m, _fake_key("y"))
+        @test m.yank == ["one"]
+        m.cursor_row = 2
+        Ressac._dispatch_key!(m, _fake_key("p"))
+        @test m.buffer == ["one", "two", "one"]
+    end
+
+    @testset "command mode: :q sets quit" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        @test m.mode === :command
+        Ressac._dispatch_key!(m, _fake_key("q"))
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.quit
+        @test m.mode === :normal
+    end
+
+    @testset "command mode: :cps 0.75 updates the scheduler" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        m = Ressac.LiveModel(; scheduler=sched); m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "cps 0.75"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test sched.cps == 0.75
+    end
+
+    @testset "command mode: /@d1 jumps forward" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["foo", "@d1 pure(:bd)", "bar"]
+        m.cursor_row = 1; m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("/"))
+        for c in "@d1"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.cursor_row == 2
+    end
 end
