@@ -40,6 +40,10 @@ using Ressac
         @test p(0//1, 2//1) == [Event(0//1, 2//1, :bd)]
     end
 
+    @testset "slow(0) throws ArgumentError eagerly" begin
+        @test_throws ArgumentError slow(0, pure(:bd))
+    end
+
     @testset "density alias" begin
         @test density === fast
     end

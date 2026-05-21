@@ -66,7 +66,10 @@ fast(n::Real) = p::Pattern -> fast(n, p)
 
 Dilate time by factor `n`. Equivalent to `fast(1/n, p)`.
 """
-slow(n::Real, p::Pattern{T}) where {T} = fast(inv(_to_rat(n)), p)
+function slow(n::Real, p::Pattern{T}) where {T}
+    iszero(n) && throw(ArgumentError("slow factor cannot be zero"))
+    fast(inv(_to_rat(n)), p)
+end
 
 """
     slow(n::Real) -> (Pattern -> Pattern)
