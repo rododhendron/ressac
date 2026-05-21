@@ -52,3 +52,30 @@ function _eval_block!(m::LiveModel; mode::Symbol = :immediate, n::Int = 0)
         _push_log!(m, "[ERROR] $(sprint(showerror, err))")
     end
 end
+
+const _ACTIVE_SLOT_RX   = r"^\s*@(d\d+)\b"
+const _COMMENTED_SLOT_RX = r"^\s*#+\s*@(d\d+)\b"
+
+"""
+    _toggle_mute!(m)
+
+If the current line is an uncommented `@dN ...` def → comment it and
+call `unset_pattern!(:dN)`. If the line is a commented slot def →
+uncomment it and re-eval the line through `_eval_block!`. Otherwise
+log a warning.
+"""
+function _toggle_mute!(m::LiveModel)
+    line = m.buffer[m.cursor_row]
+    if (mt = match(_ACTIVE_SLOT_RX, line)) !== nothing
+        slot = Symbol(mt.captures[1])
+        m.buffer[m.cursor_row] = "# " * line
+        sched = _check_live()
+        unset_pattern!(sched, slot)
+        _push_log!(m, "[INFO] muted $slot")
+    elseif match(_COMMENTED_SLOT_RX, line) !== nothing
+        m.buffer[m.cursor_row] = replace(line, r"^\s*#+\s*" => ""; count=1)
+        _eval_block!(m; mode=:immediate, n=0)
+    else
+        _push_log!(m, "[WARN] m: not a slot def, no-op")
+    end
+end

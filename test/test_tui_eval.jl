@@ -83,4 +83,55 @@ using Ressac
             Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
+
+    @testset "_toggle_mute! comments an active @dN line and unsets the slot" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=1.0)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["@d1 pure(:bd)"]
+            m.cursor_row = 1
+            Ressac._eval_block!(m; mode=:immediate, n=0)
+            @test haskey(sched.patterns, :d1)
+
+            Ressac._toggle_mute!(m)
+            @test m.buffer[1] == "# @d1 pure(:bd)"
+            @test !haskey(sched.patterns, :d1)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "_toggle_mute! uncomments and re-evals" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=1.0)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["# @d1 pure(:bd)"]
+            m.cursor_row = 1
+            Ressac._toggle_mute!(m)
+            @test m.buffer[1] == "@d1 pure(:bd)"
+            @test haskey(sched.patterns, :d1)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "_toggle_mute! on non-@dN line logs a warning" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=1.0)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["# just a comment"]
+            m.cursor_row = 1
+            Ressac._toggle_mute!(m)
+            @test m.buffer[1] == "# just a comment"  # unchanged
+            @test any(l -> occursin("not a slot def", l) || occursin("WARN", l), m.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
 end
