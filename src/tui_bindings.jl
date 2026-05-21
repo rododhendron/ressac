@@ -150,6 +150,8 @@ function _handle_normal!(m::LiveModel, evt)
             m.buffer[m.cursor_row] =
                 line[1:prevind(line, m.cursor_col)] *
                 (m.cursor_col + 1 > lastindex(line) ? "" : line[nextind(line, m.cursor_col):end])
+            new_line = m.buffer[m.cursor_row]
+            m.cursor_col = min(m.cursor_col, max(1, lastindex(new_line)))
         end
     elseif code == "p"
         _paste_lines!(m; before=false)

@@ -155,6 +155,14 @@ end
         @test sched.cps == 0.75
     end
 
+    @testset "normal mode: x at end of line clamps cursor" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
+        m.buffer = ["abc"]; m.cursor_row = 1; m.cursor_col = 3; m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key("x"))
+        @test m.buffer == ["ab"]
+        @test m.cursor_col == 2  # clamped from 3 to lastindex("ab") = 2
+    end
+
     @testset "normal mode: Ctrl+C quits" begin
         m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient()))
         m.mode = :normal
