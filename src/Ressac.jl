@@ -107,6 +107,28 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         _LIVE_SCHEDULER[] = nothing
         _EVAL_MODE[] = (:immediate, 0)
     end
+
+    # TUI dispatch paths — exercise the dispatcher in normal/insert
+    # to lock in compile artefacts for editor keystrokes.
+    m = LiveModel(; scheduler=sched)
+    _LIVE_SCHEDULER[] = sched
+    try
+        m.mode = :insert
+        _dispatch_key!(m, (; code="@", modifiers=String[], kind="Press"))
+        _dispatch_key!(m, (; code="d", modifiers=String[], kind="Press"))
+        _dispatch_key!(m, (; code="1", modifiers=String[], kind="Press"))
+        _dispatch_key!(m, (; code="Esc", modifiers=String[], kind="Press"))
+        _dispatch_key!(m, (; code="e", modifiers=String[], kind="Press"))
+        # Goto / search.
+        _dispatch_key!(m, (; code="g", modifiers=String[], kind="Press"))
+        _dispatch_key!(m, (; code="d", modifiers=String[], kind="Press"))
+        _dispatch_key!(m, (; code="1", modifiers=String[], kind="Press"))
+        _dispatch_key!(m, (; code="Enter", modifiers=String[], kind="Press"))
+        # View rendering.
+        TUI.view(m)
+    finally
+        _LIVE_SCHEDULER[] = nothing
+    end
 end
 
 end # module Ressac
