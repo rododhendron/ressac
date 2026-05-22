@@ -26,6 +26,17 @@ function _route_to_slot!(slot::Symbol, p::Pattern)
 end
 
 """
+    _route_to_slot!(slot::Symbol, s::AbstractString)
+
+String form: parse as mini-notation, then route as a `Pattern`. So both
+`@d1 p"bd hh"` and `@d1 "bd hh"` work — the latter is what you get if
+you forget the `p` prefix.
+"""
+function _route_to_slot!(slot::Symbol, s::AbstractString)
+    return _route_to_slot!(slot, parse_minino(String(s)))
+end
+
+"""
     _route_to_slot!(slot::Symbol)
 
 No-body form: unset the slot. Always immediate (musical "cut" doesn't
