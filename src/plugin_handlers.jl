@@ -2,6 +2,26 @@
 # Each is registered at module load time via `register_section_handler!`
 # so external plugins use the exact same extension mechanism.
 
+const _AUDIO_EXTS = (".wav", ".aiff", ".aif", ".flac", ".ogg")
+
+"""
+    _audio_files_in(dir) -> Vector{String}
+
+Sorted absolute paths to audio files inside `dir`. Recognises common
+audio extensions (case-insensitive). Non-existent dir → empty vector.
+"""
+function _audio_files_in(dir::AbstractString)
+    isdir(dir) || return String[]
+    files = String[]
+    for f in readdir(dir; join=false)
+        ext = lowercase(splitext(f)[2])
+        ext in _AUDIO_EXTS || continue
+        push!(files, abspath(joinpath(dir, f)))
+    end
+    sort!(files)
+    return files
+end
+
 """
     _handle_julia(plugin_dir, section_data, plugin_name)
 

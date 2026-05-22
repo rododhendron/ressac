@@ -96,4 +96,19 @@ using Ressac
             Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
+
+    @testset "_audio_files_in returns sorted wav/aiff/flac, skips others" begin
+        mktempdir() do d
+            for f in ["b.wav", "a.wav", "x.txt", "c.aiff", "d.flac", "skip.ds_store"]
+                touch(joinpath(d, f))
+            end
+            files = Ressac._audio_files_in(d)
+            @test basename.(files) == ["a.wav", "b.wav", "c.aiff", "d.flac"]
+            @test all(isabspath, files)
+        end
+    end
+
+    @testset "_audio_files_in missing dir returns empty" begin
+        @test isempty(Ressac._audio_files_in("/no/such/path"))
+    end
 end
