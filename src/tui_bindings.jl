@@ -17,6 +17,8 @@ function _dispatch_key!(m::LiveModel, evt)
         _handle_visual!(m, evt)
     elseif m.mode === :command
         _handle_command!(m, evt)
+    elseif m.mode === :guide
+        _handle_guide!(m, evt)
     end
 end
 
@@ -29,18 +31,27 @@ function _handle_insert!(m::LiveModel, evt)
         m.mode = :normal
         line = m.buffer[m.cursor_row]
         m.cursor_col = clamp(m.cursor_col, 1, max(1, lastindex(line)))
+        _clear_completions!(m)
     elseif code == "Enter"
         _split_line!(m)
+        _clear_completions!(m)
     elseif code == "Backspace"
         _backspace!(m)
+        _clear_completions!(m)
     elseif code == "Left"
         _move_cursor!(m, -1, 0)
+        _clear_completions!(m)
     elseif code == "Right"
         _move_cursor!(m, +1, 0)
+        _clear_completions!(m)
     elseif code == "Up"
         _move_cursor!(m, 0, -1)
+        _clear_completions!(m)
     elseif code == "Down"
         _move_cursor!(m, 0, +1)
+        _clear_completions!(m)
+    elseif code == "Tab"
+        _handle_insert_tab!(m)
     elseif length(code) == 1
         c = first(code)
         # Restrict insertion to printable ASCII. Multi-byte chars (¹, é,
@@ -50,10 +61,71 @@ function _handle_insert!(m::LiveModel, evt)
         # crashes if they sneak in.
         if _is_typable_ascii(c)
             _insert_char!(m, c)
+            _clear_completions!(m)
         else
             _push_log!(m, "[WARN] ignored non-ASCII key: $(repr(c))")
         end
     end
+end
+
+"""
+    _extract_partial_word(line, cursor_col) -> (start_col, end_col, word)
+
+Find the partial identifier under the cursor. Walks backward from
+`cursor_col - 1` while the char is a word-char (letters/digits/_/@),
+then forward from `cursor_col` while the char is a word-char. Empty
+result if no word.
+"""
+function _extract_partial_word(line::AbstractString, cursor_col::Integer)
+    n = lastindex(line)
+    n == 0 && return (1, 0, "")
+    start_col = cursor_col
+    while start_col > 1
+        prev = prevind(line, start_col)
+        prev >= 1 && _is_word_char_simple(line[prev]) || break
+        start_col = prev
+    end
+    end_col = cursor_col - 1
+    j = cursor_col
+    while j <= n && _is_word_char_simple(line[j])
+        end_col = j
+        j = nextind(line, j)
+    end
+    if end_col < start_col
+        return (cursor_col, cursor_col - 1, "")
+    end
+    return (start_col, end_col, line[start_col:end_col])
+end
+
+function _handle_insert_tab!(m::LiveModel)
+    line = m.buffer[m.cursor_row]
+    if isempty(m.completions)
+        start_col, end_col, partial = _extract_partial_word(line, m.cursor_col)
+        isempty(partial) && return
+        ctx = _completion_context(line, m.cursor_col)
+        cands = _fuzzy_rank(partial, _buffer_candidates(ctx))
+        isempty(cands) && return
+        m.completions = cands
+        m.completion_cycle_idx = 1
+        m.completion_target_range = (start_col, end_col)
+        _replace_range_in_line!(m, start_col, end_col, cands[1])
+    else
+        m.completion_cycle_idx = (m.completion_cycle_idx % length(m.completions)) + 1
+        next = m.completions[m.completion_cycle_idx]
+        sc, ec = m.completion_target_range
+        _replace_range_in_line!(m, sc, ec, next)
+    end
+end
+
+function _replace_range_in_line!(m::LiveModel, start_col::Int, end_col::Int, replacement::AbstractString)
+    line = m.buffer[m.cursor_row]
+    prefix = start_col > 1 ? line[1:prevind(line, start_col)] : ""
+    suffix = end_col >= lastindex(line) ? "" : line[nextind(line, end_col):end]
+    new_line = prefix * replacement * suffix
+    m.buffer[m.cursor_row] = new_line
+    new_end = lastindex(prefix) + lastindex(replacement)
+    m.cursor_col = new_end + 1
+    m.completion_target_range = (start_col, new_end)
 end
 
 _is_typable_ascii(c::AbstractChar) =
@@ -192,7 +264,12 @@ function _handle_normal!(m::LiveModel, evt)
         _repeat_search!(m; reverse=false)
     elseif code == "N"
         _repeat_search!(m; reverse=true)
-    elseif code == ":" || code == "/" || code == "?"
+    elseif code == "?"
+        # Hybrid help overlay (SP6). Backward search is still reachable
+        # by entering :-mode and starting the buffer with "?", but the
+        # one-key shortcut is now reserved for the help popup.
+        m.show_help = !m.show_help
+    elseif code == ":" || code == "/"
         m.mode = :command
         m.command_prefix = first(code)
         m.command_buffer = ""
@@ -306,18 +383,65 @@ end
 function _handle_command!(m::LiveModel, evt)
     code = evt.code
     if code == "Esc"
-        m.mode = :normal
+        if m.guide_search_active
+            m.mode = :guide
+            m.guide_search_active = false
+        else
+            m.mode = :normal
+        end
         m.command_buffer = ""
+        _clear_completions!(m)
     elseif code == "Enter"
         _execute_command!(m)
-        m.mode = :normal
+        # _execute_command! may have shifted m.mode (e.g. :guide); only
+        # fall back to :normal if the command didn't take us elsewhere.
+        if m.mode === :command
+            m.mode = :normal
+        end
         m.command_buffer = ""
+        _clear_completions!(m)
     elseif code == "Backspace"
         isempty(m.command_buffer) && return
         m.command_buffer = m.command_buffer[1:prevind(m.command_buffer, end)]
+        _clear_completions!(m)
+    elseif code == "Tab"
+        _handle_command_tab!(m)
     elseif length(code) == 1
         c = first(code)
-        _is_typable_ascii(c) && (m.command_buffer *= code)
+        if _is_typable_ascii(c)
+            m.command_buffer *= code
+            _clear_completions!(m)
+        end
+    end
+end
+
+function _clear_completions!(m::LiveModel)
+    empty!(m.completions)
+    m.completion_cycle_idx = 0
+    m.completion_target_range = nothing
+end
+
+function _handle_command_tab!(m::LiveModel)
+    if isempty(m.completions)
+        candidates = _compute_completions(m)
+        isempty(candidates) && return
+        m.completions = candidates
+        m.completion_cycle_idx = 1
+        if occursin(' ', m.command_buffer)
+            verb, _ = split(m.command_buffer, ' '; limit=2)
+            m.command_buffer = String(verb) * " " * candidates[1]
+        else
+            m.command_buffer = candidates[1]
+        end
+    else
+        m.completion_cycle_idx = (m.completion_cycle_idx % length(m.completions)) + 1
+        next = m.completions[m.completion_cycle_idx]
+        if occursin(' ', m.command_buffer)
+            verb, _ = split(m.command_buffer, ' '; limit=2)
+            m.command_buffer = String(verb) * " " * next
+        else
+            m.command_buffer = next
+        end
     end
 end
 
@@ -327,11 +451,23 @@ function _execute_command!(m::LiveModel)
     if prefix == ':'
         _execute_ex_command!(m, body)
     elseif prefix == '/'
-        try
-            rx = Regex(body)
-            _run_search!(m, rx; dir=:forward)
+        rx = try
+            Regex(body, "i")
         catch err
             _push_log!(m, "[ERROR] bad regex: $(sprint(showerror, err))")
+            nothing
+        end
+        if rx !== nothing
+            if m.guide_search_active
+                idx = findfirst(l -> occursin(rx, l), _GUIDE_LINES)
+                if idx !== nothing
+                    m.guide_scroll = idx - 1
+                end
+                m.mode = :guide
+                m.guide_search_active = false
+            else
+                _run_search!(m, rx; dir=:forward)
+            end
         end
     elseif prefix == '?'
         try
@@ -367,9 +503,9 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         rest = strip(body == "synths" ? "" : body[8:end])
         _execute_synths_command!(m, rest)
     elseif body == "guide" || body == "help" || body == "?"
-        for line in _GUIDE_LINES
-            _push_log!(m, line)
-        end
+        m.mode = :guide
+        m.guide_scroll = 0
+        m.pending_chord = :none
     else
         _push_log!(m, "[ERROR] unknown command: $body")
     end
@@ -388,7 +524,7 @@ const _GUIDE_LINES = String[
     "  i / a / o / O — enter insert mode",
     "  Esc           — back to normal",
     "  V             — visual-line selection",
-    "  : / / / ?     — command / search forward / search backward",
+    "  :  /          — command mode / forward search (? = help overlay)",
     "Normal-mode actions:",
     "  hjkl / arrows — move cursor",
     "  0 \$          — line start / end",
@@ -678,3 +814,48 @@ function _preview_under_cursor!(m::LiveModel)
 end
 
 _is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'
+
+# ---------------------------------------------------------------------
+# Guide mode
+# ---------------------------------------------------------------------
+
+"""
+    _handle_guide!(m, evt)
+
+Keystrokes for the modal :guide overlay. j/k scroll, gg/G jump,
+Ctrl-d/u half-page, q/Esc closes. / jumps into :command mode with
+the `guide_search_active` flag set so the search routes back here.
+"""
+function _handle_guide!(m::LiveModel, evt)
+    code = evt.code
+    if code == "q" || code == "Esc"
+        m.mode = :normal
+        m.guide_scroll = 0
+        m.pending_chord = :none
+    elseif code == "j" || code == "Down"
+        m.guide_scroll = min(m.guide_scroll + 1, max(0, length(_GUIDE_LINES) - 1))
+    elseif code == "k" || code == "Up"
+        m.guide_scroll = max(0, m.guide_scroll - 1)
+    elseif code == "g"
+        if m.pending_chord === :g
+            m.guide_scroll = 0
+            m.pending_chord = :none
+        else
+            m.pending_chord = :g
+        end
+    elseif code == "G"
+        m.guide_scroll = max(0, length(_GUIDE_LINES) - 1)
+        m.pending_chord = :none
+    elseif code == "d" && _has_modifier(evt, "Ctrl")
+        m.guide_scroll = min(m.guide_scroll + 10, max(0, length(_GUIDE_LINES) - 1))
+    elseif code == "u" && _has_modifier(evt, "Ctrl")
+        m.guide_scroll = max(0, m.guide_scroll - 10)
+    elseif code == "/"
+        m.mode = :command
+        m.command_prefix = '/'
+        m.command_buffer = ""
+        m.guide_search_active = true
+    else
+        m.pending_chord = :none
+    end
+end

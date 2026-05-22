@@ -612,7 +612,7 @@ end
         @test any(l -> occursin("no instrument 'ghost'", l), m.logs)
     end
 
-    @testset ":guide dumps the cheatsheet into the log pane" begin
+    @testset ":guide opens the modal (mode shift)" begin
         m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
         m.mode = :normal
         Ressac._dispatch_key!(m, _fake_key(":"))
@@ -620,12 +620,14 @@ end
             Ressac._dispatch_key!(m, _fake_key(string(c)))
         end
         Ressac._dispatch_key!(m, _fake_key("Enter"))
-        logs = join(m.logs, "\n")
-        @test occursin("Ressac guide", logs)
-        @test occursin(":samples", logs)
-        @test occursin(":instruments", logs)
-        @test occursin(":synths", logs)
-        @test occursin("K", logs)
+        @test m.mode === :guide
+        @test m.guide_scroll == 0
+        # Spec sanity: guide content covers the key sections.
+        guide_text = join(Ressac._GUIDE_LINES, "\n")
+        @test occursin("Ressac guide", guide_text)
+        @test occursin(":samples", guide_text)
+        @test occursin(":instruments", guide_text)
+        @test occursin(":synths", guide_text)
     end
 
     @testset ":help and :? alias :guide" begin
@@ -636,7 +638,7 @@ end
             Ressac._dispatch_key!(m, _fake_key(string(c)))
         end
         Ressac._dispatch_key!(m, _fake_key("Enter"))
-        @test any(l -> occursin("Ressac guide", l), m.logs)
+        @test m.mode === :guide
     end
 
     @testset ":synths lists all + shows detail" begin
@@ -670,6 +672,237 @@ end
             @test occursin("warm sub", logs)
         finally
             empty!(Ressac._SYNTH_REGISTRY)
+        end
+    end
+
+    @testset "Tab in :-mode cycles command-name matches" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        Ressac._dispatch_key!(m, _fake_key("s"))
+        Ressac._dispatch_key!(m, _fake_key("a"))
+        @test m.command_buffer == "sa"
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.command_buffer == "samples"
+        @test !isempty(m.completions)
+        before = m.command_buffer
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.command_buffer != before || length(m.completions) == 1
+    end
+
+    @testset "Tab in :-mode with no matches is silent no-op" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        Ressac._dispatch_key!(m, _fake_key("z"))
+        Ressac._dispatch_key!(m, _fake_key("z"))
+        @test m.command_buffer == "zz"
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.command_buffer == "zz"
+        @test isempty(m.completions)
+    end
+
+    @testset "Editing the command buffer clears Tab cycle" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        Ressac._dispatch_key!(m, _fake_key("s"))
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test !isempty(m.completions)
+        Ressac._dispatch_key!(m, _fake_key("a"))
+        @test m.completion_cycle_idx == 0
+    end
+
+    @testset "Tab in insert mode completes against registry" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["kic"]
+            m.cursor_row = 1
+            m.cursor_col = 4
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            @test m.buffer[1] == "kicky"
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "Tab in insert mode cycles multiple matches" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:kicks, "p",
+                "/y", ["/y"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["kic"]
+            m.cursor_row = 1
+            m.cursor_col = 4
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            first_completion = m.buffer[1]
+            @test first_completion in ("kicks", "kicky")
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            second_completion = m.buffer[1]
+            @test second_completion != first_completion
+            @test second_completion in ("kicks", "kicky")
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "Tab in insert mode inside mini-notation excludes combinators" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:fastdrum, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["p\"fas"]
+            m.cursor_row = 1
+            m.cursor_col = 6
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            @test m.buffer[1] == "p\"fastdrum"
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "Tab in insert mode default context includes combinators" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :insert
+        m.buffer = ["@d1 fas"]
+        m.cursor_row = 1
+        m.cursor_col = 8
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.buffer[1] == "@d1 fast"
+    end
+
+    @testset ":guide switches m.mode to :guide" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "guide"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.mode === :guide
+        @test m.guide_scroll == 0
+    end
+
+    @testset "guide-mode j scrolls down, k scrolls up" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 0
+        Ressac._dispatch_key!(m, _fake_key("j"))
+        @test m.guide_scroll == 1
+        Ressac._dispatch_key!(m, _fake_key("j"))
+        @test m.guide_scroll == 2
+        Ressac._dispatch_key!(m, _fake_key("k"))
+        @test m.guide_scroll == 1
+    end
+
+    @testset "guide-mode k clamps to 0" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 0
+        Ressac._dispatch_key!(m, _fake_key("k"))
+        @test m.guide_scroll == 0
+    end
+
+    @testset "guide-mode gg jumps to top, G to bottom" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 5
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        @test m.guide_scroll == 0
+        Ressac._dispatch_key!(m, _fake_key("G"))
+        @test m.guide_scroll == max(0, length(Ressac._GUIDE_LINES) - 1)
+    end
+
+    @testset "guide-mode q returns to normal" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        Ressac._dispatch_key!(m, _fake_key("q"))
+        @test m.mode === :normal
+    end
+
+    @testset "guide-mode Esc returns to normal" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        Ressac._dispatch_key!(m, _fake_key("Esc"))
+        @test m.mode === :normal
+    end
+
+    @testset "guide-mode / search jumps to first match" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 0
+        Ressac._dispatch_key!(m, _fake_key("/"))
+        @test m.mode === :command
+        @test m.command_prefix == '/'
+        @test m.guide_search_active == true
+        for c in "guide"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.mode === :guide
+        idx = findfirst(l -> occursin("guide", lowercase(l)), Ressac._GUIDE_LINES)
+        @test idx !== nothing
+        @test m.guide_scroll == idx - 1
+        @test m.guide_search_active == false
+    end
+
+    @testset "guide-mode / search no match leaves scroll alone" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 3
+        Ressac._dispatch_key!(m, _fake_key("/"))
+        for c in "zzznosuchstring"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.mode === :guide
+        @test m.guide_scroll == 3
+    end
+
+    @testset "guide-mode / search Esc returns to guide" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 2
+        Ressac._dispatch_key!(m, _fake_key("/"))
+        for c in "any"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Esc"))
+        @test m.mode === :guide
+        @test m.guide_scroll == 2
+        @test m.guide_search_active == false
+    end
+
+    @testset "Movement clears insert-mode completion cycle" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:kicks, "p",
+                "/y", ["/y"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["kic"]
+            m.cursor_row = 1
+            m.cursor_col = 4
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            @test !isempty(m.completions)
+            Ressac._dispatch_key!(m, _fake_key("Left"))
+            @test isempty(m.completions)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
         end
     end
 end

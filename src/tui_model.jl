@@ -17,7 +17,7 @@ Backing model for the multi-line TUI. See
     buffer::Vector{String}        = [""]
     cursor_row::Int               = 1
     cursor_col::Int               = 1
-    mode::Symbol                  = :insert   # :insert | :normal | :visual_line | :command
+    mode::Symbol                  = :insert   # :insert | :normal | :visual_line | :command | :guide
     count_prefix::Int             = 0
     pending_chord::Symbol         = :none     # :g | :gd | :d | :y
     chord_digits::String          = ""
@@ -30,6 +30,13 @@ Backing model for the multi-line TUI. See
     command_buffer::String        = ""
     logs::Vector{String}          = String[]
     quit::Bool                    = false
+    # SP6 — visual UX:
+    show_help::Bool               = false
+    guide_scroll::Int             = 0
+    guide_search_active::Bool     = false
+    completions::Vector{String}   = String[]
+    completion_cycle_idx::Int     = 0
+    completion_target_range::Union{Nothing,NTuple{2,Int}} = nothing
 end
 
 function _push_log!(m::LiveModel, line::AbstractString)
