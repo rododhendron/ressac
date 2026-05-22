@@ -33,6 +33,10 @@ s.waitForBoot({
     };
 
     s.sync;
+    // Load the SynthDefs bundled with SuperDirt — without this, names
+    // like `sin`, `square`, `saw`, `super808`, `supersnare`, `supersaw`,
+    // `superhammond`, etc. resolve to "instrument not found".
+    ~dirt.loadSynthDefs;
     ~dirt.start(57120, 0 ! 12);
 
     // OSCdefs added for Ressac plugin handlers.
