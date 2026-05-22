@@ -11,13 +11,19 @@ end
 function TUI.view(m::LiveModel)
     status = _activity_widget(m)
     editor = _editor_pane(m)
+    hint   = _mode_hint_line(m)
     cmd    = _command_line(m)
     logs   = _logs_pane(m)
     TUI.Layout(;
-        widgets = [status, editor, cmd, logs],
-        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1), TUI.Min(8)],
+        widgets     = [status, editor, hint, cmd, logs],
+        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1), TUI.Min(1), TUI.Min(8)],
         orientation = :vertical,
     )
+end
+
+function _mode_hint_line(m::LiveModel)
+    text = "[" * uppercase(String(m.mode)) * "] " * _mode_hint(m.mode)
+    _TextLines([text], TUI.Crayon(; foreground=:cyan))
 end
 
 function _activity_widget(m::LiveModel)
