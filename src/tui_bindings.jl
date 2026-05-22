@@ -175,6 +175,8 @@ function _handle_normal!(m::LiveModel, evt)
         _paste_lines!(m; before=true)
     elseif code == "m"
         _toggle_mute!(m)
+    elseif code == "K"
+        _preview_under_cursor!(m)
     elseif code == "V"
         m.mode = :visual_line
         m.visual_anchor = (m.cursor_row, m.cursor_col)
@@ -377,3 +379,57 @@ function _has_modifier(evt, name::AbstractString)
     end
     return false
 end
+
+const _WORD_RX = r"([A-Za-z_][\w]*)(?::(\d+))?"
+
+"""
+    _preview_under_cursor!(m::LiveModel)
+
+Identify the sample name under the cursor (matches `name` or `name:N`),
+look it up in the sample registry, and ship a one-shot `/dirt/play`
+OSC bundle through the active scheduler's client. Logs `[INFO] preview …`
+on success or `[WARN] no sample '…' loaded` on miss.
+"""
+function _preview_under_cursor!(m::LiveModel)
+    line = m.buffer[m.cursor_row]
+    isempty(line) && return
+    col = clamp(m.cursor_col, 1, lastindex(line) + 1)
+    start = col
+    while start > 1 && _is_word_char(line[prevind(line, start)])
+        start = prevind(line, start)
+    end
+    stop = col
+    while stop <= lastindex(line) && _is_word_char(line[stop])
+        stop = nextind(line, stop)
+    end
+    stop = prevind(line, stop)
+    word = start > stop ? "" : line[start:stop]
+    isempty(word) && return
+
+    mt = match(_WORD_RX, word)
+    if mt === nothing
+        _push_log!(m, "[WARN] no sample '$word' loaded")
+        return
+    end
+    name = Symbol(mt.captures[1])
+    variant = mt.captures[2] === nothing ? 0 : parse(Int, mt.captures[2])
+
+    entry = sample_info(name)
+    if entry === nothing
+        _push_log!(m, "[WARN] no sample '$(mt.captures[1])' loaded")
+        return
+    end
+
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        _push_log!(m, "[ERROR] preview: no active session")
+        return
+    end
+    args = variant == 0 ?
+        Any["s", String(name)] :
+        Any["s", String(name), "n", Int32(variant)]
+    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+    _push_log!(m, "[INFO] preview $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+end
+
+_is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'

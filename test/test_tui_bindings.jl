@@ -261,4 +261,75 @@ end
         Ressac._dispatch_key!(m, _fake_key("Enter"))
         @test any(l -> occursin("unknown command", l), m.logs)
     end
+
+    @testset "normal K previews sample under cursor" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/tmp/k.wav", ["/tmp/k.wav"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["@d1 p\"kicky sn\""]
+            m.cursor_row = 1
+            m.cursor_col = 9
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test length(play) == 1
+            @test play[1].args == Any["s", "kicky"]
+            @test any(l -> occursin("preview kicky", l), m.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "K with :N suffix sends n parameter" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:snares, "p",
+                "/tmp/snares", ["/tmp/s1.wav", "/tmp/s2.wav"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["snares:1"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test length(play) == 1
+            @test play[1].args == Any["s", "snares", "n", Int32(1)]
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "K on unknown sample logs WARN, no OSC sent" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["whatever"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+            @test isempty(mock.sent)
+            @test any(l -> occursin("no sample", l), m.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
 end
