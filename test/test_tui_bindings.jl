@@ -710,4 +710,94 @@ end
         Ressac._dispatch_key!(m, _fake_key("a"))
         @test m.completion_cycle_idx == 0
     end
+
+    @testset "Tab in insert mode completes against registry" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["kic"]
+            m.cursor_row = 1
+            m.cursor_col = 4
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            @test m.buffer[1] == "kicky"
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "Tab in insert mode cycles multiple matches" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:kicks, "p",
+                "/y", ["/y"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["kic"]
+            m.cursor_row = 1
+            m.cursor_col = 4
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            first_completion = m.buffer[1]
+            @test first_completion in ("kicks", "kicky")
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            second_completion = m.buffer[1]
+            @test second_completion != first_completion
+            @test second_completion in ("kicks", "kicky")
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "Tab in insert mode inside mini-notation excludes combinators" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:fastdrum, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["p\"fas"]
+            m.cursor_row = 1
+            m.cursor_col = 6
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            @test m.buffer[1] == "p\"fastdrum"
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "Tab in insert mode default context includes combinators" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :insert
+        m.buffer = ["@d1 fas"]
+        m.cursor_row = 1
+        m.cursor_col = 8
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.buffer[1] == "@d1 fast"
+    end
+
+    @testset "Movement clears insert-mode completion cycle" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:kicks, "p",
+                "/y", ["/y"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :insert
+            m.buffer = ["kic"]
+            m.cursor_row = 1
+            m.cursor_col = 4
+            Ressac._dispatch_key!(m, _fake_key("Tab"))
+            @test !isempty(m.completions)
+            Ressac._dispatch_key!(m, _fake_key("Left"))
+            @test isempty(m.completions)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
 end

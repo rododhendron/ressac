@@ -29,18 +29,27 @@ function _handle_insert!(m::LiveModel, evt)
         m.mode = :normal
         line = m.buffer[m.cursor_row]
         m.cursor_col = clamp(m.cursor_col, 1, max(1, lastindex(line)))
+        _clear_completions!(m)
     elseif code == "Enter"
         _split_line!(m)
+        _clear_completions!(m)
     elseif code == "Backspace"
         _backspace!(m)
+        _clear_completions!(m)
     elseif code == "Left"
         _move_cursor!(m, -1, 0)
+        _clear_completions!(m)
     elseif code == "Right"
         _move_cursor!(m, +1, 0)
+        _clear_completions!(m)
     elseif code == "Up"
         _move_cursor!(m, 0, -1)
+        _clear_completions!(m)
     elseif code == "Down"
         _move_cursor!(m, 0, +1)
+        _clear_completions!(m)
+    elseif code == "Tab"
+        _handle_insert_tab!(m)
     elseif length(code) == 1
         c = first(code)
         # Restrict insertion to printable ASCII. Multi-byte chars (¹, é,
@@ -50,10 +59,71 @@ function _handle_insert!(m::LiveModel, evt)
         # crashes if they sneak in.
         if _is_typable_ascii(c)
             _insert_char!(m, c)
+            _clear_completions!(m)
         else
             _push_log!(m, "[WARN] ignored non-ASCII key: $(repr(c))")
         end
     end
+end
+
+"""
+    _extract_partial_word(line, cursor_col) -> (start_col, end_col, word)
+
+Find the partial identifier under the cursor. Walks backward from
+`cursor_col - 1` while the char is a word-char (letters/digits/_/@),
+then forward from `cursor_col` while the char is a word-char. Empty
+result if no word.
+"""
+function _extract_partial_word(line::AbstractString, cursor_col::Integer)
+    n = lastindex(line)
+    n == 0 && return (1, 0, "")
+    start_col = cursor_col
+    while start_col > 1
+        prev = prevind(line, start_col)
+        prev >= 1 && _is_word_char_simple(line[prev]) || break
+        start_col = prev
+    end
+    end_col = cursor_col - 1
+    j = cursor_col
+    while j <= n && _is_word_char_simple(line[j])
+        end_col = j
+        j = nextind(line, j)
+    end
+    if end_col < start_col
+        return (cursor_col, cursor_col - 1, "")
+    end
+    return (start_col, end_col, line[start_col:end_col])
+end
+
+function _handle_insert_tab!(m::LiveModel)
+    line = m.buffer[m.cursor_row]
+    if isempty(m.completions)
+        start_col, end_col, partial = _extract_partial_word(line, m.cursor_col)
+        isempty(partial) && return
+        ctx = _completion_context(line, m.cursor_col)
+        cands = _fuzzy_rank(partial, _buffer_candidates(ctx))
+        isempty(cands) && return
+        m.completions = cands
+        m.completion_cycle_idx = 1
+        m.completion_target_range = (start_col, end_col)
+        _replace_range_in_line!(m, start_col, end_col, cands[1])
+    else
+        m.completion_cycle_idx = (m.completion_cycle_idx % length(m.completions)) + 1
+        next = m.completions[m.completion_cycle_idx]
+        sc, ec = m.completion_target_range
+        _replace_range_in_line!(m, sc, ec, next)
+    end
+end
+
+function _replace_range_in_line!(m::LiveModel, start_col::Int, end_col::Int, replacement::AbstractString)
+    line = m.buffer[m.cursor_row]
+    prefix = start_col > 1 ? line[1:prevind(line, start_col)] : ""
+    suffix = end_col >= lastindex(line) ? "" : line[nextind(line, end_col):end]
+    new_line = prefix * replacement * suffix
+    m.buffer[m.cursor_row] = new_line
+    new_end = lastindex(prefix) + lastindex(replacement)
+    m.cursor_col = new_end + 1
+    m.completion_target_range = (start_col, new_end)
 end
 
 _is_typable_ascii(c::AbstractChar) =
