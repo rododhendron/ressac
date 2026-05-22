@@ -29,4 +29,28 @@ using Ressac
             @test Ressac.get_section_handler(:_does_not_exist) === nothing
         end
     end
+
+    @testset "manifest parsing" begin
+        fixtures = joinpath(@__DIR__, "fixtures", "plugins")
+
+        @testset "valid manifest returns name/version/description + sections" begin
+            m = Ressac.parse_manifest(joinpath(fixtures, "foo"))
+            @test m.name == "foo"
+            @test m.version == "0.1.0"
+            @test m.description == "fixture plugin used in plugin loader tests"
+            @test m.dir == joinpath(fixtures, "foo")
+            @test haskey(m.sections, "samples")
+            @test m.sections["samples"]["roots"] == ["./samples"]
+        end
+
+        @testset "name mismatch throws ArgumentError" begin
+            @test_throws ArgumentError Ressac.parse_manifest(
+                joinpath(fixtures, "bad-name"))
+        end
+
+        @testset "missing plugin.toml throws ArgumentError" begin
+            @test_throws ArgumentError Ressac.parse_manifest(
+                joinpath(fixtures, "no-manifest"))
+        end
+    end
 end
