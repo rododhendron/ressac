@@ -22,6 +22,8 @@ include("tui_bindings.jl")
 include("tui_view.jl")
 include("tui.jl")
 include("live_api.jl")
+include("plugins.jl")
+include("plugin_handlers.jl")
 
 # Module includes added by upcoming milestones:
 #   M6: include("reservoir.jl")
