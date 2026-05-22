@@ -196,6 +196,41 @@ using Ressac
         @test result === missing
     end
 
+    @testset "[instruments] handler populates registry — preserves param order" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withinst"))
+        h = Ressac.get_section_handler(:instruments)
+        @test h !== nothing
+        h(m.dir, m.sections["instruments"], m.name)
+
+        kick = Ressac.instrument_info(:kicklourd)
+        @test kick !== nothing
+        @test kick.plugin == "withinst"
+        @test kick.params[1] == ("s" => "bd")
+        param_keys = [p.first for p in kick.params]
+        @test "s" in param_keys && "n" in param_keys && "gain" in param_keys && "lpf" in param_keys
+        @test param_keys[1] == "s"
+        @test kick.metadata["tags"] == ["heavy", "subby"]
+        @test kick.metadata["description"] == "the kick that hurts"
+
+        bassy = Ressac.instrument_info(:bassy)
+        @test bassy.params[1] == ("s" => "bassline")
+        @test isempty(bassy.metadata)
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+    end
+
+    @testset "[instruments] missing 's' key logs error, skips entry" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        h = Ressac.get_section_handler(:instruments)
+        @test_logs (:error, r"kicklourd.*missing.*s") match_mode=:any begin
+            h("/tmp",
+              Dict("kicklourd" => Dict{String,Any}("gain" => 1.0)),
+              "ghost")
+        end
+        @test Ressac.instrument_info(:kicklourd) === nothing
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+    end
+
     @testset "[samples].roots still sends /dirt/loadSampleFolder (back-compat)" begin
         empty!(Ressac._SAMPLE_REGISTRY)
         mock = MockOSCClient()

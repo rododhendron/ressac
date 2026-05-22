@@ -189,3 +189,45 @@ function _handle_synthdefs(plugin_dir, data, plugin_name)
 end
 
 register_section_handler!(:synthdefs, _handle_synthdefs)
+
+const _INSTRUMENT_RESERVED_KEYS = ("tags", "description", "comment")
+
+"""
+    _handle_instruments(plugin_dir, data, plugin_name)
+
+Parse `[instruments.<name>]` sub-tables. Each entry must declare `s`
+(the sample or synth name to dispatch to); everything else is either
+metadata (`tags`/`description`/`comment`) or an OSC param. Params are
+collected in TOML declaration order, with `s` forced first.
+
+Errors are logged; processing continues with the next entry.
+"""
+function _handle_instruments(plugin_dir, data, plugin_name)
+    data isa AbstractDict ||
+        throw(ArgumentError("plugin '$plugin_name' [instruments] must be a table"))
+    for (name, body) in data
+        body isa AbstractDict || begin
+            @error "plugin '$plugin_name' [instruments.$name] must be a table"
+            continue
+        end
+        if !haskey(body, "s")
+            @error "plugin '$plugin_name' [instruments.$name]: missing required key 's'"
+            continue
+        end
+        params = Pair{String,Any}[]
+        metadata = Dict{String,Any}()
+        push!(params, "s" => body["s"])
+        for (k, v) in body
+            k == "s" && continue
+            if k in _INSTRUMENT_RESERVED_KEYS
+                metadata[k] = v
+            else
+                push!(params, k => v)
+            end
+        end
+        register_instrument!(InstrumentEntry(Symbol(name), plugin_name, params, metadata))
+    end
+    return nothing
+end
+
+register_section_handler!(:instruments, _handle_instruments)
