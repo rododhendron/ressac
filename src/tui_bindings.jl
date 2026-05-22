@@ -360,6 +360,12 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
     elseif body == "samples" || startswith(body, "samples ")
         rest = strip(body == "samples" ? "" : body[9:end])
         _execute_samples_command!(m, rest)
+    elseif body == "instruments" || startswith(body, "instruments ")
+        rest = strip(body == "instruments" ? "" : body[13:end])
+        _execute_instruments_command!(m, rest)
+    elseif body == "synths" || startswith(body, "synths ")
+        rest = strip(body == "synths" ? "" : body[8:end])
+        _execute_synths_command!(m, rest)
     else
         _push_log!(m, "[ERROR] unknown command: $body")
     end
@@ -411,6 +417,106 @@ function _list_samples_to_log!(m::LiveModel, entries)
         bpm = get(e.metadata, "bpm", nothing)
         bpm_str = bpm === nothing ? "" : "  $(bpm) BPM"
         _push_log!(m, "  $(e.name)  $(length(e.variants))v$tag_str$bpm_str")
+    end
+end
+
+"""
+    _execute_instruments_command!(m, arg)
+
+`:instruments [arg]` — same shape as `:samples`. Empty `arg` lists every
+registered instrument; glob (`*`/`?`) filters by name; bare name shows
+the full preset (params in declared order + metadata).
+"""
+function _execute_instruments_command!(m::LiveModel, arg::AbstractString)
+    if isempty(arg)
+        _list_instruments_to_log!(m, list_instruments(r""))
+        return
+    end
+    if occursin('*', arg) || occursin('?', arg)
+        rx = Regex("^" * replace(replace(arg, "*" => ".*"), "?" => ".") * "\$")
+        _list_instruments_to_log!(m, list_instruments(rx))
+        return
+    end
+    entry = instrument_info(Symbol(arg))
+    if entry === nothing
+        _push_log!(m, "[WARN] no instrument '$arg' loaded")
+        return
+    end
+    _push_log!(m, "[$(entry.plugin)] $(entry.name):")
+    for (k, v) in entry.params
+        _push_log!(m, "  $k = $v")
+    end
+    for (k, v) in entry.metadata
+        _push_log!(m, "  ($k) $v")
+    end
+end
+
+function _list_instruments_to_log!(m::LiveModel, entries)
+    if isempty(entries)
+        _push_log!(m, "(no instruments loaded)")
+        return
+    end
+    current_plugin = ""
+    for e in entries
+        if e.plugin != current_plugin
+            _push_log!(m, "── $(e.plugin) ──")
+            current_plugin = e.plugin
+        end
+        # Show `s` target alongside name for at-a-glance dispatch info.
+        s_target = ""
+        for (k, v) in e.params
+            if k == "s"
+                s_target = " → $v"
+                break
+            end
+        end
+        tags = get(e.metadata, "tags", String[])
+        tag_str = isempty(tags) ? "" : "  [" * join(tags, ", ") * "]"
+        _push_log!(m, "  $(e.name)$s_target$tag_str")
+    end
+end
+
+"""
+    _execute_synths_command!(m, arg)
+
+`:synths [arg]` — same shape as `:samples`/`:instruments`. Synth entries
+carry only metadata (the actual SynthDef lives in the audio backend).
+"""
+function _execute_synths_command!(m::LiveModel, arg::AbstractString)
+    if isempty(arg)
+        _list_synths_to_log!(m, list_synths(r""))
+        return
+    end
+    if occursin('*', arg) || occursin('?', arg)
+        rx = Regex("^" * replace(replace(arg, "*" => ".*"), "?" => ".") * "\$")
+        _list_synths_to_log!(m, list_synths(rx))
+        return
+    end
+    entry = synth_info(Symbol(arg))
+    if entry === nothing
+        _push_log!(m, "[WARN] no synth '$arg' loaded")
+        return
+    end
+    _push_log!(m, "[$(entry.plugin)] $(entry.name):")
+    for (k, v) in entry.metadata
+        _push_log!(m, "  $k: $v")
+    end
+end
+
+function _list_synths_to_log!(m::LiveModel, entries)
+    if isempty(entries)
+        _push_log!(m, "(no synths loaded)")
+        return
+    end
+    current_plugin = ""
+    for e in entries
+        if e.plugin != current_plugin
+            _push_log!(m, "── $(e.plugin) ──")
+            current_plugin = e.plugin
+        end
+        tags = get(e.metadata, "tags", String[])
+        tag_str = isempty(tags) ? "" : "  [" * join(tags, ", ") * "]"
+        _push_log!(m, "  $(e.name)$tag_str")
     end
 end
 

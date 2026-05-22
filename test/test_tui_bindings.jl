@@ -517,4 +517,132 @@ end
             empty!(Ressac._SAMPLE_REGISTRY)
         end
     end
+
+    @testset ":instruments lists all loaded instruments" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "studio",
+                Pair{String,Any}["s" => "bd", "gain" => 1.2],
+                Dict{String,Any}("tags" => ["heavy"]),
+            ))
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :bassy, "studio",
+                Pair{String,Any}["s" => "bassline"],
+                Dict{String,Any}(),
+            ))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "instruments"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("kicklourd", logs)
+            @test occursin("bassy", logs)
+            @test occursin("studio", logs)
+            @test occursin("bd", logs)  # s-target shown
+            @test occursin("heavy", logs)
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset ":instruments <glob> filters" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "p", Pair{String,Any}["s" => "bd"], Dict{String,Any}()))
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kickdoux, "p", Pair{String,Any}["s" => "bd"], Dict{String,Any}()))
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :bassy, "p", Pair{String,Any}["s" => "bassline"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "instruments kick*"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("kicklourd", logs)
+            @test occursin("kickdoux", logs)
+            @test !occursin("bassy", logs)
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset ":instruments <name> shows preset detail" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "studio",
+                Pair{String,Any}["s" => "bd", "gain" => 1.2, "lpf" => 200],
+                Dict{String,Any}("description" => "the kick that hurts"),
+            ))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "instruments kicklourd"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("kicklourd", logs)
+            @test occursin("gain", logs)
+            @test occursin("1.2", logs)
+            @test occursin("lpf", logs)
+            @test occursin("kick that hurts", logs)
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset ":instruments <name> on miss logs WARN" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "instruments ghost"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test any(l -> occursin("no instrument 'ghost'", l), m.logs)
+    end
+
+    @testset ":synths lists all + shows detail" begin
+        empty!(Ressac._SYNTH_REGISTRY)
+        try
+            Ressac.register_synth!(Ressac.SynthEntry(:bassline, "studio",
+                Dict{String,Any}("tags" => ["bass"], "description" => "warm sub")))
+            Ressac.register_synth!(Ressac.SynthEntry(:pad1, "studio",
+                Dict{String,Any}()))
+
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "synths"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("bassline", logs)
+            @test occursin("pad1", logs)
+            @test occursin("studio", logs)
+            @test occursin("bass", logs)
+
+            empty!(m.logs)
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "synths bassline"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("warm sub", logs)
+        finally
+            empty!(Ressac._SYNTH_REGISTRY)
+        end
+    end
 end
