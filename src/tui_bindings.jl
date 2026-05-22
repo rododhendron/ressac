@@ -807,6 +807,7 @@ function _preview_under_cursor!(m::LiveModel)
         if variant != 0 && !has_n
             push!(args, "n"); push!(args, Int32(variant))
         end
+        push!(args, "cut"); push!(args, Int32(_PREVIEW_CUT_GROUP))
         send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
         _push_log!(m, "[INFO] preview instrument $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
         return
@@ -816,13 +817,15 @@ function _preview_under_cursor!(m::LiveModel)
         args = variant == 0 ?
             Any["s", String(name)] :
             Any["s", String(name), "n", Int32(variant)]
+        push!(args, "cut"); push!(args, Int32(_PREVIEW_CUT_GROUP))
         send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
         _push_log!(m, "[INFO] preview sample $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
         return
     end
 
     if synth_info(name) !== nothing
-        send_osc(sched.osc, encode(OSCMessage("/dirt/play", Any["s", String(name)])))
+        send_osc(sched.osc, encode(OSCMessage("/dirt/play",
+            Any["s", String(name), "cut", Int32(_PREVIEW_CUT_GROUP)])))
         _push_log!(m, "[INFO] preview synth $(mt.captures[1])")
         return
     end

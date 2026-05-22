@@ -280,7 +280,7 @@ end
             play = [Ressac.decode_message(b) for b in mock.sent
                     if Ressac.decode_message(b).address == "/dirt/play"]
             @test length(play) == 1
-            @test play[1].args == Any["s", "kicky"]
+            @test play[1].args == Any["s", "kicky", "cut", Int32(Ressac._PREVIEW_CUT_GROUP)]
             @test any(l -> occursin("preview sample kicky", l), m.logs)
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
@@ -306,7 +306,8 @@ end
             play = [Ressac.decode_message(b) for b in mock.sent
                     if Ressac.decode_message(b).address == "/dirt/play"]
             @test length(play) == 1
-            @test play[1].args == Any["s", "snares", "n", Int32(1)]
+            @test play[1].args == Any["s", "snares", "n", Int32(1),
+                                       "cut", Int32(Ressac._PREVIEW_CUT_GROUP)]
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
             empty!(Ressac._SAMPLE_REGISTRY)
@@ -354,7 +355,8 @@ end
             play = [Ressac.decode_message(b) for b in mock.sent
                     if Ressac.decode_message(b).address == "/dirt/play"]
             @test length(play) == 1
-            @test play[1].args == Any["s", "bd", "n", Int32(3), "gain", Float32(1.2)]
+            @test play[1].args == Any["s", "bd", "n", Int32(3), "gain", Float32(1.2),
+                                       "cut", Int32(Ressac._PREVIEW_CUT_GROUP)]
             @test any(l -> occursin("preview instrument kicklourd", l), m.logs)
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
@@ -382,7 +384,8 @@ end
 
             play = [Ressac.decode_message(b) for b in mock.sent
                     if Ressac.decode_message(b).address == "/dirt/play"]
-            @test play[1].args == Any["s", "bd", "n", Int32(7), "gain", Float32(1.2)]
+            @test play[1].args == Any["s", "bd", "n", Int32(7), "gain", Float32(1.2),
+                                       "cut", Int32(Ressac._PREVIEW_CUT_GROUP)]
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
             empty!(Ressac._INSTRUMENT_REGISTRY)
@@ -407,7 +410,8 @@ end
             play = [Ressac.decode_message(b) for b in mock.sent
                     if Ressac.decode_message(b).address == "/dirt/play"]
             @test length(play) == 1
-            @test play[1].args == Any["s", "bassline"]
+            @test play[1].args == Any["s", "bassline",
+                                       "cut", Int32(Ressac._PREVIEW_CUT_GROUP)]
             @test any(l -> occursin("preview synth bassline", l), m.logs)
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
@@ -438,7 +442,8 @@ end
 
             play = [Ressac.decode_message(b) for b in mock.sent
                     if Ressac.decode_message(b).address == "/dirt/play"]
-            @test play[1].args == Any["s", "fromInstrument", "gain", Float32(2.0)]
+            @test play[1].args == Any["s", "fromInstrument", "gain", Float32(2.0),
+                                       "cut", Int32(Ressac._PREVIEW_CUT_GROUP)]
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
             empty!(Ressac._INSTRUMENT_REGISTRY)

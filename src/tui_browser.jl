@@ -177,27 +177,39 @@ function _browser_preview!(m::LiveModel, entries; min_gap::Float64 = 0.1)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     entry = entries[m.browser_cursor]
+    args = Any[]
     if entry.kind === :instrument
         instr = instrument_info(entry.name)
         instr === nothing && return
-        args = Any[]
         for (k, v) in instr.params
             converted = _osc_value(v)
             converted === missing && continue
             push!(args, k); push!(args, converted)
         end
-        send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
     elseif entry.kind === :sample
-        send_osc(sched.osc, encode(OSCMessage("/dirt/play",
-                                              Any["s", String(entry.name)])))
+        push!(args, "s"); push!(args, String(entry.name))
     elseif entry.kind === :synth
-        # Most SuperDirt synths are silent without release; preview gets a
-        # short envelope by default to be audible.
-        send_osc(sched.osc, encode(OSCMessage("/dirt/play",
-                                              Any["s", String(entry.name),
-                                                  "release", Float32(0.4)])))
+        push!(args, "s"); push!(args, String(entry.name))
+        # SuperDirt synths default to a near-zero envelope and are silent
+        # without release; ours gets a sane preview envelope.
+        push!(args, "release"); push!(args, Float32(0.4))
     end
+    # Shared preview cut group: every preview shares cut=PREVIEW_CUT, so
+    # firing a new one truncates the tail of the previous one. Avoids
+    # the long-release pile-up the user noticed.
+    push!(args, "cut"); push!(args, Int32(_PREVIEW_CUT_GROUP))
+    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
 end
+
+"""
+    _PREVIEW_CUT_GROUP
+
+The SuperDirt `cut` value used by every TUI preview (browser, K).
+Voices sharing the same positive cut group truncate each other, so
+each new preview silences the previous one. Chosen to be high enough
+that user patterns are unlikely to collide with it.
+"""
+const _PREVIEW_CUT_GROUP = 9999
 
 function _browser_insert!(m::LiveModel, entry::_BrowserEntry)
     name = String(entry.name)
