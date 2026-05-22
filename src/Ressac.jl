@@ -11,6 +11,7 @@ module Ressac
 include("core.jl")
 include("combinators.jl")
 include("algebra.jl")
+include("controls.jl")
 include("mininotation.jl")
 include("osc.jl")
 include("scheduler.jl")

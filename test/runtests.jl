@@ -20,4 +20,5 @@ using Ressac
     include("test_tui_bindings.jl")
     include("test_plugins.jl")
     include("test_plugin_handlers.jl")
+    include("test_controls.jl")
 end

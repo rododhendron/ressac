@@ -1,0 +1,40 @@
+# Per-event OSC param map. Used by effect chains and pattern-value
+# overrides. See docs/journal/20260522_dsl_extensions_design.md.
+
+"""
+    ControlMap
+
+Alias for `Dict{Symbol,Any}`. Every event in an effect-chain pattern
+carries one of these as its `value`. Keys are OSC param names
+(`:s, :n, :gain, :lpf, ...`); values are anything `_osc_value` can
+serialize (or that the user wants to pass through and will be dropped
+with a warning at dispatch time).
+"""
+const ControlMap = Dict{Symbol,Any}
+
+"""
+    ControlPattern
+
+Alias for `Pattern{ControlMap}`. The result type of every effect helper.
+"""
+const ControlPattern = Pattern{ControlMap}
+
+"""
+    _symbol_to_control_map(sym) -> ControlMap
+
+Lift a single `Pattern{Symbol}` event value into the ControlMap shape:
+`:bd` → `{:s => :bd}`; `Symbol("bd:1")` → `{:s => :bd, :n => 1}`.
+
+Used by `_lift_to_control` to bridge the legacy sample-name DSL with
+the new effect DSL. The `:N` suffix split is what the K preview already
+does (see `_WORD_RX` in tui_bindings.jl) — same convention, same parse.
+"""
+function _symbol_to_control_map(sym::Symbol)::ControlMap
+    str = String(sym)
+    idx = findfirst(':', str)
+    if idx === nothing
+        return ControlMap(:s => sym)
+    end
+    return ControlMap(:s => Symbol(str[1:idx-1]),
+                      :n => parse(Int, str[idx+1:end]))
+end
