@@ -584,6 +584,16 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _execute_synths_command!(m, rest)
     elseif (mt = match(r"^save\s+(\w+)$", body)) !== nothing
         _save_current_as_instrument!(m, mt.captures[1])
+    elseif (mt = match(r"^mute\s+(d\d+)$", body)) !== nothing
+        _mute_slot!(m, Symbol(mt.captures[1]))
+    elseif (mt = match(r"^unmute\s+(d\d+)$", body)) !== nothing
+        _unmute_slot!(m, Symbol(mt.captures[1]))
+    elseif body == "unmute" || body == "unmute all"
+        _unmute_all!(m)
+    elseif (mt = match(r"^solo\s+(d\d+)$", body)) !== nothing
+        _solo_slot!(m, Symbol(mt.captures[1]))
+    elseif body == "unsolo"
+        _unsolo!(m)
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing
@@ -1142,6 +1152,78 @@ function _doc_param!(m::LiveModel, name::AbstractString)
     else
         _push_log!(m, "[doc] $name — $desc")
     end
+end
+
+"""
+    _mute_slot!(m, slot)
+
+Live mute: stash the slot's current pattern in `m.muted_patterns` and
+call `unset_pattern!` on the scheduler. `:unmute <slot>` restores it.
+Differs from the `m` keystroke (which comments the buffer line) —
+this leaves the buffer alone and only touches the scheduler.
+"""
+function _mute_slot!(m::LiveModel, slot::Symbol)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_log!(m, "[ERROR] mute: no live session"); return)
+    pat = get(sched.patterns, slot, nothing)
+    if pat === nothing
+        _push_log!(m, "[WARN] mute: slot $slot has no live pattern")
+        return
+    end
+    m.muted_patterns[slot] = pat
+    unset_pattern!(sched, slot)
+    _push_log!(m, "[INFO] muted $slot (use :unmute $slot to restore)")
+end
+
+function _unmute_slot!(m::LiveModel, slot::Symbol)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_log!(m, "[ERROR] unmute: no live session"); return)
+    pat = get(m.muted_patterns, slot, nothing)
+    if pat === nothing
+        _push_log!(m, "[WARN] unmute: $slot wasn't muted")
+        return
+    end
+    set_pattern!(sched, slot, pat)
+    delete!(m.muted_patterns, slot)
+    _push_log!(m, "[INFO] unmuted $slot")
+end
+
+function _unmute_all!(m::LiveModel)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_log!(m, "[ERROR] unmute: no live session"); return)
+    n = length(m.muted_patterns)
+    for (slot, pat) in m.muted_patterns
+        set_pattern!(sched, slot, pat)
+    end
+    empty!(m.muted_patterns)
+    empty!(m.solo_active)
+    _push_log!(m, "[INFO] unmuted $n slot(s)")
+end
+
+"""
+    _solo_slot!(m, slot)
+
+Mute every active slot except `slot`. Multiple `:solo dN` calls stack
+(add slots to the solo set). `:unsolo` brings every muted slot back.
+"""
+function _solo_slot!(m::LiveModel, slot::Symbol)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_log!(m, "[ERROR] solo: no live session"); return)
+    push!(m.solo_active, slot)
+    # Mute everything that isn't in the solo set and isn't already muted.
+    muted = 0
+    for (other_slot, pat) in collect(sched.patterns)
+        other_slot in m.solo_active && continue
+        m.muted_patterns[other_slot] = pat
+        unset_pattern!(sched, other_slot)
+        muted += 1
+    end
+    _push_log!(m, "[INFO] solo $slot (silenced $muted other slot(s) — :unsolo to restore)")
+end
+
+function _unsolo!(m::LiveModel)
+    empty!(m.solo_active)
+    _unmute_all!(m)
 end
 
 function _starter_pack!(m::LiveModel, genre::AbstractString)

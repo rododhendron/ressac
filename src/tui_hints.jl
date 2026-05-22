@@ -104,6 +104,7 @@ const _COMMAND_NAMES = [
     "samples", "instruments", "synths",
     "guide", "help",
     "browse", "save", "doc", "starter",
+    "mute", "unmute", "solo", "unsolo",
 ]
 
 const _COMBINATOR_NAMES = [

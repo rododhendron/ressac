@@ -52,6 +52,10 @@ Backing model for the multi-line TUI. See
     # SP10-A — undo/redo history. Each entry is a (buffer, row, col) snapshot.
     history::Vector{Tuple{Vector{String},Int,Int}}       = []
     redo_stack::Vector{Tuple{Vector{String},Int,Int}}    = []
+    # SP10-C — live mute / solo: stash unset patterns so :unmute can
+    # restore them; track solo set so :unsolo knows what to bring back.
+    muted_patterns::Dict{Symbol,Pattern}                 = Dict{Symbol,Pattern}()
+    solo_active::Set{Symbol}                             = Set{Symbol}()
 end
 
 const _UNDO_HISTORY_LIMIT = 200
