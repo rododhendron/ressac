@@ -41,6 +41,8 @@ export load_plugin, parse_manifest, discover_plugins, default_plugin_path
 export SampleEntry, sample_info, list_samples, register_sample!
 export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
+export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
+export pan, n, room, delay, shape
 # Export every @d1..@d64 macro. Doing it here keeps the macro generator
 # in live_api.jl tidy.
 for n in 1:64
@@ -212,6 +214,35 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         _execute_ex_command!(m2, "synths")
     catch
         # Best-effort: any failure here just leaves first invocation slower.
+    end
+
+    # Effect chain hot paths: lift, set, gain (compose ×), lpf (compose min),
+    # overwrite helper, dispatch with and without preset.
+    try
+        ctrl_p = pure(:bd) |> gain(0.8) |> gain(1.2) |> lpf(2000) |> pan(0.3)
+        ctrl_evs = ctrl_p(0//1, 1//1)
+        if !isempty(ctrl_evs)
+            event_to_osc(ctrl_evs[1])
+        end
+
+        gp = Pattern{Float64}((s, e) -> [Event{Float64}(0//1, 1//1, 0.7)])
+        pat_p = pure(:bd) |> gain(gp)
+        pat_evs = pat_p(0//1, 1//1)
+        if !isempty(pat_evs)
+            event_to_osc(pat_evs[1])
+        end
+
+        empty!(_INSTRUMENT_REGISTRY)
+        register_instrument!(InstrumentEntry(:_pc_pre, "pc",
+            Pair{String,Any}["s" => "bd", "gain" => 1.2],
+            Dict{String,Any}()))
+        preset_evs = (pure(:_pc_pre) |> gain(0.5))(0//1, 1//1)
+        if !isempty(preset_evs)
+            event_to_osc(preset_evs[1])
+        end
+        empty!(_INSTRUMENT_REGISTRY)
+    catch
+        empty!(_INSTRUMENT_REGISTRY)
     end
 end
 
