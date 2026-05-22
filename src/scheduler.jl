@@ -28,6 +28,7 @@ mutable struct Scheduler{C}
     t_start::Float64
     last_end_cycles::Float64
     lock::ReentrantLock
+    events_shipped::Threads.Atomic{Int}
 end
 
 function Scheduler(osc; cps::Real = 0.5, lookahead::Real = 0.05)
@@ -44,6 +45,7 @@ function Scheduler(osc; cps::Real = 0.5, lookahead::Real = 0.05)
         0.0,
         0.0,
         ReentrantLock(),
+        Threads.Atomic{Int}(0),
     )
 end
 
@@ -121,6 +123,7 @@ function _step!(s::Scheduler, now::Float64)
                         fire_time = s.t_start + ev_start / s.cps
                         bundle = OSCBundle(fire_time, [event_to_osc(ev)])
                         send_osc(s.osc, encode(bundle))
+                        Threads.atomic_add!(s.events_shipped, 1)
                         s.last_fired_at[slot] = time()
                     end
                 end

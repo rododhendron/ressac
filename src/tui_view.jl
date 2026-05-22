@@ -33,6 +33,7 @@ function _activity_widget(m::LiveModel)
     for (slot, (_, at)) in sched.pending
         push!(parts, "$(String(slot)) ⏱→cyc$(Int(at))")
     end
+    push!(parts, "nT:$(Threads.nthreads()) ev:$(m.scheduler.events_shipped[])")
     push!(parts, "│ $(uppercase(String(m.mode)))")
     text = join(parts, "  ")
     _TextLines([text], TUI.Crayon(; bold=true))

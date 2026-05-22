@@ -37,17 +37,19 @@ function _eval_block!(m::LiveModel; mode::Symbol = :immediate, n::Int = 0)
     slot = _block_slot(text)
     try
         ex = Meta.parse(text)
+        result = nothing
         prev_mode = _EVAL_MODE[]
         _EVAL_MODE[] = (mode, n)
         try
-            Core.eval(Main, ex)
+            result = Core.eval(Main, ex)
         finally
             _EVAL_MODE[] = prev_mode
         end
         slot === nothing || (m.last_eval_block[slot] = (start, stop))
+        result_str = sprint(io -> show(IOContext(io, :limit => true, :displaysize => (1, 60)), result))
         _push_log!(m, mode === :immediate ?
-            "[INFO] eval $(slot === nothing ? "block" : String(slot))" :
-            "[INFO] queued $(slot === nothing ? "block" : String(slot)) → +$n cycles")
+            "[INFO] eval $(slot === nothing ? "block" : String(slot)) ⇒ $result_str" :
+            "[INFO] queued $(slot === nothing ? "block" : String(slot)) → +$n cycles ⇒ $result_str")
     catch err
         _push_log!(m, "[ERROR] $(sprint(showerror, err))")
     end
