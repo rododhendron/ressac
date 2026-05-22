@@ -63,7 +63,9 @@ function _slot_grid(s::Scheduler, slot::Symbol)
 end
 
 function _editor_pane(m::LiveModel)
-    lines = String[]
+    isempty(m.buffer) && return _line_paragraph("")
+    line_widgets = Any[]
+    constraints = TUI.Min[]
     for (i, line) in enumerate(m.buffer)
         prefix = ""
         if m.mode === :visual_line && m.visual_anchor !== nothing
@@ -73,20 +75,37 @@ function _editor_pane(m::LiveModel)
             end
         end
         marker = _active_marker(m, i)
-        if i == m.cursor_row && m.mode in (:insert, :normal)
+        display_line = if i == m.cursor_row && m.mode in (:insert, :normal)
             col = m.cursor_col
-            cursor_line = if col > lastindex(line)
+            if col > lastindex(line)
                 line * "▌"
             else
                 line[1:prevind(line, col)] * "▌" * line[col:end]
             end
-            push!(lines, prefix * cursor_line * marker)
         else
-            push!(lines, prefix * line * marker)
+            line
         end
+        full = prefix * display_line * marker
+        push!(line_widgets, _line_paragraph(full))
+        push!(constraints, TUI.Min(1))
     end
-    text = join(lines, "\n")
-    return _zone_v2("buffer", text, TUI.Crayon())
+    TUI.Layout(;
+        widgets = line_widgets,
+        constraints = constraints,
+        orientation = :vertical,
+    )
+end
+
+# A single-row Paragraph with no border. Used as a buffer-line cell inside
+# the vertical Layout that makes up `_editor_pane`. This sidesteps the
+# `TUI.Paragraph` whitespace-collapsing pitfall: each line is its own
+# widget, so there's nothing for the renderer to re-join with spaces.
+function _line_paragraph(text::AbstractString)
+    style = TUI.Crayon()
+    words = TUI.make_words(isempty(text) ? " " : text, style)
+    isempty(words) && push!(words, TUI.Word(" ", style))
+    # Block with no borders so lines render flush without frames between them.
+    TUI.Paragraph(TUI.Block(; border=TUI.BorderNone), words, 1, Ref{Int}(0))
 end
 
 function _active_marker(m::LiveModel, row::Int)
