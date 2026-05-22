@@ -13,39 +13,62 @@ function TUI.view(m::LiveModel)
 end
 
 function _build_main_layout(m::LiveModel)
+    # Always-on rows: status (1) + editor (flexible) + footer (1) + logs (>=6).
+    # The footer is dynamic — see `_footer_line` — and folds the mode hint,
+    # the command prompt, and the completion hint together so we add zero
+    # net rows vs the pre-SP6 layout.
     status = _activity_widget(m)
     editor = _editor_pane(m)
-    hint   = _mode_hint_line(m)
-    cmd    = _command_line(m)
-    compl  = _completion_hint_line(m)
+    footer = _footer_line(m)
     logs   = _logs_pane(m)
     TUI.Layout(;
-        widgets     = [status, editor, hint, cmd, compl, logs],
-        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1),
-                       TUI.Min(1), TUI.Min(1), TUI.Min(8)],
+        widgets     = [status, editor, footer, logs],
+        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1), TUI.Min(6)],
         orientation = :vertical,
     )
 end
 
-function _mode_hint_line(m::LiveModel)
+"""
+    _footer_line(m)
+
+A 1-row composite that shows whatever's most relevant for the moment:
+
+- `:command` mode → the command being typed (`:foo█`), with completions
+  appended inline if any (` › samples  [synths]`).
+- non-command modes → the mode hint string (`[NORMAL] i|V|:|K|e ...`).
+
+Folding these into one row keeps the total layout the same height as
+before SP6 (status + editor + 1 footer + logs), so a 24-line terminal
+doesn't lose any editor rows to the new visual UX.
+"""
+function _footer_line(m::LiveModel)
+    if m.mode === :command
+        text = "$(m.command_prefix)$(m.command_buffer)█"
+        if !isempty(m.completions)
+            parts = String[]
+            for (i, cand) in enumerate(m.completions)
+                push!(parts, i == m.completion_cycle_idx ? "[" * cand * "]" : cand)
+            end
+            text *= "   › " * join(parts, "  ")
+        end
+        return _TextLines([text], TUI.Crayon(; foreground=:green))
+    end
+    if !isempty(m.completions)
+        parts = String[]
+        for (i, cand) in enumerate(m.completions)
+            push!(parts, i == m.completion_cycle_idx ? "[" * cand * "]" : cand)
+        end
+        return _TextLines(["completions:  " * join(parts, "  ")],
+                          TUI.Crayon(; foreground=:magenta))
+    end
     text = "[" * uppercase(String(m.mode)) * "] " * _mode_hint(m.mode)
     _TextLines([text], TUI.Crayon(; foreground=:cyan))
 end
 
-function _completion_hint_line(m::LiveModel)
-    if isempty(m.completions)
-        return _TextLines([""], TUI.Crayon())
-    end
-    parts = String[]
-    for (i, cand) in enumerate(m.completions)
-        if i == m.completion_cycle_idx
-            push!(parts, "[" * cand * "]")
-        else
-            push!(parts, cand)
-        end
-    end
-    text = join(parts, "  ")
-    _TextLines([text], TUI.Crayon(; foreground=:magenta))
+function _mode_hint_line(m::LiveModel)
+    # Retained for back-compat with callers; the unified footer is preferred.
+    text = "[" * uppercase(String(m.mode)) * "] " * _mode_hint(m.mode)
+    _TextLines([text], TUI.Crayon(; foreground=:cyan))
 end
 
 function _activity_widget(m::LiveModel)
