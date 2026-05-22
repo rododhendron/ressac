@@ -122,6 +122,30 @@ Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
         @test msg.args == Any["s", "unmapped_sample"]
     end
 
+    @testset "event_to_osc(Event{ControlMap}) no instrument — :s first, alpha rest" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        cm = Dict{Symbol,Any}(:s => :bd, :gain => 0.8, :lpf => 200)
+        msg = Ressac.event_to_osc(Event(0//1, 1//1, cm))
+        @test msg.address == "/dirt/play"
+        @test msg.args == Any["s", "bd", "gain", Float32(0.8), "lpf", Int32(200)]
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) :s = Symbol becomes String" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        cm = Dict{Symbol,Any}(:s => :sn)
+        msg = Ressac.event_to_osc(Event(0//1, 1//1, cm))
+        @test msg.args == Any["s", "sn"]
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) drops unsupported value types" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        cm = Dict{Symbol,Any}(:s => :bd, :junk => Dict("x" => 1))
+        msg = @test_logs (:warn, r"unsupported OSC value") match_mode=:any begin
+            Ressac.event_to_osc(Event(0//1, 1//1, cm))
+        end
+        @test msg.args == Any["s", "bd"]
+    end
+
     @testset "event_to_osc drops params with unsupported value types" begin
         empty!(Ressac._INSTRUMENT_REGISTRY)
         try

@@ -37,6 +37,7 @@ end
 _osc_value(v::Integer) = Int32(v)
 _osc_value(v::AbstractFloat) = Float32(v)
 _osc_value(v::AbstractString) = String(v)
+_osc_value(v::Symbol) = String(v)
 function _osc_value(v)
     @warn "unsupported OSC value of type $(typeof(v)); dropping"
     return missing
