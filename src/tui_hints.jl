@@ -103,7 +103,7 @@ const _COMMAND_NAMES = [
     "q", "quit", "cps", "goto",
     "samples", "instruments", "synths",
     "guide", "help",
-    "browse", "save",
+    "browse", "save", "doc", "starter",
 ]
 
 const _COMBINATOR_NAMES = [

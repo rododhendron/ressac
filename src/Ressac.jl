@@ -28,6 +28,7 @@ include("tui.jl")
 include("live_api.jl")
 include("plugins.jl")
 include("tui_browser.jl")
+include("tui_docs.jl")
 include("plugin_handlers.jl")
 
 # Module includes added by upcoming milestones:

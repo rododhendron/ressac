@@ -584,6 +584,15 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _execute_synths_command!(m, rest)
     elseif (mt = match(r"^save\s+(\w+)$", body)) !== nothing
         _save_current_as_instrument!(m, mt.captures[1])
+    elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
+        _doc_param!(m, mt.captures[1])
+    elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing
+        _starter_pack!(m, mt.captures[1])
+    elseif body == "starter"
+        _push_log!(m, "[INFO] :starter <genre> — available: " *
+                      join(sort!(collect(keys(_STARTER_PACKS))), ", "))
+    elseif body == "doc"
+        _push_log!(m, "[INFO] :doc <param> — try gain/release/cutoff/room/...")
     elseif body == "guide" || body == "help" || body == "?"
         m.mode = :guide
         m.guide_scroll = 0
@@ -1120,6 +1129,34 @@ _toml_serialize(v::Integer) = string(Int(v))
 _toml_serialize(v::AbstractFloat) = string(v)
 _toml_serialize(v::AbstractVector) = "[" * join(_toml_serialize.(v), ", ") * "]"
 _toml_serialize(v) = string(v)
+
+# ---------------------------------------------------------------------
+# Junior-friendly helpers: :doc, :starter
+# ---------------------------------------------------------------------
+
+function _doc_param!(m::LiveModel, name::AbstractString)
+    desc = get(_PARAM_DOCS, String(name), nothing)
+    if desc === nothing
+        _push_log!(m, "[WARN] :doc — no entry for '$name'. Known: " *
+                       join(sort!(collect(keys(_PARAM_DOCS))), ", "))
+    else
+        _push_log!(m, "[doc] $name — $desc")
+    end
+end
+
+function _starter_pack!(m::LiveModel, genre::AbstractString)
+    pack = get(_STARTER_PACKS, String(genre), nothing)
+    if pack === nothing
+        _push_log!(m, "[WARN] :starter — no pack '$genre'. Available: " *
+                       join(sort!(collect(keys(_STARTER_PACKS))), ", "))
+        return
+    end
+    _snapshot!(m)
+    m.buffer = copy(pack)
+    m.cursor_row = 1
+    m.cursor_col = 1
+    _push_log!(m, "[INFO] loaded :starter $genre ($(length(pack)) lines) — eval each @dN with `e`")
+end
 
 # Vim-style word predicates: lowercase 'word' breaks on punctuation,
 # uppercase 'WORD' breaks only on whitespace.
