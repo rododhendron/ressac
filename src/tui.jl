@@ -72,23 +72,26 @@ function _ressac_app!(m::LiveModel; frame_period::Float64 = 1/60)
         last_render = 0.0
         while !m.quit
             try
-                evt = TUI.try_get_event(t)
-                # Mouse-moved events arrive at terminal refresh rate (often
-                # >100 Hz when the user wiggles the mouse). They never
-                # change visible state for us, so we update the model
-                # silently (mouse wheel is the only handler that mutates)
-                # but skip the render unless something else actually
-                # happened. Same applies to mouse drag events.
-                noisy_mouse = evt isa TUI.MouseEvent &&
-                              (evt.data.kind == "Moved" ||
-                               startswith(evt.data.kind, "Drag"))
-                if evt !== nothing
+                # Drain ALL pending events in one go. Mouse-Moved / Drag
+                # events arrive at the terminal's refresh rate (often
+                # >100 Hz) — processing one per frame backlogged the queue
+                # and made every render lag behind by seconds. Drain
+                # everything, then render at most once. Track whether any
+                # render-worthy event landed.
+                render_needed = false
+                while true
+                    evt = TUI.try_get_event(t)
+                    evt === nothing && break
                     TUI.update!(m, evt)
-                    if !noisy_mouse
-                        TUI.render(t, m)
-                        TUI.draw(t)
-                        last_render = time()
-                    end
+                    noisy = evt isa TUI.MouseEvent &&
+                            (evt.data.kind == "Moved" ||
+                             startswith(evt.data.kind, "Drag"))
+                    render_needed = render_needed || !noisy
+                end
+                if render_needed
+                    TUI.render(t, m)
+                    TUI.draw(t)
+                    last_render = time()
                 elseif (time() - last_render) >= idle_period
                     TUI.render(t, m)
                     TUI.draw(t)

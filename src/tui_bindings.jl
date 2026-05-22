@@ -512,6 +512,8 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
     elseif body == "synths" || startswith(body, "synths ")
         rest = strip(body == "synths" ? "" : body[8:end])
         _execute_synths_command!(m, rest)
+    elseif (mt = match(r"^save\s+(\w+)$", body)) !== nothing
+        _save_current_as_instrument!(m, mt.captures[1])
     elseif body == "guide" || body == "help" || body == "?"
         m.mode = :guide
         m.guide_scroll = 0
@@ -834,6 +836,156 @@ function _preview_under_cursor!(m::LiveModel)
 end
 
 _is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'
+
+"""
+    _save_current_as_instrument!(m, name)
+
+`:save <name>` freezes the pattern at the cursor's slot into a new
+InstrumentEntry. Workflow:
+
+1. Find the `@dN` slot on the line under the cursor (or above, scanning
+   back through the paragraph).
+2. Look up the live pattern in the scheduler. Query it at `(0, 1)` and
+   take the first event's value — typically a `ControlMap` from an
+   effect chain.
+3. Write the entry to `plugins/user-saved/plugin.toml` (creating the
+   file + plugin dir on first save). Existing entries with the same name
+   are replaced.
+4. Register the new InstrumentEntry live so it's usable immediately
+   without restarting Ressac.
+
+Errors land in the log pane; no exceptions escape.
+"""
+function _save_current_as_instrument!(m::LiveModel, name::AbstractString)
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        _push_log!(m, "[ERROR] save: no live session")
+        return
+    end
+    # Find the slot for the cursor row by walking the paragraph upward.
+    slot = nothing
+    row = m.cursor_row
+    while row >= 1
+        line = m.buffer[row]
+        mt = match(_ACTIVE_SLOT_RX, line)
+        if mt !== nothing
+            slot = Symbol(mt.captures[1])
+            break
+        end
+        row -= 1
+    end
+    if slot === nothing
+        _push_log!(m, "[ERROR] save: no @dN slot found above cursor")
+        return
+    end
+    pattern = get(sched.patterns, slot, nothing)
+    if pattern === nothing
+        _push_log!(m, "[ERROR] save: slot $slot has no live pattern (eval it first)")
+        return
+    end
+
+    # Snapshot the first event in cycle 0.
+    events = try
+        pattern(0 // 1, 1 // 1)
+    catch err
+        _push_log!(m, "[ERROR] save: query failed — $(sprint(showerror, err))")
+        return
+    end
+    if isempty(events)
+        _push_log!(m, "[ERROR] save: pattern produced no events in cycle 0")
+        return
+    end
+    val = events[1].value
+
+    # Convert to params Vector{Pair{String,Any}} (TOML-friendly, :s first).
+    params = Pair{String,Any}[]
+    if val isa ControlMap
+        if haskey(val, :s)
+            push!(params, "s" => _toml_friendly(val[:s]))
+        end
+        for k in sort!(collect(keys(val)))
+            k === :s && continue
+            push!(params, String(k) => _toml_friendly(val[k]))
+        end
+    elseif val isa Symbol
+        push!(params, "s" => String(val))
+    else
+        _push_log!(m, "[ERROR] save: unsupported event value type $(typeof(val))")
+        return
+    end
+
+    metadata = Dict{String,Any}("description" => "saved from slot $slot")
+    entry = InstrumentEntry(Symbol(name), "user-saved", params, metadata)
+    # First-wins is the default in register_instrument! — drop the
+    # existing entry so re-saving under the same name is intuitive.
+    delete!(_INSTRUMENT_REGISTRY, Symbol(name))
+    register_instrument!(entry)
+
+    try
+        _append_instrument_to_plugin!(name, params, metadata)
+    catch err
+        _push_log!(m, "[WARN] save: registered live but couldn't write file — $(sprint(showerror, err))")
+        return
+    end
+
+    _push_log!(m, "[INFO] saved instrument :$name from $slot ($(length(params)) param(s))")
+end
+
+_toml_friendly(v::Symbol) = String(v)
+_toml_friendly(v) = v
+
+"""
+    _append_instrument_to_plugin!(name, params, metadata)
+
+Persist the new instrument to `plugins/user-saved/plugin.toml`. Creates
+the plugin dir + manifest if missing. Replaces any existing
+`[instruments.<name>]` block in place; otherwise appends.
+"""
+function _append_instrument_to_plugin!(name::AbstractString,
+                                       params::Vector{Pair{String,Any}},
+                                       metadata::Dict{String,Any})
+    plugin_dir = joinpath(pwd(), "plugins", "user-saved")
+    isdir(plugin_dir) || mkpath(plugin_dir)
+    path = joinpath(plugin_dir, "plugin.toml")
+
+    header = """
+    name        = "user-saved"
+    version     = "0.1.0"
+    description = "instruments saved live via :save"
+
+    """
+    body = read(isfile(path) ? path : IOBuffer(header), String)
+    block = _format_instrument_block(name, params, metadata)
+
+    rx = Regex("(?ms)^\\[instruments\\.$(name)\\].*?(?=^\\[|\\z)")
+    new_body = occursin(rx, body) ?
+               replace(body, rx => block * "\n") :
+               (endswith(body, "\n\n") ? body * block * "\n" :
+                                          body * "\n" * block * "\n")
+    open(path, "w") do io
+        write(io, new_body)
+    end
+end
+
+function _format_instrument_block(name::AbstractString,
+                                  params::Vector{Pair{String,Any}},
+                                  metadata::Dict{String,Any})
+    lines = String["[instruments.$name]"]
+    for (k, v) in params
+        push!(lines, "$k = $(_toml_serialize(v))")
+    end
+    for k in sort!(collect(keys(metadata)))
+        push!(lines, "$k = $(_toml_serialize(metadata[k]))")
+    end
+    return join(lines, "\n")
+end
+
+_toml_serialize(v::AbstractString) = "\"" * replace(String(v), "\"" => "\\\"") * "\""
+_toml_serialize(v::Bool) = v ? "true" : "false"
+_toml_serialize(v::Integer) = string(Int(v))
+_toml_serialize(v::AbstractFloat) = string(v)
+_toml_serialize(v::AbstractVector) = "[" * join(_toml_serialize.(v), ", ") * "]"
+_toml_serialize(v) = string(v)
 
 # Vim-style word predicates: lowercase 'word' breaks on punctuation,
 # uppercase 'WORD' breaks only on whitespace.

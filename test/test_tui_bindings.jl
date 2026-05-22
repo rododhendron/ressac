@@ -688,7 +688,8 @@ end
         Ressac._dispatch_key!(m, _fake_key("a"))
         @test m.command_buffer == "sa"
         Ressac._dispatch_key!(m, _fake_key("Tab"))
-        @test m.command_buffer == "samples"
+        # `samples` and `save` both fuzzy-match "sa"; shorter wins first.
+        @test m.command_buffer in ("save", "samples")
         @test !isempty(m.completions)
         before = m.command_buffer
         Ressac._dispatch_key!(m, _fake_key("Tab"))

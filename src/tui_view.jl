@@ -228,12 +228,10 @@ function _editor_pane(m::LiveModel)
             end
         end
         marker = _active_marker(m, i)
-        display_line = if i == m.cursor_row && m.mode in (:insert, :normal)
-            _line_with_cursor(line, m.cursor_col)
-        else
-            line
-        end
-        push!(rendered, prefix * display_line * marker)
+        # Don't inject a `▌` glyph anymore — `_EditorPane.render` paints
+        # an inverted-colour cell at the cursor position so the char
+        # under it stays readable.
+        push!(rendered, prefix * line * marker)
     end
     _EditorPane(m, rendered)
 end
@@ -252,9 +250,10 @@ struct _EditorPane
 end
 
 function TUI.render(p::_EditorPane, area::TUI.Rect, buf::TUI.Buffer)
-    p.model.editor_screen_left   = TUI.left(area)
-    p.model.editor_screen_top    = TUI.top(area)
-    p.model.editor_screen_height = TUI.height(area)
+    m = p.model
+    m.editor_screen_left   = TUI.left(area)
+    m.editor_screen_top    = TUI.top(area)
+    m.editor_screen_height = TUI.height(area)
     TUI.height(area) < 1 && return
     avail = TUI.height(area)
     for (i, line) in enumerate(p.lines)
@@ -262,12 +261,26 @@ function TUI.render(p::_EditorPane, area::TUI.Rect, buf::TUI.Buffer)
         clipped = first(line, TUI.width(area))
         TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), TUI.Crayon())
     end
+    # Semi-transparent cursor: overlay the cell at the cursor position
+    # with a reversed-video Crayon so the underlying character stays
+    # readable. Block style in normal mode, the same in insert (terminal
+    # cell granularity — can't draw a sub-cell beam reliably).
+    m.mode in (:insert, :normal) || return
+    1 <= m.cursor_row <= length(p.lines) || return
+    m.cursor_row <= avail || return
+    line = m.buffer[m.cursor_row]
+    col = clamp(m.cursor_col, 1, lastindex(line) + 1)
+    ch = col > lastindex(line) ? " " : string(line[col])
+    cursor_x = TUI.left(area) + col - 1
+    cursor_y = TUI.top(area) + m.cursor_row - 1
+    cursor_x < TUI.left(area) + TUI.width(area) || return
+    TUI.set(buf, cursor_x, cursor_y, ch, TUI.Crayon(; reversed=true))
 end
 
-# Splice a `▌` cursor glyph into `line` at byte index `col`, defensively:
-# if `col` lands inside a multi-byte UTF-8 character (shouldn't happen
-# given buffer-helper invariants, but cheap to guard) we snap to the
-# enclosing codepoint start instead of throwing.
+# Kept around for back-compat with any caller still using it (none in-tree).
+# The new editor pane paints an inverted-color cell directly into the buffer
+# at the cursor position, so this string-splicing helper is no longer used
+# on the hot path.
 function _line_with_cursor(line::AbstractString, col::Integer)
     n = lastindex(line)
     if col > n
