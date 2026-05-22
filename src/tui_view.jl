@@ -9,6 +9,10 @@ function TUI.update!(m::LiveModel, evt::TUI.KeyEvent)
 end
 
 function TUI.view(m::LiveModel)
+    return _AppView(m)
+end
+
+function _build_main_layout(m::LiveModel)
     status = _activity_widget(m)
     editor = _editor_pane(m)
     hint   = _mode_hint_line(m)

@@ -262,7 +262,12 @@ function _handle_normal!(m::LiveModel, evt)
         _repeat_search!(m; reverse=false)
     elseif code == "N"
         _repeat_search!(m; reverse=true)
-    elseif code == ":" || code == "/" || code == "?"
+    elseif code == "?"
+        # Hybrid help overlay (SP6). Backward search is still reachable
+        # by entering :-mode and starting the buffer with "?", but the
+        # one-key shortcut is now reserved for the help popup.
+        m.show_help = !m.show_help
+    elseif code == ":" || code == "/"
         m.mode = :command
         m.command_prefix = first(code)
         m.command_buffer = ""
@@ -496,7 +501,7 @@ const _GUIDE_LINES = String[
     "  i / a / o / O — enter insert mode",
     "  Esc           — back to normal",
     "  V             — visual-line selection",
-    "  : / / / ?     — command / search forward / search backward",
+    "  :  /          — command mode / forward search (? = help overlay)",
     "Normal-mode actions:",
     "  hjkl / arrows — move cursor",
     "  0 \$          — line start / end",

@@ -175,3 +175,64 @@ const _MODE_HINTS = Dict{Symbol,String}(
 )
 
 _mode_hint(mode::Symbol) = get(_MODE_HINTS, mode, "")
+
+"""
+    _HELP_OVERLAY_LINES
+
+Per-mode help body shown by the `?` overlay. Longer than `_MODE_HINTS`
+but still terse — one screen, no scroll.
+"""
+const _HELP_OVERLAY_LINES = Dict{Symbol,Vector{String}}(
+    :normal => [
+        "NORMAL mode",
+        "",
+        "  i / a / o / O — enter insert",
+        "  hjkl / arrows — move",
+        "  0  \$         — line start / end",
+        "  gg / G       — buffer start / end",
+        "  gdN          — goto slot dN",
+        "  dd / yy / p  — delete / yank / paste",
+        "  V            — visual line",
+        "  :  /         — cmd / forward search",
+        "  K            — preview under cursor",
+        "  e            — eval block ([N]e = defer N cycles)",
+        "  n / N        — repeat search",
+        "  ?            — toggle this overlay",
+    ],
+    :insert => [
+        "INSERT mode",
+        "",
+        "  type        — insert chars",
+        "  Tab         — autocomplete identifier under cursor",
+        "  arrows      — move",
+        "  Backspace   — delete previous char",
+        "  Enter       — newline",
+        "  Esc         — back to normal",
+    ],
+    :visual_line => [
+        "VISUAL-LINE mode",
+        "",
+        "  j / k       — extend selection",
+        "  y / d       — yank / delete",
+        "  m           — toggle mute on each selected line",
+        "  e           — eval the selected block",
+        "  Esc         — cancel",
+    ],
+    :command => [
+        "COMMAND mode",
+        "",
+        "  type        — compose command",
+        "  Tab         — autocomplete (cycles)",
+        "  Enter       — run",
+        "  Esc         — cancel",
+    ],
+    :guide => [
+        "GUIDE mode",
+        "",
+        "  j / k       — scroll",
+        "  gg / G      — top / bottom",
+        "  /<rx>       — search forward (jumps to first match)",
+        "  n / N       — repeat search",
+        "  q / Esc     — close",
+    ],
+)
