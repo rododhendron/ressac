@@ -183,3 +183,35 @@ function topo_sort(manifests::AbstractVector{PluginManifest})
     end
     return out
 end
+
+"""
+    load_plugin(manifest::PluginManifest)
+
+Run each section's handler from `manifest.sections`. The `[julia]`
+section, if present, runs first inside this plugin (so any
+`register_section_handler!` calls it makes are visible to subsequent
+sections of the same plugin).
+
+Unknown sections log a warning. Handler exceptions are caught and
+logged at `@error` level; the next section still runs.
+"""
+function load_plugin(m::PluginManifest)
+    section_names = collect(keys(m.sections))
+    if "julia" in section_names
+        section_names = vcat("julia", filter(!=("julia"), section_names))
+    end
+    for sec_str in section_names
+        sec = Symbol(sec_str)
+        h = get_section_handler(sec)
+        if h === nothing
+            @warn "no handler registered for section ':$sec_str' (in plugin '$(m.name)'); skipping"
+            continue
+        end
+        try
+            h(m.dir, m.sections[sec_str], m.name)
+        catch err
+            @error "handler ':$sec_str' for plugin '$(m.name)' raised: $(sprint(showerror, err))"
+        end
+    end
+    return nothing
+end

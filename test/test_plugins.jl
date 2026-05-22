@@ -120,4 +120,63 @@ using Ressac
             @test isempty(sorted)
         end
     end
+
+    @testset "load_plugin orchestrator" begin
+        @testset "calls each section's handler with (dir, data, name)" begin
+            calls = Tuple[]
+            handler = (dir, data, name) -> push!(calls, (Symbol("samples"), dir, data, name))
+            Ressac.register_section_handler!(:samples, handler)
+            try
+                m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "foo"))
+                Ressac.load_plugin(m)
+                @test length(calls) == 1
+                _, dir, data, name = calls[1]
+                @test name == "foo"
+                @test data == Dict("roots" => ["./samples"])
+                @test endswith(dir, "/foo")
+            finally
+                Ressac.unregister_section_handler!(:samples)
+            end
+        end
+
+        @testset "unknown section logs warning, does not throw" begin
+            m = Ressac.PluginManifest(
+                "ghost", "0", "x", "/fake/ghost",
+                Dict("ghostly" => Dict("k" => "v")), String[])
+            @test_logs (:warn, r"ghostly") match_mode=:any begin
+                Ressac.load_plugin(m)
+            end
+        end
+
+        @testset "handler exception is caught and logged" begin
+            Ressac.register_section_handler!(:boom, (_, _, _) -> error("kaboom"))
+            try
+                m = Ressac.PluginManifest(
+                    "boomy", "0", "x", "/fake/boomy",
+                    Dict("boom" => Dict()), String[])
+                @test_logs (:error, r"kaboom") match_mode=:any begin
+                    Ressac.load_plugin(m)
+                end
+            finally
+                Ressac.unregister_section_handler!(:boom)
+            end
+        end
+
+        @testset "[julia] runs before other sections of the same plugin" begin
+            seen_order = Symbol[]
+            Ressac.register_section_handler!(:julia, (_, _, _) -> push!(seen_order, :julia))
+            Ressac.register_section_handler!(:samples, (_, _, _) -> push!(seen_order, :samples))
+            try
+                m = Ressac.PluginManifest(
+                    "order", "0", "x", "/fake/order",
+                    Dict("samples" => Dict(), "julia" => Dict("files" => String[])),
+                    String[])
+                Ressac.load_plugin(m)
+                @test seen_order == [:julia, :samples]
+            finally
+                Ressac.unregister_section_handler!(:julia)
+                Ressac.unregister_section_handler!(:samples)
+            end
+        end
+    end
 end
