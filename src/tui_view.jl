@@ -274,7 +274,7 @@ function TUI.render(p::_EditorPane, area::TUI.Rect, buf::TUI.Buffer)
     cursor_x = TUI.left(area) + col - 1
     cursor_y = TUI.top(area) + m.cursor_row - 1
     cursor_x < TUI.left(area) + TUI.width(area) || return
-    TUI.set(buf, cursor_x, cursor_y, ch, TUI.Crayon(; reversed=true))
+    TUI.set(buf, cursor_x, cursor_y, ch, TUI.Crayon(; negative=true))
 end
 
 # Kept around for back-compat with any caller still using it (none in-tree).
