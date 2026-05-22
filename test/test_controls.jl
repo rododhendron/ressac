@@ -70,4 +70,30 @@ using Ressac
         @test evs[1].value[:lpf]  == 200
         @test evs[1].value[:s]    === :bd
     end
+
+    @testset "set(:k, pattern) — pattern-valued override" begin
+        # Gain pattern with 2 events per cycle: [0, 1/2): 0.5, [1/2, 1): 1.0
+        gp = Pattern{Float64}((s, e) -> begin
+            evs = Event{Float64}[]
+            n_start = floor(Int, s)
+            n_stop  = ceil(Int, e)
+            for n in n_start:(n_stop - 1)
+                base = Rational{Int64}(n)
+                push!(evs, Event{Float64}(max(base, s),         min(base + 1//2, e), 0.5))
+                push!(evs, Event{Float64}(max(base + 1//2, s), min(base + 1//1, e), 1.0))
+            end
+            filter!(ev -> ev.start < ev.stop, evs)
+            evs
+        end)
+        p = pure(:bd) |> Ressac.set(:gain, gp)
+        evs = p(0//1, 1//1)
+        @test length(evs) == 2
+        @test evs[1].value[:s]    === :bd
+        @test evs[1].value[:gain] == 0.5
+        @test evs[1].start == 0//1
+        @test evs[1].stop  == 1//2
+        @test evs[2].value[:gain] == 1.0
+        @test evs[2].start == 1//2
+        @test evs[2].stop  == 1//1
+    end
 end

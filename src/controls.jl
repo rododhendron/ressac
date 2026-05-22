@@ -86,3 +86,36 @@ function set(key::Symbol, val)
         end)
     end
 end
+
+"""
+    set(key::Symbol, pat::Pattern) -> (Pattern -> ControlPattern)
+
+Pattern-valued override: for each event in the input pattern, intersect
+its arc with every event of `pat`; emit a sub-event for each
+intersection carrying that value. Input events with no overlap are
+dropped (the value pattern gates the input).
+
+This matches TidalCycles' `#` operator semantics.
+"""
+function set(key::Symbol, pat::Pattern)
+    return function (p::Pattern)
+        lifted = _lift_to_control(p)
+        Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+            evs_in  = lifted(s, e)
+            evs_val = pat(s, e)
+            out = Event{ControlMap}[]
+            for ev_in in evs_in
+                for ev_v in evs_val
+                    a = max(ev_in.start, ev_v.start)
+                    b = min(ev_in.stop,  ev_v.stop)
+                    a < b || continue
+                    new_cm = copy(ev_in.value)
+                    new_cm[key] = ev_v.value
+                    push!(out, Event{ControlMap}(a, b, new_cm))
+                end
+            end
+            sort!(out, by = ev -> ev.start)
+            out
+        end)
+    end
+end
