@@ -22,6 +22,11 @@ demo:
 ping:
     julia --project=. scripts/ping.jl
 
+# Run the scheduler in the same setup as `live` but without the TUI, to
+# diagnose whether the scheduler thread is actually shipping events.
+diag:
+    julia --project=. -t auto scripts/diag.jl
+
 # Launch the Ressac TUI (needs `just audio` running elsewhere for sound).
 # `-t auto` is REQUIRED — without real threads, Threads.@spawn falls back
 # to @async, and the scheduler task can never run while Crossterm.poll
