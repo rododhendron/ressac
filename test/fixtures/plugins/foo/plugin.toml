@@ -1,0 +1,6 @@
+name        = "foo"
+version     = "0.1.0"
+description = "fixture plugin used in plugin loader tests"
+
+[samples]
+roots = ["./samples"]

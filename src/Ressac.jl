@@ -22,6 +22,8 @@ include("tui_bindings.jl")
 include("tui_view.jl")
 include("tui.jl")
 include("live_api.jl")
+include("plugins.jl")
+include("plugin_handlers.jl")
 
 # Module includes added by upcoming milestones:
 #   M6: include("reservoir.jl")
@@ -33,6 +35,8 @@ export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
 export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, schedule_pattern!
 export live, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
+export register_section_handler!, unregister_section_handler!, get_section_handler
+export load_plugin, parse_manifest, discover_plugins, default_plugin_path
 # Export every @d1..@d64 macro. Doing it here keeps the macro generator
 # in live_api.jl tidy.
 for n in 1:64
@@ -128,6 +132,19 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         TUI.view(m)
     finally
         _LIVE_SCHEDULER[] = nothing
+    end
+
+    # Plugins: parse a fixture manifest if present and walk the loader
+    # to warm up TOML parsing + the discover/topo_sort paths.
+    fixture = joinpath(@__DIR__, "..", "test", "fixtures", "plugins", "foo")
+    if isfile(joinpath(fixture, "plugin.toml"))
+        try
+            m_plugin = parse_manifest(fixture)
+            discover_plugins([dirname(fixture)])
+            topo_sort([m_plugin])
+        catch
+            # Fixtures may not be present in shipped packages; ignore.
+        end
     end
 end
 
