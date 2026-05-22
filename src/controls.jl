@@ -119,3 +119,63 @@ function set(key::Symbol, pat::Pattern)
         end)
     end
 end
+
+"""
+    _control_op(key, op, val) -> (Pattern -> ControlPattern)
+
+The shared backend for every named helper. Like `set`, but composes
+with any existing `key` in each event via `op(old, new)` instead of
+overwriting. `val` is either a scalar or a Pattern (arc-intersected
+per-event).
+
+If the input event has no value at `key` yet, the new value is set
+directly (no composition with a synthetic identity — first-write is
+just a write).
+"""
+function _control_op(key::Symbol, op, val)
+    return function (p::Pattern)
+        lifted = _lift_to_control(p)
+        if val isa Pattern
+            Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+                evs_in  = lifted(s, e)
+                evs_val = val(s, e)
+                out = Event{ControlMap}[]
+                for ev_in in evs_in
+                    for ev_v in evs_val
+                        a = max(ev_in.start, ev_v.start)
+                        b = min(ev_in.stop,  ev_v.stop)
+                        a < b || continue
+                        new_cm = copy(ev_in.value)
+                        new_cm[key] = haskey(new_cm, key) ?
+                                      op(new_cm[key], ev_v.value) :
+                                      ev_v.value
+                        push!(out, Event{ControlMap}(a, b, new_cm))
+                    end
+                end
+                sort!(out, by = ev -> ev.start)
+                out
+            end)
+        else
+            Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+                inner = lifted(s, e)
+                out = Vector{Event{ControlMap}}(undef, length(inner))
+                for (i, ev) in enumerate(inner)
+                    new_cm = copy(ev.value)
+                    new_cm[key] = haskey(new_cm, key) ?
+                                  op(new_cm[key], val) :
+                                  val
+                    out[i] = Event{ControlMap}(ev.start, ev.stop, new_cm)
+                end
+                out
+            end)
+        end
+    end
+end
+
+"""
+    gain(x) -> (Pattern -> ControlPattern)
+
+Multiplicative gain. Chains via `gain(a) |> gain(b) = gain(a * b)`.
+`x` is a scalar or a pattern.
+"""
+gain(x) = _control_op(:gain, *, x)

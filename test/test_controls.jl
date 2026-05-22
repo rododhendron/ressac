@@ -96,4 +96,42 @@ using Ressac
         @test evs[2].start == 1//2
         @test evs[2].stop  == 1//1
     end
+
+    @testset "gain(scalar) sets :gain on first hit" begin
+        p = pure(:bd) |> Ressac.gain(0.8)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:gain] == 0.8
+        @test evs[1].value[:s]    === :bd
+    end
+
+    @testset "gain ∘ gain composes via multiplication" begin
+        p = pure(:bd) |> Ressac.gain(0.8) |> Ressac.gain(1.2)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:gain] ≈ 0.96
+    end
+
+    @testset "gain(pattern) — value pattern" begin
+        gp = Pattern{Float64}((s, e) -> begin
+            n = floor(Int, s)
+            base = Rational{Int64}(n)
+            evs = [Event{Float64}(max(base, s),         min(base + 1//2, e), 0.5),
+                   Event{Float64}(max(base + 1//2, s), min(base + 1//1, e), 1.0)]
+            filter!(ev -> ev.start < ev.stop, evs)
+            evs
+        end)
+        p = pure(:bd) |> Ressac.gain(gp)
+        evs = p(0//1, 1//1)
+        @test length(evs) == 2
+        @test evs[1].value[:gain] == 0.5
+        @test evs[2].value[:gain] == 1.0
+    end
+
+    @testset "gain(pattern) ∘ gain(scalar) composes (multiply)" begin
+        gp = Pattern{Float64}((s, e) -> [
+            Event{Float64}(0//1, 1//1, 0.5),
+        ])
+        p = pure(:bd) |> Ressac.gain(gp) |> Ressac.gain(2.0)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:gain] == 1.0
+    end
 end
