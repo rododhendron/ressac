@@ -38,6 +38,8 @@ export live, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
 export register_section_handler!, unregister_section_handler!, get_section_handler
 export load_plugin, parse_manifest, discover_plugins, default_plugin_path
 export SampleEntry, sample_info, list_samples, register_sample!
+export InstrumentEntry, instrument_info, list_instruments, register_instrument!
+export SynthEntry, synth_info, list_synths, register_synth!
 # Export every @d1..@d64 macro. Doing it here keeps the macro generator
 # in live_api.jl tidy.
 for n in 1:64
@@ -164,6 +166,51 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         catch
             # Fixtures may not be present in shipped packages; ignore.
         end
+    end
+
+    # Instruments + synths: warm the new dispatch path so the first
+    # instrument-backed event doesn't compile event_to_osc + _osc_value
+    # under the scheduler's wall-clock.
+    try
+        empty!(_INSTRUMENT_REGISTRY)
+        empty!(_SYNTH_REGISTRY)
+        register_instrument!(InstrumentEntry(:_pc_kick, "pc",
+            Pair{String,Any}["s" => "bd", "n" => 3, "gain" => 1.2, "lpf" => 200],
+            Dict{String,Any}("tags" => ["pc"])))
+        register_synth!(SynthEntry(:_pc_synth, "pc",
+            Dict{String,Any}("description" => "pc")))
+        instrument_info(:_pc_kick)
+        synth_info(:_pc_synth)
+        list_instruments(r"_pc")
+        list_synths(r"_pc")
+        # Exercise the new event_to_osc dispatch (registry hit + miss).
+        event_to_osc(Event(0//1, 1//1, :_pc_kick))
+        event_to_osc(Event(0//1, 1//1, :_pc_unmapped))
+        # Plugin handler entry points for [instruments] and [synths].
+        h_i = get_section_handler(:instruments)
+        h_s = get_section_handler(:synths)
+        h_i !== nothing && h_i("/tmp",
+            Dict("_pc_warm" => Dict{String,Any}("s" => "bd", "gain" => 1.0)),
+            "_pc")
+        h_s !== nothing && h_s("/tmp",
+            Dict("_pc_warm" => Dict{String,Any}("tags" => ["pc"])),
+            "_pc")
+        empty!(_INSTRUMENT_REGISTRY)
+        empty!(_SYNTH_REGISTRY)
+    catch
+        empty!(_INSTRUMENT_REGISTRY)
+        empty!(_SYNTH_REGISTRY)
+    end
+
+    # Warm the TUI ex-command paths for instruments/synths/guide so first
+    # invocation in a live session is instant.
+    try
+        m2 = LiveModel(; scheduler=sched)
+        _execute_ex_command!(m2, "guide")
+        _execute_ex_command!(m2, "instruments")
+        _execute_ex_command!(m2, "synths")
+    catch
+        # Best-effort: any failure here just leaves first invocation slower.
     end
 end
 
