@@ -8,9 +8,11 @@ default:
 test:
     julia --project=. -e 'using Pkg; Pkg.test()'
 
-# Open a Julia REPL with the project activated
+# Open a Julia REPL with the project activated.
+# `-t auto` so the scheduler thread (Threads.@spawn) actually runs in
+# parallel with `Core.eval` / TUI / IO blocks.
 repl:
-    julia --project=.
+    julia --project=. -t auto
 
 # Offline smoke-test of the M3 pipeline (no audio, no TUI)
 demo:
@@ -20,9 +22,12 @@ demo:
 ping:
     julia --project=. scripts/ping.jl
 
-# Launch the Ressac TUI (needs `just audio` running elsewhere for sound)
+# Launch the Ressac TUI (needs `just audio` running elsewhere for sound).
+# `-t auto` is REQUIRED — without real threads, Threads.@spawn falls back
+# to @async, and the scheduler task can never run while Crossterm.poll
+# blocks the main thread (no UDP shipped → no sound).
 live:
-    julia --project=. scripts/live.jl
+    julia --project=. -t auto scripts/live.jl
 
 # Boot scsynth + SuperDirt on UDP 57120 (call inside `nix develop`)
 audio:
