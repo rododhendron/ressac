@@ -179,3 +179,41 @@ Multiplicative gain. Chains via `gain(a) |> gain(b) = gain(a * b)`.
 `x` is a scalar or a pattern.
 """
 gain(x) = _control_op(:gain, *, x)
+
+"""
+    lpf(x) — low-pass filter cutoff (Hz). Composes via `min`
+    (the more restrictive cutoff wins).
+"""
+lpf(x) = _control_op(:lpf, min, x)
+
+"""
+    hpf(x) — high-pass filter cutoff (Hz). Composes via `max`.
+"""
+hpf(x) = _control_op(:hpf, max, x)
+
+"""
+    speed(x) — sample playback speed. Composes multiplicatively.
+"""
+speed(x) = _control_op(:speed, *, x)
+
+# Binary "overwrite" op: ignore the old value, take the new one.
+# Used as the op for helpers that don't make musical sense to compose
+# arithmetically (pan, room, delay, shape, n).
+_overwrite(_old, new) = new
+
+"""
+    pan(x) — stereo pan, overwrite semantics.
+    n(x) — sample variant index, overwrite.
+    room(x) — reverb amount, overwrite.
+    delay(x) — delay send level, overwrite.
+    shape(x) — waveshaping amount, overwrite.
+
+All five last-write-wins inside a chain. They are not multiplicative
+because the musical concept doesn't compose that way (you don't want
+`pan(0.5) |> pan(0.3)` to mean pan = 0.15).
+"""
+pan(x)   = _control_op(:pan,   _overwrite, x)
+n(x)     = _control_op(:n,     _overwrite, x)
+room(x)  = _control_op(:room,  _overwrite, x)
+delay(x) = _control_op(:delay, _overwrite, x)
+shape(x) = _control_op(:shape, _overwrite, x)

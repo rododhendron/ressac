@@ -134,4 +134,53 @@ using Ressac
         evs = p(0//1, 1//1)
         @test evs[1].value[:gain] == 1.0
     end
+
+    @testset "lpf composes via min (most restrictive cutoff wins)" begin
+        p = pure(:bd) |> Ressac.lpf(2000) |> Ressac.lpf(500)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:lpf] == 500
+    end
+
+    @testset "lpf first write just sets" begin
+        p = pure(:bd) |> Ressac.lpf(2000)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:lpf] == 2000
+    end
+
+    @testset "hpf composes via max" begin
+        p = pure(:bd) |> Ressac.hpf(100) |> Ressac.hpf(500)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:hpf] == 500
+    end
+
+    @testset "speed composes via multiplication" begin
+        p = pure(:bd) |> Ressac.speed(2.0) |> Ressac.speed(0.5)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:speed] ≈ 1.0
+    end
+
+    @testset "pan overwrites (last write wins)" begin
+        p = pure(:bd) |> Ressac.pan(0.5) |> Ressac.pan(0.3)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:pan] == 0.3
+    end
+
+    @testset "n, room, delay, shape are overwrite" begin
+        p = pure(:bd) |>
+            Ressac.n(2)     |> Ressac.n(5)     |>
+            Ressac.room(0.1) |> Ressac.room(0.8) |>
+            Ressac.delay(0.2) |> Ressac.delay(0.1) |>
+            Ressac.shape(0.5) |> Ressac.shape(0.9)
+        v = p(0//1, 1//1)[1].value
+        @test v[:n]     == 5
+        @test v[:room]  == 0.8
+        @test v[:delay] == 0.1
+        @test v[:shape] == 0.9
+    end
+
+    @testset "overwrite helpers accept pattern values too" begin
+        np = Pattern{Int}((s, e) -> [Event{Int}(0//1, 1//1, 7)])
+        p = pure(:bd) |> Ressac.n(np)
+        @test p(0//1, 1//1)[1].value[:n] == 7
+    end
 end
