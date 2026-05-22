@@ -231,6 +231,31 @@ using Ressac
         empty!(Ressac._INSTRUMENT_REGISTRY)
     end
 
+    @testset "[synths] handler populates registry with metadata" begin
+        empty!(Ressac._SYNTH_REGISTRY)
+        m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withinst"))
+        h = Ressac.get_section_handler(:synths)
+        @test h !== nothing
+        h(m.dir, m.sections["synths"], m.name)
+
+        ent = Ressac.synth_info(:bassline)
+        @test ent !== nothing
+        @test ent.plugin == "withinst"
+        @test ent.metadata["tags"] == ["bass", "low"]
+        @test ent.metadata["description"] == "warm sub bass"
+        empty!(Ressac._SYNTH_REGISTRY)
+    end
+
+    @testset "[synths] non-table body logs error, skips entry" begin
+        empty!(Ressac._SYNTH_REGISTRY)
+        h = Ressac.get_section_handler(:synths)
+        @test_logs (:error, r"synths.bogus.*must be a table") match_mode=:any begin
+            h("/tmp", Dict("bogus" => "not a table"), "ghost")
+        end
+        @test Ressac.synth_info(:bogus) === nothing
+        empty!(Ressac._SYNTH_REGISTRY)
+    end
+
     @testset "[samples].roots still sends /dirt/loadSampleFolder (back-compat)" begin
         empty!(Ressac._SAMPLE_REGISTRY)
         mock = MockOSCClient()

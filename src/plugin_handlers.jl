@@ -231,3 +231,27 @@ function _handle_instruments(plugin_dir, data, plugin_name)
 end
 
 register_section_handler!(:instruments, _handle_instruments)
+
+"""
+    _handle_synths(plugin_dir, data, plugin_name)
+
+Parse `[synths.<name>]` sub-tables. A synth entry is purely descriptive —
+all keys (`tags`, `description`, anything else) are stuffed into metadata.
+The actual synthdef is defined via `[synthdefs]`; `[synths]` is the
+introspection layer.
+"""
+function _handle_synths(plugin_dir, data, plugin_name)
+    data isa AbstractDict ||
+        throw(ArgumentError("plugin '$plugin_name' [synths] must be a table"))
+    for (name, body) in data
+        body isa AbstractDict || begin
+            @error "plugin '$plugin_name' [synths.$name] must be a table"
+            continue
+        end
+        metadata = Dict{String,Any}(string(k) => v for (k, v) in body)
+        register_synth!(SynthEntry(Symbol(name), plugin_name, metadata))
+    end
+    return nothing
+end
+
+register_section_handler!(:synths, _handle_synths)
