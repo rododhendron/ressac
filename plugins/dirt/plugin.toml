@@ -1,0 +1,6 @@
+name        = "dirt"
+version     = "0.1.0"
+description = "Dirt-Samples (vendored by the Nix flake via $DIRT_SAMPLES_PATH)"
+
+[samples]
+roots = ["$DIRT_SAMPLES_PATH"]

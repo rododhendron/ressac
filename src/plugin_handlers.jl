@@ -23,6 +23,26 @@ function _audio_files_in(dir::AbstractString)
 end
 
 """
+    _expand_path(p) -> String
+
+Expand `~` and `\$VAR` / `\${VAR}` references in a path. Used by the
+`[samples]` handler so manifest authors can point at locations defined
+by their environment (e.g. `\$DIRT_SAMPLES_PATH` from the Nix flake).
+
+Unknown vars expand to empty (matching shell behaviour); `~` resolves
+via `homedir()`. Plain paths pass through unchanged.
+"""
+function _expand_path(p::AbstractString)
+    s = String(p)
+    s = startswith(s, "~/") ? joinpath(homedir(), s[3:end]) : s
+    s = s == "~" ? homedir() : s
+    # Replace ${VAR} first, then $VAR.
+    s = replace(s, r"\$\{(\w+)\}" => sub -> get(ENV, sub[3:end-1], ""))
+    s = replace(s, r"\$(\w+)" => sub -> get(ENV, sub[2:end], ""))
+    return s
+end
+
+"""
     _osc_value(v)
 
 Convert a TOML-parsed value into something that the existing OSC encoder
@@ -109,7 +129,8 @@ function _handle_samples(plugin_dir, data, plugin_name)
     roots isa AbstractVector ||
         throw(ArgumentError("plugin '$plugin_name' [samples] roots must be an array"))
     for r in roots
-        path = isabspath(r) ? r : joinpath(plugin_dir, r)
+        r_expanded = _expand_path(r)
+        path = isabspath(r_expanded) ? r_expanded : joinpath(plugin_dir, r_expanded)
         path = abspath(path)
         if !isdir(path)
             @error "plugin '$plugin_name' [samples]: path '$path' not found"
@@ -132,7 +153,8 @@ function _handle_samples(plugin_dir, data, plugin_name)
     bank isa AbstractDict ||
         throw(ArgumentError("plugin '$plugin_name' [samples.bank] must be a table"))
     for (name, rel) in bank
-        path = isabspath(rel) ? rel : joinpath(plugin_dir, rel)
+        rel_expanded = _expand_path(rel)
+        path = isabspath(rel_expanded) ? rel_expanded : joinpath(plugin_dir, rel_expanded)
         path = abspath(path)
         variants = if isfile(path)
             [path]
