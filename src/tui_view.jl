@@ -13,10 +13,12 @@ function TUI.view(m::LiveModel)
     editor = _editor_pane(m)
     hint   = _mode_hint_line(m)
     cmd    = _command_line(m)
+    compl  = _completion_hint_line(m)
     logs   = _logs_pane(m)
     TUI.Layout(;
-        widgets     = [status, editor, hint, cmd, logs],
-        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1), TUI.Min(1), TUI.Min(8)],
+        widgets     = [status, editor, hint, cmd, compl, logs],
+        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1),
+                       TUI.Min(1), TUI.Min(1), TUI.Min(8)],
         orientation = :vertical,
     )
 end
@@ -24,6 +26,22 @@ end
 function _mode_hint_line(m::LiveModel)
     text = "[" * uppercase(String(m.mode)) * "] " * _mode_hint(m.mode)
     _TextLines([text], TUI.Crayon(; foreground=:cyan))
+end
+
+function _completion_hint_line(m::LiveModel)
+    if isempty(m.completions)
+        return _TextLines([""], TUI.Crayon())
+    end
+    parts = String[]
+    for (i, cand) in enumerate(m.completions)
+        if i == m.completion_cycle_idx
+            push!(parts, "[" * cand * "]")
+        else
+            push!(parts, cand)
+        end
+    end
+    text = join(parts, "  ")
+    _TextLines([text], TUI.Crayon(; foreground=:magenta))
 end
 
 function _activity_widget(m::LiveModel)
