@@ -85,4 +85,39 @@ using Ressac
             @test any(m -> m.name == "foo", found)
         end
     end
+
+    @testset "topological sort" begin
+        mk(name, deps=String[]) = Ressac.PluginManifest(
+            name, "0.0.0", "test", "/fake/$name", Dict{String,Any}(), deps)
+
+        @testset "no dependencies → stable order" begin
+            ms = [mk("a"), mk("b"), mk("c")]
+            sorted = Ressac.topo_sort(ms)
+            @test [m.name for m in sorted] == ["a", "b", "c"]
+        end
+
+        @testset "respects depends_on" begin
+            ms = [mk("c", ["a"]), mk("a"), mk("b", ["a"])]
+            sorted = Ressac.topo_sort(ms)
+            names = [m.name for m in sorted]
+            @test findfirst(==("a"), names) < findfirst(==("c"), names)
+            @test findfirst(==("a"), names) < findfirst(==("b"), names)
+        end
+
+        @testset "missing dep is logged and the plugin is skipped" begin
+            ms = [mk("needs-ghost", ["ghost"])]
+            sorted = @test_logs (:warn, r"ghost") match_mode=:any begin
+                Ressac.topo_sort(ms)
+            end
+            @test isempty(sorted)
+        end
+
+        @testset "cycle is detected and breaks the cycle (both skipped)" begin
+            ms = [mk("a", ["b"]), mk("b", ["a"])]
+            sorted = @test_logs (:warn, r"cycle") match_mode=:any begin
+                Ressac.topo_sort(ms)
+            end
+            @test isempty(sorted)
+        end
+    end
 end

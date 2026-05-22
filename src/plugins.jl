@@ -137,3 +137,49 @@ function discover_plugins(path::AbstractVector{<:AbstractString})
     end
     return results
 end
+
+"""
+    topo_sort(manifests::Vector{PluginManifest}) -> Vector{PluginManifest}
+
+Kahn's algorithm with stable secondary order: among plugins with no
+remaining deps, pick the one that appeared first in `manifests`.
+
+Plugins that reference a missing dep are logged and dropped. If a
+cycle is detected, every plugin still in the cycle is logged and
+dropped.
+"""
+function topo_sort(manifests::AbstractVector{PluginManifest})
+    by_name = Dict{String,PluginManifest}()
+    for m in manifests
+        by_name[m.name] = m
+    end
+    valid = PluginManifest[]
+    for m in manifests
+        missing_deps = [d for d in m.depends_on if !haskey(by_name, d)]
+        if !isempty(missing_deps)
+            @warn "plugin '$(m.name)' references missing dep(s) $(missing_deps); skipping"
+            continue
+        end
+        push!(valid, m)
+    end
+    by_name = Dict(m.name => m for m in valid)
+    remaining_deps = Dict(m.name => Set{String}(filter(d -> haskey(by_name, d), m.depends_on)) for m in valid)
+    out = PluginManifest[]
+    order = Dict(m.name => i for (i, m) in enumerate(valid))
+    while !isempty(remaining_deps)
+        ready = sort([n for (n, ds) in remaining_deps if isempty(ds)];
+                     by = n -> order[n])
+        if isempty(ready)
+            @warn "plugin dependency cycle detected involving: $(sort(collect(keys(remaining_deps)))); skipping"
+            break
+        end
+        for name in ready
+            push!(out, by_name[name])
+            delete!(remaining_deps, name)
+            for (_, ds) in remaining_deps
+                delete!(ds, name)
+            end
+        end
+    end
+    return out
+end
