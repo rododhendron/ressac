@@ -39,9 +39,22 @@ function _handle_insert!(m::LiveModel, evt)
     elseif code == "Down"
         _move_cursor!(m, 0, +1)
     elseif length(code) == 1
-        _insert_char!(m, first(code))
+        c = first(code)
+        # Restrict insertion to printable ASCII. Multi-byte chars (¹, é,
+        # emojis) and control bytes that some terminals fire for exotic
+        # keys (AltGr combos, dead keys, etc.) are ignored — they have no
+        # use in a live-coding code buffer and cause string-indexing
+        # crashes if they sneak in.
+        if _is_typable_ascii(c)
+            _insert_char!(m, c)
+        else
+            _push_log!(m, "[WARN] ignored non-ASCII key: $(repr(c))")
+        end
     end
 end
+
+_is_typable_ascii(c::AbstractChar) =
+    ncodeunits(c) == 1 && (isprint(c) || c == ' ')
 
 # ---------------------------------------------------------------------
 # Normal mode
@@ -298,7 +311,8 @@ function _handle_command!(m::LiveModel, evt)
         isempty(m.command_buffer) && return
         m.command_buffer = m.command_buffer[1:prevind(m.command_buffer, end)]
     elseif length(code) == 1
-        m.command_buffer *= code
+        c = first(code)
+        _is_typable_ascii(c) && (m.command_buffer *= code)
     end
 end
 

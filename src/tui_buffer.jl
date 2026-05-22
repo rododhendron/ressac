@@ -38,10 +38,14 @@ end
 function _backspace!(m::LiveModel)
     if m.cursor_col > 1
         line = m.buffer[m.cursor_row]
-        col = m.cursor_col
-        new_line = line[1:prevind(line, col - 1)] * (col > lastindex(line) ? "" : line[col:end])
-        m.buffer[m.cursor_row] = new_line
-        m.cursor_col -= 1
+        # `prevind(line, cursor_col)` is the start byte of the codepoint
+        # immediately before the cursor. Deleting it shrinks the line by
+        # `ncodeunits` of that codepoint (1 for ASCII, more for UTF-8).
+        del_start = prevind(line, m.cursor_col)
+        before = del_start > 1 ? line[1:prevind(line, del_start)] : ""
+        after  = m.cursor_col > lastindex(line) ? "" : line[m.cursor_col:end]
+        m.buffer[m.cursor_row] = before * after
+        m.cursor_col = del_start
     elseif m.cursor_row > 1
         prev = m.buffer[m.cursor_row - 1]
         cur  = m.buffer[m.cursor_row]
