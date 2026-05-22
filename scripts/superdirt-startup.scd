@@ -36,7 +36,17 @@ s.waitForBoot({
     // Load the SynthDefs bundled with SuperDirt — without this, names
     // like `sin`, `square`, `saw`, `super808`, `supersnare`, `supersaw`,
     // `superhammond`, etc. resolve to "instrument not found".
-    ~dirt.loadSynthDefs;
+    // The class method is the right entry point; the instance method
+    // `~dirt.loadSynthDefs` exists but takes a Boolean that defaults
+    // to nil and silently no-ops.
+    SuperDirt.loadSynthDefs;
+    s.sync;
+    ("[boot] SynthDescLib has " ++ SynthDescLib.global.synthDescs.size.asString ++ " synthdefs").postln;
+    if(SynthDescLib.global.synthDescs.includesKey(\sin)) {
+        "[boot] ✓ tutorial synthdefs (sin/square/saw) loaded".postln;
+    } {
+        "[boot] ✗ sin not found — synthdef directory may be missing".warn;
+    };
     ~dirt.start(57120, 0 ! 12);
 
     // OSCdefs added for Ressac plugin handlers.
