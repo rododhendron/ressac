@@ -258,3 +258,70 @@ function _load_plugins(path::AbstractVector{<:AbstractString} = default_plugin_p
     end
     return nothing
 end
+
+"""
+    SampleEntry(name, plugin, bank_path, variants, metadata)
+
+Identity of a single sample bank that's been loaded into Ressac.
+Returned by [`sample_info`](@ref) and [`list_samples`](@ref).
+
+- `name`        — Symbol used in patterns (`:kicky` → `s "kicky"`)
+- `plugin`      — name of the plugin that contributed this bank
+- `bank_path`   — absolute path to the file or directory backing the bank
+- `variants`    — sorted absolute paths of the underlying audio files
+                  (1 element for file-banks, ≥1 for directory-banks)
+- `metadata`    — verbatim contents of `[samples.metadata.<name>]`,
+                  empty Dict if none was provided
+"""
+struct SampleEntry
+    name::Symbol
+    plugin::String
+    bank_path::String
+    variants::Vector{String}
+    metadata::Dict{String,Any}
+end
+
+"""
+    _SAMPLE_REGISTRY
+
+Module-level registry of every sample bank that's currently loaded,
+keyed by short name. Populated by the `[samples]` handler at plugin load.
+"""
+const _SAMPLE_REGISTRY = Dict{Symbol,SampleEntry}()
+
+"""
+    register_sample!(entry::SampleEntry)
+
+Register a sample bank. If `entry.name` is already registered, the new
+entry is skipped and a `[WARN]` is logged (first-wins, same convention
+as plugin shadowing).
+"""
+function register_sample!(entry::SampleEntry)
+    if haskey(_SAMPLE_REGISTRY, entry.name)
+        existing = _SAMPLE_REGISTRY[entry.name]
+        @warn "sample bank '$(entry.name)' shadowed by plugin '$(entry.plugin)' (already loaded from '$(existing.plugin)')"
+        return entry
+    end
+    _SAMPLE_REGISTRY[entry.name] = entry
+    return entry
+end
+
+"""
+    sample_info(name::Symbol) -> Union{SampleEntry, Nothing}
+"""
+sample_info(name::Symbol) = get(_SAMPLE_REGISTRY, name, nothing)
+
+"""
+    list_samples(pattern::Regex = r"") -> Vector{SampleEntry}
+
+All registered sample banks whose `name` matches `pattern`, sorted by
+`(plugin, name)`. Default pattern matches everything.
+"""
+function list_samples(pattern::Regex = r"")
+    matches = SampleEntry[]
+    for (name, entry) in _SAMPLE_REGISTRY
+        occursin(pattern, String(name)) && push!(matches, entry)
+    end
+    sort!(matches, by = e -> (e.plugin, String(e.name)))
+    return matches
+end
