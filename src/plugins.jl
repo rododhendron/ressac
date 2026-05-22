@@ -97,3 +97,43 @@ function parse_manifest(plugin_dir::AbstractString)
         plugin_dir, sections, String.(depends_on),
     )
 end
+
+"""
+    discover_plugins(path::Vector{<:AbstractString}) -> Vector{PluginManifest}
+
+Walk each directory in `path` (in order), looking for subdirectories
+that contain a `plugin.toml`. Returns parsed manifests. First-hit-wins
+per plugin name: if `foo` is found in path[1] AND path[2], path[1]'s
+version is kept and a `[WARN] plugin 'foo' shadowed by ...` is logged.
+
+Parse errors on individual manifests are caught and logged at
+`@warn` level; the plugin is excluded from the result.
+
+Non-existent or non-directory entries in `path` are silently skipped.
+"""
+function discover_plugins(path::AbstractVector{<:AbstractString})
+    results = PluginManifest[]
+    seen = Dict{String,String}()
+    for root in path
+        isdir(root) || continue
+        for entry in readdir(root; join=false)
+            plugin_dir = joinpath(root, entry)
+            isdir(plugin_dir) || continue
+            isfile(joinpath(plugin_dir, "plugin.toml")) || continue
+            local m
+            try
+                m = parse_manifest(plugin_dir)
+            catch err
+                @warn "skipping plugin at $plugin_dir: $(sprint(showerror, err))"
+                continue
+            end
+            if haskey(seen, m.name)
+                @warn "plugin '$(m.name)' shadowed by $plugin_dir (already loaded from $(seen[m.name]))"
+                continue
+            end
+            seen[m.name] = m.dir
+            push!(results, m)
+        end
+    end
+    return results
+end

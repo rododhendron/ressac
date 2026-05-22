@@ -53,4 +53,36 @@ using Ressac
                 joinpath(fixtures, "no-manifest"))
         end
     end
+
+    @testset "search path resolution" begin
+        fixtures      = joinpath(@__DIR__, "fixtures", "plugins")
+        fixtures_alt  = joinpath(@__DIR__, "fixtures", "plugins-alt")
+
+        @testset "discovers good plugins; bad ones logged but excluded" begin
+            results = @test_logs (:warn, r"bad-name") match_mode=:any begin
+                Ressac.discover_plugins([fixtures])
+            end
+            names = [m.name for m in results]
+            @test "foo" in names
+            @test !("wrong-name" in names)
+            @test !("no-manifest" in names)
+        end
+
+        @testset "first hit wins on a multi-path search" begin
+            found = Ressac.discover_plugins([fixtures, fixtures_alt])
+            foo = only(filter(m -> m.name == "foo", found))
+            @test foo.version == "0.1.0"
+        end
+
+        @testset "reverse order: alt-then-primary picks alt" begin
+            found = Ressac.discover_plugins([fixtures_alt, fixtures])
+            foo = only(filter(m -> m.name == "foo", found))
+            @test foo.version == "9.9.9"
+        end
+
+        @testset "non-existent path is silently skipped" begin
+            found = Ressac.discover_plugins(["/no/such/path", fixtures])
+            @test any(m -> m.name == "foo", found)
+        end
+    end
 end
