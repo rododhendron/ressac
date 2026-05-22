@@ -37,6 +37,7 @@ export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, 
 export live, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
 export register_section_handler!, unregister_section_handler!, get_section_handler
 export load_plugin, parse_manifest, discover_plugins, default_plugin_path
+export SampleEntry, sample_info, list_samples, register_sample!
 # Export every @d1..@d64 macro. Doing it here keeps the macro generator
 # in live_api.jl tidy.
 for n in 1:64
@@ -142,6 +143,24 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
             m_plugin = parse_manifest(fixture)
             discover_plugins([dirname(fixture)])
             topo_sort([m_plugin])
+        catch
+            # Fixtures may not be present in shipped packages; ignore.
+        end
+    end
+
+    # Sample banks: warm the registry helpers so first-session preview /
+    # listing is cheap.
+    bank_fixture = joinpath(@__DIR__, "..", "test", "fixtures", "plugins", "withbanks")
+    if isfile(joinpath(bank_fixture, "plugin.toml"))
+        try
+            empty!(_SAMPLE_REGISTRY)
+            mb = parse_manifest(bank_fixture)
+            register_sample!(SampleEntry(:_pc_kicky, "withbanks",
+                joinpath(bank_fixture, "curated/kicks/heavy_v3.wav"),
+                String[], Dict{String,Any}("bpm" => 120)))
+            sample_info(:_pc_kicky)
+            list_samples(r"_pc")
+            empty!(_SAMPLE_REGISTRY)
         catch
             # Fixtures may not be present in shipped packages; ignore.
         end
