@@ -197,12 +197,29 @@ function _handle_normal!(m::LiveModel, evt)
         return
     end
 
+    # `r<char>` chord — replace the char under the cursor with the next
+    # keystroke, then stay in normal mode.
+    if m.pending_chord === :r
+        m.pending_chord = :none
+        if length(code) == 1 && _is_typable_ascii(only(code))
+            _replace_char_under_cursor!(m, only(code))
+        end
+        return
+    end
+
     if code == "i"
         m.mode = :insert
+    elseif code == "I"
+        # Insert at first non-blank char of the line.
+        m.mode = :insert
+        m.cursor_col = _first_non_blank(m.buffer[m.cursor_row])
     elseif code == "a"
         m.mode = :insert
         line = m.buffer[m.cursor_row]
         m.cursor_col = min(m.cursor_col + 1, lastindex(line) + 1)
+    elseif code == "A"
+        m.mode = :insert
+        m.cursor_col = lastindex(m.buffer[m.cursor_row]) + 1
     elseif code == "o"
         insert!(m.buffer, m.cursor_row + 1, "")
         m.cursor_row += 1
@@ -212,6 +229,36 @@ function _handle_normal!(m::LiveModel, evt)
         insert!(m.buffer, m.cursor_row, "")
         m.cursor_col = 1
         m.mode = :insert
+    elseif code == "^"
+        m.cursor_col = _first_non_blank(m.buffer[m.cursor_row])
+    elseif code == "D"
+        # Delete from cursor to end of line.
+        _delete_to_eol!(m)
+    elseif code == "C"
+        # Change from cursor to end of line: delete + enter insert.
+        _delete_to_eol!(m)
+        m.mode = :insert
+    elseif code == "S"
+        # Substitute line: clear the line and enter insert.
+        m.buffer[m.cursor_row] = ""
+        m.cursor_col = 1
+        m.mode = :insert
+    elseif code == "s"
+        # Substitute char: delete the char under cursor, enter insert.
+        _delete_char_under_cursor!(m)
+        m.mode = :insert
+    elseif code == "J"
+        # Join the line below into the current line (with a separating space).
+        if m.cursor_row < length(m.buffer)
+            curr = m.buffer[m.cursor_row]
+            nxt  = m.buffer[m.cursor_row + 1]
+            joiner = (isempty(curr) || isempty(nxt)) ? "" : " "
+            m.buffer[m.cursor_row] = curr * joiner * lstrip(nxt)
+            deleteat!(m.buffer, m.cursor_row + 1)
+            m.cursor_col = lastindex(curr) + 1
+        end
+    elseif code == "r"
+        m.pending_chord = :r
     elseif code == "h" || code == "Left"
         _move_cursor!(m, -1, 0)
     elseif code == "l" || code == "Right"
@@ -836,6 +883,70 @@ function _preview_under_cursor!(m::LiveModel)
 end
 
 _is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'
+
+# ---------------------------------------------------------------------
+# Vim-style line helpers
+# ---------------------------------------------------------------------
+
+"""
+    _first_non_blank(line) -> Int
+
+Byte index of the first non-blank char of `line`, or 1 for an empty
+or all-blank line. Used by `^` and `I`.
+"""
+function _first_non_blank(line::AbstractString)
+    isempty(line) && return 1
+    for i in eachindex(line)
+        line[i] in (' ', '\t') || return i
+    end
+    return 1
+end
+
+"""
+    _delete_to_eol!(m)
+
+`D` — drop everything from `cursor_col` to end of line. Cursor stays
+on the previous-char position (vim-style).
+"""
+function _delete_to_eol!(m::LiveModel)
+    line = m.buffer[m.cursor_row]
+    m.cursor_col > lastindex(line) && return
+    new_line = line[1:prevind(line, m.cursor_col)]
+    m.buffer[m.cursor_row] = new_line
+    m.cursor_col = max(1, lastindex(new_line))
+end
+
+"""
+    _delete_char_under_cursor!(m)
+
+Drops one char at the cursor position. No-op if the line is empty or
+the cursor is past the last char. Used by `s` and (in shape) `x`.
+"""
+function _delete_char_under_cursor!(m::LiveModel)
+    line = m.buffer[m.cursor_row]
+    m.cursor_col <= lastindex(line) || return
+    head = line[1:prevind(line, m.cursor_col)]
+    tail = m.cursor_col + 1 > lastindex(line) ? "" :
+           line[nextind(line, m.cursor_col):end]
+    m.buffer[m.cursor_row] = head * tail
+    new_line = m.buffer[m.cursor_row]
+    m.cursor_col = min(m.cursor_col, max(1, lastindex(new_line)))
+end
+
+"""
+    _replace_char_under_cursor!(m, c)
+
+`r<c>` — overwrite the char at the cursor with `c` and stay put. No-op
+if the cursor is past the line.
+"""
+function _replace_char_under_cursor!(m::LiveModel, c::AbstractChar)
+    line = m.buffer[m.cursor_row]
+    m.cursor_col <= lastindex(line) || return
+    head = line[1:prevind(line, m.cursor_col)]
+    tail = m.cursor_col + 1 > lastindex(line) ? "" :
+           line[nextind(line, m.cursor_col):end]
+    m.buffer[m.cursor_row] = head * string(c) * tail
+end
 
 """
     _save_current_as_instrument!(m, name)
