@@ -1,0 +1,15 @@
+name        = "withbanks"
+version     = "0.1.0"
+description = "fixture exercising [samples.bank] and [samples.metadata]"
+
+[samples.bank]
+kicky  = "./curated/kicks/heavy_v3.wav"
+snares = "./curated/snares"
+
+[samples.metadata.kicky]
+bpm  = 120
+key  = "C"
+tags = ["heavy", "subby"]
+
+[samples.metadata.snares]
+tags = ["acoustic"]

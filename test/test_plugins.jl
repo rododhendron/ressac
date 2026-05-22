@@ -227,4 +227,63 @@ using Ressac
             end
         end
     end
+
+    @testset "sample registry" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+
+        @testset "register_sample! stores by name and looks up by sample_info" begin
+            ent = Ressac.SampleEntry(:kicky, "funkit", "/tmp/k.wav",
+                                     ["/tmp/k.wav"], Dict{String,Any}("bpm" => 120))
+            Ressac.register_sample!(ent)
+            got = Ressac.sample_info(:kicky)
+            @test got !== nothing
+            @test got.name == :kicky
+            @test got.plugin == "funkit"
+            @test got.variants == ["/tmp/k.wav"]
+            @test got.metadata["bpm"] == 120
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+
+        @testset "sample_info returns nothing for unknown names" begin
+            @test Ressac.sample_info(:does_not_exist) === nothing
+        end
+
+        @testset "shadow: second registration with same name warns and is skipped" begin
+            a = Ressac.SampleEntry(:dup, "p1", "/a", ["/a"], Dict{String,Any}())
+            b = Ressac.SampleEntry(:dup, "p2", "/b", ["/b"], Dict{String,Any}())
+            Ressac.register_sample!(a)
+            @test_logs (:warn, r"dup.*shadow") match_mode=:any begin
+                Ressac.register_sample!(b)
+            end
+            @test Ressac.sample_info(:dup).plugin == "p1"
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+
+        @testset "list_samples returns entries sorted by plugin then name" begin
+            for ent in [
+                Ressac.SampleEntry(:b, "z", "/x", ["/x"], Dict{String,Any}()),
+                Ressac.SampleEntry(:a, "z", "/y", ["/y"], Dict{String,Any}()),
+                Ressac.SampleEntry(:c, "a", "/z", ["/z"], Dict{String,Any}()),
+            ]
+                Ressac.register_sample!(ent)
+            end
+            ordered = Ressac.list_samples()
+            @test [(e.plugin, e.name) for e in ordered] ==
+                  [("a", :c), ("z", :a), ("z", :b)]
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+
+        @testset "list_samples filters by regex" begin
+            for ent in [
+                Ressac.SampleEntry(:bd, "p", "/1", ["/1"], Dict{String,Any}()),
+                Ressac.SampleEntry(:sn, "p", "/2", ["/2"], Dict{String,Any}()),
+                Ressac.SampleEntry(:bd2, "p", "/3", ["/3"], Dict{String,Any}()),
+            ]
+                Ressac.register_sample!(ent)
+            end
+            kicks = Ressac.list_samples(r"^bd")
+            @test sort([e.name for e in kicks]) == [:bd, :bd2]
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
 end

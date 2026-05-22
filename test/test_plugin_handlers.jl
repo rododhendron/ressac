@@ -96,4 +96,104 @@ using Ressac
             Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
+
+    @testset "_audio_files_in returns sorted wav/aiff/flac, skips others" begin
+        mktempdir() do d
+            for f in ["b.wav", "a.wav", "x.txt", "c.aiff", "d.flac", "skip.ds_store"]
+                touch(joinpath(d, f))
+            end
+            files = Ressac._audio_files_in(d)
+            @test basename.(files) == ["a.wav", "b.wav", "c.aiff", "d.flac"]
+            @test all(isabspath, files)
+        end
+    end
+
+    @testset "_audio_files_in missing dir returns empty" begin
+        @test isempty(Ressac._audio_files_in("/no/such/path"))
+    end
+
+    @testset "[samples.bank] populates registry — file entry" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withbanks"))
+            h = Ressac.get_section_handler(:samples)
+            h(m.dir, m.sections["samples"], m.name)
+
+            ent = Ressac.sample_info(:kicky)
+            @test ent !== nothing
+            @test ent.plugin == "withbanks"
+            @test length(ent.variants) == 1
+            @test endswith(ent.variants[1], "/curated/kicks/heavy_v3.wav")
+            @test ent.metadata["bpm"] == 120
+            @test ent.metadata["tags"] == ["heavy", "subby"]
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "[samples.bank] populates registry — directory entry, sorted variants" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withbanks"))
+            h = Ressac.get_section_handler(:samples)
+            h(m.dir, m.sections["samples"], m.name)
+
+            ent = Ressac.sample_info(:snares)
+            @test ent !== nothing
+            @test length(ent.variants) == 2
+            @test basename.(ent.variants) == ["s1.wav", "s2.wav"]
+            @test ent.metadata["tags"] == ["acoustic"]
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "[samples.bank] sends /dirt/registerSample per bank entry" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withbanks"))
+            h = Ressac.get_section_handler(:samples)
+            h(m.dir, m.sections["samples"], m.name)
+
+            register_msgs = [Ressac.decode_message(b) for b in mock.sent
+                             if Ressac.decode_message(b).address == "/dirt/registerSample"]
+            names_sent = sort([msg.args[1] for msg in register_msgs])
+            @test names_sent == ["kicky", "snares"]
+            kicky = only(filter(m -> m.args[1] == "kicky", register_msgs))
+            @test endswith(kicky.args[2], "/curated/kicks/heavy_v3.wav")
+            @test isabspath(kicky.args[2])
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "[samples].roots still sends /dirt/loadSampleFolder (back-compat)" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withsamples"))
+            h = Ressac.get_section_handler(:samples)
+            h(m.dir, m.sections["samples"], m.name)
+
+            addrs = [Ressac.decode_message(b).address for b in mock.sent]
+            @test "/dirt/loadSampleFolder" in addrs
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
 end

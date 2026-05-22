@@ -261,4 +261,147 @@ end
         Ressac._dispatch_key!(m, _fake_key("Enter"))
         @test any(l -> occursin("unknown command", l), m.logs)
     end
+
+    @testset "normal K previews sample under cursor" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
+                "/tmp/k.wav", ["/tmp/k.wav"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["@d1 p\"kicky sn\""]
+            m.cursor_row = 1
+            m.cursor_col = 9
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test length(play) == 1
+            @test play[1].args == Any["s", "kicky"]
+            @test any(l -> occursin("preview kicky", l), m.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "K with :N suffix sends n parameter" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:snares, "p",
+                "/tmp/snares", ["/tmp/s1.wav", "/tmp/s2.wav"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["snares:1"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test length(play) == 1
+            @test play[1].args == Any["s", "snares", "n", Int32(1)]
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "K on unknown sample logs WARN, no OSC sent" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["whatever"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+            @test isempty(mock.sent)
+            @test any(l -> occursin("no sample", l), m.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset ":samples lists all loaded sample banks" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:bd, "core",
+                "/c/bd", ["/c/bd/a.wav"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "funkit",
+                "/f/k.wav", ["/f/k.wav"],
+                Dict{String,Any}("bpm" => 120, "tags" => ["heavy"])))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "samples"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("bd", logs)
+            @test occursin("kicky", logs)
+            @test occursin("funkit", logs)
+            @test occursin("120 BPM", logs) || occursin("120", logs)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset ":samples <glob> filters" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:bd, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:bd2, "p",
+                "/y", ["/y"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:sn, "p",
+                "/z", ["/z"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "samples bd*"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("bd", logs)
+            @test occursin("bd2", logs)
+            @test !occursin(r"\bsn\b", logs)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset ":samples <name> shows metadata detail" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "funkit",
+                "/k.wav", ["/k.wav"],
+                Dict{String,Any}("bpm" => 120, "key" => "C", "tags" => ["heavy"])))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "samples kicky"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("kicky", logs)
+            @test occursin("bpm", lowercase(logs)) || occursin("BPM", logs)
+            @test occursin("heavy", logs)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
 end

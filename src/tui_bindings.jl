@@ -175,6 +175,8 @@ function _handle_normal!(m::LiveModel, evt)
         _paste_lines!(m; before=true)
     elseif code == "m"
         _toggle_mute!(m)
+    elseif code == "K"
+        _preview_under_cursor!(m)
     elseif code == "V"
         m.mode = :visual_line
         m.visual_anchor = (m.cursor_row, m.cursor_col)
@@ -355,8 +357,60 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         end
     elseif (mt = match(r"^goto\s+d(\d+)$", body)) !== nothing
         _goto_slot!(m, parse(Int, mt.captures[1]))
+    elseif body == "samples" || startswith(body, "samples ")
+        rest = strip(body == "samples" ? "" : body[9:end])
+        _execute_samples_command!(m, rest)
     else
         _push_log!(m, "[ERROR] unknown command: $body")
+    end
+end
+
+"""
+    _execute_samples_command!(m, arg)
+
+Handle the `:samples [arg]` ex-command:
+- empty `arg`            → list all registered sample banks, grouped by plugin
+- `arg` containing `*`/`?` (glob) → list banks whose name matches the glob
+- otherwise              → show full metadata for the bank named `arg`
+"""
+function _execute_samples_command!(m::LiveModel, arg::AbstractString)
+    if isempty(arg)
+        _list_samples_to_log!(m, list_samples(r""))
+        return
+    end
+    if occursin('*', arg) || occursin('?', arg)
+        rx = Regex("^" * replace(replace(arg, "*" => ".*"), "?" => ".") * "\$")
+        _list_samples_to_log!(m, list_samples(rx))
+        return
+    end
+    entry = sample_info(Symbol(arg))
+    if entry === nothing
+        _push_log!(m, "[WARN] no sample '$arg' loaded")
+        return
+    end
+    _push_log!(m, "[$(entry.plugin)] $(entry.name): $(length(entry.variants)) variant(s)")
+    _push_log!(m, "  path: $(entry.bank_path)")
+    for (k, v) in entry.metadata
+        _push_log!(m, "  $k: $v")
+    end
+end
+
+function _list_samples_to_log!(m::LiveModel, entries)
+    if isempty(entries)
+        _push_log!(m, "(no samples loaded)")
+        return
+    end
+    current_plugin = ""
+    for e in entries
+        if e.plugin != current_plugin
+            _push_log!(m, "── $(e.plugin) ──")
+            current_plugin = e.plugin
+        end
+        tags = get(e.metadata, "tags", String[])
+        tag_str = isempty(tags) ? "" : "  [" * join(tags, ", ") * "]"
+        bpm = get(e.metadata, "bpm", nothing)
+        bpm_str = bpm === nothing ? "" : "  $(bpm) BPM"
+        _push_log!(m, "  $(e.name)  $(length(e.variants))v$tag_str$bpm_str")
     end
 end
 
@@ -377,3 +431,57 @@ function _has_modifier(evt, name::AbstractString)
     end
     return false
 end
+
+const _WORD_RX = r"([A-Za-z_][\w]*)(?::(\d+))?"
+
+"""
+    _preview_under_cursor!(m::LiveModel)
+
+Identify the sample name under the cursor (matches `name` or `name:N`),
+look it up in the sample registry, and ship a one-shot `/dirt/play`
+OSC bundle through the active scheduler's client. Logs `[INFO] preview …`
+on success or `[WARN] no sample '…' loaded` on miss.
+"""
+function _preview_under_cursor!(m::LiveModel)
+    line = m.buffer[m.cursor_row]
+    isempty(line) && return
+    col = clamp(m.cursor_col, 1, lastindex(line) + 1)
+    start = col
+    while start > 1 && _is_word_char(line[prevind(line, start)])
+        start = prevind(line, start)
+    end
+    stop = col
+    while stop <= lastindex(line) && _is_word_char(line[stop])
+        stop = nextind(line, stop)
+    end
+    stop = prevind(line, stop)
+    word = start > stop ? "" : line[start:stop]
+    isempty(word) && return
+
+    mt = match(_WORD_RX, word)
+    if mt === nothing
+        _push_log!(m, "[WARN] no sample '$word' loaded")
+        return
+    end
+    name = Symbol(mt.captures[1])
+    variant = mt.captures[2] === nothing ? 0 : parse(Int, mt.captures[2])
+
+    entry = sample_info(name)
+    if entry === nothing
+        _push_log!(m, "[WARN] no sample '$(mt.captures[1])' loaded")
+        return
+    end
+
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        _push_log!(m, "[ERROR] preview: no active session")
+        return
+    end
+    args = variant == 0 ?
+        Any["s", String(name)] :
+        Any["s", String(name), "n", Int32(variant)]
+    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+    _push_log!(m, "[INFO] preview $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+end
+
+_is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'
