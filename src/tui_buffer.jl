@@ -16,7 +16,10 @@ function _insert_char!(m::LiveModel, c::AbstractChar)
         line[1:prevind(line, col)] * string(c) * line[col:end]
     end
     m.buffer[m.cursor_row] = new_line
-    m.cursor_col = col + 1
+    # Advance by the number of bytes the character occupies, not 1.
+    # Multi-byte UTF-8 chars (¹, é, emoji…) would otherwise leave
+    # `cursor_col` mid-codepoint and break later string slicing.
+    m.cursor_col = col + ncodeunits(c)
     return nothing
 end
 
@@ -96,7 +99,13 @@ bounds. `col` clamps to `lastindex(line) + 1` (one past EOL).
 function _move_cursor!(m::LiveModel, dx::Int, dy::Int)
     m.cursor_row = clamp(m.cursor_row + dy, 1, length(m.buffer))
     line = m.buffer[m.cursor_row]
-    m.cursor_col = clamp(m.cursor_col + dx, 1, lastindex(line) + 1)
+    target = clamp(m.cursor_col + dx, 1, lastindex(line) + 1)
+    # Snap to a valid codepoint boundary so later string slicing never
+    # falls inside a multi-byte UTF-8 character.
+    if 1 <= target <= lastindex(line) && !isvalid(line, target)
+        target = thisind(line, target)
+    end
+    m.cursor_col = target
     return nothing
 end
 

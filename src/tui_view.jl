@@ -123,18 +123,27 @@ function _editor_pane(m::LiveModel)
         end
         marker = _active_marker(m, i)
         display_line = if i == m.cursor_row && m.mode in (:insert, :normal)
-            col = m.cursor_col
-            if col > lastindex(line)
-                line * "▌"
-            else
-                line[1:prevind(line, col)] * "▌" * line[col:end]
-            end
+            _line_with_cursor(line, m.cursor_col)
         else
             line
         end
         push!(rendered, prefix * display_line * marker)
     end
     _BufferPane(rendered, TUI.Crayon())
+end
+
+# Splice a `▌` cursor glyph into `line` at byte index `col`, defensively:
+# if `col` lands inside a multi-byte UTF-8 character (shouldn't happen
+# given buffer-helper invariants, but cheap to guard) we snap to the
+# enclosing codepoint start instead of throwing.
+function _line_with_cursor(line::AbstractString, col::Integer)
+    n = lastindex(line)
+    if col > n
+        return line * "▌"
+    end
+    safe_col = isvalid(line, col) ? col : thisind(line, col)
+    safe_col < 1 && return "▌" * line
+    return line[1:prevind(line, safe_col)] * "▌" * line[safe_col:end]
 end
 
 function _active_marker(m::LiveModel, row::Int)

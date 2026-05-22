@@ -63,10 +63,18 @@ function _ressac_app!(m::LiveModel; frame_period::Float64 = 1/60)
         t = TUI.Terminal(; wait = 0.0)
         TUI.init!(m, t)
         while !m.quit
-            evt = TUI.try_get_event(t)
-            evt !== nothing && TUI.update!(m, evt)
-            TUI.render(t, m)
-            TUI.draw(t)
+            # Catch any per-frame exception (string-indexing surprises,
+            # widget render bugs, etc.) and log it instead of crashing
+            # the session. A live performer should never lose state to
+            # a stray multi-byte keystroke.
+            try
+                evt = TUI.try_get_event(t)
+                evt !== nothing && TUI.update!(m, evt)
+                TUI.render(t, m)
+                TUI.draw(t)
+            catch err
+                _push_log!(m, "[ERROR] frame: $(sprint(showerror, err))")
+            end
             sleep(frame_period)
         end
     end
