@@ -17,4 +17,48 @@ using Ressac
             h("/nonexistent", Dict("files" => ["./nope.jl"]), "nope")
         end
     end
+
+    @testset "[samples] handler sends /dirt/loadSampleFolder per root" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withsamples"))
+            h = Ressac.get_section_handler(:samples)
+            @test h !== nothing
+            h(m.dir, m.sections["samples"], m.name)
+            @test length(mock.sent) == 1
+            msg = Ressac.decode_message(mock.sent[1])
+            @test msg.address == "/dirt/loadSampleFolder"
+            @test length(msg.args) == 1
+            sent_path = msg.args[1]
+            @test isabspath(sent_path)
+            @test endswith(sent_path, "/withsamples/samples")
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "[samples] missing root logs error" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            h = Ressac.get_section_handler(:samples)
+            @test_logs (:error, r"not found|no such") match_mode=:any begin
+                h("/tmp", Dict("roots" => ["./does-not-exist"]), "ghost")
+            end
+            @test isempty(mock.sent)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "[samples] without active scheduler logs error" begin
+        Ressac._LIVE_SCHEDULER[] = nothing
+        h = Ressac.get_section_handler(:samples)
+        @test_logs (:error, r"no active") match_mode=:any begin
+            h("/tmp", Dict("roots" => ["./samples"]), "ghost")
+        end
+    end
 end

@@ -29,3 +29,40 @@ function _handle_julia(plugin_dir, data, plugin_name)
 end
 
 register_section_handler!(:julia, _handle_julia)
+
+"""
+    _handle_samples(plugin_dir, section_data, plugin_name)
+
+Process `[samples]`: `roots = ["./samples", ...]`. For each root,
+resolve to absolute path, validate it exists, and send a
+`/dirt/loadSampleFolder` OSC message with the absolute path as a
+String argument. SuperDirt-side OSCdef (in
+`scripts/superdirt-startup.scd`) calls `~dirt.loadSoundFiles("<path>/*")`.
+
+Errors:
+- No active scheduler → `[ERROR] cannot load samples: no active session`.
+- Root path doesn't exist → logged at `@error`, next root still tries.
+"""
+function _handle_samples(plugin_dir, data, plugin_name)
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        @error "plugin '$plugin_name' [samples]: no active session — cannot load samples"
+        return nothing
+    end
+    roots = get(data, "roots", String[])
+    roots isa AbstractVector ||
+        throw(ArgumentError("plugin '$plugin_name' [samples] roots must be an array"))
+    for r in roots
+        path = isabspath(r) ? r : joinpath(plugin_dir, r)
+        path = abspath(path)
+        if !isdir(path)
+            @error "plugin '$plugin_name' [samples]: path '$path' not found"
+            continue
+        end
+        msg = OSCMessage("/dirt/loadSampleFolder", Any[path])
+        send_osc(sched.osc, encode(msg))
+    end
+    return nothing
+end
+
+register_section_handler!(:samples, _handle_samples)

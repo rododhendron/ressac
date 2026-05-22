@@ -1,0 +1,6 @@
+name        = "withsamples"
+version     = "0.1.0"
+description = "fixture testing the [samples] handler"
+
+[samples]
+roots = ["./samples"]
