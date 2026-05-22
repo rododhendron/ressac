@@ -437,10 +437,18 @@ const _WORD_RX = r"([A-Za-z_][\w]*)(?::(\d+))?"
 """
     _preview_under_cursor!(m::LiveModel)
 
-Identify the sample name under the cursor (matches `name` or `name:N`),
-look it up in the sample registry, and ship a one-shot `/dirt/play`
-OSC bundle through the active scheduler's client. Logs `[INFO] preview …`
-on success or `[WARN] no sample '…' loaded` on miss.
+Identify the name under the cursor (matches `name` or `name:N`) and ship
+a one-shot `/dirt/play` OSC bundle for it. Resolution order:
+
+1. **Instrument** — expand the full param bundle in declared order
+   (`event_to_osc`-equivalent path). If the cursor word has a `:N` suffix
+   it overrides any `n` the preset declared.
+2. **Sample** — ship `("s", name)` or `("s", name, "n", N)`.
+3. **Synth** — ship `("s", name)`; SuperDirt routes to the corresponding
+   SynthDef on the audio side.
+4. None of the above → log `[WARN] no instrument/sample/synth '…' loaded`.
+
+`[INFO] preview <kind> <name>` is logged on success.
 """
 function _preview_under_cursor!(m::LiveModel)
     line = m.buffer[m.cursor_row]
@@ -460,28 +468,58 @@ function _preview_under_cursor!(m::LiveModel)
 
     mt = match(_WORD_RX, word)
     if mt === nothing
-        _push_log!(m, "[WARN] no sample '$word' loaded")
+        _push_log!(m, "[WARN] no instrument/sample/synth '$word' loaded")
         return
     end
     name = Symbol(mt.captures[1])
     variant = mt.captures[2] === nothing ? 0 : parse(Int, mt.captures[2])
-
-    entry = sample_info(name)
-    if entry === nothing
-        _push_log!(m, "[WARN] no sample '$(mt.captures[1])' loaded")
-        return
-    end
 
     sched = _LIVE_SCHEDULER[]
     if sched === nothing
         _push_log!(m, "[ERROR] preview: no active session")
         return
     end
-    args = variant == 0 ?
-        Any["s", String(name)] :
-        Any["s", String(name), "n", Int32(variant)]
-    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
-    _push_log!(m, "[INFO] preview $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+
+    if (instr = instrument_info(name)) !== nothing
+        args = Any[]
+        has_n = false
+        for (k, v) in instr.params
+            if k == "n"
+                has_n = true
+                # User-supplied :N overrides preset n.
+                if variant != 0
+                    push!(args, "n"); push!(args, Int32(variant))
+                    continue
+                end
+            end
+            converted = _osc_value(v)
+            converted === missing && continue
+            push!(args, k); push!(args, converted)
+        end
+        if variant != 0 && !has_n
+            push!(args, "n"); push!(args, Int32(variant))
+        end
+        send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+        _push_log!(m, "[INFO] preview instrument $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+        return
+    end
+
+    if (entry = sample_info(name)) !== nothing
+        args = variant == 0 ?
+            Any["s", String(name)] :
+            Any["s", String(name), "n", Int32(variant)]
+        send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+        _push_log!(m, "[INFO] preview sample $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+        return
+    end
+
+    if synth_info(name) !== nothing
+        send_osc(sched.osc, encode(OSCMessage("/dirt/play", Any["s", String(name)])))
+        _push_log!(m, "[INFO] preview synth $(mt.captures[1])")
+        return
+    end
+
+    _push_log!(m, "[WARN] no instrument/sample/synth '$(mt.captures[1])' loaded")
 end
 
 _is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'

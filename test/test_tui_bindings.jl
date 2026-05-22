@@ -281,7 +281,7 @@ end
                     if Ressac.decode_message(b).address == "/dirt/play"]
             @test length(play) == 1
             @test play[1].args == Any["s", "kicky"]
-            @test any(l -> occursin("preview kicky", l), m.logs)
+            @test any(l -> occursin("preview sample kicky", l), m.logs)
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
             empty!(Ressac._SAMPLE_REGISTRY)
@@ -326,9 +326,122 @@ end
             m.mode = :normal
             Ressac._dispatch_key!(m, _fake_key("K"))
             @test isempty(mock.sent)
-            @test any(l -> occursin("no sample", l), m.logs)
+            @test any(l -> occursin("no instrument/sample/synth", l), m.logs)
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset "K previews instrument: expands declared params" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "p",
+                Pair{String,Any}["s" => "bd", "n" => 3, "gain" => 1.2],
+                Dict{String,Any}(),
+            ))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["kicklourd"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test length(play) == 1
+            @test play[1].args == Any["s", "bd", "n", Int32(3), "gain", Float32(1.2)]
+            @test any(l -> occursin("preview instrument kicklourd", l), m.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset "K instrument with :N suffix overrides preset n" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "p",
+                Pair{String,Any}["s" => "bd", "n" => 3, "gain" => 1.2],
+                Dict{String,Any}(),
+            ))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["kicklourd:7"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test play[1].args == Any["s", "bd", "n", Int32(7), "gain", Float32(1.2)]
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset "K previews synth: bare /dirt/play s name" begin
+        empty!(Ressac._SYNTH_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_synth!(Ressac.SynthEntry(:bassline, "p",
+                Dict{String,Any}("tags" => ["bass"])))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["bassline"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test length(play) == 1
+            @test play[1].args == Any["s", "bassline"]
+            @test any(l -> occursin("preview synth bassline", l), m.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SYNTH_REGISTRY)
+        end
+    end
+
+    @testset "K resolution: instrument wins over sample" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        empty!(Ressac._SAMPLE_REGISTRY)
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :clash, "p",
+                Pair{String,Any}["s" => "fromInstrument", "gain" => 2.0],
+                Dict{String,Any}(),
+            ))
+            Ressac.register_sample!(Ressac.SampleEntry(:clash, "p",
+                "/tmp/c.wav", ["/tmp/c.wav"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=sched)
+            m.buffer = ["clash"]
+            m.cursor_row = 1
+            m.cursor_col = 1
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key("K"))
+
+            play = [Ressac.decode_message(b) for b in mock.sent
+                    if Ressac.decode_message(b).address == "/dirt/play"]
+            @test play[1].args == Any["s", "fromInstrument", "gain", Float32(2.0)]
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._INSTRUMENT_REGISTRY)
             empty!(Ressac._SAMPLE_REGISTRY)
         end
     end
