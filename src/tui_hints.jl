@@ -98,3 +98,64 @@ function _completion_context(line::AbstractString, cursor_col::Integer)
     end
     return in_mn ? :mininotation : :default
 end
+
+const _COMMAND_NAMES = [
+    "q", "quit", "cps", "goto",
+    "samples", "instruments", "synths",
+    "guide", "help",
+]
+
+const _COMBINATOR_NAMES = [
+    "pure", "silence", "fast", "slow", "density", "rev", "every",
+    "stack", "cat", "mask",
+    "gain", "speed", "lpf", "hpf", "pan", "n", "room", "delay",
+    "shape", "set",
+]
+
+"""
+    _buffer_candidates(ctx::Symbol) -> Vector{String}
+
+Compute the candidate list for in-buffer autocomplete. `ctx` is either
+`:mininotation` (cursor inside `p"..."` or `m"..."`) — registries only
+— or `:default`, which also adds combinators and `@d1..@d64` slot
+macros.
+"""
+function _buffer_candidates(ctx::Symbol)::Vector{String}
+    out = String[]
+    append!(out, String.(keys(_SAMPLE_REGISTRY)))
+    append!(out, String.(keys(_INSTRUMENT_REGISTRY)))
+    append!(out, String.(keys(_SYNTH_REGISTRY)))
+    if ctx === :default
+        append!(out, _COMBINATOR_NAMES)
+        append!(out, ["@d$i" for i in 1:64])
+    end
+    unique!(out)
+    return out
+end
+
+function _command_arg_candidates(verb::AbstractString)
+    verb == "samples"     && return String.(keys(_SAMPLE_REGISTRY))
+    verb == "instruments" && return String.(keys(_INSTRUMENT_REGISTRY))
+    verb == "synths"      && return String.(keys(_SYNTH_REGISTRY))
+    return nothing
+end
+
+"""
+    _compute_completions(m::LiveModel) -> Vector{String}
+
+Compute the current candidate list for `:`-mode autocomplete based on
+`m.command_buffer`. Empty buffer → all command names. Verb-only prefix
+→ matching command names. Verb + space + partial → matching argument
+candidates for that verb (registry lookup), or empty if the verb has
+no argument completion.
+"""
+function _compute_completions(m::LiveModel)::Vector{String}
+    buf = m.command_buffer
+    if !occursin(' ', buf)
+        return _fuzzy_rank(buf, _COMMAND_NAMES)
+    end
+    verb, rest = split(buf, ' '; limit=2)
+    cands = _command_arg_candidates(verb)
+    cands === nothing && return String[]
+    return _fuzzy_rank(strip(String(rest)), cands)
+end
