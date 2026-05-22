@@ -125,4 +125,11 @@ using Ressac
             [Event{Bool}(s, e, false)])
         @test mask(p, all_false)(0//1, 1//1) == Event{Int}[]
     end
+
+    @testset "curried mask(q) is mask(_, q)" begin
+        mask_pat = Pattern{Bool}((s::Rational, e::Rational) ->
+            [Event{Bool}(s, e, true)])
+        @test query(pure(1) |> mask(mask_pat), 0, 1) ==
+              query(mask(pure(1), mask_pat), 0, 1)
+    end
 end

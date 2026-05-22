@@ -40,6 +40,10 @@ using Ressac
         @test p(0//1, 2//1) == [Event(0//1, 2//1, :bd)]
     end
 
+    @testset "slow(0) throws ArgumentError eagerly" begin
+        @test_throws ArgumentError slow(0, pure(:bd))
+    end
+
     @testset "density alias" begin
         @test density === fast
     end
@@ -98,5 +102,33 @@ using Ressac
         @testset "stack(p, silence) ≡ p" begin
             @test query(stack(p, silence(Symbol)), 0, 3) == query(p, 0, 3)
         end
+    end
+
+    @testset "curried fast(n) is fast(n, _)" begin
+        # The single-arg form should return a function that, applied to a
+        # Pattern, gives the same result as the two-arg form.
+        curried = fast(2)
+        @test curried isa Function
+        @test query(curried(pure(:bd)), 0, 1) == query(fast(2, pure(:bd)), 0, 1)
+        # Pipe usage matches.
+        @test query(pure(:bd) |> fast(2), 0, 1) == query(fast(2, pure(:bd)), 0, 1)
+    end
+
+    @testset "curried slow(n) is slow(n, _)" begin
+        curried = slow(2)
+        @test curried isa Function
+        @test query(pure(:bd) |> slow(2), 0, 2) == query(slow(2, pure(:bd)), 0, 2)
+    end
+
+    @testset "curried every(n, f) is every(n, f, _)" begin
+        curried = every(2, rev)
+        @test curried isa Function
+        @test query(pure(:bd) |> every(2, rev), 0, 2) ==
+              query(every(2, rev, pure(:bd)), 0, 2)
+    end
+
+    @testset "curried stack(q) is stack(_, q)" begin
+        @test query(pure(:bd) |> stack(pure(:sn)), 0, 1) ==
+              query(stack(pure(:bd), pure(:sn)), 0, 1)
     end
 end

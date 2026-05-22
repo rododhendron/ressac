@@ -54,11 +54,29 @@ function fast(n::Real, p::Pattern{T}) where {T}
 end
 
 """
+    fast(n::Real) -> (Pattern -> Pattern)
+
+Curried form: `fast(n)(p) == fast(n, p)`. Lets `p |> fast(n)` thread the
+pattern as the right-hand arg under Julia's native `|>`.
+"""
+fast(n::Real) = p::Pattern -> fast(n, p)
+
+"""
     slow(n, p) -> Pattern{T}
 
 Dilate time by factor `n`. Equivalent to `fast(1/n, p)`.
 """
-slow(n::Real, p::Pattern{T}) where {T} = fast(inv(_to_rat(n)), p)
+function slow(n::Real, p::Pattern{T}) where {T}
+    iszero(n) && throw(ArgumentError("slow factor cannot be zero"))
+    fast(inv(_to_rat(n)), p)
+end
+
+"""
+    slow(n::Real) -> (Pattern -> Pattern)
+
+Curried form: `slow(n)(p) == slow(n, p)`.
+"""
+slow(n::Real) = p::Pattern -> slow(n, p)
 
 """
     density(n, p)
@@ -125,6 +143,13 @@ function every(n::Int, f, p::Pattern{T}) where {T}
 end
 
 """
+    every(n::Int, f) -> (Pattern -> Pattern)
+
+Curried form: `every(n, f)(p) == every(n, f, p)`.
+"""
+every(n::Int, f) = p::Pattern -> every(n, f, p)
+
+"""
     stack(ps::Pattern{T}...) -> Pattern{T}
 
 Layer patterns in parallel: every event of every input pattern is emitted.
@@ -140,6 +165,15 @@ function stack(ps::Pattern{T}...) where {T}
         out
     end)
 end
+
+"""
+    stack(q::Pattern{T}) -> (Pattern{T} -> Pattern{T})
+
+Curried form: `stack(q)(p) == stack(p, q)`. Note: existing
+`stack(ps::Vararg{Pattern{T}})` already covers `stack(p, q, r, …)`, so
+this single-arg version disambiguates as "curry on the lone arg".
+"""
+stack(q::Pattern{T}) where {T} = p::Pattern{T} -> stack(p, q)
 
 """
     cat(ps::Vector{<:Pattern{T}}) -> Pattern{T}

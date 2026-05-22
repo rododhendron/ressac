@@ -90,3 +90,10 @@ function mask(p::Pattern{T}, q::Pattern{Bool}) where {T}
         out
     end)
 end
+
+"""
+    mask(q::Pattern{Bool}) -> (Pattern{T} -> Pattern{T})
+
+Curried form: `mask(q)(p) == mask(p, q)`.
+"""
+mask(q::Pattern{Bool}) = p::Pattern -> mask(p, q)
