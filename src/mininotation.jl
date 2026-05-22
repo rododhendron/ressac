@@ -56,8 +56,20 @@ function _tokenize(s::String)
             while j <= n && isdigit(s[j])
                 j = nextind(s, j)
             end
-            push!(tokens, MToken(:int, parse(Int, s[i:prevind(s, j)]), i))
-            i = j
+            # If a decimal point + digit follows, this is a float literal.
+            # Emit `:float` (Float64 value); else `:int`. Both flow through
+            # the parser via `_parse_unit!`'s numeric-atom branch.
+            if j <= n && s[j] == '.' && nextind(s, j) <= n && isdigit(s[nextind(s, j)])
+                k = nextind(s, j)   # past the '.'
+                while k <= n && isdigit(s[k])
+                    k = nextind(s, k)
+                end
+                push!(tokens, MToken(:float, parse(Float64, s[i:prevind(s, k)]), i))
+                i = k
+            else
+                push!(tokens, MToken(:int, parse(Int, s[i:prevind(s, j)]), i))
+                i = j
+            end
         elseif isletter(c) || c == '_'
             j = i
             while j <= n && (isletter(s[j]) || isdigit(s[j]) || s[j] == '_' || s[j] == ':')
@@ -105,6 +117,13 @@ function _parse_unit!(ps::ParseState)
     elseif t.kind == :silence
         _advance!(ps)
         node = SilenceNode()
+    elseif t.kind == :int || t.kind == :float
+        # Numeric atom: e.g. `p"3 2 2 1"` or `p"0.5 1.0 0.5 1.0"`. Stored
+        # as Symbol so it flows through the existing Pattern{Symbol}
+        # pipeline; helpers like `n` / `gain` parse the symbol back to
+        # an Int/Float via `_resolve_value` at dispatch time.
+        _advance!(ps)
+        node = AtomNode(Symbol(string(t.value)))
     elseif t.kind == :lbracket
         _advance!(ps)
         children = _parse_seq_until!(ps, :rbracket)

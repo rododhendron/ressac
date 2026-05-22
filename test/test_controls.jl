@@ -183,4 +183,29 @@ using Ressac
         p = pure(:bd) |> Ressac.n(np)
         @test p(0//1, 1//1)[1].value[:n] == 7
     end
+
+    @testset "_resolve_value coerces numeric Symbols" begin
+        @test Ressac._resolve_value(:3) === 3
+        @test Ressac._resolve_value(Symbol("0.5")) === 0.5
+        @test Ressac._resolve_value(:bd) === :bd
+        @test Ressac._resolve_value(42) === 42
+    end
+
+    @testset "n(p\"3 2 2 1\") feeds Ints into :n" begin
+        # Mini-notation values are Symbols; the helper should coerce.
+        p = pure(:bd) |> Ressac.n(parse_minino("3 2 2 1"))
+        evs = p(0//1, 1//1)
+        @test length(evs) == 4
+        @test evs[1].value[:n] === 3
+        @test evs[2].value[:n] === 2
+        @test evs[3].value[:n] === 2
+        @test evs[4].value[:n] === 1
+    end
+
+    @testset "gain(p\"0.5 1.0\") feeds Floats into :gain" begin
+        p = pure(:bd) |> Ressac.gain(parse_minino("0.5 1.0"))
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:gain] === 0.5
+        @test evs[2].value[:gain] === 1.0
+    end
 end

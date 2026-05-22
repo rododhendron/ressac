@@ -110,7 +110,7 @@ function set(key::Symbol, pat::Pattern)
                     b = min(ev_in.stop,  ev_v.stop)
                     a < b || continue
                     new_cm = copy(ev_in.value)
-                    new_cm[key] = ev_v.value
+                    new_cm[key] = _resolve_value(ev_v.value)
                     push!(out, Event{ControlMap}(a, b, new_cm))
                 end
             end
@@ -133,6 +133,7 @@ directly (no composition with a synthetic identity — first-write is
 just a write).
 """
 function _control_op(key::Symbol, op, val)
+    resolved_scalar = _resolve_value(val)
     return function (p::Pattern)
         lifted = _lift_to_control(p)
         if val isa Pattern
@@ -145,10 +146,11 @@ function _control_op(key::Symbol, op, val)
                         a = max(ev_in.start, ev_v.start)
                         b = min(ev_in.stop,  ev_v.stop)
                         a < b || continue
+                        v_resolved = _resolve_value(ev_v.value)
                         new_cm = copy(ev_in.value)
                         new_cm[key] = haskey(new_cm, key) ?
-                                      op(new_cm[key], ev_v.value) :
-                                      ev_v.value
+                                      op(new_cm[key], v_resolved) :
+                                      v_resolved
                         push!(out, Event{ControlMap}(a, b, new_cm))
                     end
                 end
@@ -162,8 +164,8 @@ function _control_op(key::Symbol, op, val)
                 for (i, ev) in enumerate(inner)
                     new_cm = copy(ev.value)
                     new_cm[key] = haskey(new_cm, key) ?
-                                  op(new_cm[key], val) :
-                                  val
+                                  op(new_cm[key], resolved_scalar) :
+                                  resolved_scalar
                     out[i] = Event{ControlMap}(ev.start, ev.stop, new_cm)
                 end
                 out
@@ -171,6 +173,28 @@ function _control_op(key::Symbol, op, val)
         end
     end
 end
+
+"""
+    _resolve_value(v) -> Any
+
+Coerce a value to a useful OSC type. The mini-notation parser stores
+every atom as a `Symbol` (so `p"3 2 2 1"` yields `:3, :2, …` and
+`p"0.5 1.0"` yields `:0.5, :1.0`). When that value flows into a helper
+expecting a number (`n`, `gain`, `release`, …) we'd rather treat it as
+the obvious numeric.
+
+Rule: a Symbol that parses cleanly as Int → Int; else as Float64 →
+Float64; else stays a Symbol. Non-Symbols pass through unchanged.
+"""
+function _resolve_value(v::Symbol)
+    str = String(v)
+    iv = tryparse(Int, str)
+    iv !== nothing && return iv
+    fv = tryparse(Float64, str)
+    fv !== nothing && return fv
+    return v
+end
+_resolve_value(v) = v
 
 """
     gain(x) -> (Pattern -> ControlPattern)

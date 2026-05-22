@@ -73,11 +73,22 @@ function _ressac_app!(m::LiveModel; frame_period::Float64 = 1/60)
         while !m.quit
             try
                 evt = TUI.try_get_event(t)
+                # Mouse-moved events arrive at terminal refresh rate (often
+                # >100 Hz when the user wiggles the mouse). They never
+                # change visible state for us, so we update the model
+                # silently (mouse wheel is the only handler that mutates)
+                # but skip the render unless something else actually
+                # happened. Same applies to mouse drag events.
+                noisy_mouse = evt isa TUI.MouseEvent &&
+                              (evt.data.kind == "Moved" ||
+                               startswith(evt.data.kind, "Drag"))
                 if evt !== nothing
                     TUI.update!(m, evt)
-                    TUI.render(t, m)
-                    TUI.draw(t)
-                    last_render = time()
+                    if !noisy_mouse
+                        TUI.render(t, m)
+                        TUI.draw(t)
+                        last_render = time()
+                    end
                 elseif (time() - last_render) >= idle_period
                     TUI.render(t, m)
                     TUI.draw(t)
