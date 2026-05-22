@@ -33,19 +33,21 @@ s.waitForBoot({
     };
 
     s.sync;
-    // Load the SynthDefs bundled with SuperDirt — without this, names
-    // like `sin`, `square`, `saw`, `super808`, `supersnare`, `supersaw`,
-    // `superhammond`, etc. resolve to "instrument not found".
-    // The class method is the right entry point; the instance method
-    // `~dirt.loadSynthDefs` exists but takes a Boolean that defaults
-    // to nil and silently no-ops.
-    SuperDirt.loadSynthDefs;
+    // SuperDirt's init method (called by `SuperDirt(2, s)` above) already
+    // calls `this.loadSynthDefs` which reads ../synths/*.scd relative to
+    // the SuperDirt class file. The extras (super808/supersaw/superpiano/
+    // …) only load if sc3-plugins is present — the flake uses
+    // `supercollider-with-sc3-plugins`, so they should be there.
+    //
+    // Log what landed so the user can sanity-check.
     s.sync;
     ("[boot] SynthDescLib has " ++ SynthDescLib.global.synthDescs.size.asString ++ " synthdefs").postln;
-    if(SynthDescLib.global.synthDescs.includesKey(\sin)) {
-        "[boot] ✓ tutorial synthdefs (sin/square/saw) loaded".postln;
-    } {
-        "[boot] ✗ sin not found — synthdef directory may be missing".warn;
+    [\super808, \supersaw, \superpiano, \superhammond, \psin].do { |name|
+        if(SynthDescLib.global.synthDescs.includesKey(name)) {
+            ("[boot] ✓ " ++ name.asString).postln;
+        } {
+            ("[boot] ✗ " ++ name.asString ++ " missing").postln;
+        };
     };
     ~dirt.start(57120, 0 ! 12);
 

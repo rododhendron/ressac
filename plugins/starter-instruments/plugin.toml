@@ -22,14 +22,23 @@ tags        = ["kick", "dry"]
 description = "punchy dry kick, no reverb"
 
 [instruments.sub]
-s       = "sin"
+s       = "psin"
 n       = -24
 release = 0.9
 gain    = 1.6
 lpf     = 300
 shape   = 0.4
 tags        = ["bass", "sub", "sine"]
-description = "deep sine sub bass — long release"
+description = "deep pulse-sine sub bass — long release"
+
+[instruments.subreese]
+s       = "superreese"
+n       = -12
+release = 0.7
+gain    = 1.4
+lpf     = 600
+tags        = ["bass", "reese"]
+description = "Reese bass — fat detuned"
 
 [instruments.basswarsaw]
 s       = "bassWarsaw"
@@ -76,14 +85,14 @@ tags        = ["lead", "saw"]
 description = "supersaw lead, filtered"
 
 [instruments.pad]
-s       = "supersine"
+s       = "psin"
 release = 1.5
 attack  = 0.2
 gain    = 0.7
 room    = 0.5
 lpf     = 800
 tags        = ["pad", "warm"]
-description = "warm thick pad — long attack/release + reverb"
+description = "warm pad — long attack/release + reverb (uses psin)"
 
 [instruments.chip]
 s       = "superchip"

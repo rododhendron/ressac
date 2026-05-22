@@ -1,33 +1,47 @@
 name        = "superdirt-synths"
 version     = "0.1.0"
-description = "Built-in SuperDirt SynthDefs (registry-only — defs live on the audio side)"
+description = "SynthDefs that actually ship with this vendored SuperDirt"
 
-# Each entry below registers a Ressac SynthEntry so :synths, K preview,
-# and Tab autocomplete know about the synth. The SynthDefs themselves
-# ship with SuperDirt and don't need to be loaded by Ressac.
+# Only declares names that exist as SynthDefs in either:
+#   - SuperDirt/synths/default-synths.scd (always loaded)
+#   - SuperDirt/library/default-synths-extra.scd (loaded if sc3-plugins
+#     is installed — the Nix flake uses supercollider-with-sc3-plugins)
+#
+# `sin`, `square`, `saw`, `tri`, `fm` were on this list before — they
+# don't exist in vanilla SuperDirt. They sometimes appear in TidalCycles
+# tutorials as user-added synthdefs; users can add them via a personal
+# plugin's `[synthdefs]` section.
 
-[synths.sin]
-tags        = ["sine", "tone"]
-description = "pure sine (needs release/attack to be audible)"
+# ── default-synths.scd (always available) ────────────────────────────
 
-[synths.square]
-tags        = ["square", "wave"]
-description = "square wave oscillator"
+[synths.psin]
+tags        = ["pulse", "sine", "soft"]
+description = "pulse-modulated sine — soft attack, audible alternative to a missing 'sin'"
 
-[synths.saw]
-tags        = ["saw", "wave"]
-description = "saw wave oscillator"
+[synths.pmsin]
+tags        = ["pm", "sine"]
+description = "PM sine"
 
-[synths.tri]
-tags        = ["triangle", "wave"]
-description = "triangle wave oscillator"
+[synths.imp]
+tags        = ["impulse", "click"]
+description = "filtered impulse — short, sharp"
 
-[synths.fm]
-tags        = ["fm", "synth"]
-description = "simple FM synth"
+[synths.gabor]
+tags        = ["grain", "tone"]
+description = "Gabor wavelet — short tonal grain"
+
+[synths.dirac]
+tags        = ["click", "impulse"]
+description = "dirac impulse — single sample click"
+
+[synths.cyclo]
+tags        = ["chiptune", "modulated"]
+description = "cycling waveform"
+
+# ── default-synths-extra.scd (needs sc3-plugins, present via flake) ──
 
 [synths.super808]
-tags        = ["drum", "bass", "808"]
+tags        = ["drum", "808", "kick"]
 description = "TR-808 style kick"
 
 [synths.supersnare]
@@ -38,13 +52,29 @@ description = "snappy snare synth"
 tags        = ["drum", "kick"]
 description = "kick drum synth"
 
-[synths.superhammond]
-tags        = ["organ", "keys"]
-description = "Hammond-esque organ"
+[synths.superhat]
+tags        = ["drum", "hat"]
+description = "hi-hat synth"
+
+[synths.superclap]
+tags        = ["drum", "clap"]
+description = "clap synth"
 
 [synths.superpiano]
 tags        = ["piano", "keys"]
 description = "synth piano"
+
+[synths.superhammond]
+tags        = ["organ", "keys"]
+description = "Hammond-esque organ"
+
+[synths.supermandolin]
+tags        = ["strings", "pluck"]
+description = "mandolin pluck"
+
+[synths.superhex]
+tags        = ["hex", "tone"]
+description = "hexagonal membrane synth"
 
 [synths.supersaw]
 tags        = ["saw", "lead"]
@@ -54,26 +84,78 @@ description = "detuned super-saw lead"
 tags        = ["square", "lead"]
 description = "detuned super-square lead"
 
-[synths.supersine]
-tags        = ["sine", "pad"]
-description = "thick sine pad"
+[synths.superpwm]
+tags        = ["pwm", "lead"]
+description = "pulse-width-modulation lead"
 
 [synths.superchip]
 tags        = ["chip", "8bit"]
 description = "chiptune-style lead"
 
+[synths.supernoise]
+tags        = ["noise"]
+description = "filtered noise burst"
+
+[synths.superfork]
+tags        = ["bell", "fork"]
+description = "tuning-fork bell"
+
+[synths.supervibe]
+tags        = ["vibraphone"]
+description = "vibraphone"
+
 [synths.superhoover]
 tags        = ["hoover", "rave"]
 description = "classic rave hoover"
 
-[synths.bassWarsaw]
-tags        = ["bass", "low"]
-description = "deep growly bass"
+[synths.superzow]
+tags        = ["zow", "fx"]
+description = "ascending FX"
 
-[synths.bassdm]
-tags        = ["bass", "fm"]
-description = "FM bass"
+[synths.superstatic]
+tags        = ["static", "noise"]
+description = "static noise"
 
-[synths.psin]
-tags        = ["pulse", "sine"]
-description = "pulse-modulated sine"
+[synths.supergrind]
+tags        = ["grind", "rough"]
+description = "grinding texture"
+
+[synths.superreese]
+tags        = ["bass", "reese"]
+description = "Reese-style bass"
+
+[synths.superfm]
+tags        = ["fm", "synth"]
+description = "FM synth"
+
+[synths.supercomparator]
+tags        = ["comp", "fold"]
+description = "comparator/wave-folder"
+
+[synths.supersiren]
+tags        = ["siren"]
+description = "siren glide"
+
+[synths.supergong]
+tags        = ["gong", "metallic"]
+description = "metallic gong"
+
+[synths.supertron]
+tags        = ["tron", "string"]
+description = "Tron-style strings"
+
+[synths.superwavemechanics]
+tags        = ["physical", "modal"]
+description = "wave-mechanics modal synth"
+
+[synths.superprimes]
+tags        = ["primes", "tone"]
+description = "prime-numbered partials"
+
+[synths.soskick]
+tags        = ["drum", "kick", "sub"]
+description = "sub kick"
+
+[synths.soshats]
+tags        = ["drum", "hat"]
+description = "alt hat"
