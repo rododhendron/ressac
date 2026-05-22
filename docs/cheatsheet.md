@@ -182,6 +182,59 @@ ressac  0.5cps  ▹▹▸▹  │  d1•◦◦◦  d2◦•◦•  d3 ⏱→cyc7
 
 The grid lights up for 200 ms after each fire.
 
+## Plugins
+
+Ressac looks for plugins on this path at session start (first hit wins
+per plugin name):
+
+```
+./plugins/<name>/                       # cwd, commit alongside your set
+~/.config/ressac/plugins/<name>/        # personal global toolkit
+$RESSAC_PLUGIN_PATH (colon-separated)   # escape hatch / Nix store
+```
+
+A plugin is a directory with a `plugin.toml`:
+
+```toml
+name        = "funkit"
+version     = "0.1.0"
+description = "personal kicks + snares + a bassline synth"
+
+[samples]
+roots = ["./samples"]
+
+[synthdefs]
+files = ["./synths/bassline.scd"]
+
+# Optional Julia hook — included into Main BEFORE the plugin's other
+# sections run. Can call `Ressac.register_section_handler!` to add
+# entirely new sections that downstream plugins can use.
+[julia]
+files = ["./hook.jl"]
+
+# Optional load-order hint.
+depends_on = ["some-other-plugin"]
+```
+
+To skip plugin loading for a session:
+
+```julia
+julia> start_live!(plugins=false)
+```
+
+Extending Ressac with a new section type is one call:
+
+```julia
+# in your plugin's hook.jl
+Ressac.register_section_handler!(:midi, function (plugin_dir, data, name)
+    # data is the [midi] table from the manifest
+    # do your thing — install OSCdefs, MIDI bridges, etc.
+end)
+```
+
+Plugins later in the load order that have `[midi]` in their manifest
+will now have it processed by your handler.
+
 ## Common gotchas
 
 - **First eval is slower** (~80 ms) than subsequent (~µs). Precompile
