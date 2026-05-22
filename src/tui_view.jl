@@ -13,19 +13,37 @@ function TUI.view(m::LiveModel)
 end
 
 function _build_main_layout(m::LiveModel)
-    # Always-on rows: status (1) + editor (flexible) + footer (1) + logs (>=6).
-    # The footer is dynamic — see `_footer_line` — and folds the mode hint,
-    # the command prompt, and the completion hint together so we add zero
-    # net rows vs the pre-SP6 layout.
+    # Layout: status / editor / footer / logs, separated by thin rules so
+    # the panes read as discrete zones instead of free-floating text.
     status = _activity_widget(m)
+    sep1   = _separator()
     editor = _editor_pane(m)
+    sep2   = _separator()
     footer = _footer_line(m)
+    sep3   = _separator()
     logs   = _logs_pane(m)
     TUI.Layout(;
-        widgets     = [status, editor, footer, logs],
-        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1), TUI.Min(6)],
+        widgets     = [status, sep1, editor, sep2, footer, sep3, logs],
+        constraints = [TUI.Min(1), TUI.Min(1), TUI.Percent(70),
+                       TUI.Min(1), TUI.Min(1), TUI.Min(1), TUI.Min(5)],
         orientation = :vertical,
     )
+end
+
+"""
+    _separator()
+
+A 1-row widget that fills its area with `─`. Used as a visual divider
+between the major panes. Width is whatever the layout assigns it.
+"""
+struct _Separator end
+_separator() = _Separator()
+
+function TUI.render(::_Separator, area::TUI.Rect, buf::TUI.Buffer)
+    TUI.height(area) < 1 && return
+    line = "─"^TUI.width(area)
+    TUI.set(buf, TUI.left(area), TUI.top(area), line,
+            TUI.Crayon(; foreground=:dark_gray))
 end
 
 """
