@@ -839,6 +839,52 @@ end
         @test m.mode === :normal
     end
 
+    @testset "guide-mode / search jumps to first match" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 0
+        Ressac._dispatch_key!(m, _fake_key("/"))
+        @test m.mode === :command
+        @test m.command_prefix == '/'
+        @test m.guide_search_active == true
+        for c in "guide"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.mode === :guide
+        idx = findfirst(l -> occursin("guide", lowercase(l)), Ressac._GUIDE_LINES)
+        @test idx !== nothing
+        @test m.guide_scroll == idx - 1
+        @test m.guide_search_active == false
+    end
+
+    @testset "guide-mode / search no match leaves scroll alone" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 3
+        Ressac._dispatch_key!(m, _fake_key("/"))
+        for c in "zzznosuchstring"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.mode === :guide
+        @test m.guide_scroll == 3
+    end
+
+    @testset "guide-mode / search Esc returns to guide" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 2
+        Ressac._dispatch_key!(m, _fake_key("/"))
+        for c in "any"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Esc"))
+        @test m.mode === :guide
+        @test m.guide_scroll == 2
+        @test m.guide_search_active == false
+    end
+
     @testset "Movement clears insert-mode completion cycle" begin
         empty!(Ressac._SAMPLE_REGISTRY)
         try

@@ -383,7 +383,12 @@ end
 function _handle_command!(m::LiveModel, evt)
     code = evt.code
     if code == "Esc"
-        m.mode = :normal
+        if m.guide_search_active
+            m.mode = :guide
+            m.guide_search_active = false
+        else
+            m.mode = :normal
+        end
         m.command_buffer = ""
         _clear_completions!(m)
     elseif code == "Enter"
@@ -446,11 +451,23 @@ function _execute_command!(m::LiveModel)
     if prefix == ':'
         _execute_ex_command!(m, body)
     elseif prefix == '/'
-        try
-            rx = Regex(body)
-            _run_search!(m, rx; dir=:forward)
+        rx = try
+            Regex(body, "i")
         catch err
             _push_log!(m, "[ERROR] bad regex: $(sprint(showerror, err))")
+            nothing
+        end
+        if rx !== nothing
+            if m.guide_search_active
+                idx = findfirst(l -> occursin(rx, l), _GUIDE_LINES)
+                if idx !== nothing
+                    m.guide_scroll = idx - 1
+                end
+                m.mode = :guide
+                m.guide_search_active = false
+            else
+                _run_search!(m, rx; dir=:forward)
+            end
         end
     elseif prefix == '?'
         try
