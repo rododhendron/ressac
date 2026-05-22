@@ -15,7 +15,7 @@ function TUI.view(m::LiveModel)
     logs   = _logs_pane(m)
     TUI.Layout(;
         widgets = [status, editor, cmd, logs],
-        constraints = [TUI.Min(3), TUI.Percent(60), TUI.Min(3), TUI.Min(8)],
+        constraints = [TUI.Min(1), TUI.Percent(70), TUI.Min(1), TUI.Min(8)],
         orientation = :vertical,
     )
 end
@@ -23,6 +23,7 @@ end
 function _activity_widget(m::LiveModel)
     sched = m.scheduler
     parts = String[]
+    push!(parts, "ressac")
     push!(parts, "$(round(sched.cps; digits=3))cps")
     push!(parts, _cycle_indicator(sched))
     push!(parts, "│")
@@ -34,7 +35,7 @@ function _activity_widget(m::LiveModel)
     end
     push!(parts, "│ $(uppercase(String(m.mode)))")
     text = join(parts, "  ")
-    return _zone_v2("ressac", text, TUI.Crayon(; bold=true))
+    _TextLines([text], TUI.Crayon(; bold=true))
 end
 
 function _cycle_indicator(s::Scheduler)
@@ -86,6 +87,29 @@ function TUI.render(p::_BufferPane, area::TUI.Rect, buf::TUI.Buffer)
     end
 end
 
+"""
+    _TextLines(lines, style)
+
+Generic multi-line widget for stacking pre-rendered text rows. Same idea
+as `_BufferPane` but for read-only panes (status, command prompt, logs).
+Bypasses `TUI.Block`'s frame-overlap quirk by writing directly to the
+buffer.
+"""
+struct _TextLines
+    lines::Vector{String}
+    style::TUI.Crayon
+end
+
+function TUI.render(p::_TextLines, area::TUI.Rect, buf::TUI.Buffer)
+    TUI.height(area) < 1 && return
+    avail = TUI.height(area)
+    for (i, line) in enumerate(p.lines)
+        i > avail && break
+        clipped = first(line, TUI.width(area))
+        TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), p.style)
+    end
+end
+
 function _editor_pane(m::LiveModel)
     rendered = String[]
     for (i, line) in enumerate(m.buffer)
@@ -123,16 +147,10 @@ end
 
 function _command_line(m::LiveModel)
     text = m.mode === :command ? "$(m.command_prefix)$(m.command_buffer)█" : " "
-    return _zone_v2("cmd", text, TUI.Crayon(; foreground=:green))
+    _TextLines([text], TUI.Crayon(; foreground=:green))
 end
 
 function _logs_pane(m::LiveModel)
-    text = isempty(m.logs) ? "(no logs)" : join(last(m.logs, 8), "\n")
-    return _zone_v2("logs", text, TUI.Crayon(; foreground=:blue))
-end
-
-function _zone_v2(title::AbstractString, text::AbstractString, style)
-    words = TUI.make_words(text, style)
-    isempty(words) && push!(words, TUI.Word(" ", style))
-    TUI.Paragraph(TUI.Block(; title=String(title)), words, 1, Ref{Int}(0))
+    raw = isempty(m.logs) ? String[""] : collect(last(m.logs, 8))
+    _TextLines(raw, TUI.Crayon(; foreground=:blue))
 end
