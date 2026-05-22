@@ -325,3 +325,98 @@ function list_samples(pattern::Regex = r"")
     sort!(matches, by = e -> (e.plugin, String(e.name)))
     return matches
 end
+
+"""
+    InstrumentEntry(name, plugin, params, metadata)
+
+A named bundle of `/dirt/play` params that the user can invoke by short
+name. `params` is a `Vector{Pair{String,Any}}` (not Dict) so the order
+declared in the TOML manifest survives the round-trip into OSC.
+
+- `name`     — Symbol used in patterns (`:kicklourd`)
+- `plugin`   — the plugin that contributed this preset
+- `params`   — declared OSC params in TOML order (`s` first by convention)
+- `metadata` — reserved keys pulled from the same manifest table
+              (`tags`, `description`, `comment`)
+"""
+struct InstrumentEntry
+    name::Symbol
+    plugin::String
+    params::Vector{Pair{String,Any}}
+    metadata::Dict{String,Any}
+end
+
+"""
+    SynthEntry(name, plugin, metadata)
+
+Metadata-only registry entry for a synth exposed by a plugin. The
+SynthDef itself is loaded via the existing `[synthdefs]` section; this
+entry only enables `:synths` listing and `K` preview.
+"""
+struct SynthEntry
+    name::Symbol
+    plugin::String
+    metadata::Dict{String,Any}
+end
+
+const _INSTRUMENT_REGISTRY = Dict{Symbol,InstrumentEntry}()
+const _SYNTH_REGISTRY      = Dict{Symbol,SynthEntry}()
+
+"""
+    register_instrument!(entry::InstrumentEntry)
+
+First-wins registration. Shadow attempts log `[WARN] instrument 'X' …`
+and are skipped.
+"""
+function register_instrument!(entry::InstrumentEntry)
+    if haskey(_INSTRUMENT_REGISTRY, entry.name)
+        existing = _INSTRUMENT_REGISTRY[entry.name]
+        @warn "instrument '$(entry.name)' shadowed by plugin '$(entry.plugin)' (already loaded from '$(existing.plugin)')"
+        return entry
+    end
+    _INSTRUMENT_REGISTRY[entry.name] = entry
+    return entry
+end
+
+"""
+    register_synth!(entry::SynthEntry)
+
+First-wins registration. Same shadow semantics as
+[`register_instrument!`](@ref).
+"""
+function register_synth!(entry::SynthEntry)
+    if haskey(_SYNTH_REGISTRY, entry.name)
+        existing = _SYNTH_REGISTRY[entry.name]
+        @warn "synth '$(entry.name)' shadowed by plugin '$(entry.plugin)' (already loaded from '$(existing.plugin)')"
+        return entry
+    end
+    _SYNTH_REGISTRY[entry.name] = entry
+    return entry
+end
+
+instrument_info(name::Symbol) = get(_INSTRUMENT_REGISTRY, name, nothing)
+synth_info(name::Symbol)      = get(_SYNTH_REGISTRY,      name, nothing)
+
+"""
+    list_instruments(pattern::Regex = r"") -> Vector{InstrumentEntry}
+"""
+function list_instruments(pattern::Regex = r"")
+    out = InstrumentEntry[]
+    for (name, entry) in _INSTRUMENT_REGISTRY
+        occursin(pattern, String(name)) && push!(out, entry)
+    end
+    sort!(out, by = e -> (e.plugin, String(e.name)))
+    return out
+end
+
+"""
+    list_synths(pattern::Regex = r"") -> Vector{SynthEntry}
+"""
+function list_synths(pattern::Regex = r"")
+    out = SynthEntry[]
+    for (name, entry) in _SYNTH_REGISTRY
+        occursin(pattern, String(name)) && push!(out, entry)
+    end
+    sort!(out, by = e -> (e.plugin, String(e.name)))
+    return out
+end
