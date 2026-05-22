@@ -61,19 +61,28 @@ immediately whether or not there's an event) and falls back to
 `sleep(1/60)` between frames, which is a yielding sleep.
 """
 function _ressac_app!(m::LiveModel; frame_period::Float64 = 1/60)
-    TUI.tui() do
+    TUI.tui(; mouse = true) do
         t = TUI.Terminal(; wait = 0.0)
         TUI.init!(m, t)
+        # Idle frame budget: when no input event lands in the last
+        # `idle_period` seconds, skip the render to keep CPU low and the
+        # main thread responsive to the next keystroke. We still render
+        # every `idle_period` for animation (cycle indicator etc.).
+        idle_period = 1/30
+        last_render = 0.0
         while !m.quit
-            # Catch any per-frame exception (string-indexing surprises,
-            # widget render bugs, etc.) and log it instead of crashing
-            # the session. A live performer should never lose state to
-            # a stray multi-byte keystroke.
             try
                 evt = TUI.try_get_event(t)
-                evt !== nothing && TUI.update!(m, evt)
-                TUI.render(t, m)
-                TUI.draw(t)
+                if evt !== nothing
+                    TUI.update!(m, evt)
+                    TUI.render(t, m)
+                    TUI.draw(t)
+                    last_render = time()
+                elseif (time() - last_render) >= idle_period
+                    TUI.render(t, m)
+                    TUI.draw(t)
+                    last_render = time()
+                end
             catch err
                 _push_log!(m, "[ERROR] frame: $(sprint(showerror, err))")
             end

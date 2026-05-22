@@ -1,0 +1,79 @@
+name        = "superdirt-synths"
+version     = "0.1.0"
+description = "Built-in SuperDirt SynthDefs (registry-only — defs live on the audio side)"
+
+# Each entry below registers a Ressac SynthEntry so :synths, K preview,
+# and Tab autocomplete know about the synth. The SynthDefs themselves
+# ship with SuperDirt and don't need to be loaded by Ressac.
+
+[synths.sin]
+tags        = ["sine", "tone"]
+description = "pure sine (needs release/attack to be audible)"
+
+[synths.square]
+tags        = ["square", "wave"]
+description = "square wave oscillator"
+
+[synths.saw]
+tags        = ["saw", "wave"]
+description = "saw wave oscillator"
+
+[synths.tri]
+tags        = ["triangle", "wave"]
+description = "triangle wave oscillator"
+
+[synths.fm]
+tags        = ["fm", "synth"]
+description = "simple FM synth"
+
+[synths.super808]
+tags        = ["drum", "bass", "808"]
+description = "TR-808 style kick"
+
+[synths.supersnare]
+tags        = ["drum", "snare"]
+description = "snappy snare synth"
+
+[synths.superkick]
+tags        = ["drum", "kick"]
+description = "kick drum synth"
+
+[synths.superhammond]
+tags        = ["organ", "keys"]
+description = "Hammond-esque organ"
+
+[synths.superpiano]
+tags        = ["piano", "keys"]
+description = "synth piano"
+
+[synths.supersaw]
+tags        = ["saw", "lead"]
+description = "detuned super-saw lead"
+
+[synths.supersquare]
+tags        = ["square", "lead"]
+description = "detuned super-square lead"
+
+[synths.supersine]
+tags        = ["sine", "pad"]
+description = "thick sine pad"
+
+[synths.superchip]
+tags        = ["chip", "8bit"]
+description = "chiptune-style lead"
+
+[synths.superhoover]
+tags        = ["hoover", "rave"]
+description = "classic rave hoover"
+
+[synths.bassWarsaw]
+tags        = ["bass", "low"]
+description = "deep growly bass"
+
+[synths.bassdm]
+tags        = ["bass", "fm"]
+description = "FM bass"
+
+[synths.psin]
+tags        = ["pulse", "sine"]
+description = "pulse-modulated sine"

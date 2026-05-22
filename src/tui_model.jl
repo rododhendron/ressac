@@ -37,6 +37,11 @@ Backing model for the multi-line TUI. See
     completions::Vector{String}   = String[]
     completion_cycle_idx::Int     = 0
     completion_target_range::Union{Nothing,NTuple{2,Int}} = nothing
+    # SP7 — mouse wheel value tweaking: filled by `_EditorPane` at render
+    # time so mouse events can map terminal cells back to buffer positions.
+    editor_screen_top::Int        = 0
+    editor_screen_left::Int       = 0
+    editor_screen_height::Int     = 0
 end
 
 function _push_log!(m::LiveModel, line::AbstractString)

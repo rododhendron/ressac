@@ -8,6 +8,10 @@ function TUI.update!(m::LiveModel, evt::TUI.KeyEvent)
                         kind=evt.data.kind))
 end
 
+function TUI.update!(m::LiveModel, evt::TUI.MouseEvent)
+    _handle_mouse!(m, evt.data)
+end
+
 function TUI.view(m::LiveModel)
     return _AppView(m)
 end
@@ -198,7 +202,33 @@ function _editor_pane(m::LiveModel)
         end
         push!(rendered, prefix * display_line * marker)
     end
-    _BufferPane(rendered, TUI.Crayon())
+    _EditorPane(m, rendered)
+end
+
+"""
+    _EditorPane(model, lines)
+
+Renders `lines` like `_BufferPane`, and as a side effect captures the
+screen-space rectangle assigned by the Layout into the model so mouse
+events can translate terminal (col, row) coordinates back into buffer
+(col, row) positions.
+"""
+struct _EditorPane
+    model::LiveModel
+    lines::Vector{String}
+end
+
+function TUI.render(p::_EditorPane, area::TUI.Rect, buf::TUI.Buffer)
+    p.model.editor_screen_left   = TUI.left(area)
+    p.model.editor_screen_top    = TUI.top(area)
+    p.model.editor_screen_height = TUI.height(area)
+    TUI.height(area) < 1 && return
+    avail = TUI.height(area)
+    for (i, line) in enumerate(p.lines)
+        i > avail && break
+        clipped = first(line, TUI.width(area))
+        TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), TUI.Crayon())
+    end
 end
 
 # Splice a `▌` cursor glyph into `line` at byte index `col`, defensively:

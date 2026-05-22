@@ -218,6 +218,14 @@ function _handle_normal!(m::LiveModel, evt)
         _move_cursor!(m, 0, +1)
     elseif code == "k" || code == "Up"
         _move_cursor!(m, 0, -1)
+    elseif code == "w"
+        _word_motion!(m; dir=:forward, big=false)
+    elseif code == "b"
+        _word_motion!(m; dir=:backward, big=false)
+    elseif code == "W"
+        _word_motion!(m; dir=:forward, big=true)
+    elseif code == "B"
+        _word_motion!(m; dir=:backward, big=true)
     elseif code == "0" && m.count_prefix == 0
         _line_start!(m)
     elseif code == "\$"
@@ -814,6 +822,86 @@ function _preview_under_cursor!(m::LiveModel)
 end
 
 _is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'
+
+# Vim-style word predicates: lowercase 'word' breaks on punctuation,
+# uppercase 'WORD' breaks only on whitespace.
+_is_word_inner(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_'
+_is_WORD_inner(c::AbstractChar) = !isspace(c)
+
+"""
+    _word_motion!(m; dir, big)
+
+vim-style w/b/W/B. `dir = :forward` jumps to the start of the next
+word; `:backward` to the start of the previous word. `big = true`
+treats whitespace-separated runs as one word (vim WORD semantics).
+"""
+function _word_motion!(m::LiveModel; dir::Symbol = :forward, big::Bool = false)
+    pred = big ? _is_WORD_inner : _is_word_inner
+    row = m.cursor_row
+    col = m.cursor_col
+    n = length(m.buffer)
+    n == 0 && return
+
+    if dir === :forward
+        while row <= n
+            line = m.buffer[row]
+            ll = lastindex(line)
+            # Skip the rest of the current word.
+            while col <= ll && pred(line[col])
+                col = nextind(line, col)
+            end
+            # Then skip separators until we find the next word start.
+            while col <= ll && !pred(line[col])
+                col = nextind(line, col)
+            end
+            if col <= ll
+                m.cursor_row = row
+                m.cursor_col = col
+                return
+            end
+            # End of line — try next row.
+            row += 1
+            col = 1
+        end
+        # Fall off the end → clamp to last char.
+        m.cursor_row = n
+        last_line = m.buffer[n]
+        m.cursor_col = max(1, lastindex(last_line))
+    else  # :backward
+        while row >= 1
+            line = m.buffer[row]
+            # If we're at col 1 of this row, fall through to the previous row.
+            if col <= 1
+                row -= 1
+                row < 1 && break
+                line = m.buffer[row]
+                col = lastindex(line) + 1
+            end
+            # Step back from the current position.
+            col = prevind(line, col)
+            # Skip separators.
+            while col >= 1 && !pred(line[col])
+                col = prevind(line, col)
+            end
+            # Now we're on a word char; walk back to its start.
+            while col >= 1
+                prev = prevind(line, col)
+                prev >= 1 && pred(line[prev]) || break
+                col = prev
+            end
+            if col >= 1
+                m.cursor_row = row
+                m.cursor_col = col
+                return
+            end
+            # Fall to the previous row.
+            row -= 1
+            col = 1
+        end
+        m.cursor_row = 1
+        m.cursor_col = 1
+    end
+end
 
 # ---------------------------------------------------------------------
 # Guide mode
