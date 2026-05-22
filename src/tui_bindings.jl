@@ -308,16 +308,54 @@ function _handle_command!(m::LiveModel, evt)
     if code == "Esc"
         m.mode = :normal
         m.command_buffer = ""
+        _clear_completions!(m)
     elseif code == "Enter"
         _execute_command!(m)
         m.mode = :normal
         m.command_buffer = ""
+        _clear_completions!(m)
     elseif code == "Backspace"
         isempty(m.command_buffer) && return
         m.command_buffer = m.command_buffer[1:prevind(m.command_buffer, end)]
+        _clear_completions!(m)
+    elseif code == "Tab"
+        _handle_command_tab!(m)
     elseif length(code) == 1
         c = first(code)
-        _is_typable_ascii(c) && (m.command_buffer *= code)
+        if _is_typable_ascii(c)
+            m.command_buffer *= code
+            _clear_completions!(m)
+        end
+    end
+end
+
+function _clear_completions!(m::LiveModel)
+    empty!(m.completions)
+    m.completion_cycle_idx = 0
+    m.completion_target_range = nothing
+end
+
+function _handle_command_tab!(m::LiveModel)
+    if isempty(m.completions)
+        candidates = _compute_completions(m)
+        isempty(candidates) && return
+        m.completions = candidates
+        m.completion_cycle_idx = 1
+        if occursin(' ', m.command_buffer)
+            verb, _ = split(m.command_buffer, ' '; limit=2)
+            m.command_buffer = String(verb) * " " * candidates[1]
+        else
+            m.command_buffer = candidates[1]
+        end
+    else
+        m.completion_cycle_idx = (m.completion_cycle_idx % length(m.completions)) + 1
+        next = m.completions[m.completion_cycle_idx]
+        if occursin(' ', m.command_buffer)
+            verb, _ = split(m.command_buffer, ' '; limit=2)
+            m.command_buffer = String(verb) * " " * next
+        else
+            m.command_buffer = next
+        end
     end
 end
 

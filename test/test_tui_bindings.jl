@@ -672,4 +672,42 @@ end
             empty!(Ressac._SYNTH_REGISTRY)
         end
     end
+
+    @testset "Tab in :-mode cycles command-name matches" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        Ressac._dispatch_key!(m, _fake_key("s"))
+        Ressac._dispatch_key!(m, _fake_key("a"))
+        @test m.command_buffer == "sa"
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.command_buffer == "samples"
+        @test !isempty(m.completions)
+        before = m.command_buffer
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.command_buffer != before || length(m.completions) == 1
+    end
+
+    @testset "Tab in :-mode with no matches is silent no-op" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        Ressac._dispatch_key!(m, _fake_key("z"))
+        Ressac._dispatch_key!(m, _fake_key("z"))
+        @test m.command_buffer == "zz"
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test m.command_buffer == "zz"
+        @test isempty(m.completions)
+    end
+
+    @testset "Editing the command buffer clears Tab cycle" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        Ressac._dispatch_key!(m, _fake_key("s"))
+        Ressac._dispatch_key!(m, _fake_key("Tab"))
+        @test !isempty(m.completions)
+        Ressac._dispatch_key!(m, _fake_key("a"))
+        @test m.completion_cycle_idx == 0
+    end
 end
