@@ -1,0 +1,101 @@
+name        = "starter-instruments"
+version     = "0.1.0"
+description = "starter presets to play with — copy/edit/rename to make your own"
+
+# --- KICKS / BASS ---------------------------------------------------------
+
+[instruments.kicklourd]
+s     = "bd"
+speed = 0.7
+gain  = 1.5
+lpf   = 250
+shape = 0.3
+room  = 0.2
+tags        = ["kick", "fat", "low"]
+description = "thick low kick — the one we designed in the chat"
+
+[instruments.kickdry]
+s    = "bd"
+gain = 1.3
+hpf  = 80
+tags        = ["kick", "dry"]
+description = "punchy dry kick, no reverb"
+
+[instruments.sub]
+s       = "sin"
+n       = -24
+release = 0.9
+gain    = 1.6
+lpf     = 300
+shape   = 0.4
+tags        = ["bass", "sub", "sine"]
+description = "deep sine sub bass — long release"
+
+[instruments.basswarsaw]
+s       = "bassWarsaw"
+n       = -12
+release = 0.6
+gain    = 1.4
+lpf     = 600
+tags        = ["bass", "growl"]
+description = "growly bass — punchy + filtered"
+
+# --- DRUMS ----------------------------------------------------------------
+
+[instruments.snap]
+s    = "sn"
+gain = 1.2
+hpf  = 200
+shape = 0.2
+tags        = ["snare", "snap"]
+description = "tight snappy snare"
+
+[instruments.hat]
+s    = "hh"
+gain = 0.7
+hpf  = 4000
+tags        = ["hihat", "bright"]
+description = "filtered bright hat"
+
+[instruments.clap]
+s    = "cp"
+gain = 1.0
+room = 0.3
+tags        = ["clap"]
+description = "classic clap with a tiny room"
+
+# --- SYNTH LEADS / PADS ---------------------------------------------------
+
+[instruments.lead]
+s       = "supersaw"
+release = 0.4
+gain    = 1.0
+lpf     = 1500
+shape   = 0.1
+tags        = ["lead", "saw"]
+description = "supersaw lead, filtered"
+
+[instruments.pad]
+s       = "supersine"
+release = 1.5
+attack  = 0.2
+gain    = 0.7
+room    = 0.5
+lpf     = 800
+tags        = ["pad", "warm"]
+description = "warm thick pad — long attack/release + reverb"
+
+[instruments.chip]
+s       = "superchip"
+release = 0.15
+gain    = 1.1
+tags        = ["chip", "8bit"]
+description = "8-bit chip lead"
+
+[instruments.organ]
+s       = "superhammond"
+release = 0.5
+gain    = 0.9
+room    = 0.3
+tags        = ["organ", "keys"]
+description = "Hammond-style organ"
