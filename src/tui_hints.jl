@@ -110,6 +110,17 @@ const _COMBINATOR_NAMES = [
     "stack", "cat", "mask",
     "gain", "speed", "lpf", "hpf", "pan", "n", "room", "delay",
     "shape", "set",
+    # Auto-generated SuperDirt param helpers — see _SUPERDIRT_PARAM_HELPERS.
+    "attack", "release", "hold", "sustain", "legato",
+    "cutoff", "resonance", "bandq", "bandf", "hcutoff", "hresonance",
+    "crush", "coarse",
+    "accelerate", "vibrato", "tremolorate", "tremolodepth",
+    "phaserrate", "phaserdepth",
+    "delaytime", "delayfeedback",
+    "octave", "slide", "pitch1", "pitch2", "pitch3", "detune",
+    "sampleloop", "speedup",
+    "vowel", "enhance", "leslie", "leslierate", "lesliespeed",
+    "pan2", "panspan", "panorbit", "panwidth",
 ]
 
 """

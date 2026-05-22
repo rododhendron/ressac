@@ -47,6 +47,16 @@ export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
 export pan, n, room, delay, shape
+# SuperDirt param helpers (auto-generated in controls.jl):
+export attack, release, hold, sustain, legato
+export cutoff, resonance, bandq, bandf, hcutoff, hresonance
+export crush, coarse
+export accelerate, vibrato, tremolorate, tremolodepth, phaserrate, phaserdepth
+export delaytime, delayfeedback
+export octave, slide, pitch1, pitch2, pitch3, detune
+export sampleloop, speedup
+export vowel, enhance, leslie, leslierate, lesliespeed
+export pan2, panspan, panorbit, panwidth
 # Export every @d1..@d64 macro. Doing it here keeps the macro generator
 # in live_api.jl tidy.
 for n in 1:64

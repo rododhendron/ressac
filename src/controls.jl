@@ -217,3 +217,52 @@ n(x)     = _control_op(:n,     _overwrite, x)
 room(x)  = _control_op(:room,  _overwrite, x)
 delay(x) = _control_op(:delay, _overwrite, x)
 shape(x) = _control_op(:shape, _overwrite, x)
+
+# ---------------------------------------------------------------------
+# Auto-generated SuperDirt param helpers
+# ---------------------------------------------------------------------
+#
+# Every name below becomes a function `<name>(x) = _control_op(:<name>,
+# _overwrite, x)` — same shape as the curated helpers above, but for
+# SuperDirt params that don't have a custom composition op. Composition
+# defaults to overwrite: `attack(0.1) |> attack(0.5)` is `attack=0.5`.
+#
+# We only auto-generate names that:
+#   - aren't Julia keywords (`end`, `begin`, `do`, ...)
+#   - aren't already in `_COMBINATOR_NAMES` or otherwise exported by Ressac
+#   - aren't likely to shadow Base / common imports (we skip `cut`, `gate`,
+#     `loop`, `lock` to play safe — use `set(:cut, …)` for those.)
+#
+# Users can declare more helpers themselves by calling `_control_op` —
+# the function is exported in spirit, just a leading underscore.
+
+"""
+    _SUPERDIRT_PARAM_HELPERS
+
+The list of SuperDirt param names auto-defined as overwrite helpers.
+"""
+const _SUPERDIRT_PARAM_HELPERS = [
+    # Envelope
+    :attack, :release, :hold, :sustain, :legato,
+    # Filters
+    :cutoff, :resonance, :bandq, :bandf, :hcutoff, :hresonance,
+    # Distortion / bit-crush
+    :crush, :coarse,
+    # Modulation
+    :accelerate, :vibrato, :tremolorate, :tremolodepth,
+    :phaserrate, :phaserdepth,
+    # Delay extras (plain :delay is already a hand-curated helper)
+    :delaytime, :delayfeedback,
+    # Pitch
+    :octave, :slide, :pitch1, :pitch2, :pitch3, :detune,
+    # Sample window
+    :sampleloop, :speedup,
+    # Formant / FX
+    :vowel, :enhance, :leslie, :leslierate, :lesliespeed,
+    # Spatial
+    :pan2, :panspan, :panorbit, :panwidth,
+]
+
+for name in _SUPERDIRT_PARAM_HELPERS
+    @eval $(name)(x) = _control_op($(QuoteNode(name)), _overwrite, x)
+end
