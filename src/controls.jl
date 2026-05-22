@@ -38,3 +38,24 @@ function _symbol_to_control_map(sym::Symbol)::ControlMap
     return ControlMap(:s => Symbol(str[1:idx-1]),
                       :n => parse(Int, str[idx+1:end]))
 end
+
+"""
+    _lift_to_control(p::Pattern{Symbol}) -> ControlPattern
+
+Lift each event's symbol value into a ControlMap. Used by effect helpers
+to accept either flavour of pattern transparently. Idempotent: lifting
+an already-lifted pattern returns it unchanged (no nested wrapping).
+"""
+function _lift_to_control(p::Pattern{Symbol})::ControlPattern
+    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+        inner = p(s, e)
+        out = Vector{Event{ControlMap}}(undef, length(inner))
+        for (i, ev) in enumerate(inner)
+            out[i] = Event{ControlMap}(ev.start, ev.stop,
+                                       _symbol_to_control_map(ev.value))
+        end
+        out
+    end)
+end
+
+_lift_to_control(p::ControlPattern) = p

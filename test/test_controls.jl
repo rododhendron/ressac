@@ -25,4 +25,27 @@ using Ressac
         @test cm[:s] === :snares
         @test cm[:n] === 12
     end
+
+    @testset "_lift_to_control(Pattern{Symbol}) yields ControlPattern" begin
+        p = pure(:bd)
+        lifted = Ressac._lift_to_control(p)
+        @test lifted isa Ressac.ControlPattern
+        evs = lifted(0//1, 1//1)
+        @test length(evs) == 1
+        @test evs[1].value == Dict{Symbol,Any}(:s => :bd)
+        @test evs[1].start == 0//1
+        @test evs[1].stop  == 1//1
+    end
+
+    @testset "_lift_to_control splits :N suffix" begin
+        p = pure(Symbol("snares:3"))
+        lifted = Ressac._lift_to_control(p)
+        evs = lifted(0//1, 1//1)
+        @test evs[1].value == Dict{Symbol,Any}(:s => :snares, :n => 3)
+    end
+
+    @testset "_lift_to_control is idempotent on ControlPattern" begin
+        cp = Ressac._lift_to_control(pure(:bd))
+        @test Ressac._lift_to_control(cp) === cp
+    end
 end
