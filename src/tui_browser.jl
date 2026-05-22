@@ -113,11 +113,11 @@ end
 
 Keystroke router for `:browse` mode.
 
-- j/k or arrows → move selection (fires a preview after a 100 ms cooldown).
+- j/k or arrows → move selection (no preview — explicit only).
 - Backspace → drop the last query char.
 - Printable ASCII → append to query.
 - Tab → cycle the type filter.
-- K → fire a preview immediately (bypasses cooldown).
+- K or Space → fire a preview of the highlighted entry.
 - Enter → insert the highlighted name at the editor cursor + close.
 - q / Esc → close, restore mode.
 """
@@ -134,11 +134,11 @@ function _handle_browser!(m::LiveModel, evt)
         _browser_close!(m)
     elseif code == "j" || code == "Down"
         m.browser_cursor = min(m.browser_cursor + 1, max(n, 1))
-        _browser_preview!(m, entries; min_gap = 0.1)
     elseif code == "k" || code == "Up"
         m.browser_cursor = max(m.browser_cursor - 1, 1)
-        _browser_preview!(m, entries; min_gap = 0.1)
-    elseif code == "K"
+    elseif code == "K" || code == " "
+        # Explicit preview only — auto-preview on j/k was too spammy.
+        # `K` (vim convention) or Space both fire.
         _browser_preview!(m, entries; min_gap = 0.0)
     elseif code == "Tab"
         idx = findfirst(==(m.browser_filter), _BROWSER_FILTERS)
@@ -258,6 +258,6 @@ function _browser_overlay(m::LiveModel)
         # the user to scroll naturally and let _Overlay clip).
         m.browser_scroll = max(0, body_idx - 18)
     end
-    _Overlay(lines, "browse — j/k nav, K preview, Tab filter, Enter insert, Esc close";
+    _Overlay(lines, "browse — j/k nav, K/Space preview, Tab filter, Enter insert, Esc close";
              scroll = m.browser_scroll)
 end

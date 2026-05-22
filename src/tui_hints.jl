@@ -172,7 +172,7 @@ const _MODE_HINTS = Dict{Symbol,String}(
     :visual_line => "y/d/m/e on selection  |  Esc cancel",
     :command     => "Enter run  |  Tab cycle  |  Esc cancel",
     :guide       => "j/k scroll  |  /search  |  q close",
-    :browser     => "j/k nav  |  type to filter  |  K preview  |  Tab filter  |  Enter insert",
+    :browser     => "j/k nav  |  type filter  |  K/Space preview  |  Tab type  |  Enter insert",
 )
 
 _mode_hint(mode::Symbol) = get(_MODE_HINTS, mode, "")
