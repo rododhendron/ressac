@@ -51,8 +51,11 @@ function _tokenize(s::String)
             push!(tokens, MToken(:rparen, nothing, i)); i = nextind(s, i)
         elseif c == ','
             push!(tokens, MToken(:comma, nothing, i)); i = nextind(s, i)
-        elseif isdigit(c)
-            j = i
+        elseif isdigit(c) || (c == '-' && nextind(s, i) <= n && isdigit(s[nextind(s, i)]))
+            # Accept `-` as the start of a negative numeric literal (only
+            # when immediately followed by a digit — `bd-sn` and similar
+            # never appear in mini-notation, so the ambiguity is safe).
+            j = c == '-' ? nextind(s, i) : i
             while j <= n && isdigit(s[j])
                 j = nextind(s, j)
             end

@@ -34,7 +34,7 @@ include("plugin_handlers.jl")
 #   M6: include("reservoir.jl")
 
 export Event, Pattern, query
-export pure, silence, fast, slow, density, rev, every
+export pure, silence, fast, slow, density, rev, every, gate
 export mask
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc

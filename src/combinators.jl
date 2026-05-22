@@ -207,3 +207,30 @@ function cat(ps::Vector{<:Pattern{T}}) where {T}
 end
 
 cat(ps::Vararg{Pattern{T}}) where {T} = cat(collect(ps))
+
+"""
+    gate(name::Symbol, p::Pattern{Symbol}) -> Pattern{Symbol}
+
+Substitute `name` for every "hit" event in `p`, drop "silence" events.
+Lets you write a long instrument name once and use a short numeric
+mask for the rhythm:
+
+```julia
+gate(:super808, p"1 0 0 1 0 0 1 0")   # 808 on positions 1, 4, 7
+gate(:supersnare, p"~ ~ x ~")          # snare on position 3 only
+```
+
+Silence values: `~` (mini-notation primitive), and the symbols `:0`,
+`:false`, `:no`, or empty — anything else is treated as a hit.
+"""
+function gate(name::Symbol, p::Pattern{Symbol})
+    Pattern{Symbol}((s::Rational, e::Rational) -> begin
+        out = Event{Symbol}[]
+        for ev in p(s, e)
+            sym_str = String(ev.value)
+            sym_str in ("0", "false", "no", "") && continue
+            push!(out, Event{Symbol}(ev.start, ev.stop, name))
+        end
+        out
+    end)
+end
