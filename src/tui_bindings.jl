@@ -366,10 +366,55 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
     elseif body == "synths" || startswith(body, "synths ")
         rest = strip(body == "synths" ? "" : body[8:end])
         _execute_synths_command!(m, rest)
+    elseif body == "guide" || body == "help" || body == "?"
+        for line in _GUIDE_LINES
+            _push_log!(m, line)
+        end
     else
         _push_log!(m, "[ERROR] unknown command: $body")
     end
 end
+
+"""
+    _GUIDE_LINES
+
+In-app cheatsheet shown by `:guide` (alias `:help`, `:?`). Kept as a flat
+const vector so the lines stream into the log pane in order — no formatting
+beyond what the log widget already does.
+"""
+const _GUIDE_LINES = String[
+    "── Ressac guide ──",
+    "Modes:",
+    "  i / a / o / O — enter insert mode",
+    "  Esc           — back to normal",
+    "  V             — visual-line selection",
+    "  : / / / ?     — command / search forward / search backward",
+    "Normal-mode actions:",
+    "  hjkl / arrows — move cursor",
+    "  0 \$          — line start / end",
+    "  gg / G        — buffer start / end",
+    "  gdN           — jump to slot dN",
+    "  dd / yy / p / P — delete / yank / paste",
+    "  x             — delete char under cursor",
+    "  m             — toggle mute on slot under cursor",
+    "  K             — preview instrument/sample/synth under cursor",
+    "  e             — eval block under cursor (prefix N → defer to slot dN)",
+    "  n / N         — repeat last search forward / backward",
+    "Commands (`:` prefix):",
+    "  :q                    — quit",
+    "  :cps <x>              — set tempo",
+    "  :goto d<N>            — jump cursor to first `@dN` block",
+    "  :samples [arg]        — list / glob / detail sample banks",
+    "  :instruments [arg]    — list / glob / detail instrument presets",
+    "  :synths [arg]         — list / glob / detail synths",
+    "  :guide                — show this guide",
+    "Plugin manifest sections:",
+    "  [samples]    roots / bank / metadata",
+    "  [instruments.<n>]  declare presets — s required, rest is OSC or metadata",
+    "  [synthdefs]  files = [\"*.scd\"]",
+    "  [synths.<n>]       metadata for SynthDefs (tags, description)",
+    "  [julia]      files = [\"*.jl\"] — runs at plugin load",
+]
 
 """
     _execute_samples_command!(m, arg)

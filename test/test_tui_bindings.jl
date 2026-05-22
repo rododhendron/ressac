@@ -612,6 +612,33 @@ end
         @test any(l -> occursin("no instrument 'ghost'", l), m.logs)
     end
 
+    @testset ":guide dumps the cheatsheet into the log pane" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "guide"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        logs = join(m.logs, "\n")
+        @test occursin("Ressac guide", logs)
+        @test occursin(":samples", logs)
+        @test occursin(":instruments", logs)
+        @test occursin(":synths", logs)
+        @test occursin("K", logs)
+    end
+
+    @testset ":help and :? alias :guide" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "help"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test any(l -> occursin("Ressac guide", l), m.logs)
+    end
+
     @testset ":synths lists all + shows detail" begin
         empty!(Ressac._SYNTH_REGISTRY)
         try
