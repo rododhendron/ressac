@@ -99,6 +99,61 @@ function event_to_osc(ev::Event{Symbol})
     return OSCMessage("/dirt/play", Any["s", String(ev.value)])
 end
 
+"""
+    event_to_osc(ev::Event{ControlMap}) -> OSCMessage
+
+Dispatch a ControlMap-carrying event. The `:s` key drives an
+instrument-registry lookup: if it matches, the preset's full param set
+seeds the final dict (its `:s` is the literal sample to play). The
+event's other keys then merge on top — pipe wins entirely on overlap.
+If no instrument matches, the event's keys are shipped as-is.
+
+Argument order: `:s` first, then the remaining keys sorted
+alphabetically (SuperDirt parses by key name, but stable ordering keeps
+tests and logs predictable).
+
+Values that `_osc_value` cannot serialize log a warning and are
+dropped from the message.
+"""
+function event_to_osc(ev::Event{ControlMap})
+    cm = ev.value
+    routing = get(cm, :s, nothing)
+    final = ControlMap()
+
+    if routing !== nothing
+        sym = routing isa Symbol ? routing : Symbol(routing)
+        instr = instrument_info(sym)
+        if instr !== nothing
+            # Preset is the base; preset's :s is the literal target.
+            for (k, v) in instr.params
+                final[Symbol(k)] = v
+            end
+        else
+            # No preset → :s is a literal sample name.
+            final[:s] = routing
+        end
+    end
+
+    # Pipe overrides every key except :s (preset/routing already settled it).
+    for (k, v) in cm
+        k === :s && continue
+        final[k] = v
+    end
+
+    args = Any[]
+    if haskey(final, :s)
+        s_conv = _osc_value(final[:s])
+        s_conv !== missing && (push!(args, "s"); push!(args, s_conv))
+        delete!(final, :s)
+    end
+    for k in sort!(collect(keys(final)))
+        v_conv = _osc_value(final[k])
+        v_conv === missing && continue
+        push!(args, String(k)); push!(args, v_conv)
+    end
+    return OSCMessage("/dirt/play", args)
+end
+
 event_to_osc(ev::Event) = throw(ArgumentError(
     "No event_to_osc method for Event{$(typeof(ev.value))}; define one."))
 

@@ -314,6 +314,79 @@ julia> synth_info(:bassline)
 julia> list_synths()
 ```
 
+## Effects & overrides
+
+Chain OSC params onto a pattern with the pipe form. Helpers accept either
+a scalar or another `Pattern`:
+
+```julia
+@d1 p"bd hh sn hh" |> gain(0.8) |> lpf(2000)
+@d2 p"bd*4"        |> gain(p"1 0.7 0.5 1")  # gain varies over the cycle
+@d3 p"kicklourd"   |> room(0.4) |> delay(0.2)
+```
+
+### Helper table
+
+| Helper | Compose op | Identity-ish |
+|---|---|---|
+| `gain(x)`   | × (multiplicative) | 1.0 |
+| `speed(x)`  | × | 1.0 |
+| `lpf(x)`    | `min` (the more restrictive cutoff wins) | +∞ |
+| `hpf(x)`    | `max` | 0 |
+| `pan(x)`    | overwrite (last write wins) | — |
+| `n(x)`      | overwrite | — |
+| `room(x)`   | overwrite | — |
+| `delay(x)`  | overwrite | — |
+| `shape(x)`  | overwrite | — |
+| `set(:k, v)`| overwrite (escape hatch for any OSC key) | — |
+
+### Composition rules (read carefully)
+
+- **Within the pipe**, each helper composes with whatever the previous
+  helper put in the event. `gain(0.8) |> gain(1.2)` is `gain ≈ 0.96`;
+  `lpf(2000) |> lpf(500)` is `lpf = 500`.
+- **Preset vs pipe**: an instrument preset's value is a **default**.
+  If the pipe touches a key, the **pipe wins entirely** for that key,
+  even if the pipe value would naively "compose" with the preset.
+
+### Gotchas
+
+- **`gain(1.0)` is not a no-op when there's an instrument preset.** If
+  `kicklourd` declares `gain=1.2`, then `kicklourd |> gain(1.0)` ships
+  `gain=1.0` to OSC, not 1.2. The pipe touched `:gain`, the preset's
+  value got dropped. To inspect what an instrument actually declares:
+  ```
+  :instruments kicklourd
+  ```
+- **`set(:gain, 0.5) |> gain(2.0)` is `gain = 1.0`.** `set` writes 0.5
+  unconditionally; `gain(2.0)` then sees `:gain=0.5` already there and
+  composes × → 1.0. Mixing `set` and named helpers on the same key
+  works, but it's worth being explicit in your head about which
+  operator wins where.
+- **`pan(0.5) |> pan(0.3)` is `pan = 0.3`, not 0.15.** Pan is overwrite
+  by design — averaging two pans gives a meaningless result.
+- **First-write is not composed.** The very first `gain(x)` in a chain
+  (with no preset providing a `:gain` already) is a plain set: it does
+  not multiply against an implicit 1.0.
+
+### Escape hatch
+
+For any OSC param Ressac doesn't sugar, use `set`:
+
+```julia
+@d1 p"bd"   |> set(:cut, 1) |> set(:orbit, 2)
+@d2 p"arpy" |> set(:vowel, p"a e i o u")  # pattern-valued too
+```
+
+`set` is always overwrite.
+
+### REPL introspection
+
+There's no built-in "list of helpers" query — they're a fixed Julia
+namespace. `gain`, `pan`, `n`, `speed`, `lpf`, `hpf`, `room`, `delay`,
+`shape`, and `set` are all exported by the `Ressac` module. `:guide`
+shows the same helper table.
+
 ## Common gotchas
 
 - **First eval is slower** (~80 ms) than subsequent (~µs). Precompile

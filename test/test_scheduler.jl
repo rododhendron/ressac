@@ -122,6 +122,107 @@ Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
         @test msg.args == Any["s", "unmapped_sample"]
     end
 
+    @testset "event_to_osc(Event{ControlMap}) no instrument — :s first, alpha rest" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        cm = Dict{Symbol,Any}(:s => :bd, :gain => 0.8, :lpf => 200)
+        msg = Ressac.event_to_osc(Event(0//1, 1//1, cm))
+        @test msg.address == "/dirt/play"
+        @test msg.args == Any["s", "bd", "gain", Float32(0.8), "lpf", Int32(200)]
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) :s = Symbol becomes String" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        cm = Dict{Symbol,Any}(:s => :sn)
+        msg = Ressac.event_to_osc(Event(0//1, 1//1, cm))
+        @test msg.args == Any["s", "sn"]
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) drops unsupported value types" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        cm = Dict{Symbol,Any}(:s => :bd, :junk => Dict("x" => 1))
+        msg = @test_logs (:warn, r"unsupported OSC value") match_mode=:any begin
+            Ressac.event_to_osc(Event(0//1, 1//1, cm))
+        end
+        @test msg.args == Any["s", "bd"]
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) preset seeds, pipe overrides" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "t",
+                Pair{String,Any}["s" => "bd", "n" => 3, "gain" => 1.2, "lpf" => 200],
+                Dict{String,Any}(),
+            ))
+            cm = Dict{Symbol,Any}(:s => :kicklourd, :gain => 0.96)
+            msg = Ressac.event_to_osc(Event(0//1, 1//1, cm))
+            @test msg.args == Any["s", "bd",
+                                  "gain", Float32(0.96),
+                                  "lpf",  Int32(200),
+                                  "n",    Int32(3)]
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) preset + pipe-only key" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :bassy, "t",
+                Pair{String,Any}["s" => "bassline", "gain" => 0.8],
+                Dict{String,Any}(),
+            ))
+            cm = Dict{Symbol,Any}(:s => :bassy, :room => 0.5)
+            msg = Ressac.event_to_osc(Event(0//1, 1//1, cm))
+            @test msg.args == Any["s", "bassline",
+                                  "gain", Float32(0.8),
+                                  "room", Float32(0.5)]
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) preset present but pipe :s redirects" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "t",
+                Pair{String,Any}["s" => "bd", "gain" => 1.2],
+                Dict{String,Any}(),
+            ))
+            cm = Dict{Symbol,Any}(:s => :sn, :gain => 0.5)
+            msg = Ressac.event_to_osc(Event(0//1, 1//1, cm))
+            @test msg.args == Any["s", "sn", "gain", Float32(0.5)]
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset "event_to_osc(Event{ControlMap}) end-to-end via gain helper" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "t",
+                Pair{String,Any}["s" => "bd", "gain" => 1.2, "lpf" => 200],
+                Dict{String,Any}(),
+            ))
+            p = pure(:kicklourd) |> Ressac.gain(0.8) |> Ressac.gain(1.2)
+            ev = p(0//1, 1//1)[1]
+            msg = Ressac.event_to_osc(ev)
+            @test msg.args[1] == "s"
+            @test msg.args[2] == "bd"
+            gain_idx = findfirst(==("gain"), msg.args)
+            @test gain_idx !== nothing
+            @test msg.args[gain_idx + 1] ≈ Float32(0.96)
+            lpf_idx = findfirst(==("lpf"), msg.args)
+            @test lpf_idx !== nothing
+            @test msg.args[lpf_idx + 1] == Int32(200)
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
     @testset "event_to_osc drops params with unsupported value types" begin
         empty!(Ressac._INSTRUMENT_REGISTRY)
         try
