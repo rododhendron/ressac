@@ -5,7 +5,10 @@ Mode-aware keystroke router. `evt` must expose `code::String`,
 `modifiers::Vector{String}`, `kind::String`. Only acts on Press events.
 """
 function _dispatch_key!(m::LiveModel, evt)
-    evt.kind == "Press" || return
+    # Accept Press and Repeat so holding a navigation key auto-repeats at
+    # the OS key-repeat rate. Crossterm only emits Repeat when keyboard
+    # enhancement is enabled (default on non-Windows via TUI.tui()).
+    evt.kind == "Press" || evt.kind == "Repeat" || return
     if m.mode === :insert
         _handle_insert!(m, evt)
     elseif m.mode === :normal
