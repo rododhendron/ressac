@@ -201,7 +201,15 @@ version     = "0.1.0"
 description = "personal kicks + snares + a bassline synth"
 
 [samples]
-roots = ["./samples"]
+roots = ["./samples"]              # default: subdir name → bank name
+
+[samples.bank]                      # explicit aliases + multi-bank
+kicky  = "./curated/heavy_v3.wav"   # file → kicky:0
+snares = "./curated/snares"          # dir  → snares:0,:1,:2…
+
+[samples.metadata.kicky]
+bpm  = 120
+tags = ["heavy", "subby"]
 
 [synthdefs]
 files = ["./synths/bassline.scd"]
@@ -234,6 +242,25 @@ end)
 
 Plugins later in the load order that have `[midi]` in their manifest
 will now have it processed by your handler.
+
+### Sample bank workflow
+
+```
+:samples                  # list all loaded banks, grouped by plugin
+:samples bd*              # glob filter
+:samples kicky            # full metadata of one bank
+```
+
+Position the cursor on any sample-like word (`kicky`, `snares:1`) in
+normal mode and press `K` to play it once via `/dirt/play`, without
+touching your slots. The variant suffix (`:N`) is honoured.
+
+Inspect from the REPL:
+
+```julia
+julia> sample_info(:kicky)
+julia> list_samples(r"^bd")
+```
 
 ## Common gotchas
 
