@@ -104,6 +104,8 @@ function TUI.render(v::_AppView, area::TUI.Rect, buf::TUI.Buffer)
         TUI.render(_help_overlay(v.model), area, buf)
     elseif v.model.mode === :guide
         TUI.render(_guide_overlay(v.model), area, buf)
+    elseif v.model.mode === :browser
+        TUI.render(_browser_overlay(v.model), area, buf)
     end
 end
 

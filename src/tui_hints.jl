@@ -167,11 +167,12 @@ Short, terse one-line hint per mode, shown permanently above the logs.
 Tells the user the 4-5 most useful next actions for the current mode.
 """
 const _MODE_HINTS = Dict{Symbol,String}(
-    :normal      => "i|V|:|K|e  |  ? = full help",
+    :normal      => "i|V|:|K|e  |  :browse pour explorer  |  ? = full help",
     :insert      => "Esc back to normal  |  Tab autocomplete",
     :visual_line => "y/d/m/e on selection  |  Esc cancel",
     :command     => "Enter run  |  Tab cycle  |  Esc cancel",
     :guide       => "j/k scroll  |  /search  |  q close",
+    :browser     => "j/k nav  |  type to filter  |  K preview  |  Tab filter  |  Enter insert",
 )
 
 _mode_hint(mode::Symbol) = get(_MODE_HINTS, mode, "")

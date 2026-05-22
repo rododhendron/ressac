@@ -27,6 +27,7 @@ include("tui_mouse.jl")
 include("tui.jl")
 include("live_api.jl")
 include("plugins.jl")
+include("tui_browser.jl")
 include("plugin_handlers.jl")
 
 # Module includes added by upcoming milestones:

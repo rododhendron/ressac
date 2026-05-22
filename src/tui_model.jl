@@ -42,6 +42,13 @@ Backing model for the multi-line TUI. See
     editor_screen_top::Int        = 0
     editor_screen_left::Int       = 0
     editor_screen_height::Int     = 0
+    # SP8 — browser modal: live picker over instruments + samples + synths
+    # with fuzzy filter and preview-on-highlight.
+    browser_query::String         = ""
+    browser_cursor::Int           = 1
+    browser_scroll::Int           = 0
+    browser_filter::Symbol        = :all   # :all | :instruments | :samples | :synths
+    browser_last_preview::Float64 = 0.0
 end
 
 function _push_log!(m::LiveModel, line::AbstractString)

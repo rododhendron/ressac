@@ -19,6 +19,8 @@ function _dispatch_key!(m::LiveModel, evt)
         _handle_command!(m, evt)
     elseif m.mode === :guide
         _handle_guide!(m, evt)
+    elseif m.mode === :browser
+        _handle_browser!(m, evt)
     end
 end
 
@@ -513,6 +515,13 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
     elseif body == "guide" || body == "help" || body == "?"
         m.mode = :guide
         m.guide_scroll = 0
+        m.pending_chord = :none
+    elseif body == "browse" || body == "b"
+        m.mode = :browser
+        m.browser_query = ""
+        m.browser_cursor = 1
+        m.browser_scroll = 0
+        m.browser_filter = :all
         m.pending_chord = :none
     else
         _push_log!(m, "[ERROR] unknown command: $body")
