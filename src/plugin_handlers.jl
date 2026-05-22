@@ -66,3 +66,38 @@ function _handle_samples(plugin_dir, data, plugin_name)
 end
 
 register_section_handler!(:samples, _handle_samples)
+
+"""
+    _handle_synthdefs(plugin_dir, section_data, plugin_name)
+
+Process `[synthdefs]`: `files = ["./synth.scd", ...]`. For each file,
+read its content and send via `/dirt/evalSC` OSC message with the SCD
+source as a `String` arg. SuperDirt-side OSCdef calls
+`interpret(source)`.
+
+Errors: missing file → logged at `@error`; absent session → logged
+and abort.
+"""
+function _handle_synthdefs(plugin_dir, data, plugin_name)
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        @error "plugin '$plugin_name' [synthdefs]: no active session"
+        return nothing
+    end
+    files = get(data, "files", String[])
+    files isa AbstractVector ||
+        throw(ArgumentError("plugin '$plugin_name' [synthdefs] files must be an array"))
+    for f in files
+        path = isabspath(f) ? f : joinpath(plugin_dir, f)
+        if !isfile(path)
+            @error "plugin '$plugin_name' [synthdefs]: no such file '$path'"
+            continue
+        end
+        src = read(path, String)
+        msg = OSCMessage("/dirt/evalSC", Any[src])
+        send_osc(sched.osc, encode(msg))
+    end
+    return nothing
+end
+
+register_section_handler!(:synthdefs, _handle_synthdefs)

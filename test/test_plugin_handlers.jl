@@ -61,4 +61,39 @@ using Ressac
             h("/tmp", Dict("roots" => ["./samples"]), "ghost")
         end
     end
+
+    @testset "[synthdefs] handler sends /dirt/evalSC with file content" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withsynth"))
+            h = Ressac.get_section_handler(:synthdefs)
+            @test h !== nothing
+            h(m.dir, m.sections["synthdefs"], m.name)
+            @test length(mock.sent) == 1
+            msg = Ressac.decode_message(mock.sent[1])
+            @test msg.address == "/dirt/evalSC"
+            @test length(msg.args) == 1
+            @test occursin("SynthDef", msg.args[1])
+            @test occursin("bassline", msg.args[1])
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "[synthdefs] missing file logs error" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            h = Ressac.get_section_handler(:synthdefs)
+            @test_logs (:error, r"not found|no such") match_mode=:any begin
+                h("/tmp", Dict("files" => ["./nope.scd"]), "ghost")
+            end
+            @test isempty(mock.sent)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
 end

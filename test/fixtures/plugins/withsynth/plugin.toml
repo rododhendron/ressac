@@ -1,0 +1,6 @@
+name        = "withsynth"
+version     = "0.1.0"
+description = "fixture for [synthdefs]"
+
+[synthdefs]
+files = ["./synth.scd"]
