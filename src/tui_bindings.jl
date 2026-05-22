@@ -175,6 +175,7 @@ function _handle_normal!(m::LiveModel, evt)
 
     if m.pending_chord === :d
         if code == "d"
+            _snapshot!(m)
             n = max(m.count_prefix, 1)
             m.count_prefix = 0
             _yank_lines!(m, n)
@@ -203,6 +204,28 @@ function _handle_normal!(m::LiveModel, evt)
         m.pending_chord = :none
         if length(code) == 1 && _is_typable_ascii(only(code))
             _replace_char_under_cursor!(m, only(code))
+        end
+        return
+    end
+
+    # Mutating commands snapshot first so `u` undoes the next change as a
+    # whole logical step (entering insert mode is the boundary).
+    _mutating_normal_cmd = code in ("i", "I", "a", "A", "o", "O", "x", "p", "P",
+                                     "D", "C", "S", "s", "J", "r")
+    if _mutating_normal_cmd
+        _snapshot!(m)
+    end
+
+    if code == "u"
+        if !_undo!(m)
+            _push_log!(m, "[INFO] already at oldest state")
+        end
+        return
+    elseif (code == "r" && _has_modifier(evt, "Ctrl")) ||
+           (code == "r" && _has_modifier(evt, "Control"))
+        # Ctrl-r — vim convention for redo. (Plain `r` is replace-char.)
+        if !_redo!(m)
+            _push_log!(m, "[INFO] nothing to redo")
         end
         return
     end

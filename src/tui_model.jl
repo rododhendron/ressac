@@ -49,6 +49,55 @@ Backing model for the multi-line TUI. See
     browser_scroll::Int           = 0
     browser_filter::Symbol        = :all   # :all | :instruments | :samples | :synths
     browser_last_preview::Float64 = 0.0
+    # SP10-A — undo/redo history. Each entry is a (buffer, row, col) snapshot.
+    history::Vector{Tuple{Vector{String},Int,Int}}       = []
+    redo_stack::Vector{Tuple{Vector{String},Int,Int}}    = []
+end
+
+const _UNDO_HISTORY_LIMIT = 200
+
+"""
+    _snapshot!(m)
+
+Push the current buffer + cursor onto the undo stack and clear the
+redo stack (any pending redo becomes invalid once a new mutation
+happens). Coalesces identical consecutive snapshots so simple cursor
+moves don't pollute the stack.
+"""
+function _snapshot!(m::LiveModel)
+    snap = (copy(m.buffer), m.cursor_row, m.cursor_col)
+    if isempty(m.history) || m.history[end] != snap
+        push!(m.history, snap)
+        length(m.history) > _UNDO_HISTORY_LIMIT && popfirst!(m.history)
+        empty!(m.redo_stack)
+    end
+end
+
+"""
+    _undo!(m)
+
+Pop the most recent snapshot off the undo stack and restore the
+buffer/cursor. The state being replaced lands on the redo stack so
+`Ctrl-r` can put it back.
+"""
+function _undo!(m::LiveModel)
+    isempty(m.history) && return false
+    snap = pop!(m.history)
+    push!(m.redo_stack, (copy(m.buffer), m.cursor_row, m.cursor_col))
+    m.buffer     = snap[1]
+    m.cursor_row = clamp(snap[2], 1, length(snap[1]))
+    m.cursor_col = clamp(snap[3], 1, lastindex(snap[1][m.cursor_row]) + 1)
+    return true
+end
+
+function _redo!(m::LiveModel)
+    isempty(m.redo_stack) && return false
+    snap = pop!(m.redo_stack)
+    push!(m.history, (copy(m.buffer), m.cursor_row, m.cursor_col))
+    m.buffer     = snap[1]
+    m.cursor_row = clamp(snap[2], 1, length(snap[1]))
+    m.cursor_col = clamp(snap[3], 1, lastindex(snap[1][m.cursor_row]) + 1)
+    return true
 end
 
 function _push_log!(m::LiveModel, line::AbstractString)

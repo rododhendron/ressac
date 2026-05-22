@@ -39,6 +39,7 @@ function _handle_mouse!(m::LiveModel, evt)
     delta = kind == "ScrollUp" ? +step : -step
 
     new_literal = _bump_literal(literal, delta, is_float)
+    _snapshot!(m)
     m.buffer[buffer_row] = line[1:prevind(line, start_byte)] *
                            new_literal *
                            (end_byte >= lastindex(line) ? "" :
