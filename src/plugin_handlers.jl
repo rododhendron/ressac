@@ -53,15 +53,24 @@ register_section_handler!(:julia, _handle_julia)
 """
     _handle_samples(plugin_dir, section_data, plugin_name)
 
-Process `[samples]`: `roots = ["./samples", ...]`. For each root,
-resolve to absolute path, validate it exists, and send a
-`/dirt/loadSampleFolder` OSC message with the absolute path as a
-String argument. SuperDirt-side OSCdef (in
-`scripts/superdirt-startup.scd`) calls `~dirt.loadSoundFiles("<path>/*")`.
+Process `[samples]`: a multi-shape section that may contain any of
+`roots`, `bank`, and `metadata`. Backward-compatible with sub-project 1's
+roots-only manifests.
 
-Errors:
-- No active scheduler → `[ERROR] cannot load samples: no active session`.
-- Root path doesn't exist → logged at `@error`, next root still tries.
+- `roots = [...]`: scan each path's subdirectories the SuperDirt way
+  (subdir name → bank name). Ships `/dirt/loadSampleFolder` per root
+  AND registers each subdir as a SampleEntry so introspection works.
+
+- `[samples.bank]`: explicit mapping of bank-name → file-or-dir path.
+  File path → 1-variant bank; dir path → multi-variant bank (sorted).
+  Ships `/dirt/registerSample <name> <path>` per entry and registers a
+  SampleEntry.
+
+- `[samples.metadata.<bank>]`: optional per-bank metadata attached to
+  the SampleEntry. Same key is used for both roots-derived and bank-
+  derived entries.
+
+Errors are logged; processing continues with the next root/entry.
 """
 function _handle_samples(plugin_dir, data, plugin_name)
     sched = _LIVE_SCHEDULER[]
@@ -69,6 +78,12 @@ function _handle_samples(plugin_dir, data, plugin_name)
         @error "plugin '$plugin_name' [samples]: no active session — cannot load samples"
         return nothing
     end
+
+    metadata = get(data, "metadata", Dict{String,Any}())
+    metadata isa AbstractDict ||
+        throw(ArgumentError("plugin '$plugin_name' [samples.metadata] must be a table"))
+
+    # Back-compat: `roots = [...]`.
     roots = get(data, "roots", String[])
     roots isa AbstractVector ||
         throw(ArgumentError("plugin '$plugin_name' [samples] roots must be an array"))
@@ -79,9 +94,42 @@ function _handle_samples(plugin_dir, data, plugin_name)
             @error "plugin '$plugin_name' [samples]: path '$path' not found"
             continue
         end
-        msg = OSCMessage("/dirt/loadSampleFolder", Any[path])
-        send_osc(sched.osc, encode(msg))
+        send_osc(sched.osc, encode(OSCMessage("/dirt/loadSampleFolder", Any[path])))
+        for sub in readdir(path; join=false)
+            sub_path = joinpath(path, sub)
+            isdir(sub_path) || continue
+            variants = _audio_files_in(sub_path)
+            isempty(variants) && continue
+            meta = get(metadata, sub, Dict{String,Any}())
+            register_sample!(SampleEntry(Symbol(sub), plugin_name,
+                                         abspath(sub_path), variants, meta))
+        end
     end
+
+    # New: `[samples.bank]`.
+    bank = get(data, "bank", Dict{String,Any}())
+    bank isa AbstractDict ||
+        throw(ArgumentError("plugin '$plugin_name' [samples.bank] must be a table"))
+    for (name, rel) in bank
+        path = isabspath(rel) ? rel : joinpath(plugin_dir, rel)
+        path = abspath(path)
+        variants = if isfile(path)
+            [path]
+        elseif isdir(path)
+            _audio_files_in(path)
+        else
+            @error "plugin '$plugin_name' [samples.bank]: '$name' path '$path' not found"
+            continue
+        end
+        if isempty(variants)
+            @error "plugin '$plugin_name' [samples.bank]: '$name' has no audio files at '$path'"
+            continue
+        end
+        meta = get(metadata, name, Dict{String,Any}())
+        register_sample!(SampleEntry(Symbol(name), plugin_name, path, variants, meta))
+        send_osc(sched.osc, encode(OSCMessage("/dirt/registerSample", Any[String(name), path])))
+    end
+
     return nothing
 end
 
