@@ -43,6 +43,36 @@ end
 
 restart_live!(; kwargs...) = (stop_live!(); start_live!(; kwargs...))
 
+"""
+    _ressac_app!(m::LiveModel)
+
+Custom replacement for `TUI.app` whose poll is non-blocking and whose
+inter-frame wait uses Julia's `sleep` (which yields to other tasks).
+
+Why we don't use `TUI.app`: it calls `Crossterm.poll(wait)` which is a
+`ccall` to libCrossterm without a `gc_safe` annotation. While that ccall
+is blocked, Julia's runtime can't safepoint, which prevents any other
+`Threads.@spawn`-ed task from making progress. In Ressac that includes
+the scheduler thread — so events never ship, you hear silence, and
+`events_shipped` stays at 0. This loop polls with a 0 timeout (returns
+immediately whether or not there's an event) and falls back to
+`sleep(1/60)` between frames, which is a yielding sleep.
+"""
+function _ressac_app!(m::LiveModel; frame_period::Float64 = 1/60)
+    TUI.tui() do
+        t = TUI.Terminal(; wait = 0.0)
+        TUI.init!(m, t)
+        while !m.quit
+            evt = TUI.try_get_event(t)
+            evt !== nothing && TUI.update!(m, evt)
+            TUI.render(t, m)
+            TUI.draw(t)
+            sleep(frame_period)
+        end
+    end
+    return nothing
+end
+
 function live(; host::AbstractString = "127.0.0.1",
                 port::Integer = 57120,
                 cps::Real = 0.5,
@@ -50,7 +80,7 @@ function live(; host::AbstractString = "127.0.0.1",
     existed = _LIVE_SCHEDULER[] !== nothing
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     try
-        TUI.app(LiveModel(; scheduler=sched))
+        _ressac_app!(LiveModel(; scheduler=sched))
     finally
         existed || stop_live!()
     end
