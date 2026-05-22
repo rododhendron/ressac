@@ -193,10 +193,10 @@ When the user presses Tab in insert mode:
    forward from `cursor_col` while `_is_word_char`. Result is the
    `(start_col, end_col)` range and the substring.
 2. If empty, do nothing.
-3. Compute candidates as `_buffer_candidates()` (defined below).
+3. Detect the completion **context** (see below) and compute the
+   matching candidate list.
 4. Rank via `_fuzzy_rank`.
-5. If no matches, log `[INFO] no completion for '<word>'`, no-op
-   otherwise.
+5. If no matches, no-op silently (no log spam).
 6. Else: replace the partial range with `candidates[1]`. Store the
    new range, candidates list, and `cycle_idx = 1` on the model.
 7. View renders the completion hint line listing all candidates with
@@ -208,14 +208,80 @@ candidate, replacing the previously-inserted text in the recorded range.
 Any non-Tab keystroke (Esc, motion keys, edit) clears the completion
 state.
 
+### Completion context detection
+
+The candidate set depends on where the cursor sits inside the Julia
+line. Two contexts are detected:
+
+**`:mininotation`** — cursor is inside an unclosed `p"..."` or `m"..."`
+string macro. Mini-notation only references sample/instrument/synth
+names, so combinator names and slot macros are *excluded* (they would
+just produce garbage if completed inside the string anyway).
+
+**`:default`** — anywhere else. Full candidate union: registries +
+combinators + slot macros.
+
 ```julia
-function _buffer_candidates()::Vector{String}
+"""
+    _completion_context(line, cursor_col) -> Symbol
+
+Walk `line` left-to-right up to `cursor_col`, tracking whether we are
+currently inside a `p"..."` or `m"..."` string. Returns
+`:mininotation` if the string is still open at the cursor,
+`:default` otherwise.
+
+Only `p` and `m` triggers are recognised as mini-notation openers
+(matching the existing `@p_str` macro). Any other identifier followed
+by `"` is treated as plain text and the opening quote toggles a
+generic in-string flag.
+"""
+function _completion_context(line::AbstractString, cursor_col::Integer)
+    in_mn = false   # inside p"..." or m"..."
+    in_other_str = false   # inside any other "..." (plain string)
+    i = firstindex(line)
+    last_byte = min(lastindex(line), prevind(line, cursor_col + 1))
+    while i <= last_byte
+        c = line[i]
+        if !in_mn && !in_other_str
+            ni = nextind(line, i)
+            if ni <= lastindex(line) && (c == 'p' || c == 'm') && line[ni] == '"'
+                # Mini-notation opener — but only if not preceded by
+                # a word char (otherwise it's a longer ident like
+                # "amp\"...").
+                prev_ok = (i == firstindex(line)) ||
+                          !_is_word_char(line[prevind(line, i)])
+                if prev_ok
+                    in_mn = true
+                    i = nextind(line, ni)
+                    continue
+                end
+            end
+            if c == '"'
+                in_other_str = true
+            end
+        elseif in_mn && c == '"'
+            in_mn = false
+        elseif in_other_str && c == '"'
+            in_other_str = false
+        end
+        i = nextind(line, i)
+    end
+    return in_mn ? :mininotation : :default
+end
+```
+
+### Candidate lookup
+
+```julia
+function _buffer_candidates(ctx::Symbol)::Vector{String}
     out = String[]
     append!(out, String.(keys(_SAMPLE_REGISTRY)))
     append!(out, String.(keys(_INSTRUMENT_REGISTRY)))
     append!(out, String.(keys(_SYNTH_REGISTRY)))
-    append!(out, _COMBINATOR_NAMES)
-    append!(out, ["@d$i" for i in 1:64])
+    if ctx === :default
+        append!(out, _COMBINATOR_NAMES)
+        append!(out, ["@d$i" for i in 1:64])
+    end
     unique!(out)
     return out
 end
@@ -228,9 +294,8 @@ const _COMBINATOR_NAMES = [
 ]
 ```
 
-Note: candidates are recomputed on every Tab — registry contents can
-change live (a `:samples` `[bank]` addition mid-session is rare but
-possible, and we don't want stale state).
+Candidates are recomputed on every Tab — registry contents can change
+live and we don't want stale state.
 
 ### `:guide` modal
 
@@ -317,6 +382,15 @@ _dispatch_key!
   `["samples", "synths"]` (or in fuzzy-rank order)
 - `_compute_completions` on `m.command_buffer == "samples kic"`
   returns matching sample-bank names
+- `_completion_context("p\"kic", 6) == :mininotation`
+  (cursor right after `kic`, string still open)
+- `_completion_context("p\"bd\" |> fast", 14) == :default`
+  (string closed by `"`, cursor in Julia code)
+- `_completion_context("@d1 p\"bd hh", 11) == :mininotation`
+- `_completion_context("amp\"junk", 8) == :default`
+  (`amp"` is not a recognised opener; "amp" trailing identifier blocks `p"` detection)
+- `_buffer_candidates(:mininotation)` excludes combinators and macros
+- `_buffer_candidates(:default)` includes them
 
 ### `test_tui_overlay.jl`
 
@@ -335,6 +409,10 @@ _dispatch_key!
   replaces "kic" with "kicky".
 - Tab in insert mode with multiple candidates inserts the best
   fuzzy match, second Tab cycles.
+- Tab inside `p"kic|` (mini-notation context) suggests only registry
+  names (no `fast`, `gain`, `@d1`).
+- Tab outside any string with `fas` partial suggests `fast` (combinator
+  available in default context).
 - Movement after Tab clears `m.completions`.
 - `:guide` switches `m.mode` to `:guide`; `q` returns to `:normal`.
 - `j` in `:guide` mode increments `guide_scroll`.
@@ -358,11 +436,16 @@ _dispatch_key!
 ## Out of scope
 
 - Mouse / click
-- Syntactic context detection (inside a `p"..."` string vs Julia
-  code) — Tab just looks at the word under cursor everywhere
+- Symbol-literal context (`:foo` after `pure(:` or `set(:`) — the
+  partial-word extraction still works inside symbols, but we don't
+  filter candidates differently. The default candidate set is
+  fine for these positions.
 - Snippet expansion / parameterised templates
 - Autocomplete for inline `bd:N` variants (variant N is dynamic data
   that doesn't enumerate cleanly)
+- Multi-line context tracking — the context detector only looks at
+  the current line. Cross-line string spans aren't real in our buffer
+  (one-line patterns are the norm), so this is fine.
 
 ## Risks
 
