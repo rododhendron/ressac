@@ -1,0 +1,6 @@
+name        = "jul"
+version     = "0.1.0"
+description = "fixture testing the [julia] handler"
+
+[julia]
+files = ["./hook.jl"]

@@ -125,6 +125,7 @@ using Ressac
         @testset "calls each section's handler with (dir, data, name)" begin
             calls = Tuple[]
             handler = (dir, data, name) -> push!(calls, (Symbol("samples"), dir, data, name))
+            saved = Ressac.get_section_handler(:samples)
             Ressac.register_section_handler!(:samples, handler)
             try
                 m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "foo"))
@@ -135,7 +136,8 @@ using Ressac
                 @test data == Dict("roots" => ["./samples"])
                 @test endswith(dir, "/foo")
             finally
-                Ressac.unregister_section_handler!(:samples)
+                saved === nothing ? Ressac.unregister_section_handler!(:samples) :
+                                    Ressac.register_section_handler!(:samples, saved)
             end
         end
 
@@ -164,7 +166,9 @@ using Ressac
 
         @testset "[julia] runs before other sections of the same plugin" begin
             seen_order = Symbol[]
-            Ressac.register_section_handler!(:julia, (_, _, _) -> push!(seen_order, :julia))
+            saved_julia   = Ressac.get_section_handler(:julia)
+            saved_samples = Ressac.get_section_handler(:samples)
+            Ressac.register_section_handler!(:julia,   (_, _, _) -> push!(seen_order, :julia))
             Ressac.register_section_handler!(:samples, (_, _, _) -> push!(seen_order, :samples))
             try
                 m = Ressac.PluginManifest(
@@ -174,8 +178,8 @@ using Ressac
                 Ressac.load_plugin(m)
                 @test seen_order == [:julia, :samples]
             finally
-                Ressac.unregister_section_handler!(:julia)
-                Ressac.unregister_section_handler!(:samples)
+                saved_julia === nothing   ? Ressac.unregister_section_handler!(:julia)   : Ressac.register_section_handler!(:julia,   saved_julia)
+                saved_samples === nothing ? Ressac.unregister_section_handler!(:samples) : Ressac.register_section_handler!(:samples, saved_samples)
             end
         end
     end
@@ -194,17 +198,20 @@ using Ressac
 
         @testset "_load_plugins with custom path discovers + loads" begin
             calls = String[]
+            saved = Ressac.get_section_handler(:samples)
             Ressac.register_section_handler!(:samples, (_, _, name) -> push!(calls, name))
             try
                 Ressac._load_plugins([fixtures])
                 @test "foo" in calls
             finally
-                Ressac.unregister_section_handler!(:samples)
+                saved === nothing ? Ressac.unregister_section_handler!(:samples) :
+                                    Ressac.register_section_handler!(:samples, saved)
             end
         end
 
         @testset "start_live!(plugins=false) skips loading" begin
             calls = String[]
+            saved = Ressac.get_section_handler(:samples)
             Ressac.register_section_handler!(:samples, (_, _, name) -> push!(calls, name))
             try
                 Ressac._LIVE_SCHEDULER[] = nothing
@@ -215,7 +222,8 @@ using Ressac
                     stop_live!()
                 end
             finally
-                Ressac.unregister_section_handler!(:samples)
+                saved === nothing ? Ressac.unregister_section_handler!(:samples) :
+                                    Ressac.register_section_handler!(:samples, saved)
             end
         end
     end
