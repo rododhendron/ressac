@@ -332,4 +332,76 @@ end
             empty!(Ressac._SAMPLE_REGISTRY)
         end
     end
+
+    @testset ":samples lists all loaded sample banks" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:bd, "core",
+                "/c/bd", ["/c/bd/a.wav"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "funkit",
+                "/f/k.wav", ["/f/k.wav"],
+                Dict{String,Any}("bpm" => 120, "tags" => ["heavy"])))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "samples"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("bd", logs)
+            @test occursin("kicky", logs)
+            @test occursin("funkit", logs)
+            @test occursin("120 BPM", logs) || occursin("120", logs)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset ":samples <glob> filters" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:bd, "p",
+                "/x", ["/x"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:bd2, "p",
+                "/y", ["/y"], Dict{String,Any}()))
+            Ressac.register_sample!(Ressac.SampleEntry(:sn, "p",
+                "/z", ["/z"], Dict{String,Any}()))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "samples bd*"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("bd", logs)
+            @test occursin("bd2", logs)
+            @test !occursin(r"\bsn\b", logs)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    @testset ":samples <name> shows metadata detail" begin
+        empty!(Ressac._SAMPLE_REGISTRY)
+        try
+            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "funkit",
+                "/k.wav", ["/k.wav"],
+                Dict{String,Any}("bpm" => 120, "key" => "C", "tags" => ["heavy"])))
+            m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+            m.mode = :normal
+            Ressac._dispatch_key!(m, _fake_key(":"))
+            for c in "samples kicky"
+                Ressac._dispatch_key!(m, _fake_key(string(c)))
+            end
+            Ressac._dispatch_key!(m, _fake_key("Enter"))
+            logs = join(m.logs, "\n")
+            @test occursin("kicky", logs)
+            @test occursin("bpm", lowercase(logs)) || occursin("BPM", logs)
+            @test occursin("heavy", logs)
+        finally
+            empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
 end

@@ -357,8 +357,60 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         end
     elseif (mt = match(r"^goto\s+d(\d+)$", body)) !== nothing
         _goto_slot!(m, parse(Int, mt.captures[1]))
+    elseif body == "samples" || startswith(body, "samples ")
+        rest = strip(body == "samples" ? "" : body[9:end])
+        _execute_samples_command!(m, rest)
     else
         _push_log!(m, "[ERROR] unknown command: $body")
+    end
+end
+
+"""
+    _execute_samples_command!(m, arg)
+
+Handle the `:samples [arg]` ex-command:
+- empty `arg`            → list all registered sample banks, grouped by plugin
+- `arg` containing `*`/`?` (glob) → list banks whose name matches the glob
+- otherwise              → show full metadata for the bank named `arg`
+"""
+function _execute_samples_command!(m::LiveModel, arg::AbstractString)
+    if isempty(arg)
+        _list_samples_to_log!(m, list_samples(r""))
+        return
+    end
+    if occursin('*', arg) || occursin('?', arg)
+        rx = Regex("^" * replace(replace(arg, "*" => ".*"), "?" => ".") * "\$")
+        _list_samples_to_log!(m, list_samples(rx))
+        return
+    end
+    entry = sample_info(Symbol(arg))
+    if entry === nothing
+        _push_log!(m, "[WARN] no sample '$arg' loaded")
+        return
+    end
+    _push_log!(m, "[$(entry.plugin)] $(entry.name): $(length(entry.variants)) variant(s)")
+    _push_log!(m, "  path: $(entry.bank_path)")
+    for (k, v) in entry.metadata
+        _push_log!(m, "  $k: $v")
+    end
+end
+
+function _list_samples_to_log!(m::LiveModel, entries)
+    if isempty(entries)
+        _push_log!(m, "(no samples loaded)")
+        return
+    end
+    current_plugin = ""
+    for e in entries
+        if e.plugin != current_plugin
+            _push_log!(m, "── $(e.plugin) ──")
+            current_plugin = e.plugin
+        end
+        tags = get(e.metadata, "tags", String[])
+        tag_str = isempty(tags) ? "" : "  [" * join(tags, ", ") * "]"
+        bpm = get(e.metadata, "bpm", nothing)
+        bpm_str = bpm === nothing ? "" : "  $(bpm) BPM"
+        _push_log!(m, "  $(e.name)  $(length(e.variants))v$tag_str$bpm_str")
     end
 end
 
