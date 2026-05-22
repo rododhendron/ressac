@@ -612,7 +612,7 @@ end
         @test any(l -> occursin("no instrument 'ghost'", l), m.logs)
     end
 
-    @testset ":guide dumps the cheatsheet into the log pane" begin
+    @testset ":guide opens the modal (mode shift)" begin
         m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
         m.mode = :normal
         Ressac._dispatch_key!(m, _fake_key(":"))
@@ -620,12 +620,14 @@ end
             Ressac._dispatch_key!(m, _fake_key(string(c)))
         end
         Ressac._dispatch_key!(m, _fake_key("Enter"))
-        logs = join(m.logs, "\n")
-        @test occursin("Ressac guide", logs)
-        @test occursin(":samples", logs)
-        @test occursin(":instruments", logs)
-        @test occursin(":synths", logs)
-        @test occursin("K", logs)
+        @test m.mode === :guide
+        @test m.guide_scroll == 0
+        # Spec sanity: guide content covers the key sections.
+        guide_text = join(Ressac._GUIDE_LINES, "\n")
+        @test occursin("Ressac guide", guide_text)
+        @test occursin(":samples", guide_text)
+        @test occursin(":instruments", guide_text)
+        @test occursin(":synths", guide_text)
     end
 
     @testset ":help and :? alias :guide" begin
@@ -636,7 +638,7 @@ end
             Ressac._dispatch_key!(m, _fake_key(string(c)))
         end
         Ressac._dispatch_key!(m, _fake_key("Enter"))
-        @test any(l -> occursin("Ressac guide", l), m.logs)
+        @test m.mode === :guide
     end
 
     @testset ":synths lists all + shows detail" begin
@@ -778,6 +780,63 @@ end
         m.cursor_col = 8
         Ressac._dispatch_key!(m, _fake_key("Tab"))
         @test m.buffer[1] == "@d1 fast"
+    end
+
+    @testset ":guide switches m.mode to :guide" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :normal
+        Ressac._dispatch_key!(m, _fake_key(":"))
+        for c in "guide"
+            Ressac._dispatch_key!(m, _fake_key(string(c)))
+        end
+        Ressac._dispatch_key!(m, _fake_key("Enter"))
+        @test m.mode === :guide
+        @test m.guide_scroll == 0
+    end
+
+    @testset "guide-mode j scrolls down, k scrolls up" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 0
+        Ressac._dispatch_key!(m, _fake_key("j"))
+        @test m.guide_scroll == 1
+        Ressac._dispatch_key!(m, _fake_key("j"))
+        @test m.guide_scroll == 2
+        Ressac._dispatch_key!(m, _fake_key("k"))
+        @test m.guide_scroll == 1
+    end
+
+    @testset "guide-mode k clamps to 0" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 0
+        Ressac._dispatch_key!(m, _fake_key("k"))
+        @test m.guide_scroll == 0
+    end
+
+    @testset "guide-mode gg jumps to top, G to bottom" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        m.guide_scroll = 5
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        Ressac._dispatch_key!(m, _fake_key("g"))
+        @test m.guide_scroll == 0
+        Ressac._dispatch_key!(m, _fake_key("G"))
+        @test m.guide_scroll == max(0, length(Ressac._GUIDE_LINES) - 1)
+    end
+
+    @testset "guide-mode q returns to normal" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        Ressac._dispatch_key!(m, _fake_key("q"))
+        @test m.mode === :normal
+    end
+
+    @testset "guide-mode Esc returns to normal" begin
+        m = Ressac.LiveModel(; scheduler=Scheduler(MockOSCClient(); cps=0.5))
+        m.mode = :guide
+        Ressac._dispatch_key!(m, _fake_key("Esc"))
+        @test m.mode === :normal
     end
 
     @testset "Movement clears insert-mode completion cycle" begin

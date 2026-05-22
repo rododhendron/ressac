@@ -17,6 +17,8 @@ function _dispatch_key!(m::LiveModel, evt)
         _handle_visual!(m, evt)
     elseif m.mode === :command
         _handle_command!(m, evt)
+    elseif m.mode === :guide
+        _handle_guide!(m, evt)
     end
 end
 
@@ -386,7 +388,11 @@ function _handle_command!(m::LiveModel, evt)
         _clear_completions!(m)
     elseif code == "Enter"
         _execute_command!(m)
-        m.mode = :normal
+        # _execute_command! may have shifted m.mode (e.g. :guide); only
+        # fall back to :normal if the command didn't take us elsewhere.
+        if m.mode === :command
+            m.mode = :normal
+        end
         m.command_buffer = ""
         _clear_completions!(m)
     elseif code == "Backspace"
@@ -480,9 +486,9 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         rest = strip(body == "synths" ? "" : body[8:end])
         _execute_synths_command!(m, rest)
     elseif body == "guide" || body == "help" || body == "?"
-        for line in _GUIDE_LINES
-            _push_log!(m, line)
-        end
+        m.mode = :guide
+        m.guide_scroll = 0
+        m.pending_chord = :none
     else
         _push_log!(m, "[ERROR] unknown command: $body")
     end
@@ -791,3 +797,48 @@ function _preview_under_cursor!(m::LiveModel)
 end
 
 _is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'
+
+# ---------------------------------------------------------------------
+# Guide mode
+# ---------------------------------------------------------------------
+
+"""
+    _handle_guide!(m, evt)
+
+Keystrokes for the modal :guide overlay. j/k scroll, gg/G jump,
+Ctrl-d/u half-page, q/Esc closes. / jumps into :command mode with
+the `guide_search_active` flag set so the search routes back here.
+"""
+function _handle_guide!(m::LiveModel, evt)
+    code = evt.code
+    if code == "q" || code == "Esc"
+        m.mode = :normal
+        m.guide_scroll = 0
+        m.pending_chord = :none
+    elseif code == "j" || code == "Down"
+        m.guide_scroll = min(m.guide_scroll + 1, max(0, length(_GUIDE_LINES) - 1))
+    elseif code == "k" || code == "Up"
+        m.guide_scroll = max(0, m.guide_scroll - 1)
+    elseif code == "g"
+        if m.pending_chord === :g
+            m.guide_scroll = 0
+            m.pending_chord = :none
+        else
+            m.pending_chord = :g
+        end
+    elseif code == "G"
+        m.guide_scroll = max(0, length(_GUIDE_LINES) - 1)
+        m.pending_chord = :none
+    elseif code == "d" && _has_modifier(evt, "Ctrl")
+        m.guide_scroll = min(m.guide_scroll + 10, max(0, length(_GUIDE_LINES) - 1))
+    elseif code == "u" && _has_modifier(evt, "Ctrl")
+        m.guide_scroll = max(0, m.guide_scroll - 10)
+    elseif code == "/"
+        m.mode = :command
+        m.command_prefix = '/'
+        m.command_buffer = ""
+        m.guide_search_active = true
+    else
+        m.pending_chord = :none
+    end
+end
