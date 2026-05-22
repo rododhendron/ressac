@@ -62,10 +62,32 @@ function _slot_grid(s::Scheduler, slot::Symbol)
     return String(cells)
 end
 
+"""
+    _BufferPane(lines, style)
+
+A custom TUI widget that writes pre-rendered text lines directly into the
+target buffer area. Sidesteps `TUI.Paragraph`'s whitespace re-joining and
+`TUI.Block.inner`'s ≥2-row requirement, which together make Paragraph
+unsuitable for single-row multi-line displays.
+"""
+struct _BufferPane
+    lines::Vector{String}
+    style::TUI.Crayon
+end
+
+function TUI.render(p::_BufferPane, area::TUI.Rect, buf::TUI.Buffer)
+    TUI.height(area) < 1 && return
+    avail = TUI.height(area)
+    for (i, line) in enumerate(p.lines)
+        i > avail && break
+        # Clip the line to the area width to avoid overflow.
+        clipped = first(line, TUI.width(area))
+        TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), p.style)
+    end
+end
+
 function _editor_pane(m::LiveModel)
-    isempty(m.buffer) && return _line_paragraph("")
-    line_widgets = Any[]
-    constraints = TUI.Min[]
+    rendered = String[]
     for (i, line) in enumerate(m.buffer)
         prefix = ""
         if m.mode === :visual_line && m.visual_anchor !== nothing
@@ -85,27 +107,9 @@ function _editor_pane(m::LiveModel)
         else
             line
         end
-        full = prefix * display_line * marker
-        push!(line_widgets, _line_paragraph(full))
-        push!(constraints, TUI.Min(1))
+        push!(rendered, prefix * display_line * marker)
     end
-    TUI.Layout(;
-        widgets = line_widgets,
-        constraints = constraints,
-        orientation = :vertical,
-    )
-end
-
-# A single-row Paragraph with no border. Used as a buffer-line cell inside
-# the vertical Layout that makes up `_editor_pane`. This sidesteps the
-# `TUI.Paragraph` whitespace-collapsing pitfall: each line is its own
-# widget, so there's nothing for the renderer to re-join with spaces.
-function _line_paragraph(text::AbstractString)
-    style = TUI.Crayon()
-    words = TUI.make_words(isempty(text) ? " " : text, style)
-    isempty(words) && push!(words, TUI.Word(" ", style))
-    # Block with no borders so lines render flush without frames between them.
-    TUI.Paragraph(TUI.Block(; border=TUI.BorderNone), words, 1, Ref{Int}(0))
+    _BufferPane(rendered, TUI.Crayon())
 end
 
 function _active_marker(m::LiveModel, row::Int)
