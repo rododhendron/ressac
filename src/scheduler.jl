@@ -71,12 +71,33 @@ end
     event_to_osc(ev::Event) -> OSCMessage
 
 Convert a pattern event to the OSC message that should fire it on the
-synthesis backend. The default for `Event{Symbol}` maps to a SuperDirt
-`/dirt/play` with `("s", sample_name)`. Override by adding a method for
-your own event value types.
+synthesis backend.
+
+For `Event{Symbol}`, dispatch is two-tier:
+
+1. If `ev.value` matches a registered instrument
+   ([`instrument_info`](@ref)), expand the instrument's params (in their
+   declared TOML order, `s` first) into a `/dirt/play` arg list. Each value
+   is converted through `_osc_value` for OSC type-safety; unsupported types
+   log a warning and are dropped.
+2. Otherwise, fall back to the bare sample dispatch `("s", name)`.
+
+Override by adding a method for your own event value types.
 """
-event_to_osc(ev::Event{Symbol}) =
-    OSCMessage("/dirt/play", Any["s", String(ev.value)])
+function event_to_osc(ev::Event{Symbol})
+    instr = instrument_info(ev.value)
+    if instr !== nothing
+        args = Any[]
+        for (k, v) in instr.params
+            converted = _osc_value(v)
+            converted === missing && continue
+            push!(args, k)
+            push!(args, converted)
+        end
+        return OSCMessage("/dirt/play", args)
+    end
+    return OSCMessage("/dirt/play", Any["s", String(ev.value)])
+end
 
 event_to_osc(ev::Event) = throw(ArgumentError(
     "No event_to_osc method for Event{$(typeof(ev.value))}; define one."))

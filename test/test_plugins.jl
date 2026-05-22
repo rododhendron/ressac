@@ -286,4 +286,98 @@ using Ressac
             empty!(Ressac._SAMPLE_REGISTRY)
         end
     end
+
+    @testset "instrument registry" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+
+        @testset "register_instrument! / instrument_info round-trip" begin
+            ent = Ressac.InstrumentEntry(:kicklourd, "funkit",
+                Pair{String,Any}["s" => "bd", "n" => 3, "gain" => 1.2],
+                Dict{String,Any}("tags" => ["heavy"]))
+            Ressac.register_instrument!(ent)
+            got = Ressac.instrument_info(:kicklourd)
+            @test got !== nothing
+            @test got.name == :kicklourd
+            @test got.plugin == "funkit"
+            @test got.params[1] == ("s" => "bd")
+            @test got.params[2] == ("n" => 3)
+            @test got.metadata["tags"] == ["heavy"]
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+
+        @testset "instrument_info returns nothing for unknown names" begin
+            @test Ressac.instrument_info(:nope) === nothing
+        end
+
+        @testset "shadow: second registration with same name warns and is skipped" begin
+            a = Ressac.InstrumentEntry(:dup, "p1",
+                Pair{String,Any}["s" => "bd"], Dict{String,Any}())
+            b = Ressac.InstrumentEntry(:dup, "p2",
+                Pair{String,Any}["s" => "sn"], Dict{String,Any}())
+            Ressac.register_instrument!(a)
+            @test_logs (:warn, r"dup.*shadow") match_mode=:any begin
+                Ressac.register_instrument!(b)
+            end
+            @test Ressac.instrument_info(:dup).plugin == "p1"
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+
+        @testset "list_instruments sorted by plugin then name + regex filter" begin
+            for ent in [
+                Ressac.InstrumentEntry(:b, "z",
+                    Pair{String,Any}["s" => "bd"], Dict{String,Any}()),
+                Ressac.InstrumentEntry(:a, "z",
+                    Pair{String,Any}["s" => "bd"], Dict{String,Any}()),
+                Ressac.InstrumentEntry(:c, "a",
+                    Pair{String,Any}["s" => "bd"], Dict{String,Any}()),
+                Ressac.InstrumentEntry(:bd_alt, "a",
+                    Pair{String,Any}["s" => "bd"], Dict{String,Any}()),
+            ]
+                Ressac.register_instrument!(ent)
+            end
+            all_inst = Ressac.list_instruments()
+            @test [(e.plugin, e.name) for e in all_inst] ==
+                  [("a", :bd_alt), ("a", :c), ("z", :a), ("z", :b)]
+            bds = Ressac.list_instruments(r"^bd")
+            @test sort([e.name for e in bds]) == [:bd_alt]
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset "synth registry" begin
+        empty!(Ressac._SYNTH_REGISTRY)
+
+        @testset "register_synth! / synth_info round-trip" begin
+            ent = Ressac.SynthEntry(:bassline, "funkit",
+                Dict{String,Any}("tags" => ["bass"], "description" => "warm"))
+            Ressac.register_synth!(ent)
+            got = Ressac.synth_info(:bassline)
+            @test got !== nothing
+            @test got.metadata["description"] == "warm"
+            empty!(Ressac._SYNTH_REGISTRY)
+        end
+
+        @testset "list_synths sorts + filters" begin
+            for ent in [
+                Ressac.SynthEntry(:pad, "z", Dict{String,Any}()),
+                Ressac.SynthEntry(:bassline, "a", Dict{String,Any}()),
+            ]
+                Ressac.register_synth!(ent)
+            end
+            @test [e.name for e in Ressac.list_synths()] == [:bassline, :pad]
+            @test [e.name for e in Ressac.list_synths(r"bass")] == [:bassline]
+            empty!(Ressac._SYNTH_REGISTRY)
+        end
+
+        @testset "shadow warns" begin
+            a = Ressac.SynthEntry(:dup, "p1", Dict{String,Any}())
+            b = Ressac.SynthEntry(:dup, "p2", Dict{String,Any}())
+            Ressac.register_synth!(a)
+            @test_logs (:warn, r"dup.*shadow") match_mode=:any begin
+                Ressac.register_synth!(b)
+            end
+            @test Ressac.synth_info(:dup).plugin == "p1"
+            empty!(Ressac._SYNTH_REGISTRY)
+        end
+    end
 end

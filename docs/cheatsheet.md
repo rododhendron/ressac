@@ -262,6 +262,58 @@ julia> sample_info(:kicky)
 julia> list_samples(r"^bd")
 ```
 
+## Instruments & synths
+
+Instruments are named bundles of `/dirt/play` params declared by a plugin.
+Using one is as simple as using a sample — the scheduler expands the bundle
+on dispatch.
+
+```toml
+[instruments.kicklourd]
+s     = "bd"               # required: the sample or synth to play
+n     = 3                  # any non-reserved key is an OSC param
+gain  = 1.2
+lpf   = 200
+tags  = ["heavy", "subby"] # reserved → metadata, not OSC
+description = "the kick that hurts"
+
+[synths.bassline]           # synthdef lives in [synthdefs]; this is metadata
+tags = ["bass", "low"]
+description = "warm sub bass"
+```
+
+Reserved keys for metadata: `tags`, `description`, `comment`. Everything
+else is shipped as an OSC param in the order it appears in the TOML.
+
+```julia
+@d1 p"kicklourd ~ kicklourd ~"
+@d2 p"bassy*4" |> fast(2)
+```
+
+In the TUI:
+
+```
+:instruments              # list all loaded presets, grouped by plugin
+:instruments kick*        # glob filter
+:instruments kicklourd    # show the full preset (params + metadata)
+:synths                   # same trio for synths
+:synths bassline
+:guide                    # full in-app cheatsheet (alias :help, :?)
+```
+
+`K` resolves instrument → sample → synth. A `:N` suffix on an instrument
+name (`kicklourd:7`) overrides any `n` the preset declared, which is
+useful for previewing variants without editing the manifest.
+
+REPL:
+
+```julia
+julia> instrument_info(:kicklourd)
+julia> list_instruments(r"^kick")
+julia> synth_info(:bassline)
+julia> list_synths()
+```
+
 ## Common gotchas
 
 - **First eval is slower** (~80 ms) than subsequent (~µs). Precompile

@@ -99,6 +99,46 @@ Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
         @test_throws ArgumentError Ressac.event_to_osc(Event(0//1, 1//1, 42))
     end
 
+    @testset "event_to_osc dispatches via instrument registry — params expanded in order" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :kicklourd, "test",
+                Pair{String,Any}["s" => "bd", "n" => 3, "gain" => 1.2, "lpf" => 200],
+                Dict{String,Any}(),
+            ))
+            msg = Ressac.event_to_osc(Event(0//1, 1//1, :kicklourd))
+            @test msg.address == "/dirt/play"
+            @test msg.args == Any["s", "bd", "n", Int32(3), "gain", Float32(1.2), "lpf", Int32(200)]
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
+    @testset "event_to_osc unknown symbol falls back to bare /dirt/play s name" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        msg = Ressac.event_to_osc(Event(0//1, 1//1, :unmapped_sample))
+        @test msg.address == "/dirt/play"
+        @test msg.args == Any["s", "unmapped_sample"]
+    end
+
+    @testset "event_to_osc drops params with unsupported value types" begin
+        empty!(Ressac._INSTRUMENT_REGISTRY)
+        try
+            Ressac.register_instrument!(Ressac.InstrumentEntry(
+                :weird, "test",
+                Pair{String,Any}["s" => "bd", "junk" => Dict("nested" => 1), "gain" => 1.0],
+                Dict{String,Any}(),
+            ))
+            msg = @test_logs (:warn, r"unsupported OSC value") match_mode=:any begin
+                Ressac.event_to_osc(Event(0//1, 1//1, :weird))
+            end
+            @test msg.args == Any["s", "bd", "gain", Float32(1.0)]
+        finally
+            empty!(Ressac._INSTRUMENT_REGISTRY)
+        end
+    end
+
     @testset "start! / stop! exits cleanly" begin
         mock = MockOSCClient()
         s = Scheduler(mock; cps=4.0, lookahead=0.02)

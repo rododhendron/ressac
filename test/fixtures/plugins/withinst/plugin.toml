@@ -1,0 +1,20 @@
+name        = "withinst"
+version     = "0.1.0"
+description = "fixture for [instruments] and [synths]"
+
+[instruments.kicklourd]
+s     = "bd"
+n     = 3
+gain  = 1.2
+lpf   = 200
+tags  = ["heavy", "subby"]
+description = "the kick that hurts"
+
+[instruments.bassy]
+s    = "bassline"
+freq = 110
+amp  = 0.6
+
+[synths.bassline]
+tags = ["bass", "low"]
+description = "warm sub bass"

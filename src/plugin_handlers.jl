@@ -23,6 +23,26 @@ function _audio_files_in(dir::AbstractString)
 end
 
 """
+    _osc_value(v)
+
+Convert a TOML-parsed value into something that the existing OSC encoder
+can ship as a `/dirt/play` argument. Lossy by design: TOML's `Int64` /
+`Float64` widen narrows to OSC's 32-bit forms; `Bool` becomes `0`/`1`
+(SuperDirt convention). Unknown types log a `@warn` and return `missing`
+so the caller can drop the offending pair without crashing the dispatch.
+"""
+function _osc_value(v::Bool)
+    return v ? Int32(1) : Int32(0)
+end
+_osc_value(v::Integer) = Int32(v)
+_osc_value(v::AbstractFloat) = Float32(v)
+_osc_value(v::AbstractString) = String(v)
+function _osc_value(v)
+    @warn "unsupported OSC value of type $(typeof(v)); dropping"
+    return missing
+end
+
+"""
     _handle_julia(plugin_dir, section_data, plugin_name)
 
 Process `[julia]`: `files = ["./hook.jl", ...]`. Each file is resolved
@@ -169,3 +189,69 @@ function _handle_synthdefs(plugin_dir, data, plugin_name)
 end
 
 register_section_handler!(:synthdefs, _handle_synthdefs)
+
+const _INSTRUMENT_RESERVED_KEYS = ("tags", "description", "comment")
+
+"""
+    _handle_instruments(plugin_dir, data, plugin_name)
+
+Parse `[instruments.<name>]` sub-tables. Each entry must declare `s`
+(the sample or synth name to dispatch to); everything else is either
+metadata (`tags`/`description`/`comment`) or an OSC param. Params are
+collected in TOML declaration order, with `s` forced first.
+
+Errors are logged; processing continues with the next entry.
+"""
+function _handle_instruments(plugin_dir, data, plugin_name)
+    data isa AbstractDict ||
+        throw(ArgumentError("plugin '$plugin_name' [instruments] must be a table"))
+    for (name, body) in data
+        body isa AbstractDict || begin
+            @error "plugin '$plugin_name' [instruments.$name] must be a table"
+            continue
+        end
+        if !haskey(body, "s")
+            @error "plugin '$plugin_name' [instruments.$name]: missing required key 's'"
+            continue
+        end
+        params = Pair{String,Any}[]
+        metadata = Dict{String,Any}()
+        push!(params, "s" => body["s"])
+        for (k, v) in body
+            k == "s" && continue
+            if k in _INSTRUMENT_RESERVED_KEYS
+                metadata[k] = v
+            else
+                push!(params, k => v)
+            end
+        end
+        register_instrument!(InstrumentEntry(Symbol(name), plugin_name, params, metadata))
+    end
+    return nothing
+end
+
+register_section_handler!(:instruments, _handle_instruments)
+
+"""
+    _handle_synths(plugin_dir, data, plugin_name)
+
+Parse `[synths.<name>]` sub-tables. A synth entry is purely descriptive —
+all keys (`tags`, `description`, anything else) are stuffed into metadata.
+The actual synthdef is defined via `[synthdefs]`; `[synths]` is the
+introspection layer.
+"""
+function _handle_synths(plugin_dir, data, plugin_name)
+    data isa AbstractDict ||
+        throw(ArgumentError("plugin '$plugin_name' [synths] must be a table"))
+    for (name, body) in data
+        body isa AbstractDict || begin
+            @error "plugin '$plugin_name' [synths.$name] must be a table"
+            continue
+        end
+        metadata = Dict{String,Any}(string(k) => v for (k, v) in body)
+        register_synth!(SynthEntry(Symbol(name), plugin_name, metadata))
+    end
+    return nothing
+end
+
+register_section_handler!(:synths, _handle_synths)

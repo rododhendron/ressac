@@ -360,10 +360,61 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
     elseif body == "samples" || startswith(body, "samples ")
         rest = strip(body == "samples" ? "" : body[9:end])
         _execute_samples_command!(m, rest)
+    elseif body == "instruments" || startswith(body, "instruments ")
+        rest = strip(body == "instruments" ? "" : body[13:end])
+        _execute_instruments_command!(m, rest)
+    elseif body == "synths" || startswith(body, "synths ")
+        rest = strip(body == "synths" ? "" : body[8:end])
+        _execute_synths_command!(m, rest)
+    elseif body == "guide" || body == "help" || body == "?"
+        for line in _GUIDE_LINES
+            _push_log!(m, line)
+        end
     else
         _push_log!(m, "[ERROR] unknown command: $body")
     end
 end
+
+"""
+    _GUIDE_LINES
+
+In-app cheatsheet shown by `:guide` (alias `:help`, `:?`). Kept as a flat
+const vector so the lines stream into the log pane in order — no formatting
+beyond what the log widget already does.
+"""
+const _GUIDE_LINES = String[
+    "── Ressac guide ──",
+    "Modes:",
+    "  i / a / o / O — enter insert mode",
+    "  Esc           — back to normal",
+    "  V             — visual-line selection",
+    "  : / / / ?     — command / search forward / search backward",
+    "Normal-mode actions:",
+    "  hjkl / arrows — move cursor",
+    "  0 \$          — line start / end",
+    "  gg / G        — buffer start / end",
+    "  gdN           — jump to slot dN",
+    "  dd / yy / p / P — delete / yank / paste",
+    "  x             — delete char under cursor",
+    "  m             — toggle mute on slot under cursor",
+    "  K             — preview instrument/sample/synth under cursor",
+    "  e             — eval block under cursor (prefix N → defer to slot dN)",
+    "  n / N         — repeat last search forward / backward",
+    "Commands (`:` prefix):",
+    "  :q                    — quit",
+    "  :cps <x>              — set tempo",
+    "  :goto d<N>            — jump cursor to first `@dN` block",
+    "  :samples [arg]        — list / glob / detail sample banks",
+    "  :instruments [arg]    — list / glob / detail instrument presets",
+    "  :synths [arg]         — list / glob / detail synths",
+    "  :guide                — show this guide",
+    "Plugin manifest sections:",
+    "  [samples]    roots / bank / metadata",
+    "  [instruments.<n>]  declare presets — s required, rest is OSC or metadata",
+    "  [synthdefs]  files = [\"*.scd\"]",
+    "  [synths.<n>]       metadata for SynthDefs (tags, description)",
+    "  [julia]      files = [\"*.jl\"] — runs at plugin load",
+]
 
 """
     _execute_samples_command!(m, arg)
@@ -415,6 +466,106 @@ function _list_samples_to_log!(m::LiveModel, entries)
 end
 
 """
+    _execute_instruments_command!(m, arg)
+
+`:instruments [arg]` — same shape as `:samples`. Empty `arg` lists every
+registered instrument; glob (`*`/`?`) filters by name; bare name shows
+the full preset (params in declared order + metadata).
+"""
+function _execute_instruments_command!(m::LiveModel, arg::AbstractString)
+    if isempty(arg)
+        _list_instruments_to_log!(m, list_instruments(r""))
+        return
+    end
+    if occursin('*', arg) || occursin('?', arg)
+        rx = Regex("^" * replace(replace(arg, "*" => ".*"), "?" => ".") * "\$")
+        _list_instruments_to_log!(m, list_instruments(rx))
+        return
+    end
+    entry = instrument_info(Symbol(arg))
+    if entry === nothing
+        _push_log!(m, "[WARN] no instrument '$arg' loaded")
+        return
+    end
+    _push_log!(m, "[$(entry.plugin)] $(entry.name):")
+    for (k, v) in entry.params
+        _push_log!(m, "  $k = $v")
+    end
+    for (k, v) in entry.metadata
+        _push_log!(m, "  ($k) $v")
+    end
+end
+
+function _list_instruments_to_log!(m::LiveModel, entries)
+    if isempty(entries)
+        _push_log!(m, "(no instruments loaded)")
+        return
+    end
+    current_plugin = ""
+    for e in entries
+        if e.plugin != current_plugin
+            _push_log!(m, "── $(e.plugin) ──")
+            current_plugin = e.plugin
+        end
+        # Show `s` target alongside name for at-a-glance dispatch info.
+        s_target = ""
+        for (k, v) in e.params
+            if k == "s"
+                s_target = " → $v"
+                break
+            end
+        end
+        tags = get(e.metadata, "tags", String[])
+        tag_str = isempty(tags) ? "" : "  [" * join(tags, ", ") * "]"
+        _push_log!(m, "  $(e.name)$s_target$tag_str")
+    end
+end
+
+"""
+    _execute_synths_command!(m, arg)
+
+`:synths [arg]` — same shape as `:samples`/`:instruments`. Synth entries
+carry only metadata (the actual SynthDef lives in the audio backend).
+"""
+function _execute_synths_command!(m::LiveModel, arg::AbstractString)
+    if isempty(arg)
+        _list_synths_to_log!(m, list_synths(r""))
+        return
+    end
+    if occursin('*', arg) || occursin('?', arg)
+        rx = Regex("^" * replace(replace(arg, "*" => ".*"), "?" => ".") * "\$")
+        _list_synths_to_log!(m, list_synths(rx))
+        return
+    end
+    entry = synth_info(Symbol(arg))
+    if entry === nothing
+        _push_log!(m, "[WARN] no synth '$arg' loaded")
+        return
+    end
+    _push_log!(m, "[$(entry.plugin)] $(entry.name):")
+    for (k, v) in entry.metadata
+        _push_log!(m, "  $k: $v")
+    end
+end
+
+function _list_synths_to_log!(m::LiveModel, entries)
+    if isempty(entries)
+        _push_log!(m, "(no synths loaded)")
+        return
+    end
+    current_plugin = ""
+    for e in entries
+        if e.plugin != current_plugin
+            _push_log!(m, "── $(e.plugin) ──")
+            current_plugin = e.plugin
+        end
+        tags = get(e.metadata, "tags", String[])
+        tag_str = isempty(tags) ? "" : "  [" * join(tags, ", ") * "]"
+        _push_log!(m, "  $(e.name)$tag_str")
+    end
+end
+
+"""
     _has_modifier(evt, name)
 
 True if `name` (case-insensitive, accepts "Ctrl"/"Control" variants) appears in `evt.modifiers`.
@@ -437,10 +588,18 @@ const _WORD_RX = r"([A-Za-z_][\w]*)(?::(\d+))?"
 """
     _preview_under_cursor!(m::LiveModel)
 
-Identify the sample name under the cursor (matches `name` or `name:N`),
-look it up in the sample registry, and ship a one-shot `/dirt/play`
-OSC bundle through the active scheduler's client. Logs `[INFO] preview …`
-on success or `[WARN] no sample '…' loaded` on miss.
+Identify the name under the cursor (matches `name` or `name:N`) and ship
+a one-shot `/dirt/play` OSC bundle for it. Resolution order:
+
+1. **Instrument** — expand the full param bundle in declared order
+   (`event_to_osc`-equivalent path). If the cursor word has a `:N` suffix
+   it overrides any `n` the preset declared.
+2. **Sample** — ship `("s", name)` or `("s", name, "n", N)`.
+3. **Synth** — ship `("s", name)`; SuperDirt routes to the corresponding
+   SynthDef on the audio side.
+4. None of the above → log `[WARN] no instrument/sample/synth '…' loaded`.
+
+`[INFO] preview <kind> <name>` is logged on success.
 """
 function _preview_under_cursor!(m::LiveModel)
     line = m.buffer[m.cursor_row]
@@ -460,28 +619,58 @@ function _preview_under_cursor!(m::LiveModel)
 
     mt = match(_WORD_RX, word)
     if mt === nothing
-        _push_log!(m, "[WARN] no sample '$word' loaded")
+        _push_log!(m, "[WARN] no instrument/sample/synth '$word' loaded")
         return
     end
     name = Symbol(mt.captures[1])
     variant = mt.captures[2] === nothing ? 0 : parse(Int, mt.captures[2])
-
-    entry = sample_info(name)
-    if entry === nothing
-        _push_log!(m, "[WARN] no sample '$(mt.captures[1])' loaded")
-        return
-    end
 
     sched = _LIVE_SCHEDULER[]
     if sched === nothing
         _push_log!(m, "[ERROR] preview: no active session")
         return
     end
-    args = variant == 0 ?
-        Any["s", String(name)] :
-        Any["s", String(name), "n", Int32(variant)]
-    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
-    _push_log!(m, "[INFO] preview $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+
+    if (instr = instrument_info(name)) !== nothing
+        args = Any[]
+        has_n = false
+        for (k, v) in instr.params
+            if k == "n"
+                has_n = true
+                # User-supplied :N overrides preset n.
+                if variant != 0
+                    push!(args, "n"); push!(args, Int32(variant))
+                    continue
+                end
+            end
+            converted = _osc_value(v)
+            converted === missing && continue
+            push!(args, k); push!(args, converted)
+        end
+        if variant != 0 && !has_n
+            push!(args, "n"); push!(args, Int32(variant))
+        end
+        send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+        _push_log!(m, "[INFO] preview instrument $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+        return
+    end
+
+    if (entry = sample_info(name)) !== nothing
+        args = variant == 0 ?
+            Any["s", String(name)] :
+            Any["s", String(name), "n", Int32(variant)]
+        send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+        _push_log!(m, "[INFO] preview sample $(mt.captures[1])$(variant == 0 ? "" : ":$variant")")
+        return
+    end
+
+    if synth_info(name) !== nothing
+        send_osc(sched.osc, encode(OSCMessage("/dirt/play", Any["s", String(name)])))
+        _push_log!(m, "[INFO] preview synth $(mt.captures[1])")
+        return
+    end
+
+    _push_log!(m, "[WARN] no instrument/sample/synth '$(mt.captures[1])' loaded")
 end
 
 _is_word_char(c::AbstractChar) = isletter(c) || isdigit(c) || c == '_' || c == ':'
