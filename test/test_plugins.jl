@@ -179,4 +179,44 @@ using Ressac
             end
         end
     end
+
+    @testset "_load_plugins entry" begin
+        fixtures = joinpath(@__DIR__, "fixtures", "plugins")
+
+        @testset "default_plugin_path includes cwd, home, env" begin
+            withenv("RESSAC_PLUGIN_PATH" => "/x:/y") do
+                p = Ressac.default_plugin_path()
+                @test p[1] == joinpath(pwd(), "plugins")
+                @test "/x" in p
+                @test "/y" in p
+            end
+        end
+
+        @testset "_load_plugins with custom path discovers + loads" begin
+            calls = String[]
+            Ressac.register_section_handler!(:samples, (_, _, name) -> push!(calls, name))
+            try
+                Ressac._load_plugins([fixtures])
+                @test "foo" in calls
+            finally
+                Ressac.unregister_section_handler!(:samples)
+            end
+        end
+
+        @testset "start_live!(plugins=false) skips loading" begin
+            calls = String[]
+            Ressac.register_section_handler!(:samples, (_, _, name) -> push!(calls, name))
+            try
+                Ressac._LIVE_SCHEDULER[] = nothing
+                sched = start_live!(plugins=false)
+                try
+                    @test isempty(calls)
+                finally
+                    stop_live!()
+                end
+            finally
+                Ressac.unregister_section_handler!(:samples)
+            end
+        end
+    end
 end

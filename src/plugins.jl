@@ -215,3 +215,46 @@ function load_plugin(m::PluginManifest)
     end
     return nothing
 end
+
+"""
+    default_plugin_path() -> Vector{String}
+
+Plugin search path used by default at session start. Order:
+1. `\$PWD/plugins`
+2. `~/.config/ressac/plugins`
+3. Entries from `\$RESSAC_PLUGIN_PATH` (`:`-separated).
+
+Non-existent entries are kept in the list and silently skipped by
+`discover_plugins`.
+"""
+function default_plugin_path()
+    path = String[joinpath(pwd(), "plugins")]
+    push!(path, joinpath(homedir(), ".config", "ressac", "plugins"))
+    extra = get(ENV, "RESSAC_PLUGIN_PATH", "")
+    if !isempty(extra)
+        for entry in split(extra, ':')
+            isempty(entry) || push!(path, String(entry))
+        end
+    end
+    return path
+end
+
+"""
+    _load_plugins(path = default_plugin_path())
+
+Discover, topo-sort, and load every plugin on the search `path`. Used
+internally by `start_live!`; exposed for tests.
+"""
+function _load_plugins(path::AbstractVector{<:AbstractString} = default_plugin_path())
+    manifests = discover_plugins(path)
+    ordered = topo_sort(manifests)
+    for m in ordered
+        try
+            load_plugin(m)
+            @info "loaded plugin: $(m.name) $(m.version)"
+        catch err
+            @error "plugin '$(m.name)' failed to load: $(sprint(showerror, err))"
+        end
+    end
+    return nothing
+end

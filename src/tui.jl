@@ -22,7 +22,8 @@ cps!(x::Real)                = set_cps!(_check_live(), x)
 function start_live!(; host::AbstractString = "127.0.0.1",
                        port::Integer = 57120,
                        cps::Real = 0.5,
-                       lookahead::Real = 0.05)
+                       lookahead::Real = 0.05,
+                       plugins::Bool = true)
     if _LIVE_SCHEDULER[] !== nothing
         @warn "A live session is already running — returning the existing scheduler."
         return _LIVE_SCHEDULER[]
@@ -31,6 +32,7 @@ function start_live!(; host::AbstractString = "127.0.0.1",
     sched  = Scheduler(client; cps, lookahead)
     _LIVE_SCHEDULER[] = sched
     start!(sched)
+    plugins && _load_plugins()
     return sched
 end
 
