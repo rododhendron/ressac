@@ -387,6 +387,49 @@ namespace. `gain`, `pan`, `n`, `speed`, `lpf`, `hpf`, `room`, `delay`,
 `shape`, and `set` are all exported by the `Ressac` module. `:guide`
 shows the same helper table.
 
+## Visual UX (TUI)
+
+### Mode hint line
+
+A 1-row strip just below the command line shows the current mode plus
+the 4-5 most relevant key bindings. The mode you think you're in is
+written there in caps.
+
+### `?` overlay
+
+Press `?` in normal mode to pop a mode-specific cheat overlay (every
+binding in the current mode, terse). Press `?` again to dismiss. The
+overlay does NOT auto-dismiss on other keys — it's a stable surface
+for reading.
+
+Note: `?` used to be the backward-search shortcut. Backward search is
+dropped in favour of the help overlay — forward `/` covers the common
+needs.
+
+### Autocomplete (Tab)
+
+- **`:`-mode** — Tab on a partial command verb completes (fuzzy).
+  Tab on `:samples <partial>`, `:instruments <partial>`, or
+  `:synths <partial>` completes the argument against the matching
+  registry. A magenta hint line below the command line shows the
+  candidate list with the cycled one in `[brackets]`.
+- **Insert mode** — Tab extracts the partial identifier under the
+  cursor and completes against the registries + 20 combinator names
+  + 64 `@dN` slot macros. Inside `p"..."` or `m"..."` mini-notation,
+  only registry names are offered (combinators would be garbage
+  inside a mini-notation string).
+
+Fuzzy match is a subsequence scorer ("sa" → "samples", "snares",
+"savings"). Subsequent Tabs cycle. Any edit or cursor motion clears
+the cycle.
+
+### `:guide` modal
+
+`:guide` (or `:help` / `:?`) opens a centered scrollable overlay
+containing the full guide. Navigate with `j`/`k`/`gg`/`G`,
+half-page with `Ctrl-d`/`Ctrl-u`, search with `/<rx>`
+(case-insensitive). `q` or `Esc` closes.
+
 ## Common gotchas
 
 - **First eval is slower** (~80 ms) than subsequent (~µs). Precompile

@@ -212,10 +212,47 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     try
         m2 = LiveModel(; scheduler=sched)
         _execute_ex_command!(m2, "guide")
+        m2.mode = :normal  # :guide opens the modal now; reset for next exec
         _execute_ex_command!(m2, "instruments")
         _execute_ex_command!(m2, "synths")
     catch
         # Best-effort: any failure here just leaves first invocation slower.
+    end
+
+    # SP6 visual UX: warm fuzzy match, completion engine, overlay rendering
+    # paths, guide-mode handler.
+    try
+        _fuzzy_score("sa", "samples")
+        _fuzzy_score("xy", "samples")
+        _fuzzy_rank("sa", ["samples", "snares", "savings"])
+        _completion_context("p\"kic", 6)
+        _completion_context("@d1 fast", 9)
+        _buffer_candidates(:default)
+        _buffer_candidates(:mininotation)
+
+        m3 = LiveModel(; scheduler=sched)
+        m3.command_buffer = "sa"
+        _compute_completions(m3)
+        m3.command_buffer = "samples kic"
+        _compute_completions(m3)
+
+        # Toggle ? and render help + guide overlays.
+        m3.show_help = true
+        TUI.view(m3)
+        m3.show_help = false
+        m3.mode = :guide
+        TUI.view(m3)
+        m3.mode = :normal
+
+        # Insert-mode Tab + cycle.
+        m4 = LiveModel(; scheduler=sched)
+        m4.mode = :insert
+        m4.buffer = ["fas"]
+        m4.cursor_col = 4
+        _dispatch_key!(m4, (; code="Tab", modifiers=String[], kind="Press"))
+        _dispatch_key!(m4, (; code="Tab", modifiers=String[], kind="Press"))
+    catch
+        # Best-effort.
     end
 
     # Effect chain hot paths: lift, set, gain (compose ×), lpf (compose min),
