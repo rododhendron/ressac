@@ -48,4 +48,26 @@ using Ressac
         cp = Ressac._lift_to_control(pure(:bd))
         @test Ressac._lift_to_control(cp) === cp
     end
+
+    @testset "set(:k, scalar) on Pattern{Symbol} via auto-lift" begin
+        p = pure(:bd) |> Ressac.set(:gain, 0.8)
+        @test p isa Ressac.ControlPattern
+        evs = p(0//1, 1//1)
+        @test evs[1].value == Dict{Symbol,Any}(:s => :bd, :gain => 0.8)
+    end
+
+    @testset "set(:k, scalar) chained overwrites" begin
+        p = pure(:bd) |> Ressac.set(:gain, 0.8) |> Ressac.set(:gain, 0.3)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:gain] == 0.3   # last write wins for set
+        @test evs[1].value[:s] === :bd
+    end
+
+    @testset "set(:k, scalar) preserves other keys" begin
+        p = pure(:bd) |> Ressac.set(:gain, 0.8) |> Ressac.set(:lpf, 200)
+        evs = p(0//1, 1//1)
+        @test evs[1].value[:gain] == 0.8
+        @test evs[1].value[:lpf]  == 200
+        @test evs[1].value[:s]    === :bd
+    end
 end

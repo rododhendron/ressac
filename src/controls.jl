@@ -59,3 +59,30 @@ function _lift_to_control(p::Pattern{Symbol})::ControlPattern
 end
 
 _lift_to_control(p::ControlPattern) = p
+
+"""
+    set(key::Symbol, val) -> (Pattern -> ControlPattern)
+
+Curried setter: returns a function that maps a pattern into a
+ControlPattern with `key => val` on every event. `set` is **always
+overwrite** — a second `set(:key, ...)` in a chain replaces the
+previous value entirely (no composition).
+
+If `val` is itself a `Pattern`, see the `set(::Symbol, ::Pattern)`
+method.
+"""
+function set(key::Symbol, val)
+    return function (p::Pattern)
+        lifted = _lift_to_control(p)
+        Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+            inner = lifted(s, e)
+            out = Vector{Event{ControlMap}}(undef, length(inner))
+            for (i, ev) in enumerate(inner)
+                new_cm = copy(ev.value)
+                new_cm[key] = val
+                out[i] = Event{ControlMap}(ev.start, ev.stop, new_cm)
+            end
+            out
+        end)
+    end
+end
