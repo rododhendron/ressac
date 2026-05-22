@@ -23,6 +23,26 @@ function _audio_files_in(dir::AbstractString)
 end
 
 """
+    _osc_value(v)
+
+Convert a TOML-parsed value into something that the existing OSC encoder
+can ship as a `/dirt/play` argument. Lossy by design: TOML's `Int64` /
+`Float64` widen narrows to OSC's 32-bit forms; `Bool` becomes `0`/`1`
+(SuperDirt convention). Unknown types log a `@warn` and return `missing`
+so the caller can drop the offending pair without crashing the dispatch.
+"""
+function _osc_value(v::Bool)
+    return v ? Int32(1) : Int32(0)
+end
+_osc_value(v::Integer) = Int32(v)
+_osc_value(v::AbstractFloat) = Float32(v)
+_osc_value(v::AbstractString) = String(v)
+function _osc_value(v)
+    @warn "unsupported OSC value of type $(typeof(v)); dropping"
+    return missing
+end
+
+"""
     _handle_julia(plugin_dir, section_data, plugin_name)
 
 Process `[julia]`: `files = ["./hook.jl", ...]`. Each file is resolved

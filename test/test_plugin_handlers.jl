@@ -179,6 +179,23 @@ using Ressac
         end
     end
 
+    @testset "_osc_value type conversions" begin
+        @test Ressac._osc_value(Int64(3))    === Int32(3)
+        @test Ressac._osc_value(Int32(3))    === Int32(3)
+        @test Ressac._osc_value(Float64(1.2)) === Float32(1.2)
+        @test Ressac._osc_value(Float32(1.5)) === Float32(1.5)
+        @test Ressac._osc_value("bd")        == "bd"
+        @test Ressac._osc_value(true)        === Int32(1)
+        @test Ressac._osc_value(false)       === Int32(0)
+    end
+
+    @testset "_osc_value warns + returns missing for unsupported types" begin
+        result = @test_logs (:warn, r"unsupported OSC value") match_mode=:any begin
+            Ressac._osc_value(Dict("x" => 1))
+        end
+        @test result === missing
+    end
+
     @testset "[samples].roots still sends /dirt/loadSampleFolder (back-compat)" begin
         empty!(Ressac._SAMPLE_REGISTRY)
         mock = MockOSCClient()
