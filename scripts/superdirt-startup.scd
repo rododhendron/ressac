@@ -48,10 +48,29 @@ s.waitForBoot({
         src.interpret;
     }, '/dirt/evalSC');
 
+    OSCdef(\ressacRegisterSample, { |msg|
+        var name = msg[1].asString.asSymbol;
+        var path = msg[2].asString;
+        ("[ressac] registerSample " ++ name ++ " ← " ++ path).postln;
+        if(File.exists(path)) {
+            if(PathName(path).isFolder) {
+                // Directory: defer to SuperDirt's loader (indexes by
+                // parent dir name).
+                ~dirt.loadSoundFiles(path ++ "/*");
+            } {
+                // Single-file bank: build one Buffer under `name`.
+                var buf = Buffer.read(~dirt.server, path);
+                ~dirt.soundLibrary.addBuffer(name, buf);
+            };
+        } {
+            ("[ressac] registerSample: missing path " ++ path).warn;
+        };
+    }, '/dirt/registerSample');
+
     "".postln;
     "================================================".postln;
     "SuperDirt listening on UDP 57120 (12 orbits).".postln;
     ("Sample sets: " ++ ~dirt.soundLibrary.buffers.size.asString).postln;
-    "Ressac OSC responders installed: /dirt/loadSampleFolder, /dirt/evalSC".postln;
+    "Ressac OSC responders installed: /dirt/loadSampleFolder, /dirt/evalSC, /dirt/registerSample".postln;
     "================================================".postln;
 });
