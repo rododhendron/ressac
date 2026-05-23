@@ -30,6 +30,15 @@ const _PARAM_DOCS = Dict{String,String}(
     "pan"         => "Stereo position. 0=left, 0.5=center, 1=right (some setups: -1 to 1).",
     "n"           => "Note offset (semitones) for synths, or sample-variant index for sample banks.",
     "speed"       => "Playback speed. 0.5=octave down + slower, 2=octave up + faster. Composes ×.",
+    # --- CORE CONCEPTS ---
+    "cps"         => "Cycles per second — Ressac's tempo unit. 0.5 = 1 cycle / 2s (30 BPM @ 4 beats/cycle), 0.8 = ~48 BPM, 0.3 = 18 BPM. cps!(x) sets it live, :cps x is the TUI form.",
+    "cps!"        => "cps!(x) — set the live scheduler tempo in cycles/sec. Equivalent to :cps x at the command line.",
+    "cycle"       => "Ressac's time unit. Every pattern repeats once per cycle. A `p\"a b c d\"` produces 4 events evenly across one cycle.",
+    "@dN"         => "@d1, @d2, ... @d64 — slot macros. `@d1 pattern` installs `pattern` at slot d1; assigning a new value re-evals.",
+    "d!"          => "d!(:dN, pattern) — set a slot from Julia code (REPL or :julia hooks). Same effect as @dN.",
+    "unset!"      => "unset!(:dN) — stop slot dN. Equivalent to commenting the line with `m`.",
+    "hush_all!"   => "hush_all!() — stop every slot. Panic button.",
+    "slot"        => "A named pattern channel (:d1 to :d64). The scheduler queries each slot every cycle and ships its events to OSC.",
     # --- COMBINATORS (pattern transforms) ---
     "pure"        => "pure(v) — pattern that fires v once per cycle. The atom you build on.",
     "silence"     => "silence(T) — empty pattern of type T. Useful as a placeholder.",
