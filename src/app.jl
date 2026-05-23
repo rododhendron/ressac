@@ -147,7 +147,11 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
     # potential vim commands and consumes the keystroke).
     if is_press && ed.mode === :normal
-        if evt.char == 'e'
+        if evt.char == 'e' && m.focus === :patterns
+            # `e` evals the current line as Julia. Only meaningful in the
+            # patterns pane — the synth pane buffer contains SuperCollider
+            # code which Julia can't parse, so leave `e` for the editor's
+            # vim "end of word" motion there.
             _eval_current_line!(m); return
         elseif evt.char == 'T' && _synth_pane_open(m)
             _test_current_synth!(m); return
@@ -1177,8 +1181,28 @@ function TK.view(m::RessacApp, f::TK.Frame)
 end
 
 function _push_app_log!(m::RessacApp, line::AbstractString)
-    push!(m.logs, String(line))
+    s = String(line)
+    # Dedupe consecutive identical entries — if the same line is being
+    # pushed repeatedly (key-repeat on T, autofiring scope updates, …),
+    # collapse to "<line>  ×N" in place rather than letting the buffer
+    # fill with copies. Match against the rendered form so the run-count
+    # suffix doesn't itself defeat the comparison.
+    if !isempty(m.logs)
+        last = m.logs[end]
+        prev_base, prev_count = _split_log_count(last)
+        if prev_base == s
+            m.logs[end] = "$s  ×$(prev_count + 1)"
+            return
+        end
+    end
+    push!(m.logs, s)
     length(m.logs) > 200 && popfirst!(m.logs)
+end
+
+function _split_log_count(line::AbstractString)
+    mt = match(r"^(.*?)\s+×(\d+)$", line)
+    mt === nothing && return (String(line), 1)
+    return (String(mt.captures[1]), parse(Int, mt.captures[2]))
 end
 
 """
