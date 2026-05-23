@@ -342,7 +342,14 @@ function _handle_normal!(m::LiveModel, evt)
     elseif code == "m"
         _toggle_mute!(m)
     elseif code == "K"
-        _preview_under_cursor!(m)
+        # While focused on the synth pane, K previews the synth being
+        # edited (reload + one-note play). On the patterns side, K is
+        # the usual word-under-cursor preview.
+        if !isempty(m.synth_editing) && m.focus === :synth
+            _test_synth!(m)
+        else
+            _preview_under_cursor!(m)
+        end
     elseif code == "V"
         m.mode = :visual_line
         m.visual_anchor = (m.cursor_row, m.cursor_col)
@@ -635,6 +642,10 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _save_synth!(m)
     elseif body == "swap"
         _swap_focus!(m)
+    elseif body == "test"
+        _test_synth!(m)
+    elseif (mt = match(r"^test\s+(-?\d+)$", body)) !== nothing
+        _test_synth!(m; n = parse(Int, mt.captures[1]))
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing

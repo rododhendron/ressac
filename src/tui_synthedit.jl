@@ -211,6 +211,45 @@ _synth_source_path(name::AbstractString) =
     joinpath(pwd(), _SYNTH_PLUGIN_DIR, String(name) * ".scd")
 
 """
+    _test_synth!(m; n=0, release=0.6, gain=1.5)
+
+Reload the synth source to SuperCollider and immediately fire one
+preview note. Cut group is shared with other previews (K, browser) so
+successive `:test`/`K`-in-synth-pane calls silence the previous voice
+— no chord-by-accident while iterating.
+
+Bound to `K` when focus is on the synth pane, and to `:test` as an
+ex-command. The default note is 0 (synth's freq param controls the
+real pitch); we send `release` so synths without an envelope are
+audible.
+"""
+function _test_synth!(m::LiveModel; n::Int = 0, release::Real = 0.6, gain::Real = 1.5)
+    if isempty(m.synth_editing)
+        _push_log!(m, "[ERROR] :test — not editing a synth")
+        return
+    end
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        _push_log!(m, "[ERROR] :test — no live session")
+        return
+    end
+    # Step 1: ship the latest source so SuperCollider has the most
+    # recent SynthDef before the play message arrives.
+    _reload_synth!(m)
+    # Step 2: play one note. n + release + gain make almost any synth
+    # audible without further setup. cut keeps voices from stacking.
+    args = Any[
+        "s", String(m.synth_editing),
+        "n", Int32(n),
+        "release", Float32(release),
+        "gain", Float32(gain),
+        "cut", Int32(_PREVIEW_CUT_GROUP),
+    ]
+    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+    _push_log!(m, "[INFO] :test — fired preview of $(m.synth_editing) (n=$n, release=$release)")
+end
+
+"""
     _ensure_synth_plugin_manifest!(name)
 
 Create or update plugins/user-synths/plugin.toml so SynthDef files in

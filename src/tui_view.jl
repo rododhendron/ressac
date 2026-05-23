@@ -98,8 +98,11 @@ doesn't lose any editor rows to the new visual UX.
 """
 function _footer_line(m::LiveModel)
     if !isempty(m.synth_editing) && m.mode !== :command
-        side = m.focus === :synth ? "SYNTH→ $(m.synth_editing).scd" : "←PATTERNS  :synth $(m.synth_editing).scd"
-        text = "[$side] Ctrl-w w / :swap | :reload push | :save-synth | :back close"
+        if m.focus === :synth
+            text = "[SYNTH→ $(m.synth_editing).scd] K/:test play | :reload | :save-synth | Ctrl-w w | :back"
+        else
+            text = "[←PATTERNS  synth=$(m.synth_editing)] Ctrl-w w / :swap to edit synth | :back close"
+        end
         return _TextLines([text], TUI.Crayon(; foreground=:yellow))
     end
     if m.mode === :command

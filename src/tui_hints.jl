@@ -108,7 +108,7 @@ const _COMMAND_NAMES = [
     "scale",
     "save-session", "load-session", "sessions",
     "snippet", "snippets",
-    "synth", "back", "reload", "save-synth",
+    "synth", "back", "reload", "save-synth", "swap", "test",
 ]
 
 const _COMBINATOR_NAMES = [
