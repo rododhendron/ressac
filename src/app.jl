@@ -49,6 +49,10 @@ non-empty), and the focus toggle for keystroke routing.
     modal_scroll::Int            = 0
     # Synth library picker state (only meaningful when modal === :synth_library).
     synthlib_cursor::Int         = 1
+    # Snippet picker state (only meaningful when modal === :snippets).
+    snip_cursor::Int             = 1
+    snip_query::String           = ""
+    snip_search_mode::Bool       = false
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
@@ -513,6 +517,7 @@ const _EX_COMMAND_VERBS = String[
     "copylogs", "yanklogs", "synthlib", "synth-library", "lib",
     "theme", "reload-config", "reload-cfg", "sccode", "sc",
     "panic", "hush", "stop", "sccode-tag", "sctag",
+    "snip", "snippets", "snippet",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -784,6 +789,8 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _open_browser!(m)
     elseif cmd in ("synthlib", "synth-library", "lib")
         _open_synth_library!(m)
+    elseif cmd in ("snip", "snippets", "snippet")
+        _open_snippets!(m)
     elseif cmd in ("sccode", "sc")
         _open_sccode!(m)
     elseif (mt = match(r"^(?:sccode|sc)\s+(\S+)$", cmd)) !== nothing
@@ -1326,6 +1333,9 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif m.modal === :sccode
         _handle_sccode_key!(m, evt)
         return
+    elseif m.modal === :snippets
+        _handle_snippets_key!(m, evt)
+        return
     end
     lines = _modal_lines(m)
     n = length(lines)
@@ -1783,9 +1793,186 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_synth_library_modal!(m, f.area, buf)
     elseif m.modal === :sccode
         _render_sccode_modal!(m, f.area, buf)
+    elseif m.modal === :snippets
+        _render_snippets_modal!(m, f.area, buf)
     elseif m.modal !== :none
         _render_modal!(m, f.area, buf)
     end
+end
+
+# ---------------------------------------------------------------------
+# Snippets — context-aware multi-line templates
+# ---------------------------------------------------------------------
+
+"""
+    _snip_context(m) -> Symbol
+
+`:patterns` when the patterns pane is focused, `:synth` when a
+synth pane is open and focused. Used by the picker to filter
+snippets that don't make sense in the current pane.
+"""
+function _snip_context(m::RessacApp)
+    (m.focus === :synth && _synth_pane_open(m)) ? :synth : :patterns
+end
+
+function _snippets_visible(m::RessacApp)
+    ctx = _snip_context(m)
+    base = _snippets_for_context(ctx)
+    isempty(m.snip_query) && return base
+    q = lowercase(m.snip_query)
+    return [s for s in base
+            if occursin(q, lowercase(s.trigger)) ||
+               occursin(q, lowercase(s.category)) ||
+               occursin(q, lowercase(s.description))]
+end
+
+function _open_snippets!(m::RessacApp)
+    m.modal = :snippets
+    m.snip_cursor = 1
+    m.snip_query = ""
+    m.snip_search_mode = false
+end
+
+function _handle_snippets_key!(m::RessacApp, evt::TK.KeyEvent)
+    if m.snip_search_mode
+        if evt.key === :escape
+            m.snip_search_mode = false
+        elseif evt.key === :enter
+            m.snip_search_mode = false
+        elseif evt.key === :backspace
+            isempty(m.snip_query) || (m.snip_query = m.snip_query[1:end-1])
+            m.snip_cursor = 1
+        elseif evt.key === :char && isprint(evt.char)
+            m.snip_query *= string(evt.char)
+            m.snip_cursor = 1
+        end
+        return
+    end
+    n = length(_snippets_visible(m))
+    if evt.key === :escape || evt.char == 'q'
+        if !isempty(m.snip_query)
+            m.snip_query = ""; m.snip_cursor = 1
+        else
+            m.modal = :none
+        end
+    elseif evt.char == '/'
+        m.snip_search_mode = true
+    elseif evt.char == 'j' || evt.key === :down
+        m.snip_cursor = min(m.snip_cursor + 1, max(n, 1))
+    elseif evt.char == 'k' || evt.key === :up
+        m.snip_cursor = max(m.snip_cursor - 1, 1)
+    elseif evt.char == ' '
+        _preview_snippet!(m)
+    elseif evt.key === :enter || evt.char == '\r'
+        _insert_snippet!(m)
+    end
+end
+
+"""
+    _preview_snippet!(m)
+
+Dump the snippet body line-by-line into the log so the user can read
+exactly what Enter would insert. Cheap and reversible.
+"""
+function _preview_snippet!(m::RessacApp)
+    snips = _snippets_visible(m)
+    1 <= m.snip_cursor <= length(snips) || return
+    s = snips[m.snip_cursor]
+    _push_app_log!(m, "[INFO] snippet preview: $(s.trigger) — $(s.description)")
+    for line in split(strip(s.body), '\n')
+        _push_app_log!(m, "        $line")
+    end
+end
+
+"""
+    _insert_snippet!(m)
+
+Splice the snippet body into the active editor at the cursor. The
+snippet is dedented (we trim the leading indent that's in the
+source-file string literal) and inserted as a NEW line below the
+current one — so the user's existing line content is preserved.
+After insertion the cursor lands at the START of the first new line.
+"""
+function _insert_snippet!(m::RessacApp)
+    snips = _snippets_visible(m)
+    1 <= m.snip_cursor <= length(snips) || return
+    s = snips[m.snip_cursor]
+    ed = _active_editor(m)
+    # Dedent: figure out the smallest indent across all non-empty lines
+    # and strip it. Lets the snippet source stay readable in Julia code
+    # without polluting the user's buffer.
+    body_lines = split(strip(s.body), '\n')
+    min_indent = typemax(Int)
+    for line in body_lines
+        stripped = lstrip(line)
+        isempty(stripped) && continue
+        min_indent = min(min_indent, length(line) - length(stripped))
+    end
+    min_indent === typemax(Int) && (min_indent = 0)
+    dedented = [length(line) >= min_indent ? line[min_indent + 1 : end] : line
+                for line in body_lines]
+    # Splice after the cursor's current row.
+    txt = TK.text(ed)
+    src_lines = collect(split(txt, '\n'; keepempty=true))
+    row = clamp(ed.cursor_row, 1, length(src_lines))
+    inserted = String.(dedented)
+    new_lines = vcat(src_lines[1:row], inserted, src_lines[row+1:end])
+    TK.set_text!(ed, join(new_lines, '\n'))
+    ed.cursor_row = row + 1
+    ed.cursor_col = 0
+    m.modal = :none
+    _push_app_log!(m, "[INFO] inserted snippet $(s.trigger) ($(length(inserted)) lines)")
+end
+
+function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    snips = _snippets_visible(m)
+    aw, ah = area.width, area.height
+    box_w = max(60, min(aw - 4, 110))
+    box_h = max(12, ah - 4)
+    box_x = area.x + max(0, (aw - box_w) ÷ 2)
+    box_y = area.y + max(0, (ah - box_h) ÷ 2)
+    ctx_label = _snip_context(m) === :synth ? "synth pane" : "patterns pane"
+    title = "┌ snippets ($ctx_label) — / search, j/k move, Space preview, Enter insert, q close "
+    title = title * "─" ^ max(0, box_w - length(title) - 1) * "┐"
+    TK.set_string!(buf, box_x, box_y, first(title, box_w),
+                   TK.tstyle(:title, bold=true))
+    # Search bar.
+    sb_prefix = m.snip_search_mode ? "  /" : "  ⌕ "
+    sb_text = sb_prefix * m.snip_query *
+              (m.snip_search_mode ? "▏" : "")
+    sb_style = m.snip_search_mode ?
+        TK.tstyle(:accent, bold=true) : TK.tstyle(:text_dim)
+    TK.set_string!(buf, box_x, box_y + 1,
+                   "│ " * rpad(first(sb_text, box_w - 4), box_w - 4) * " │",
+                   sb_style)
+    # Body.
+    body_h = box_h - 4
+    n = length(snips)
+    if n == 0
+        msg = isempty(m.snip_query) ?
+            "(no snippets for this context)" :
+            "(no match for \"$(m.snip_query)\")"
+        TK.set_string!(buf, box_x + 2, box_y + 3, msg, TK.tstyle(:text_dim))
+    else
+        start_i = max(1, m.snip_cursor - body_h ÷ 2)
+        end_i = min(n, start_i + body_h - 1)
+        start_i = max(1, end_i - body_h + 1)
+        for (slot, i) in enumerate(start_i:end_i)
+            s = snips[i]
+            is_cur = i == m.snip_cursor
+            marker = is_cur ? "▶ " : "  "
+            label = "$(marker)$(rpad(s.trigger, 18)) [$(rpad(s.category, 9))]  $(s.description)"
+            style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
+            line = "│ " * first(label, box_w - 4) * " │"
+            TK.set_string!(buf, box_x, box_y + 1 + slot, line, style)
+        end
+    end
+    pageline = "│ " * rpad("$(n) snippets shown · ctx = $(_snip_context(m))", box_w - 4) * " │"
+    TK.set_string!(buf, box_x, box_y + box_h - 2, first(pageline, box_w),
+                   TK.tstyle(:text_dim))
+    foot = "└" * "─" ^ (box_w - 2) * "┘"
+    TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
+                   TK.tstyle(:title, bold=true))
 end
 
 # ---------------------------------------------------------------------
