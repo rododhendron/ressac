@@ -152,8 +152,17 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     evt = _normalise_event(evt)
-    if m.modal !== :none && evt.action === TK.key_press
-        _handle_modal_key!(m, evt)
+    if m.modal !== :none
+        # Modal navigation (j/k/up/down) wants key-repeat too so the user
+        # can hold the key to scrub through a long list. Action keys
+        # (Space preview, Enter load, q close, /search, ...) stay
+        # press-only — we don't want Enter held to import 80 synths.
+        is_nav = evt.char == 'j' || evt.char == 'k' ||
+                 evt.key === :up || evt.key === :down
+        if evt.action === TK.key_press ||
+           (evt.action === TK.key_repeat && is_nav)
+            _handle_modal_key!(m, evt)
+        end
         return
     end
     ed = _active_editor(m)
@@ -188,13 +197,13 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         _nudge_number_under_cursor!(m, ed, step)
         return
     end
-    # T held: fire repeatedly with accelerating interval. The initial
-    # press goes through the normal-mode block below; key_repeat events
-    # are handled here so they bypass the press-only gate. Each fire
-    # multiplies the interval by config.t_hold_accel (clamped to
-    # t_hold_min_ms), so a held T ramps from ~4 fires/sec up to ~17.
+    # T (or Space) held: fire repeatedly with accelerating interval.
+    # The initial press goes through the normal-mode block below;
+    # key_repeat events are handled here so they bypass the press-only
+    # gate. Each fire multiplies the interval by config.t_hold_accel
+    # (clamped to t_hold_min_ms).
     if ed.mode === :normal && evt.action === TK.key_repeat &&
-       evt.char == 'T' && _synth_pane_open(m)
+       (evt.char == 'T' || evt.char == ' ') && _synth_pane_open(m)
         _fire_t_with_accel!(m; held=true)
         return
     end
@@ -208,7 +217,10 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             # code which Julia can't parse, so leave `e` for the editor's
             # vim "end of word" motion there.
             _eval_current_line!(m); return
-        elseif evt.char == 'T' && _synth_pane_open(m)
+        elseif (evt.char == 'T' || evt.char == ' ') && _synth_pane_open(m)
+            # Space and T both fire the test — Space is right there
+            # under the thumb, faster than reaching for a capital T
+            # when iterating on a sound.
             _fire_t_with_accel!(m)
             return
         elseif evt.char == 'K' && m.focus === :patterns
