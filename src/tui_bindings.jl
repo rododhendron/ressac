@@ -661,6 +661,12 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _save_synth!(m)
     elseif (mt = match(r"^save-synth-as\s+(\w+)$", body)) !== nothing
         _save_synth_as!(m, mt.captures[1])
+    elseif body == "w" && !isempty(m.synth_editing)
+        # Vim convention: :w saves the current synth file.
+        _save_synth!(m)
+    elseif (mt = match(r"^w\s+(\w+)$", body)) !== nothing && !isempty(m.synth_editing)
+        # Vim convention: :w newname saves under a different name (like :saveas).
+        _save_synth_as!(m, mt.captures[1])
     elseif body == "swap"
         _swap_focus!(m)
     elseif body == "test"

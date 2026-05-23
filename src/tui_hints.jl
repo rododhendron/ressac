@@ -110,6 +110,7 @@ const _COMMAND_NAMES = [
     "snippet", "snippets",
     "synth", "back", "reload", "save-synth", "save-synth-as",
     "swap", "test", "test-raw", "synth-guide", "scope",
+    "w",
 ]
 
 const _COMBINATOR_NAMES = [
