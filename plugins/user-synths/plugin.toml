@@ -3,8 +3,12 @@ version     = "0.1.0"
 description = "synthdefs authored live via :synth"
 
 [synthdefs]
-files = ["./mywob.scd"]
+files = ["./mywob.scd", "./mywob2.scd"]
 
 [synths.mywob]
+description = "user synth"
+tags = ["user"]
+
+[synths.mywob2]
 description = "user synth"
 tags = ["user"]

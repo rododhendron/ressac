@@ -65,11 +65,16 @@ process exits — cheap, just blocks on recv.
 function _ensure_scope_listener!(m::LiveModel)
     _SCOPE_LIVE_MODEL[] = m
     _SCOPE_LISTENER_SOCKET[] !== nothing && return
-    sock = UDPSocket()
-    bind(sock, ip"127.0.0.1", _SCOPE_LISTEN_PORT)
-    _SCOPE_LISTENER_SOCKET[] = sock
-    _SCOPE_LISTENER_RUNNING[] = true
-    _SCOPE_LISTENER_TASK[] = Threads.@spawn _scope_listener_loop()
+    try
+        sock = UDPSocket()
+        bind(sock, ip"127.0.0.1", _SCOPE_LISTEN_PORT)
+        _SCOPE_LISTENER_SOCKET[] = sock
+        _SCOPE_LISTENER_RUNNING[] = true
+        _SCOPE_LISTENER_TASK[] = Threads.@spawn _scope_listener_loop()
+        _push_log!(m, "[INFO] scope listener bound on 127.0.0.1:$(_SCOPE_LISTEN_PORT)")
+    catch err
+        _push_log!(m, "[ERROR] scope listener bind failed: $(sprint(showerror, err))")
+    end
 end
 
 function _scope_listener_loop()
@@ -130,7 +135,7 @@ for the chosen viz + a 1-row title.
 """
 function _scope_panel_height(m::LiveModel)
     m.scope_type === :off && return 0
-    return 8   # 1 title + 6 viz + 1 footer hint
+    return 14   # 1 title + 12 viz + a bit of breathing room
 end
 
 """
