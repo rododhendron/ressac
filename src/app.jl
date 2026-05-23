@@ -74,23 +74,19 @@ _current_synth_tab(m::RessacApp) = m.synth_tabs[m.synth_tab_idx]
 TK.should_quit(m::RessacApp) = m.quit
 
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
-    # Modal intercepts every keystroke when active.
     if m.modal !== :none && evt.action === TK.key_press
         _handle_modal_key!(m, evt)
         return
     end
     ed = _active_editor(m)
-    # Tab in :normal swaps focus between patterns and the active synth
-    # tab. Only meaningful when at least one synth tab is open.
-    if evt.key === :tab && ed.mode === :normal &&
-       _synth_pane_open(m) && evt.action === TK.key_press
+    is_press = evt.action === TK.key_press
+    # Tab in :normal swaps focus between patterns and the active synth tab.
+    if is_press && evt.key === :tab && ed.mode === :normal && _synth_pane_open(m)
         _swap_focus!(m)
         return
     end
-    # gt / gT cycle synth tabs while focused on the synth pane (vim
-    # convention). Handled directly because the editor consumes 'g'
-    # otherwise — we peek at the next char via Tachikoma's pending_key.
-    if ed.mode === :normal && evt.action === TK.key_press &&
+    # gt / gT cycle synth tabs while focused on the synth pane.
+    if is_press && ed.mode === :normal &&
        m.focus === :synth && length(m.synth_tabs) > 1
         if evt.char == 't' && ed.pending_key == 'g'
             ed.pending_key = nothing
@@ -102,22 +98,109 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             return
         end
     end
+    # Intercept our normal-mode actions BEFORE handle_key! so the
+    # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
+    # potential vim commands and consumes the keystroke).
+    if is_press && ed.mode === :normal
+        if evt.char == 'e'
+            _eval_current_line!(m); return
+        elseif evt.char == 'T' && _synth_pane_open(m)
+            _test_current_synth!(m); return
+        elseif evt.char == 'K' && m.focus === :patterns
+            _preview_word_under_cursor!(m); return
+        elseif evt.char == 'S' && _synth_pane_open(m)
+            _scope_cycle_key!(m); return
+        elseif evt.char == 'm' && m.focus === :patterns
+            _toggle_mute_current_line!(m); return
+        end
+    end
+    # Tab autocomplete in :insert mode (word under cursor → registry /
+    # combinator / @dN macro). Intercept BEFORE the editor types a Tab
+    # character into the buffer.
+    if is_press && evt.key === :tab && ed.mode === :insert
+        if _try_autocomplete!(m, ed)
+            return
+        end
+    end
     TK.handle_key!(ed, evt)
     cmd = TK.pending_command!(ed)
     isempty(cmd) || _handle_ex_command!(m, cmd)
-    if ed.mode === :normal && evt.action === TK.key_press
-        if evt.char == 'e'
-            _eval_current_line!(m)
-        elseif evt.char == 'T' && _synth_pane_open(m)
-            _test_current_synth!(m)
-        elseif evt.char == 'K' && m.focus === :patterns
-            _preview_word_under_cursor!(m)
-        elseif evt.char == 'S' && _synth_pane_open(m)
-            _scope_cycle_key!(m)
-        elseif evt.char == 'm' && m.focus === :patterns
-            _toggle_mute_current_line!(m)
-        end
+end
+
+# ---------------------------------------------------------------------
+# Insert-mode Tab autocomplete
+# ---------------------------------------------------------------------
+
+const _APP_AUTOCOMPLETE_CANDIDATES = String[
+    # Combinators / helpers
+    "pure", "silence", "fast", "slow", "density", "rev", "every",
+    "stack", "cat", "mask", "gate", "degree",
+    "gain", "speed", "lpf", "hpf", "pan", "n", "room", "delay",
+    "shape", "set", "freq",
+    "attack", "release", "hold", "sustain", "legato",
+    "cutoff", "resonance", "bandq", "bandf", "hcutoff", "hresonance",
+    "crush", "coarse",
+    "accelerate", "vibrato", "tremolorate", "tremolodepth",
+    "phaserrate", "phaserdepth",
+    "delaytime", "delayfeedback",
+    "octave", "slide", "pitch1", "pitch2", "pitch3", "detune",
+    "vowel", "enhance",
+    # Slot macros @d1..@d64
+    ("@d$i" for i in 1:64)...,
+]
+
+"""
+    _try_autocomplete!(m, ed) -> Bool
+
+Look at the word under the cursor and replace it with the first
+candidate that fuzzy-matches. Returns true if anything was inserted
+(consuming the Tab keypress); false otherwise so the editor handles
+Tab normally.
+
+Candidate sources: combinators + ~40 OSC params + 64 @dN macros +
+every registered sample / instrument / synth name.
+"""
+function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
+    1 <= ed.cursor_row <= length(ed.lines) || return false
+    chars = ed.lines[ed.cursor_row]
+    col = ed.cursor_col   # 0-based; we want the word ending at col-1
+    isempty(chars) && return false
+    is_word = c -> isletter(c) || isdigit(c) || c == '_' || c == '@'
+    end_col = col
+    start_col = end_col
+    while start_col > 0 && is_word(chars[start_col])
+        start_col -= 1
     end
+    start_col == end_col && return false
+    partial = String(chars[(start_col + 1):end_col])
+    # Build candidate list: static + live registries.
+    candidates = copy(_APP_AUTOCOMPLETE_CANDIDATES)
+    append!(candidates, String.(keys(_SAMPLE_REGISTRY)))
+    append!(candidates, String.(keys(_INSTRUMENT_REGISTRY)))
+    append!(candidates, String.(keys(_SYNTH_REGISTRY)))
+    unique!(candidates)
+    # Fuzzy rank.
+    scored = Tuple{Int,Int,String}[]
+    for cand in candidates
+        score = _fuzzy_score(partial, cand)
+        score === nothing && continue
+        push!(scored, (score, length(cand), cand))
+    end
+    isempty(scored) && return false
+    sort!(scored, by = t -> (t[1], t[2], t[3]))
+    replacement = scored[1][3]
+    # Splice into buffer.
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty=true))
+    row = ed.cursor_row
+    line = String(lines[row])
+    new_line = line[1:start_col] * replacement *
+               (end_col >= lastindex(line) ? "" : line[nextind(line, end_col):end])
+    lines[row] = new_line
+    TK.set_text!(ed, join(lines, '\n'))
+    ed.cursor_row = row
+    ed.cursor_col = start_col + length(replacement)
+    return true
 end
 
 const _ACTIVE_SLOT_RX_APP   = r"^\s*@(d\d+)\b"
@@ -234,12 +317,7 @@ end
 
 function _swap_focus!(m::RessacApp)
     m.focus = m.focus === :patterns ? :synth : :patterns
-    m.editor.focused = (m.focus === :patterns)
-    if _synth_pane_open(m)
-        for (i, tab) in enumerate(m.synth_tabs)
-            tab.editor.focused = (m.focus === :synth && i == m.synth_tab_idx)
-        end
-    end
+    _refresh_focus_flags!(m)
 end
 
 """
@@ -958,7 +1036,7 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     if existing !== nothing
         m.synth_tab_idx = existing
         m.focus = :synth
-        _swap_focus!(m); m.focus = :synth   # ensure the right editor has focused=true
+        m.focus = :synth; _refresh_focus_flags!(m)   # ensure the right editor has focused=true
         _push_app_log!(m, "[INFO] switched to tab '$name'")
         return
     end
@@ -976,9 +1054,23 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     push!(m.synth_tabs, SynthTab(name, editor))
     m.synth_tab_idx = length(m.synth_tabs)
     m.focus = :synth
-    m.editor.focused = false
-    _swap_focus!(m); m.focus = :synth
+    _refresh_focus_flags!(m)
     _push_app_log!(m, "[INFO] opened synth '$name' — T test, :w save, Tab swap, gt cycle, :close drop")
+end
+
+"""
+    _refresh_focus_flags!(m)
+
+Set the `focused` field on every editor to match `m.focus`. Called
+after any focus/tab change. Cleaner than relying on _swap_focus!
+side effects which made the caret invisible the first time
+the user opened a synth pane.
+"""
+function _refresh_focus_flags!(m::RessacApp)
+    m.editor.focused = (m.focus === :patterns)
+    for (i, tab) in enumerate(m.synth_tabs)
+        tab.editor.focused = (m.focus === :synth && i == m.synth_tab_idx)
+    end
 end
 
 """
@@ -1013,7 +1105,7 @@ function _close_active_synth_tab!(m::RessacApp)
         _push_app_log!(m, "[INFO] closed last synth tab '$name'")
     else
         m.synth_tab_idx = clamp(m.synth_tab_idx - 1, 1, length(m.synth_tabs))
-        _swap_focus!(m); m.focus = :synth
+        m.focus = :synth; _refresh_focus_flags!(m)
         _push_app_log!(m, "[INFO] closed '$name' — now on '$(_current_synth_tab(m).name)'")
     end
 end
@@ -1022,7 +1114,7 @@ function _cycle_synth_tab!(m::RessacApp; dir::Int = +1)
     length(m.synth_tabs) <= 1 && return
     n = length(m.synth_tabs)
     m.synth_tab_idx = mod(m.synth_tab_idx + dir - 1, n) + 1
-    _swap_focus!(m); m.focus = :synth
+    m.focus = :synth; _refresh_focus_flags!(m)
 end
 
 function _list_synth_tabs!(m::RessacApp)
