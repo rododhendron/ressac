@@ -51,38 +51,150 @@ SynthDef source for `name` into `m.buffer`. Loads from disk if the
 plugin file exists; otherwise inserts the starter template.
 """
 function _enter_synth_edit!(m::LiveModel, name::AbstractString)
+    name = String(name)
     if !isempty(m.synth_editing)
-        _push_log!(m, "[INFO] already editing synth '$(m.synth_editing)'. :back first.")
+        # Already in synth-edit. Switch to that tab if it exists, else
+        # open a new one.
+        existing_idx = findfirst(t -> t.name == name, m.synth_tabs)
+        if existing_idx !== nothing
+            _switch_synth_tab!(m, existing_idx)
+            _push_log!(m, "[INFO] switched to tab '$name'")
+            return
+        end
+        # Save current tab's state, then push a new tab.
+        _stash_current_synth_tab!(m)
+        push!(m.synth_tabs, _load_synth_tab(name))
+        m.synth_tab_idx = length(m.synth_tabs)
+        _activate_synth_tab!(m)
+        _push_log!(m, "[INFO] new tab '$name' (tab $(m.synth_tab_idx)/$(length(m.synth_tabs))) — :close to drop it")
         return
     end
-    # Stash main state. After this swap:
-    #   m.buffer / m.cursor_*       = synth source (focused)
-    #   m.synth_stash_*              = main pattern state (unfocused)
+    # First synth — stash patterns + open.
     m.synth_stash_buffer = m.buffer
     m.synth_stash_row    = m.cursor_row
     m.synth_stash_col    = m.cursor_col
-    m.synth_editing      = String(name)
+    m.synth_editing      = name
     m.focus              = :synth
-    # Load source.
+    empty!(m.synth_tabs)
+    push!(m.synth_tabs, _load_synth_tab(name))
+    m.synth_tab_idx = 1
+    _activate_synth_tab!(m)
+    _push_log!(m, "[INFO] editing synth '$name' — :w save, :w <name> save-as, :close drop tab, :back exit")
+end
+
+"""
+    _load_synth_tab(name) -> tab
+
+Load the SCD source for `name` from disk if it exists, otherwise the
+starter template. Returns a (name, buffer, row, col) named tuple.
+"""
+function _load_synth_tab(name::AbstractString)
     path = _synth_source_path(name)
-    if isfile(path)
+    lines = if isfile(path)
         text = read(path, String)
-        lines = String.(split(text, '\n'; keepempty=true))
-        while !isempty(lines) && isempty(lines[end])
-            pop!(lines)
+        parsed = String.(split(text, '\n'; keepempty=true))
+        while !isempty(parsed) && isempty(parsed[end])
+            pop!(parsed)
         end
-        m.buffer = lines
-        _push_log!(m, "[INFO] editing synth '$name' ($(length(lines)) lines) — :reload to push, :save-synth to persist, :back to return")
+        parsed
     else
-        m.buffer = _STARTER_SYNTHDEF(name)
-        _push_log!(m, "[INFO] new synth '$name' — template loaded, edit then :reload + :save-synth")
+        _STARTER_SYNTHDEF(name)
     end
-    m.cursor_row = 1
-    m.cursor_col = 1
-    m.mode = :normal
+    return (name=String(name), buffer=lines, row=1, col=1)
+end
+
+"""
+    _stash_current_synth_tab!(m)
+
+Copy m.buffer / cursor into m.synth_tabs[m.synth_tab_idx] before we
+swap to a different tab. Works whether focus is on the synth pane
+(state lives in m.buffer) or on patterns (state lives in
+m.synth_stash_buffer).
+"""
+function _stash_current_synth_tab!(m::LiveModel)
+    m.synth_tab_idx == 0 && return
+    if m.focus === :synth
+        m.synth_tabs[m.synth_tab_idx] =
+            (name=m.synth_editing, buffer=m.buffer,
+             row=m.cursor_row, col=m.cursor_col)
+    else
+        m.synth_tabs[m.synth_tab_idx] =
+            (name=m.synth_editing, buffer=m.synth_stash_buffer,
+             row=m.synth_stash_row, col=m.synth_stash_col)
+    end
+end
+
+"""
+    _activate_synth_tab!(m)
+
+Load m.synth_tabs[m.synth_tab_idx] into the focused-or-stash slot
+(opposite of `_stash_current_synth_tab!`). Updates `m.synth_editing`.
+"""
+function _activate_synth_tab!(m::LiveModel)
+    tab = m.synth_tabs[m.synth_tab_idx]
+    m.synth_editing = tab.name
+    if m.focus === :synth
+        m.buffer     = tab.buffer
+        m.cursor_row = tab.row
+        m.cursor_col = tab.col
+    else
+        m.synth_stash_buffer = tab.buffer
+        m.synth_stash_row    = tab.row
+        m.synth_stash_col    = tab.col
+    end
     _clear_completions!(m)
     empty!(m.history)
     empty!(m.redo_stack)
+end
+
+"""
+    _switch_synth_tab!(m, new_idx)
+
+Switch the active tab to `new_idx` (1-based). Stashes current tab
+state first.
+"""
+function _switch_synth_tab!(m::LiveModel, new_idx::Integer)
+    1 <= new_idx <= length(m.synth_tabs) || return
+    _stash_current_synth_tab!(m)
+    m.synth_tab_idx = new_idx
+    _activate_synth_tab!(m)
+end
+
+"""
+    _close_synth_tab!(m)
+
+Drop the active tab. If it was the last tab, this exits synth-edit
+entirely (same as `:back`). Otherwise switches to the previous tab.
+"""
+function _close_synth_tab!(m::LiveModel)
+    isempty(m.synth_tabs) && return
+    closed_name = m.synth_editing
+    deleteat!(m.synth_tabs, m.synth_tab_idx)
+    if isempty(m.synth_tabs)
+        _exit_synth_edit!(m)
+    else
+        m.synth_tab_idx = clamp(m.synth_tab_idx - 1, 1, length(m.synth_tabs))
+        _activate_synth_tab!(m)
+        _push_log!(m, "[INFO] closed '$closed_name' — now on '$(m.synth_editing)' ($(m.synth_tab_idx)/$(length(m.synth_tabs)))")
+    end
+end
+
+function _cycle_synth_tab!(m::LiveModel; dir::Int = +1)
+    n = length(m.synth_tabs)
+    n <= 1 && return
+    new_idx = mod(m.synth_tab_idx + dir - 1, n) + 1
+    _switch_synth_tab!(m, new_idx)
+end
+
+function _list_synth_tabs!(m::LiveModel)
+    if isempty(m.synth_tabs)
+        _push_log!(m, "[INFO] no synth tabs open")
+        return
+    end
+    for (i, tab) in enumerate(m.synth_tabs)
+        marker = i == m.synth_tab_idx ? "▶" : " "
+        _push_log!(m, "  $marker $i. $(tab.name)")
+    end
 end
 
 """
@@ -100,20 +212,20 @@ function _exit_synth_edit!(m::LiveModel)
     # Make sure main state ends up in m.buffer regardless of which pane
     # was focused last.
     if m.focus === :synth
-        # m.buffer = synth source, m.synth_stash_* = main → swap back.
         m.buffer     = m.synth_stash_buffer
         m.cursor_row = m.synth_stash_row
         m.cursor_col = m.synth_stash_col
     end
-    # If focus was :main, m.buffer already holds main → nothing to do.
     m.synth_editing      = ""
     m.synth_stash_buffer = String[]
     m.focus              = :main
+    empty!(m.synth_tabs)
+    m.synth_tab_idx      = 0
     m.mode = :normal
     _clear_completions!(m)
     empty!(m.history)
     empty!(m.redo_stack)
-    _push_log!(m, "[INFO] closed synth '$name', back to patterns")
+    _push_log!(m, "[INFO] closed synth pane, back to patterns")
 end
 
 """

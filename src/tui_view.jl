@@ -325,7 +325,11 @@ function TUI.render(s::_SplitEditor, area::TUI.Rect, buf::TUI.Buffer)
     # on the focused side, dim grey on the other.
     title_y = TUI.top(area)
     left_title  = " patterns"
-    right_title = " synth: " * m.synth_editing * ".scd"
+    # Right title shows the active tab + total count if multiple are open.
+    tab_count = length(m.synth_tabs)
+    right_title = tab_count > 1 ?
+        " synth: $(m.synth_editing).scd  [tab $(m.synth_tab_idx)/$tab_count — gt cycle, :close]" :
+        " synth: $(m.synth_editing).scd"
     left_style  = m.focus === :main ?
                   TUI.Crayon(; foreground=:yellow, bold=true) :
                   TUI.Crayon(; foreground=:dark_gray)

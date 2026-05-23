@@ -63,6 +63,16 @@ Backing model for the multi-line TUI. See
     synth_stash_buffer::Vector{String}                   = String[]
     synth_stash_row::Int                                 = 1
     synth_stash_col::Int                                 = 1
+    # SP11.6 — synth tabs. Each tab is a (name, buffer, row, col)
+    # snapshot. The CURRENT tab's state is in `m.buffer`/`cursor_*`
+    # (when focused on synth) or `synth_stash_*` (when focused on main).
+    # Other tabs live snapshotted in `synth_tabs`. `synth_tab_idx` is
+    # 1-based and 0 means "no tabs / not editing".
+    synth_tabs::Vector{NamedTuple{(:name, :buffer, :row, :col),
+                                    Tuple{String,Vector{String},Int,Int}}} =
+        NamedTuple{(:name, :buffer, :row, :col),
+                    Tuple{String,Vector{String},Int,Int}}[]
+    synth_tab_idx::Int                                   = 0
     # SP11.5 — side-by-side panel. `focus` says which side currently
     # holds the live `m.buffer`/`m.cursor_*` fields; the other side
     # lives in `m.synth_stash_*`. Toggle with Ctrl-w w or `:swap`.

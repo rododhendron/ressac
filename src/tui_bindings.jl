@@ -167,6 +167,13 @@ function _handle_normal!(m::LiveModel, evt)
         elseif code == "g"
             _buffer_start!(m)
             m.pending_chord = :none
+        elseif code == "t" && !isempty(m.synth_editing)
+            # Vim convention: gt = next synth tab
+            _cycle_synth_tab!(m; dir=+1)
+            m.pending_chord = :none
+        elseif code == "T" && !isempty(m.synth_editing)
+            _cycle_synth_tab!(m; dir=-1)
+            m.pending_chord = :none
         else
             m.pending_chord = :none
         end
@@ -655,6 +662,14 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _enter_synth_edit!(m, mt.captures[1])
     elseif body == "back"
         _exit_synth_edit!(m)
+    elseif body == "close"
+        _close_synth_tab!(m)
+    elseif body == "tabs"
+        _list_synth_tabs!(m)
+    elseif body == "tabnext"
+        _cycle_synth_tab!(m; dir=+1)
+    elseif body == "tabprev"
+        _cycle_synth_tab!(m; dir=-1)
     elseif body == "reload"
         _reload_synth!(m)
     elseif body == "save-synth"
