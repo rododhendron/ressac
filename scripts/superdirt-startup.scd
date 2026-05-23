@@ -117,6 +117,17 @@ s.waitForBoot({
         Synth(name, args.asArray ++ [\out, 0]);
     }, '/ressac/play');
 
+    // Panic — kill every synth on the server immediately. Bound to `.`
+    // (and :panic / :hush) in Ressac. Stops out-of-control test fires,
+    // stuck notes, infinite tails. After this the scheduler keeps
+    // running so freshly-evaluated patterns still play.
+    OSCdef(\ressacPanic, { |msg|
+        "[ressac] panic — freeing all nodes".postln;
+        s.freeAll;
+        ~ressacTestSynth = nil;
+        if(~ressacTrackSynth.notNil) { ~ressacTrackSynth.clear };
+    }, '/ressac/panic');
+
     // ── Live scope: tap audio bus 0 + push analysis frames to Ressac ──
     // SendReply emits OSC to sclang's local port; OSCFunc forwarders
     // relay each frame to our Ressac listener on UDP 57121.

@@ -18,14 +18,16 @@ end
 const _SCCODE_SOURCE_CACHE = Dict{String,String}()
 
 """
-    _sccode_fetch_list(page=1) -> Vector{_SccodeEntry}
+    _sccode_fetch_list(page=1; tag="") -> Vector{_SccodeEntry}
 
-Hit `https://sccode.org/?p=N` and extract every anchor pointing to a
-snippet (URL pattern `/0-2U` / `/1-5iP` …). Returns the entries in
-page order (newest first on page 1).
+Hit `https://sccode.org/?p=N&tag=…` and extract every anchor pointing
+to a snippet (URL pattern `/0-2U` / `/1-5iP` …). Returns the entries
+in page order. Passing a `tag` narrows the result server-side.
 """
-function _sccode_fetch_list(page::Int = 1)
-    url = "$(_SCCODE_BASE)/?p=$(page)"
+function _sccode_fetch_list(page::Int = 1; tag::AbstractString = "")
+    url = isempty(tag) ?
+        "$(_SCCODE_BASE)/?p=$(page)" :
+        "$(_SCCODE_BASE)/?p=$(page)&tag=$(HTTP.URIs.escapeuri(String(tag)))"
     r = HTTP.get(url; readtimeout = 15, status_exception = false)
     r.status == 200 || throw(error("sccode list HTTP $(r.status) for $url"))
     body = String(r.body)

@@ -56,6 +56,13 @@ non-empty), and the focus toggle for keystroke routing.
     sccode_cursor::Int           = 1
     sccode_page::Int             = 1
     sccode_loading::Bool         = false
+    # Live filter — substring match against title + id. Toggled with `/`;
+    # chars append to query in search_mode, Esc exits search_mode but
+    # keeps the filter, q closes the modal entirely.
+    sccode_query::String         = ""
+    sccode_search_mode::Bool     = false
+    # Tag filter for `:sccode-tag <tag>` (URL ?tag=…). Empty = no tag.
+    sccode_tag::String           = ""
     # Browser modal state (only meaningful when modal === :browse).
     browser_query::String        = ""
     browser_cursor::Int          = 1
@@ -210,6 +217,12 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _scope_cycle_key!(m); return
         elseif evt.char == 'm' && m.focus === :patterns
             _toggle_mute_current_line!(m); return
+        elseif evt.char == '.'
+            # Single-key panic: stops all patterns + frees all SC nodes.
+            # Bound to `.` because it's adjacent on every layout and
+            # doesn't conflict with vim repeat (which we don't use
+            # since the editor handles motions itself).
+            _panic!(m); return
         elseif evt.char == '+' && _APP_SCOPE_TYPE[] === :wave
             m.scope_zoom = clamp(m.scope_zoom * 1.5, 0.1, 32.0)
             _push_app_log!(m, "[INFO] scope Y-zoom ×$(round(m.scope_zoom; digits=2))"); return
@@ -487,6 +500,7 @@ const _EX_COMMAND_VERBS = String[
     "save-synth", "save-synth-as", "reload", "keydebug", "pause", "freeze",
     "copylogs", "yanklogs", "synthlib", "synth-library", "lib",
     "theme", "reload-config", "reload-cfg", "sccode", "sc",
+    "panic", "hush", "stop", "sccode-tag", "sctag",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -748,6 +762,12 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _open_synth_library!(m)
     elseif cmd in ("sccode", "sc")
         _open_sccode!(m)
+    elseif (mt = match(r"^(?:sccode|sc)\s+(\S+)$", cmd)) !== nothing
+        _direct_load_sccode!(m, mt.captures[1])
+    elseif (mt = match(r"^(?:sccode-tag|sctag)\s+(\S+)$", cmd)) !== nothing
+        _open_sccode!(m; tag = mt.captures[1])
+    elseif cmd in ("panic", "hush", "stop")
+        _panic!(m)
     elseif (mt = match(r"^theme\s+(\w+)$", cmd)) !== nothing
         name = Symbol(mt.captures[1])
         if _apply_theme!(name)
@@ -1538,6 +1558,27 @@ function TK.view(m::RessacApp, f::TK.Frame)
 end
 
 # ---------------------------------------------------------------------
+# Panic
+# ---------------------------------------------------------------------
+
+"""
+    _panic!(m)
+
+Single-key emergency stop. Pulls every active pattern from the
+scheduler (so no fresh OSC events ship) AND sends `/ressac/panic` to
+SuperCollider which calls `s.freeAll` — every running synth dies. The
+scheduler stays up so the next pattern eval starts cleanly.
+"""
+function _panic!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing || hush!(sched)
+    if sched !== nothing
+        send_osc(sched.osc, encode(OSCMessage("/ressac/panic", Any[])))
+    end
+    _push_app_log!(m, "[INFO] PANIC — all sound stopped")
+end
+
+# ---------------------------------------------------------------------
 # sccode.org browser
 # ---------------------------------------------------------------------
 
@@ -1548,14 +1589,18 @@ Open the sccode browser modal and synchronously fetch the first page
 of entries. Sccode loads in 1-2s typically; if the user wants more
 they hit `n`/`p` to paginate.
 """
-function _open_sccode!(m::RessacApp)
+function _open_sccode!(m::RessacApp; tag::AbstractString = "")
     m.modal = :sccode
     m.sccode_cursor = 1
     m.sccode_page = 1
     m.sccode_loading = true
-    _push_app_log!(m, "[INFO] sccode: fetching page 1…")
+    m.sccode_query = ""
+    m.sccode_search_mode = false
+    m.sccode_tag = String(tag)
+    banner = isempty(tag) ? "page 1" : "tag=$(tag), page 1"
+    _push_app_log!(m, "[INFO] sccode: fetching $(banner)…")
     try
-        m.sccode_entries = _sccode_fetch_list(1)
+        m.sccode_entries = _sccode_fetch_list(1; tag = m.sccode_tag)
         m.sccode_loading = false
         _push_app_log!(m, "[INFO] sccode: $(length(m.sccode_entries)) entries loaded")
     catch err
@@ -1565,10 +1610,83 @@ function _open_sccode!(m::RessacApp)
     end
 end
 
+"""
+    _direct_load_sccode!(m, ref)
+
+`ref` is either a bare id ("1-5iP") or a full sccode.org URL. Fetches
+the source and opens it as a synth tab via the same code path as the
+browser's Enter — no modal flow, single command, one keypress to play.
+"""
+function _direct_load_sccode!(m::RessacApp, ref::AbstractString)
+    id = ref
+    mt = match(r"sccode\.org/([0-9][\w-]*)", String(ref))
+    mt !== nothing && (id = String(mt.captures[1]))
+    src = try
+        _sccode_fetch_source(id)
+    catch err
+        _push_app_log!(m, "[ERROR] sccode fetch $(id): $(sprint(showerror, err))")
+        return
+    end
+    name = _sccode_extract_synthdef_name(src)
+    name === nothing && (name = "sccode_" * replace(String(id), "-" => "_"))
+    dir = joinpath(pwd(), "plugins", "user-synths")
+    isdir(dir) || mkpath(dir)
+    target = joinpath(dir, "$(name).scd")
+    final_name = name
+    n = 1
+    while isfile(target)
+        n += 1
+        final_name = "$name-$n"
+        target = joinpath(dir, "$(final_name).scd")
+    end
+    write(target, "// Imported from sccode.org/$(id)\n//\n" * src)
+    register_synth!(SynthEntry(Symbol(final_name), "user-synths",
+                               Dict{String,Any}("description" => "imported from sccode",
+                                                "tags" => ["sccode"])))
+    _open_synth_tab!(m, final_name)
+    _push_app_log!(m, "[INFO] sccode/$(id) → plugins/user-synths/$(final_name).scd")
+end
+
+"""
+    _sccode_filtered(m) -> Vector{_SccodeEntry}
+
+Apply the live query filter against title + id (case-insensitive
+substring). When the query is empty just returns the raw list.
+"""
+function _sccode_filtered(m::RessacApp)
+    isempty(m.sccode_query) && return m.sccode_entries
+    q = lowercase(m.sccode_query)
+    return [e for e in m.sccode_entries
+            if occursin(q, lowercase(e.title)) || occursin(q, lowercase(e.id))]
+end
+
 function _handle_sccode_key!(m::RessacApp, evt::TK.KeyEvent)
-    n = length(m.sccode_entries)
+    # Search mode: chars append, backspace pops, Esc/Enter exit (keep query).
+    if m.sccode_search_mode
+        if evt.key === :escape
+            m.sccode_search_mode = false
+        elseif evt.key === :enter
+            m.sccode_search_mode = false
+        elseif evt.key === :backspace
+            isempty(m.sccode_query) || (m.sccode_query = m.sccode_query[1:end-1])
+            m.sccode_cursor = 1
+        elseif evt.key === :char && isprint(evt.char)
+            m.sccode_query *= string(evt.char)
+            m.sccode_cursor = 1
+        end
+        return
+    end
+    n = length(_sccode_filtered(m))
     if evt.key === :escape || evt.char == 'q'
-        m.modal = :none
+        # Esc with non-empty query clears the filter first; second Esc closes.
+        if !isempty(m.sccode_query)
+            m.sccode_query = ""
+            m.sccode_cursor = 1
+        else
+            m.modal = :none
+        end
+    elseif evt.char == '/'
+        m.sccode_search_mode = true
     elseif evt.char == 'j' || evt.key === :down
         m.sccode_cursor = min(m.sccode_cursor + 1, max(n, 1))
     elseif evt.char == 'k' || evt.key === :up
@@ -1578,10 +1696,69 @@ function _handle_sccode_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif evt.char == 'p'
         _sccode_paginate!(m, -1)
     elseif evt.char == ' '
-        _preview_sccode!(m)
+        _preview_sccode_filtered!(m)
     elseif evt.key === :enter || evt.char == '\r'
-        _load_sccode!(m)
+        _load_sccode_filtered!(m)
     end
+end
+
+# Wrappers that route through the filtered list so cursor indexing
+# matches what the user sees in the modal.
+_preview_sccode_filtered!(m::RessacApp) = _sccode_act!(m, _preview_sccode_by_entry!)
+_load_sccode_filtered!(m::RessacApp)    = _sccode_act!(m, _load_sccode_by_entry!)
+
+function _sccode_act!(m::RessacApp, f)
+    filtered = _sccode_filtered(m)
+    1 <= m.sccode_cursor <= length(filtered) || return
+    f(m, filtered[m.sccode_cursor])
+end
+
+function _preview_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    src = try
+        _sccode_fetch_source(entry.id)
+    catch err
+        _push_app_log!(m, "[ERROR] sccode fetch $(entry.id): $(sprint(showerror, err))")
+        return
+    end
+    name = _sccode_extract_synthdef_name(src)
+    if name === nothing
+        _push_app_log!(m, "[WARN] sccode $(entry.id): no SynthDef, raw eval")
+        send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[entry.id, src])))
+        return
+    end
+    send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[name, src])))
+    _push_app_log!(m, "[INFO] preview sccode/$(entry.id) → $(name)")
+end
+
+function _load_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
+    src = try
+        _sccode_fetch_source(entry.id)
+    catch err
+        _push_app_log!(m, "[ERROR] sccode fetch $(entry.id): $(sprint(showerror, err))")
+        return
+    end
+    base = _sccode_extract_synthdef_name(src)
+    base === nothing && (base = "sccode_" * replace(entry.id, "-" => "_"))
+    dir = joinpath(pwd(), "plugins", "user-synths")
+    isdir(dir) || mkpath(dir)
+    target = joinpath(dir, "$(base).scd")
+    final_name = base
+    n = 1
+    while isfile(target)
+        n += 1
+        final_name = "$base-$n"
+        target = joinpath(dir, "$(final_name).scd")
+    end
+    header = "// Imported from sccode.org/$(entry.id) — \"$(entry.title)\"\n//\n"
+    write(target, header * src)
+    register_synth!(SynthEntry(Symbol(final_name), "user-synths",
+                               Dict{String,Any}("description" => "imported from sccode",
+                                                "tags" => ["sccode"])))
+    m.modal = :none
+    _open_synth_tab!(m, final_name)
+    _push_app_log!(m, "[INFO] sccode/$(entry.id) → plugins/user-synths/$(final_name).scd")
 end
 
 function _sccode_paginate!(m::RessacApp, delta::Int)
@@ -1589,7 +1766,7 @@ function _sccode_paginate!(m::RessacApp, delta::Int)
     new_page == m.sccode_page && return
     m.sccode_loading = true
     try
-        m.sccode_entries = _sccode_fetch_list(new_page)
+        m.sccode_entries = _sccode_fetch_list(new_page; tag = m.sccode_tag)
         m.sccode_page = new_page
         m.sccode_cursor = 1
         _push_app_log!(m, "[INFO] sccode page $new_page — $(length(m.sccode_entries)) entries")
@@ -1673,15 +1850,13 @@ end
 function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     aw, ah = area.width, area.height
     box_w = max(60, min(aw - 4, 120))
-    rows_visible = max(6, ah - 6)
-    box_h = max(10, min(ah - 4, length(m.sccode_entries) + 6))
+    box_h = max(10, ah - 4)
     box_x = area.x + max(0, (aw - box_w) ÷ 2)
     box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    title = "┌ sccode.org — j/k move, Space preview, Enter import, n/p page, q close "
+    title = "┌ sccode.org — / search, j/k move, Space play, Enter import, n/p page, q close "
     title = title * "─" ^ max(0, box_w - length(title) - 1) * "┐"
     TK.set_string!(buf, box_x, box_y, first(title, box_w),
                    TK.tstyle(:title, bold=true))
-    # Loading banner if list is being fetched.
     if m.sccode_loading
         TK.set_string!(buf, box_x + 2, box_y + 1,
                        "  fetching…", TK.tstyle(:warning))
@@ -1690,23 +1865,42 @@ function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                        TK.tstyle(:title, bold=true))
         return
     end
-    # Scroll window so the cursor stays visible.
-    body_h = box_h - 3   # title + page-footer + bottom border
-    n = length(m.sccode_entries)
-    start_i = max(1, m.sccode_cursor - body_h ÷ 2)
-    end_i = min(n, start_i + body_h - 1)
-    start_i = max(1, end_i - body_h + 1)
-    for (slot, i) in enumerate(start_i:end_i)
-        e = m.sccode_entries[i]
-        is_cur = i == m.sccode_cursor
-        marker = is_cur ? "▶ " : "  "
-        label = "$(marker)#$(rpad(e.id, 8)) $(e.title)"
-        style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
-        line = "│ " * first(label, box_w - 4) * " │"
-        TK.set_string!(buf, box_x, box_y + slot, line, style)
+    # Search bar row right under the title.
+    sb_prefix = m.sccode_search_mode ? "  /" : "  ⌕ "
+    sb_text = sb_prefix * m.sccode_query *
+              (m.sccode_search_mode ? "▏" : "")
+    sb_style = m.sccode_search_mode ?
+        TK.tstyle(:accent, bold=true) : TK.tstyle(:text_dim)
+    TK.set_string!(buf, box_x, box_y + 1,
+                   "│ " * rpad(first(sb_text, box_w - 4), box_w - 4) * " │",
+                   sb_style)
+    # Filtered list.
+    filtered = _sccode_filtered(m)
+    body_h = box_h - 4   # title + search + page-footer + bottom border
+    n = length(filtered)
+    if n == 0
+        msg = isempty(m.sccode_query) ?
+            "(no entries — try `n` for next page)" :
+            "(no match for \"$(m.sccode_query)\")"
+        TK.set_string!(buf, box_x + 2, box_y + 3, msg, TK.tstyle(:text_dim))
+    else
+        start_i = max(1, m.sccode_cursor - body_h ÷ 2)
+        end_i = min(n, start_i + body_h - 1)
+        start_i = max(1, end_i - body_h + 1)
+        for (slot, i) in enumerate(start_i:end_i)
+            e = filtered[i]
+            is_cur = i == m.sccode_cursor
+            marker = is_cur ? "▶ " : "  "
+            label = "$(marker)#$(rpad(e.id, 8)) $(e.title)"
+            style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
+            line = "│ " * first(label, box_w - 4) * " │"
+            TK.set_string!(buf, box_x, box_y + 1 + slot, line, style)
+        end
     end
     # Page indicator near the bottom.
-    pageline = "│ " * rpad("page $(m.sccode_page)   ($(n) entries)", box_w - 4) * " │"
+    pageinfo = "page $(m.sccode_page) · $(n) shown of $(length(m.sccode_entries))"
+    isempty(m.sccode_tag) || (pageinfo *= " · tag=$(m.sccode_tag)")
+    pageline = "│ " * rpad(pageinfo, box_w - 4) * " │"
     TK.set_string!(buf, box_x, box_y + box_h - 2, first(pageline, box_w),
                    TK.tstyle(:text_dim))
     foot = "└" * "─" ^ (box_w - 2) * "┘"
