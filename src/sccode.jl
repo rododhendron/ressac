@@ -25,18 +25,36 @@ to a snippet (URL pattern `/0-2U` / `/1-5iP` …). Returns the entries
 in page order. Passing a `tag` narrows the result server-side.
 """
 function _sccode_fetch_list(page::Int = 1; tag::AbstractString = "")
-    url = isempty(tag) ?
-        "$(_SCCODE_BASE)/?p=$(page)" :
-        "$(_SCCODE_BASE)/?p=$(page)&tag=$(HTTP.URIs.escapeuri(String(tag)))"
+    # sccode.org's pagination param is `page`, not `p` (the latter looks
+    # plausible from the URLs in cached docs but actually returns the
+    # frontpage unchanged — the bug that made n/p look broken). Tags
+    # use the path form `/tag/<scope>/<name>` rather than a query arg;
+    # if the caller passes a `scope/name` pair (or just `name` defaulting
+    # to a top-level tag) we route accordingly.
+    base = if isempty(tag)
+        _SCCODE_BASE * "/"
+    else
+        # Allow "class/SinOsc" or bare "synth" — sccode tags can be
+        # auto-extracted classes (under /tag/class/) or user tags
+        # (under /tag/). Default to class scope when no `/` present
+        # since that's the more populated namespace.
+        path = occursin('/', String(tag)) ? String(tag) : "class/" * String(tag)
+        _SCCODE_BASE * "/tag/" * path
+    end
+    sep = occursin('?', base) ? "&" : "?"
+    url = "$(base)$(sep)page=$(page)"
     r = HTTP.get(url; readtimeout = 15, status_exception = false)
     r.status == 200 || throw(error("sccode list HTTP $(r.status) for $url"))
     body = String(r.body)
     out = _SccodeEntry[]
     seen = Set{String}()
-    for m in eachmatch(r"<a [^>]*href=\"/([0-9][\w-]*)\"[^>]*>([^<]+)</a>", body)
+    # Sccode marks the code-page link with `class="object"`; user profile
+    # links share the URL shape (`/0-2U` etc) but lack that class — keep
+    # only `object`-tagged anchors so the listing isn't polluted by
+    # author profile rows.
+    for m in eachmatch(r"<a class=\"object\" href=\"/([0-9][\w-]*)\">([^<]+)</a>", body)
         id = String(m.captures[1])
         title = strip(_decode_html_entities(String(m.captures[2])))
-        # Skip the author profile link that shares the URL shape.
         id in seen && continue
         push!(seen, id)
         push!(out, _SccodeEntry(id, isempty(title) ? "(untitled)" : title))
