@@ -657,8 +657,8 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _swap_focus!(m)
     elseif body == "test"
         _test_synth!(m)
-    elseif (mt = match(r"^test\s+(-?\d+)$", body)) !== nothing
-        _test_synth!(m; n = parse(Int, mt.captures[1]))
+    elseif body == "test-raw"
+        _test_synth!(m; raw=true)
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing

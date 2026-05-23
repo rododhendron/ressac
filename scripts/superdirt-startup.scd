@@ -77,17 +77,14 @@ s.waitForBoot({
         ~ressacTestSynth = Synth(name, [\out, 0]);
     }, '/ressac/testSynth');
 
-    // One-shot eval + play with proper server-side sync. The previous
-    // approach scheduled the play 200 ms after the eval, but on the
-    // FIRST run after entering the synth pane the SynthDef compilation
-    // can take longer than that — user heard either silence or the
-    // previous version. Here we run interpret + s.sync (waits for
-    // scsynth to fully register the SynthDef) + Synth in a Routine,
-    // guaranteeing the new SynthDef is live before the synth starts.
+    // One-shot eval + RAW play, bypassing SuperDirt. Bound to :test-raw.
+    // Uses the SynthDef's parameter defaults as-is — what you write is
+    // what you hear. Good for verifying that an edit to a default in
+    // the synth's param list took effect.
     OSCdef(\ressacEvalAndPlay, { |msg|
         var name = msg[1].asString.asSymbol;
         var src  = msg[2].asString;
-        ("[ressac] evalAndPlay " ++ name ++ " (" ++ src.size.asString ++ " chars)").postln;
+        ("[ressac] evalAndPlay (raw) " ++ name ++ " (" ++ src.size.asString ++ " chars)").postln;
         Routine {
             src.interpret;
             s.sync;
@@ -95,6 +92,23 @@ s.waitForBoot({
             ~ressacTestSynth = Synth(name, [\out, 0]);
         }.play(AppClock);
     }, '/ressac/evalAndPlay');
+
+    // Eval + play via SuperDirt's pipeline. After interpret + s.sync,
+    // sends a regular /dirt/play to localhost so SuperDirt processes it
+    // exactly like a pattern would. Bound to T / :test. Lets the user
+    // hear what their synth sounds like in pattern context — same
+    // freq/sustain/gain overrides that an `@d1 p"name"` would apply.
+    ~ressacLocalAddr = NetAddr.new("127.0.0.1", 57120);
+    OSCdef(\ressacReloadAndPlay, { |msg|
+        var name = msg[1].asString;
+        var src  = msg[2].asString;
+        ("[ressac] reloadAndPlay (via dirt) " ++ name ++ " (" ++ src.size.asString ++ " chars)").postln;
+        Routine {
+            src.interpret;
+            s.sync;
+            ~ressacLocalAddr.sendMsg('/dirt/play', \s, name, \n, 0, \cut, 9999);
+        }.play(AppClock);
+    }, '/ressac/reloadAndPlay');
 
     OSCdef(\ressacRegisterSample, { |msg|
         var name = msg[1].asString.asSymbol;

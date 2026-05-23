@@ -1,0 +1,10 @@
+name        = "user-synths"
+version     = "0.1.0"
+description = "synthdefs authored live via :synth"
+
+[synthdefs]
+files = ["./mywob.scd"]
+
+[synths.mywob]
+description = "user synth"
+tags = ["user"]

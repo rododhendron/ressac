@@ -241,7 +241,7 @@ SuperDirt computes freq. That's the explicit opt-in.
 Cut group is shared with K/browser previews so consecutive presses
 truncate the previous voice — no overlapping reverb tails.
 """
-function _test_synth!(m::LiveModel; n::Union{Int,Nothing} = nothing)
+function _test_synth!(m::LiveModel; raw::Bool = false)
     if isempty(m.synth_editing)
         _push_log!(m, "[ERROR] :test — not editing a synth")
         return
@@ -251,17 +251,18 @@ function _test_synth!(m::LiveModel; n::Union{Int,Nothing} = nothing)
         _push_log!(m, "[ERROR] :test — no live session")
         return
     end
-    # Single OSC call to /ressac/evalAndPlay: SuperCollider side runs
-    # interpret(src) → s.sync (waits for scsynth to register the new
-    # SynthDef) → Synth(name). No Julia-side delay needed because the
-    # SC Routine sequences everything correctly. Fixes the "first T
-    # plays the old version or silence" race that 200 ms time-tags
-    # didn't fully cover on cold compiles.
     synth_lines, _, _ = _synth_buffer_view(m)
     src = join(synth_lines, "\n")
-    msg = OSCMessage("/ressac/evalAndPlay", Any[String(m.synth_editing), src])
-    send_osc(sched.osc, encode(msg))
-    _push_log!(m, "[INFO] :test — $(m.synth_editing) ($(length(src)) chars sent, played after server sync)")
+    # T / :test  → /ressac/reloadAndPlay (SuperCollider's Routine calls
+    #              SuperDirt's /dirt/play after s.sync, so the sound
+    #              matches what `@d1 p"name"` produces).
+    # :test-raw  → /ressac/evalAndPlay (Synth(name) direct, no SuperDirt
+    #              overrides, the SynthDef's own defaults play).
+    address = raw ? "/ressac/evalAndPlay" : "/ressac/reloadAndPlay"
+    send_osc(sched.osc,
+             encode(OSCMessage(address, Any[String(m.synth_editing), src])))
+    label = raw ? "raw (synth defaults)" : "via SuperDirt (pattern context)"
+    _push_log!(m, "[INFO] :test — $(m.synth_editing) — $label")
 end
 
 """
