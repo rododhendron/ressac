@@ -114,7 +114,47 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _preview_word_under_cursor!(m)
         elseif evt.char == 'S' && _synth_pane_open(m)
             _scope_cycle_key!(m)
+        elseif evt.char == 'm' && m.focus === :patterns
+            _toggle_mute_current_line!(m)
         end
+    end
+end
+
+const _ACTIVE_SLOT_RX_APP   = r"^\s*@(d\d+)\b"
+const _COMMENTED_SLOT_RX_APP = r"^\s*#+\s*@(d\d+)\b"
+
+"""
+    _toggle_mute_current_line!(m)
+
+`m` key in patterns/normal mode. If the line under the cursor is an
+uncommented `@dN ...` slot def → prefix it with `# ` and call
+`unset_pattern!(scheduler, :dN)`. If it's commented → strip the `#`
+and re-eval so the pattern comes back. Other lines log a warning.
+"""
+function _toggle_mute_current_line!(m::RessacApp)
+    txt = TK.text(m.editor)
+    lines = collect(split(txt, '\n'; keepempty=true))
+    row = m.editor.cursor_row
+    col = m.editor.cursor_col
+    1 <= row <= length(lines) || return
+    line = String(lines[row])
+    if (mt = match(_ACTIVE_SLOT_RX_APP, line)) !== nothing
+        slot = Symbol(mt.captures[1])
+        lines[row] = "# " * line
+        TK.set_text!(m.editor, join(lines, '\n'))
+        m.editor.cursor_row = row
+        m.editor.cursor_col = col
+        unset_pattern!(m.scheduler, slot)
+        _push_app_log!(m, "[INFO] muted $slot")
+    elseif match(_COMMENTED_SLOT_RX_APP, line) !== nothing
+        lines[row] = replace(line, r"^\s*#+\s*" => ""; count=1)
+        TK.set_text!(m.editor, join(lines, '\n'))
+        m.editor.cursor_row = row
+        m.editor.cursor_col = max(0, col - 2)
+        # Re-eval the now-uncommented line so the pattern comes back live.
+        _eval_current_line!(m)
+    else
+        _push_app_log!(m, "[WARN] m: cursor line isn't a slot def, no-op")
     end
 end
 
