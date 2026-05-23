@@ -219,6 +219,9 @@ end
 
 function _editor_pane(m::LiveModel)
     rendered = String[]
+    # Track which logical buffer row each rendered row maps to, so the
+    # cursor overlay can find its line even when viz rows are interleaved.
+    logical = Int[]
     for (i, line) in enumerate(m.buffer)
         prefix = ""
         if m.mode === :visual_line && m.visual_anchor !== nothing
@@ -228,12 +231,17 @@ function _editor_pane(m::LiveModel)
             end
         end
         marker = _active_marker(m, i)
-        # Don't inject a `▌` glyph anymore — `_EditorPane.render` paints
-        # an inverted-colour cell at the cursor position so the char
-        # under it stays readable.
         push!(rendered, prefix * line * marker)
+        push!(logical, i)
+        # Pattern viz: render a sparse grid under any line that looks
+        # like a slot definition with a mini-notation literal.
+        viz = _pattern_viz_line(line)
+        if viz !== nothing
+            push!(rendered, "    " * viz)
+            push!(logical, 0)   # 0 = synthetic line, no buffer mapping
+        end
     end
-    _EditorPane(m, rendered)
+    _EditorPane(m, rendered, logical)
 end
 
 """
@@ -247,6 +255,7 @@ events can translate terminal (col, row) coordinates back into buffer
 struct _EditorPane
     model::LiveModel
     lines::Vector{String}
+    logical::Vector{Int}  # buffer row each rendered line maps to (0 = synthetic)
 end
 
 function TUI.render(p::_EditorPane, area::TUI.Rect, buf::TUI.Buffer)
@@ -256,25 +265,74 @@ function TUI.render(p::_EditorPane, area::TUI.Rect, buf::TUI.Buffer)
     m.editor_screen_height = TUI.height(area)
     TUI.height(area) < 1 && return
     avail = TUI.height(area)
+    # Render each line with a per-line style: synthetic viz lines get a
+    # dim grey so they read as annotations, not code.
     for (i, line) in enumerate(p.lines)
         i > avail && break
         clipped = first(line, TUI.width(area))
-        TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), TUI.Crayon())
+        is_viz = p.logical[i] == 0
+        style = is_viz ? TUI.Crayon(; foreground=:dark_gray) : TUI.Crayon()
+        TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), style)
     end
-    # Semi-transparent cursor: overlay the cell at the cursor position
-    # with a reversed-video Crayon so the underlying character stays
-    # readable. Block style in normal mode, the same in insert (terminal
-    # cell granularity — can't draw a sub-cell beam reliably).
+    # Find the rendered row that maps to m.cursor_row so we can overlay
+    # the cursor in the right place (viz lines push subsequent buffer
+    # rows down).
     m.mode in (:insert, :normal) || return
-    1 <= m.cursor_row <= length(p.lines) || return
-    m.cursor_row <= avail || return
+    cursor_render_row = findfirst(==(m.cursor_row), p.logical)
+    cursor_render_row === nothing && return
+    cursor_render_row <= avail || return
     line = m.buffer[m.cursor_row]
     col = clamp(m.cursor_col, 1, lastindex(line) + 1)
     ch = col > lastindex(line) ? " " : string(line[col])
     cursor_x = TUI.left(area) + col - 1
-    cursor_y = TUI.top(area) + m.cursor_row - 1
+    cursor_y = TUI.top(area) + cursor_render_row - 1
     cursor_x < TUI.left(area) + TUI.width(area) || return
     TUI.set(buf, cursor_x, cursor_y, ch, TUI.Crayon(; negative=true))
+end
+
+"""
+    _pattern_viz_line(line) -> Union{Nothing, String}
+
+If `line` looks like `@dN <something> p"..." …`, parse the
+mini-notation and return a one-line visual representation of the
+hits on a 16-step grid. Returns `nothing` otherwise.
+
+Format: 16 cells, `•` for a hit, `·` for silence. Hits are aligned to
+the start time of each event within cycle 0.
+"""
+function _pattern_viz_line(line::AbstractString)
+    # Skip commented lines and lines that aren't slot definitions.
+    startswith(strip(line), "#") && return nothing
+    occursin(r"^\s*@d\d+\b", line) || return nothing
+    # Extract the first p"..." literal.
+    mt = match(r"p\"([^\"]*)\"", line)
+    mt === nothing && return nothing
+    pat_str = mt.captures[1]
+    isempty(strip(pat_str)) && return nothing
+    parsed = try
+        parse_minino(String(pat_str))
+    catch
+        return nothing
+    end
+    events = try
+        parsed(0 // 1, 1 // 1)
+    catch
+        return nothing
+    end
+    cells = fill('·', 16)
+    for ev in events
+        # ev.start ∈ [0, 1); map to a 0-based cell index.
+        idx = clamp(floor(Int, Float64(ev.start) * 16) + 1, 1, 16)
+        cells[idx] = '•'
+    end
+    # Insert thin separators every 4 cells for readability.
+    out = IOBuffer()
+    for (i, c) in enumerate(cells)
+        write(out, c)
+        write(out, ' ')
+        i % 4 == 0 && i != 16 && write(out, '│', ' ')
+    end
+    return String(take!(out))
 end
 
 # Kept around for back-compat with any caller still using it (none in-tree).
