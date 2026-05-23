@@ -17,7 +17,7 @@ Backing model for the multi-line TUI. See
     buffer::Vector{String}        = [""]
     cursor_row::Int               = 1
     cursor_col::Int               = 1
-    mode::Symbol                  = :insert   # :insert | :normal | :visual_line | :command | :guide
+    mode::Symbol                  = :normal   # :insert | :normal | :visual_line | :command | :guide
     count_prefix::Int             = 0
     pending_chord::Symbol         = :none     # :g | :gd | :d | :y
     chord_digits::String          = ""
