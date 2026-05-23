@@ -7,6 +7,7 @@
 # layer is unchanged — only the editor + viz layer is being replaced.
 
 using Tachikoma
+using Dates
 const TK = Tachikoma
 
 """
@@ -104,6 +105,11 @@ non-empty), and the focus toggle for keystroke routing.
     # before the next fire (decays toward config.t_hold_min_ms).
     last_t_fire::Float64         = 0.0
     t_hold_interval_ms::Float64  = 0.0
+    # WAV recording. Set when /ressac/recStart fires; cleared on stop.
+    # Status bar reads this to show ● REC.
+    recording::Bool              = false
+    recording_path::String       = ""
+    recording_start_ts::Float64  = 0.0
 end
 
 # Kitty CSI u reports numpad keys with their own :kp_<n> symbol instead
@@ -518,6 +524,7 @@ const _EX_COMMAND_VERBS = String[
     "theme", "reload-config", "reload-cfg", "sccode", "sc",
     "panic", "hush", "stop", "sccode-tag", "sctag",
     "snip", "snippets", "snippet",
+    "rec", "record",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -799,6 +806,14 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _open_sccode!(m; tag = mt.captures[1])
     elseif cmd in ("panic", "hush", "stop")
         _panic!(m)
+    elseif cmd in ("rec", "record")
+        _toggle_recording!(m)
+    elseif (mt = match(r"^rec(?:ord)?\s+start\s+(\S+)$", cmd)) !== nothing
+        _start_recording!(m, mt.captures[1])
+    elseif (mt = match(r"^rec(?:ord)?\s+start$", cmd)) !== nothing
+        _start_recording!(m)
+    elseif (mt = match(r"^rec(?:ord)?\s+stop$", cmd)) !== nothing
+        _stop_recording!(m)
     elseif (mt = match(r"^theme\s+(\w+)$", cmd)) !== nothing
         name = Symbol(mt.captures[1])
         if _apply_theme!(name)
@@ -1801,6 +1816,63 @@ function TK.view(m::RessacApp, f::TK.Frame)
 end
 
 # ---------------------------------------------------------------------
+# Recording
+# ---------------------------------------------------------------------
+
+"""
+    _start_recording!(m, name=nothing)
+
+Open a WAV file under `./recordings/` and tell SC to start
+streaming the master mix into it. `name` defaults to a
+timestamped filename so successive recordings don't clobber.
+"""
+function _start_recording!(m::RessacApp, name=nothing)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_app_log!(m, "[ERROR] rec: no live session"); return)
+    if m.recording
+        _push_app_log!(m, "[WARN] rec: already recording → $(m.recording_path)")
+        return
+    end
+    dir = joinpath(pwd(), "recordings")
+    isdir(dir) || mkpath(dir)
+    fname = if name === nothing
+        ts = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
+        "ressac_$(ts).wav"
+    else
+        endswith(String(name), ".wav") ? String(name) : String(name) * ".wav"
+    end
+    path = joinpath(dir, fname)
+    send_osc(sched.osc, encode(OSCMessage("/ressac/recStart", Any[path])))
+    m.recording = true
+    m.recording_path = path
+    m.recording_start_ts = time()
+    _push_app_log!(m, "[INFO] rec ● → $(path)")
+end
+
+"""
+    _stop_recording!(m)
+
+Send /ressac/recStop to SC and clear local state. SC closes the
+WAV file cleanly; the user can immediately play it back from disk.
+"""
+function _stop_recording!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    if !m.recording
+        _push_app_log!(m, "[WARN] rec stop: not recording")
+        return
+    end
+    send_osc(sched.osc, encode(OSCMessage("/ressac/recStop", Any[])))
+    secs = round(time() - m.recording_start_ts; digits=1)
+    _push_app_log!(m, "[INFO] rec ■ $(secs)s → $(m.recording_path)")
+    m.recording = false
+    m.recording_path = ""
+end
+
+_toggle_recording!(m::RessacApp) =
+    m.recording ? _stop_recording!(m) : _start_recording!(m)
+
+# ---------------------------------------------------------------------
 # Snippets — context-aware multi-line templates
 # ---------------------------------------------------------------------
 
@@ -2365,6 +2437,11 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     push!(parts, cycle_str)
     push!(parts, ev_str)
     isempty(synth_str) || push!(parts, synth_str)
+    if m.recording
+        secs = floor(Int, time() - m.recording_start_ts)
+        mins, s = divrem(secs, 60)
+        push!(parts, "● REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0'))")
+    end
     left = join(parts, "  •  ")
 
     # Layout: left + right pad + badge. Truncate left if too tight.

@@ -117,6 +117,29 @@ s.waitForBoot({
         Synth(name, args.asArray ++ [\out, 0]);
     }, '/ressac/play');
 
+    // Recorder — driven by `:rec start [name]` / `:rec stop` in Ressac.
+    // s.record uses the current default output bus, so SuperDirt's mix
+    // (the same thing that hits the speakers) is what lands in the
+    // WAV. Path is absolute on the Ressac side; SC just opens it.
+    ~ressacRecording = false;
+    OSCdef(\ressacRecStart, { |msg|
+        var path = msg[1].asString;
+        if(~ressacRecording.not) {
+            ("[ressac] rec start → " ++ path).postln;
+            s.prepareForRecord(path);
+            s.sync;
+            s.record;
+            ~ressacRecording = true;
+        };
+    }, '/ressac/recStart');
+    OSCdef(\ressacRecStop, { |msg|
+        if(~ressacRecording) {
+            "[ressac] rec stop".postln;
+            s.stopRecording;
+            ~ressacRecording = false;
+        };
+    }, '/ressac/recStop');
+
     // Panic — kill every synth on the server immediately. Bound to `.`
     // (and :panic / :hush) in Ressac. Stops out-of-control test fires,
     // stuck notes, infinite tails. After this the scheduler keeps
