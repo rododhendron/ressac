@@ -887,9 +887,30 @@ function _handle_synthlib_key!(m::RessacApp, evt::TK.KeyEvent)
         m.synthlib_cursor = min(m.synthlib_cursor + 1, n)
     elseif evt.char == 'k' || evt.key === :up
         m.synthlib_cursor = max(m.synthlib_cursor - 1, 1)
-    elseif evt.key === :enter || evt.char == '\r' || evt.char == ' '
+    elseif evt.char == ' '
+        _preview_synth_from_library!(m)
+    elseif evt.key === :enter || evt.char == '\r'
         _instantiate_synth_from_library!(m)
     end
+end
+
+"""
+    _preview_synth_from_library!(m)
+
+Fire the synth at the cursor with its own defaults — same OSC path
+T uses for the editor's T-test (`/ressac/evalAndPlay`: SC interprets
+the source, syncs, then `Synth(name, [\\out, 0])`). Lets the user
+audition library entries before deciding to instantiate one.
+"""
+function _preview_synth_from_library!(m::RessacApp)
+    1 <= m.synthlib_cursor <= length(_SYNTH_LIBRARY) || return
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    entry = _SYNTH_LIBRARY[m.synthlib_cursor]
+    send_osc(sched.osc,
+             encode(OSCMessage("/ressac/evalAndPlay",
+                                Any[entry.name, entry.source])))
+    _push_app_log!(m, "[INFO] preview $(entry.name) (defaults)")
 end
 
 """
@@ -1431,8 +1452,8 @@ function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffe
     box_x = area.x + max(0, (aw - box_w) ÷ 2)
     box_y = area.y + max(0, (ah - box_h) ÷ 2)
     # Title.
-    suffix_w = max(0, box_w - 41)
-    title = "┌ synth library — j/k move, Enter open, q close " * "─" ^ suffix_w * "┐"
+    suffix_w = max(0, box_w - 56)
+    title = "┌ synth library — j/k move, Space preview, Enter open, q close " * "─" ^ suffix_w * "┐"
     TK.set_string!(buf, box_x, box_y, first(title, box_w),
                    TK.tstyle(:title, bold=true))
     # Body rows.
