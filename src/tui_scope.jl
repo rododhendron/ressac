@@ -151,7 +151,7 @@ function TUI.render(p::_ScopePanel, area::TUI.Rect, buf::TUI.Buffer)
     style_viz   = TUI.Crayon(; foreground=:cyan)
     style_dim   = TUI.Crayon(; foreground=:dark_gray)
     # Title.
-    title = "scope: $(m.scope_type)   ([/] cycle, :scope off to hide)"
+    title = "scope: $(m.scope_type)   (S to cycle, :scope off to hide)"
     TUI.set(buf, TUI.left(area), TUI.top(area),
             rpad(first(title, w), w), style_title)
     h < 2 && return

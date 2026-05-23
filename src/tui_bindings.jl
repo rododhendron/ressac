@@ -234,12 +234,11 @@ function _handle_normal!(m::LiveModel, evt)
         _test_synth!(m)
         return
     end
-    # Scope cycle keys (only active while editing a synth).
-    if code == "]" && !isempty(m.synth_editing)
+    # Scope cycle — `S` cycles forward, `:scope <type>` is the explicit
+    # form. Brackets [ / ] were the first idea but tmux + some terminal
+    # emulators eat them.
+    if code == "S" && !isempty(m.synth_editing)
         _scope_cycle!(m); return
-    end
-    if code == "[" && !isempty(m.synth_editing)
-        _scope_cycle_back!(m); return
     end
 
     # Mutating commands snapshot first so `u` undoes the next change as a

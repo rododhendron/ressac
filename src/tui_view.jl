@@ -101,9 +101,9 @@ doesn't lose any editor rows to the new visual UX.
 function _footer_line(m::LiveModel)
     if !isempty(m.synth_editing) && m.mode !== :command
         if m.focus === :synth
-            text = "[SYNTH→ $(m.synth_editing).scd] T/:test play | :reload | :save-synth | Tab to swap | :back"
+            text = "[SYNTH→ $(m.synth_editing).scd] T test | S scope | :reload | :save-synth | Tab swap | :back"
         else
-            text = "[←PATTERNS  synth=$(m.synth_editing)] Tab / :swap → synth | T test current synth | :back"
+            text = "[←PATTERNS  synth=$(m.synth_editing)] Tab swap to synth | T test | S scope | :back"
         end
         return _TextLines([text], TUI.Crayon(; foreground=:yellow))
     end
