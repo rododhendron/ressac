@@ -60,6 +60,15 @@ non-empty), and the focus toggle for keystroke routing.
     # scope is :wave and the user is in normal mode.
     scope_zoom::Float64          = 1.0       # Y / amplitude
     scope_zoom_x::Float64        = 1.0       # X / time
+    # Tab-cycle autocomplete state. completion_idx 0 = no active cycle.
+    # On first Tab: gather fuzzy-ranked candidates, replace word with [1].
+    # On subsequent Tab presses (with no other intervening key): advance
+    # to the next candidate, replace again. Any non-Tab key in insert
+    # mode clears the cycle so the next Tab restarts from scratch.
+    completion_candidates::Vector{String} = String[]
+    completion_idx::Int          = 0
+    completion_row::Int          = 0
+    completion_range::Tuple{Int,Int} = (0, 0)   # (start_col, end_col) 0-based
     # :keydebug toggles a verbose-input mode that pushes every KeyEvent
     # received from the terminal to the log pane. Lets the user see the
     # exact symbol + char + action for any keystroke when diagnosing
@@ -182,11 +191,27 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     end
     # Tab autocomplete in :insert mode (word under cursor → registry /
     # combinator / @dN macro). Intercept BEFORE the editor types a Tab
-    # character into the buffer.
-    if is_press && evt.key === :tab && ed.mode === :insert
-        if _try_autocomplete!(m, ed)
-            return
+    # character into the buffer. On any other key in :insert, reset the
+    # cycle state so the next Tab starts fresh.
+    if is_press && ed.mode === :insert
+        if evt.key === :tab
+            if _try_autocomplete!(m, ed)
+                return
+            end
+        else
+            _reset_completion!(m)
         end
+    end
+    # Nudge numbers under cursor (works in :insert or :normal). Ctrl+a /
+    # Ctrl+x step by 1 (or 1.0 for floats); Ctrl+u / Ctrl+d step by 10
+    # (or 0.1 for floats). Common live-coding affordance — way faster
+    # than `r<digit>` cycles to dial a value.
+    if is_press && evt.key === :ctrl && (evt.char in ('a','x','u','d'))
+        step = evt.char == 'a' ? 1 :
+               evt.char == 'x' ? -1 :
+               evt.char == 'u' ? 10 : -10
+        _nudge_number_under_cursor!(m, ed, step)
+        return
     end
     # Tab in :command (ex-command line, ":synth wob...") autocompletes
     # the command verb itself OR the argument (synth/sample/instrument
@@ -235,9 +260,20 @@ Candidate sources: combinators + ~40 OSC params + 64 @dN macros +
 every registered sample / instrument / synth name.
 """
 function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
+    # Tab pressed again with an active cycle: just advance to the next
+    # candidate, swap it into the previously-replaced range.
+    if m.completion_idx > 0 && m.completion_row == ed.cursor_row &&
+       !isempty(m.completion_candidates)
+        m.completion_idx = m.completion_idx % length(m.completion_candidates) + 1
+        repl = m.completion_candidates[m.completion_idx]
+        _splice_completion!(m, ed, repl)
+        _push_app_log!(m, "[INFO] tab $(m.completion_idx)/$(length(m.completion_candidates)): $(repl)")
+        return true
+    end
+    # Fresh autocomplete: collect candidates, replace with the best.
     1 <= ed.cursor_row <= length(ed.lines) || return false
     chars = ed.lines[ed.cursor_row]
-    col = ed.cursor_col   # 0-based; we want the word ending at col-1
+    col = ed.cursor_col
     isempty(chars) && return false
     is_word = c -> isletter(c) || isdigit(c) || c == '_' || c == '@'
     end_col = col
@@ -247,13 +283,11 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     end
     start_col == end_col && return false
     partial = String(chars[(start_col + 1):end_col])
-    # Build candidate list: static + live registries.
     candidates = copy(_APP_AUTOCOMPLETE_CANDIDATES)
     append!(candidates, String.(keys(_SAMPLE_REGISTRY)))
     append!(candidates, String.(keys(_INSTRUMENT_REGISTRY)))
     append!(candidates, String.(keys(_SYNTH_REGISTRY)))
     unique!(candidates)
-    # Fuzzy rank.
     scored = Tuple{Int,Int,String}[]
     for cand in candidates
         score = _fuzzy_score(partial, cand)
@@ -262,19 +296,136 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     end
     isempty(scored) && return false
     sort!(scored, by = t -> (t[1], t[2], t[3]))
-    replacement = scored[1][3]
-    # Splice into buffer.
+    # Cap the cycle list so we don't loop through hundreds of fuzzy
+    # matches when the partial is a single letter.
+    top = first(scored, 12)
+    m.completion_candidates = String[t[3] for t in top]
+    m.completion_idx = 1
+    m.completion_row = ed.cursor_row
+    m.completion_range = (start_col, end_col)
+    _splice_completion!(m, ed, m.completion_candidates[1])
+    if length(m.completion_candidates) > 1
+        _push_app_log!(m, "[INFO] tab 1/$(length(m.completion_candidates)): " *
+                       join(first(m.completion_candidates, 8), "  "))
+    end
+    return true
+end
+
+"""
+    _splice_completion!(m, ed, replacement)
+
+Replace `completion_range` on `completion_row` with `replacement` and
+reposition the cursor right after it. Updates the stored range so the
+next Tab cycle replaces this exact span (whose end column shifted).
+"""
+function _splice_completion!(m::RessacApp, ed::TK.CodeEditor, replacement::AbstractString)
+    row = m.completion_row
+    start_col, _ = m.completion_range
     txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty=true))
-    row = ed.cursor_row
+    1 <= row <= length(lines) || return
     line = String(lines[row])
-    new_line = line[1:start_col] * replacement *
-               (end_col >= lastindex(line) ? "" : line[nextind(line, end_col):end])
+    # We need the CURRENT end_col: the end of the previous replacement
+    # since the stored end might be stale after a swap. Walk from
+    # start_col to find the first non-word boundary.
+    chars = collect(line)
+    is_word = c -> isletter(c) || isdigit(c) || c == '_' || c == '@'
+    end_col = start_col
+    while end_col < length(chars) && is_word(chars[end_col + 1])
+        end_col += 1
+    end
+    new_line = (start_col > 0 ? String(chars[1:start_col]) : "") *
+               replacement *
+               (end_col >= length(chars) ? "" : String(chars[(end_col + 1):end]))
     lines[row] = new_line
     TK.set_text!(ed, join(lines, '\n'))
     ed.cursor_row = row
     ed.cursor_col = start_col + length(replacement)
-    return true
+    m.completion_range = (start_col, start_col + length(replacement))
+end
+
+"""
+    _reset_completion!(m)
+
+Clear the Tab-cycle state. Called from update! after handling any key
+event in :insert mode that is not Tab — so the next Tab restarts a
+fresh autocomplete from the (presumably new) word under the cursor.
+"""
+function _reset_completion!(m::RessacApp)
+    m.completion_idx = 0
+    empty!(m.completion_candidates)
+end
+
+# Number-nudge regex: optional sign, digits, optional fractional part.
+# Anchored at the START of the candidate span, not the line — we'll
+# scan around the cursor for the nearest match.
+const _NUMBER_RX = r"-?\d+(?:\.\d+)?"
+
+"""
+    _nudge_number_under_cursor!(m, ed, step)
+
+Find a numeric literal touching the cursor and add `step` to it. Ints
+get +/- step as-is; floats get scaled (step=±10 → ±0.1, step=±1 →
+±1.0) so the nudge keys behave intuitively across both. Preserves the
+number's decimal precision (1.20 stays two-decimal).
+"""
+function _nudge_number_under_cursor!(m::RessacApp, ed::TK.CodeEditor, step::Int)
+    row = ed.cursor_row
+    1 <= row <= length(ed.lines) || return
+    line = String(ed.lines[row])
+    col = ed.cursor_col
+    # Find the number-match whose span covers col, or the nearest one.
+    best = nothing
+    for mt in eachmatch(_NUMBER_RX, line)
+        s = mt.offset
+        e = s + length(mt.match) - 1
+        if s - 1 <= col <= e   # 0-based col vs 1-based offsets
+            best = mt
+            break
+        end
+    end
+    best === nothing && return
+    txt = best.match
+    s = best.offset
+    e = s + length(txt) - 1
+    is_float = occursin('.', txt)
+    new_str = if is_float
+        delta = abs(step) == 10 ? (step > 0 ? 0.1 : -0.1) : Float64(step)
+        val = parse(Float64, txt) + delta
+        # Preserve precision of the original (count decimals).
+        dot = findfirst('.', txt)
+        decimals = length(txt) - dot
+        # Round to that many decimals to avoid 0.1+0.2 floating noise.
+        rounded = round(val; digits = decimals)
+        # Format with fixed decimals so "1.2 → 1.3" keeps one digit.
+        string(rounded)
+    else
+        val = parse(Int, txt) + step
+        string(val)
+    end
+    new_line = (s > 1 ? line[1:s-1] : "") * new_str *
+               (e >= lastindex(line) ? "" : line[e+1:end])
+    TK.set_text!(ed, _set_one_line(ed, row, new_line))
+    ed.cursor_row = row
+    # Keep cursor on the same logical position relative to the number's start.
+    ed.cursor_col = clamp(col + (length(new_str) - length(txt)), 0,
+                          length(ed.lines[row]))
+    _push_app_log!(m, "[INFO] nudge $txt → $new_str")
+end
+
+"""
+    _set_one_line(ed, row, new_line) -> joined text
+
+Build the full buffer text with `row` replaced by `new_line`. Helper
+for nudge so we don't have to expand split/join inline at the call
+site.
+"""
+function _set_one_line(ed::TK.CodeEditor, row::Int, new_line::AbstractString)
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty=true))
+    1 <= row <= length(lines) || return txt
+    lines[row] = String(new_line)
+    return join(lines, '\n')
 end
 
 # Ex-command verbs (`:foo`). Kept here, not derived from the dispatch
