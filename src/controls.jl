@@ -266,6 +266,8 @@ shape(x) = _control_op(:shape, _overwrite, x)
 The list of SuperDirt param names auto-defined as overwrite helpers.
 """
 const _SUPERDIRT_PARAM_HELPERS = [
+    # Pitch
+    :freq,
     # Envelope
     :attack, :release, :hold, :sustain, :legato,
     # Filters

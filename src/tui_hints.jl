@@ -118,6 +118,7 @@ const _COMBINATOR_NAMES = [
     "gain", "speed", "lpf", "hpf", "pan", "n", "room", "delay",
     "shape", "set", "degree",
     # Auto-generated SuperDirt param helpers — see _SUPERDIRT_PARAM_HELPERS.
+    "freq",
     "attack", "release", "hold", "sustain", "legato",
     "cutoff", "resonance", "bandq", "bandf", "hcutoff", "hresonance",
     "crush", "coarse",

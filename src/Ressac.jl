@@ -51,6 +51,7 @@ export SynthEntry, synth_info, list_synths, register_synth!
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
 export pan, n, room, delay, shape, degree
 # SuperDirt param helpers (auto-generated in controls.jl):
+export freq
 export attack, release, hold, sustain, legato
 export cutoff, resonance, bandq, bandf, hcutoff, hresonance
 export crush, coarse

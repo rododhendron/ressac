@@ -29,6 +29,7 @@ const _PARAM_DOCS = Dict{String,String}(
     "gain"        => "Volume multiplier. 1=neutral, 0.5=half, 2=double. Composes ×.",
     "pan"         => "Stereo position. 0=left, 0.5=center, 1=right (some setups: -1 to 1).",
     "n"           => "Note offset (semitones) for synths, or sample-variant index for sample banks.",
+    "freq"        => "Raw frequency in Hz. Sets the synth's freq param directly (bypasses n→freq mapping).",
     "speed"       => "Playback speed. 0.5=octave down + slower, 2=octave up + faster. Composes ×.",
     # --- CORE CONCEPTS ---
     "cps"         => "Cycles per second — Ressac's tempo unit. 0.5 = 1 cycle / 2s (30 BPM @ 4 beats/cycle), 0.8 = ~48 BPM, 0.3 = 18 BPM. cps!(x) sets it live, :cps x is the TUI form.",

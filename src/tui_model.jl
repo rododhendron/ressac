@@ -116,6 +116,17 @@ function _redo!(m::LiveModel)
 end
 
 function _push_log!(m::LiveModel, line::AbstractString)
-    push!(m.logs, String(line))
-    length(m.logs) > _MAX_LOGS && popfirst!(m.logs)
+    # Multi-line input: split on '\n' and push each row separately.
+    # Otherwise embedded newlines get written into the buffer cells of
+    # the log pane, the terminal interprets them as cursor moves, and
+    # the whole TUI layout shifts. A typical UndefVarError message has
+    # two lines (the error + a "Suggestion:" line) — used to break the
+    # render until the next full repaint.
+    for sub in eachsplit(String(line), '\n')
+        # Also strip any stray control chars (carriage return, NUL).
+        clean = replace(String(sub), r"[\x00-\x08\x0b-\x1f\x7f]" => "")
+        isempty(clean) && continue
+        push!(m.logs, clean)
+        length(m.logs) > _MAX_LOGS && popfirst!(m.logs)
+    end
 end
