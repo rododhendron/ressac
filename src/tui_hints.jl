@@ -105,13 +105,14 @@ const _COMMAND_NAMES = [
     "guide", "help",
     "browse", "save", "doc", "starter",
     "mute", "unmute", "solo", "unsolo",
+    "scale",
 ]
 
 const _COMBINATOR_NAMES = [
     "pure", "silence", "fast", "slow", "density", "rev", "every",
     "stack", "cat", "mask", "gate",
     "gain", "speed", "lpf", "hpf", "pan", "n", "room", "delay",
-    "shape", "set",
+    "shape", "set", "degree",
     # Auto-generated SuperDirt param helpers — see _SUPERDIRT_PARAM_HELPERS.
     "attack", "release", "hold", "sustain", "legato",
     "cutoff", "resonance", "bandq", "bandf", "hcutoff", "hresonance",

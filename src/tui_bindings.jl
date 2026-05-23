@@ -594,6 +594,11 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _solo_slot!(m, Symbol(mt.captures[1]))
     elseif body == "unsolo"
         _unsolo!(m)
+    elseif (mt = match(r"^scale\s+(\w+)$", body)) !== nothing
+        _set_scale!(m, Symbol(mt.captures[1]))
+    elseif body == "scale"
+        _push_log!(m, "[INFO] current scale: $(Ressac._CURRENT_SCALE[]) — :scale <name>; known: " *
+                       join(sort!(collect(String.(keys(Ressac._SCALES)))), ", "))
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing
@@ -1224,6 +1229,16 @@ end
 function _unsolo!(m::LiveModel)
     empty!(m.solo_active)
     _unmute_all!(m)
+end
+
+function _set_scale!(m::LiveModel, name::Symbol)
+    if !haskey(_SCALES, name)
+        _push_log!(m, "[WARN] :scale — unknown '$name'. Known: " *
+                       join(sort!(collect(String.(keys(_SCALES)))), ", "))
+        return
+    end
+    _CURRENT_SCALE[] = name
+    _push_log!(m, "[INFO] scale set to :$name (use degree(x) instead of n(x))")
 end
 
 function _starter_pack!(m::LiveModel, genre::AbstractString)
