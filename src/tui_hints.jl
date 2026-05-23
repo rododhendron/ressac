@@ -109,7 +109,7 @@ const _COMMAND_NAMES = [
     "save-session", "load-session", "sessions",
     "snippet", "snippets",
     "synth", "back", "reload", "save-synth", "save-synth-as",
-    "swap", "test", "test-raw", "synth-guide",
+    "swap", "test", "test-raw", "synth-guide", "scope",
 ]
 
 const _COMBINATOR_NAMES = [
@@ -161,6 +161,7 @@ function _command_arg_candidates(verb::AbstractString)
     verb == "scale"       && return String.(keys(_SCALES))
     verb == "snippet"     && return _known_snippet_names()
     verb == "load-session" && return _known_session_names()
+    verb == "scope"       && return ["off", "amp", "wave", "spectrum"]
     return nothing
 end
 
