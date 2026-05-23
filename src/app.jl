@@ -165,9 +165,109 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _doc_command!(m, mt.captures[1])
     elseif cmd == "doc"
         _push_app_log!(m, "[INFO] :doc <name> — try gain/release/cutoff/cps/gate/…")
+    elseif (mt = match(r"^starter\s+(\w+)$", cmd)) !== nothing
+        _starter_command!(m, mt.captures[1])
+    elseif cmd == "starter"
+        _push_app_log!(m, "[INFO] :starter <genre> — " *
+                         join(sort!(collect(keys(_STARTER_PACKS))), ", "))
+    elseif (mt = match(r"^scale\s+(\w+)$", cmd)) !== nothing
+        name = Symbol(mt.captures[1])
+        if haskey(_SCALES, name)
+            _CURRENT_SCALE[] = name
+            _push_app_log!(m, "[INFO] scale set to :$name (use degree(x))")
+        else
+            _push_app_log!(m, "[WARN] :scale — unknown '$name'")
+        end
+    elseif cmd == "scale"
+        _push_app_log!(m, "[INFO] current scale: $(_CURRENT_SCALE[])")
+    elseif (mt = match(r"^cps\s+(\S+)$", cmd)) !== nothing
+        try
+            set_cps!(m.scheduler, parse(Float64, mt.captures[1]))
+            _push_app_log!(m, "[INFO] cps = $(mt.captures[1])")
+        catch err
+            _push_app_log!(m, "[ERROR] cps: $(sprint(showerror, err))")
+        end
+    elseif (mt = match(r"^mute\s+(d\d+)$", cmd)) !== nothing
+        _mute_pattern_slot!(m, Symbol(mt.captures[1]))
+    elseif (mt = match(r"^unmute\s+(d\d+)$", cmd)) !== nothing
+        _unmute_pattern_slot!(m, Symbol(mt.captures[1]))
+    elseif cmd == "unmute"
+        _unmute_all_patterns!(m)
+    elseif (mt = match(r"^solo\s+(d\d+)$", cmd)) !== nothing
+        _solo_pattern_slot!(m, Symbol(mt.captures[1]))
+    elseif cmd == "unsolo"
+        _unmute_all_patterns!(m)
     else
         _push_app_log!(m, "[WARN] unknown command: :$cmd")
     end
+end
+
+"""
+    _starter_command!(m, genre)
+
+Replace the patterns buffer with a starter sketch (the same packs the
+old TUI used). User can :back to whatever they had before? No — we
+overwrite without confirmation; vim convention says you should :w
+first if you want to keep things.
+"""
+function _starter_command!(m::RessacApp, genre::AbstractString)
+    pack = get(_STARTER_PACKS, String(genre), nothing)
+    if pack === nothing
+        _push_app_log!(m, "[WARN] :starter — no pack '$genre'")
+        return
+    end
+    TK.set_text!(m.editor, join(pack, "\n"))
+    m.editor.cursor_row = 1
+    m.editor.cursor_col = 0
+    _push_app_log!(m, "[INFO] loaded :starter $genre — eval each @dN with e")
+end
+
+# ---------------------------------------------------------------------
+# Live mute / solo on the scheduler (no buffer mutation)
+# ---------------------------------------------------------------------
+
+const _APP_MUTED_PATTERNS = Dict{Symbol, Pattern}()
+
+function _mute_pattern_slot!(m::RessacApp, slot::Symbol)
+    pat = get(m.scheduler.patterns, slot, nothing)
+    if pat === nothing
+        _push_app_log!(m, "[WARN] :mute — slot $slot has no live pattern")
+        return
+    end
+    _APP_MUTED_PATTERNS[slot] = pat
+    unset_pattern!(m.scheduler, slot)
+    _push_app_log!(m, "[INFO] muted $slot")
+end
+
+function _unmute_pattern_slot!(m::RessacApp, slot::Symbol)
+    pat = get(_APP_MUTED_PATTERNS, slot, nothing)
+    if pat === nothing
+        _push_app_log!(m, "[WARN] :unmute — $slot wasn't muted")
+        return
+    end
+    set_pattern!(m.scheduler, slot, pat)
+    delete!(_APP_MUTED_PATTERNS, slot)
+    _push_app_log!(m, "[INFO] unmuted $slot")
+end
+
+function _unmute_all_patterns!(m::RessacApp)
+    n = length(_APP_MUTED_PATTERNS)
+    for (slot, pat) in _APP_MUTED_PATTERNS
+        set_pattern!(m.scheduler, slot, pat)
+    end
+    empty!(_APP_MUTED_PATTERNS)
+    _push_app_log!(m, "[INFO] unmuted $n slot(s)")
+end
+
+function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
+    muted = 0
+    for (other_slot, pat) in collect(m.scheduler.patterns)
+        other_slot == solo_slot && continue
+        _APP_MUTED_PATTERNS[other_slot] = pat
+        unset_pattern!(m.scheduler, other_slot)
+        muted += 1
+    end
+    _push_app_log!(m, "[INFO] solo $solo_slot (silenced $muted others)")
 end
 
 function _doc_command!(m::RessacApp, name::AbstractString)
@@ -341,6 +441,51 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
 end
 
 _is_typable_ascii(c::Char) = ncodeunits(c) == 1 && (isprint(c) && c != '\0')
+
+# ---------------------------------------------------------------------
+# Live doc row
+# ---------------------------------------------------------------------
+
+"""
+    _render_livedoc_row(m, area, buf)
+
+Pluto-style: look at the word under the cursor in the active editor,
+look it up via `_lookup_livedoc`, render one line of doc in green.
+Empty when no entry found.
+"""
+function _render_livedoc_row(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    ed = _active_editor(m)
+    1 <= ed.cursor_row <= length(ed.lines) || return
+    line_chars = ed.lines[ed.cursor_row]
+    isempty(line_chars) && return
+    # Find the word at cursor_col (0-based in Tachikoma's CodeEditor).
+    col = clamp(ed.cursor_col + 1, 1, length(line_chars))
+    word = _word_under_cursor_chars(line_chars, col)
+    isempty(word) && return
+    doc = _lookup_livedoc(word)
+    doc === nothing && return
+    text = "📖 $word — $doc"
+    TK.set_string!(buf, area.x, area.y,
+                   first(text, area.width),
+                   TK.tstyle(:success))
+end
+
+function _word_under_cursor_chars(chars::Vector{Char}, col::Integer)
+    n = length(chars)
+    n == 0 && return ""
+    col = clamp(col, 1, n)
+    is_word = c -> isletter(c) || isdigit(c) || c == '_' || c == '.'
+    start_col = col
+    while start_col > 1 && is_word(chars[start_col - 1])
+        start_col -= 1
+    end
+    end_col = col - 1
+    while end_col + 1 <= n && is_word(chars[end_col + 1])
+        end_col += 1
+    end
+    end_col < start_col && return ""
+    return String(chars[start_col:end_col])
+end
 
 # ---------------------------------------------------------------------
 # Modal handlers
@@ -523,17 +668,18 @@ function TK.view(m::RessacApp, f::TK.Frame)
 
     scope_active = _APP_SCOPE_TYPE[] !== :off
     scope_height = scope_active ? 14 : 0
+    # Layout rows: status / editor (fill) / [scope] / livedoc / footer / logs
     constraints = scope_active ?
-        [TK.Fixed(1), TK.Fill(), TK.Fixed(scope_height), TK.Fixed(1), TK.Fixed(8)] :
-        [TK.Fixed(1), TK.Fill(), TK.Fixed(1), TK.Fixed(8)]
+        [TK.Fixed(1), TK.Fill(), TK.Fixed(scope_height), TK.Fixed(1), TK.Fixed(1), TK.Fixed(8)] :
+        [TK.Fixed(1), TK.Fill(), TK.Fixed(1), TK.Fixed(1), TK.Fixed(8)]
     rows = TK.split_layout(TK.Layout(TK.Vertical, constraints), f.area)
-    length(rows) < 4 && return
+    length(rows) < 5 && return
     if scope_active
-        status_area, body_area, scope_area, footer_area, logs_area =
-            rows[1], rows[2], rows[3], rows[4], rows[5]
+        status_area, body_area, scope_area, livedoc_area, footer_area, logs_area =
+            rows[1], rows[2], rows[3], rows[4], rows[5], rows[6]
     else
-        status_area, body_area, footer_area, logs_area =
-            rows[1], rows[2], rows[3], rows[4]
+        status_area, body_area, livedoc_area, footer_area, logs_area =
+            rows[1], rows[2], rows[3], rows[4], rows[5]
         scope_area = nothing
     end
 
@@ -577,6 +723,9 @@ function TK.view(m::RessacApp, f::TK.Frame)
     if scope_area !== nothing
         _render_app_scope(scope_area, buf)
     end
+
+    # Live doc row — word under cursor → doc string
+    _render_livedoc_row(m, livedoc_area, buf)
 
     # Footer (mode + hint)
     ed = _active_editor(m)
