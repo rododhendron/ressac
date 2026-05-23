@@ -141,30 +141,31 @@ s.waitForBoot({
         { type == \amp } {
             ~ressacScopeSynth = {
                 var in  = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
-                var amp = Amplitude.kr(in, 0.01, 0.1);
-                SendReply.kr(Impulse.kr(30), '/ressac/scope/amp', amp);
+                var amp = Amplitude.kr(in, 0.005, 0.05);
+                SendReply.kr(Impulse.kr(60), '/ressac/scope/amp', amp);
                 Silent.ar(1)
             }.play(addToTail: true);
         }
         { type == \wave } {
             ~ressacScopeSynth = {
                 var in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
-                // 32 taps spaced ~0.5 ms apart → ~16 ms window of audio.
-                var samples = Array.fill(32, { |i|
-                    DelayN.ar(in, 0.020, i * 0.0005)
+                // 128 taps spaced 0.25 ms apart → 32 ms window.
+                var samples = Array.fill(128, { |i|
+                    DelayN.ar(in, 0.040, i * 0.00025)
                 });
-                SendReply.kr(Impulse.kr(20), '/ressac/scope/wave', samples);
+                SendReply.kr(Impulse.kr(60), '/ressac/scope/wave', samples);
                 Silent.ar(1)
             }.play(addToTail: true);
         }
         { type == \spectrum } {
             ~ressacScopeSynth = {
                 var in  = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
-                var mags = Array.fill(16, { |i|
-                    var freq = 80 * (1.5 ** i);
-                    Amplitude.kr(BPF.ar(in, freq, 0.5), 0.01, 0.1)
+                // 48 log-spaced bandpass tracks from ~50 Hz to ~16 kHz.
+                var mags = Array.fill(48, { |i|
+                    var freq = 50 * (1.13 ** i);
+                    Amplitude.kr(BPF.ar(in, freq, 0.7), 0.005, 0.05)
                 });
-                SendReply.kr(Impulse.kr(15), '/ressac/scope/spectrum', mags);
+                SendReply.kr(Impulse.kr(45), '/ressac/scope/spectrum', mags);
                 Silent.ar(1)
             }.play(addToTail: true);
         };

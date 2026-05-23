@@ -135,7 +135,7 @@ for the chosen viz + a 1-row title.
 """
 function _scope_panel_height(m::LiveModel)
     m.scope_type === :off && return 0
-    return 14   # 1 title + 12 viz + a bit of breathing room
+    return 22   # 1 title + 21 viz rows — readable vertical resolution
 end
 
 """
@@ -188,31 +188,48 @@ end
 function _render_waveform(data, x, y, w, h, buf, style)
     n = length(data)
     n == 0 && return
-    # Sample-stride to fit w columns.
-    step = max(1, n ÷ w)
-    samples = [data[min(end, 1 + (i - 1) * step)] for i in 1:min(w, n ÷ step + 1)]
-    # Normalize to [-1, 1] then map each sample to a row in [1, h].
-    rows = String[]
-    for r in 1:h
-        line = IOBuffer()
-        for s in samples
-            target = clamp(Float64(s), -1.0, 1.0)
-            row_for_sample = clamp(round(Int, (1 - (target + 1) / 2) * (h - 1)) + 1, 1, h)
-            write(line, row_for_sample == r ? "•" : " ")
-        end
-        push!(rows, String(take!(line)))
+    # Stride so we fit at most `w` columns, or interpolate if fewer
+    # samples than columns (each sample spans floor(w / n) cells).
+    if n >= w
+        step = n / w
+        samples = [data[clamp(round(Int, 1 + (i - 1) * step), 1, n)] for i in 1:w]
+    else
+        samples = data
+    end
+    # Find peak normalization (avoid clipping the display to ±1 — soft
+    # signals would look like a flat line).
+    peak = maximum(abs.(samples); init=0.001f0)
+    scale = peak < 0.05 ? 1.0 : 1.0 / max(Float64(peak), 0.05)
+    # Build rows by checking which row each sample maps to.
+    rows = [fill(' ', length(samples)) for _ in 1:h]
+    for (col, s) in enumerate(samples)
+        target = clamp(Float64(s) * scale, -1.0, 1.0)
+        r = clamp(round(Int, (1 - (target + 1) / 2) * (h - 1)) + 1, 1, h)
+        rows[r][col] = '•'
+    end
+    # Centre zero line in dim grey.
+    centre_row = clamp(round(Int, h / 2), 1, h)
+    for col in 1:length(samples)
+        rows[centre_row][col] == ' ' && (rows[centre_row][col] = '─')
     end
     for (i, line) in enumerate(rows)
-        TUI.set(buf, x, y + i - 1, rpad(line, w), style)
+        s = String(line)
+        TUI.set(buf, x, y + i - 1, rpad(s, w), style)
     end
 end
 
 function _render_spectrum(data, x, y, w, h, buf, style)
     n = length(data)
     n == 0 && return
-    bands = min(n, w ÷ 2)   # 2 chars per band
-    for (band_idx, val) in enumerate(data[1:bands])
-        col = x + (band_idx - 1) * 2
+    # Each band gets 1 column. If we have more bands than columns,
+    # group them; if fewer, leave whitespace on the right.
+    bands = min(n, w)
+    for band_idx in 1:bands
+        # Pick the value for this column; with downsample if data has
+        # more bands than columns we'd lose detail but our default
+        # gives data ≤ w so 1:1 typically.
+        val = data[band_idx]
+        col = x + band_idx - 1
         mag = clamp(Float64(val), 0.0, 1.0)
         bar_h = clamp(round(Int, mag * h), 0, h)
         for r in 1:h
