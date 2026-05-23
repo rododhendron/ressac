@@ -149,6 +149,20 @@ s.waitForBoot({
     OSCFunc({ |msg|
         ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
     }, '/ressac/scope/spectrum');
+    OSCFunc({ |msg| ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]) },
+            '/ressac/scope/xy');
+    OSCFunc({ |msg| ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]) },
+            '/ressac/scope/spectrogram');
+    OSCFunc({ |msg| ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]) },
+            '/ressac/scope/peak');
+    OSCFunc({ |msg| ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]) },
+            '/ressac/scope/pitch');
+    OSCFunc({ |msg| ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]) },
+            '/ressac/scope/onset');
+    OSCFunc({ |msg| ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]) },
+            '/ressac/scope/hist');
+    OSCFunc({ |msg| ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]) },
+            '/ressac/scope/corr');
 
     OSCdef(\ressacScope, { |msg|
         var type = msg[1].asString.asSymbol;
@@ -207,6 +221,107 @@ s.waitForBoot({
                     Amplitude.kr(BPF.ar(in, freq, 0.7), 0.005, 0.05)
                 });
                 SendReply.kr(Impulse.kr(45), '/ressac/scope/spectrum', mags);
+                Silent.ar(1)
+            }.play(addToTail: true);
+        }
+        { (type == \xy) or: { type == \goni } } {
+            ~ressacScopeSynth = {
+                // Stereo XY / goniometer: capture 48 L,R pairs each
+                // frame. Goniometer just renders the same data rotated
+                // 45° client-side, so we share the synth.
+                var l, r, samples, idx;
+                l = InFeedback.ar(0, 1);
+                r = InFeedback.ar(1, 1);
+                samples = Array.new(96);
+                48.do { |i|
+                    samples = samples.add(A2K.kr(DelayN.ar(l, 0.02, i * 0.0004)));
+                    samples = samples.add(A2K.kr(DelayN.ar(r, 0.02, i * 0.0004)));
+                };
+                SendReply.kr(Impulse.kr(45), '/ressac/scope/xy', samples);
+                Silent.ar(1)
+            }.play(addToTail: true);
+        }
+        { type == \spectrogram } {
+            ~ressacScopeSynth = {
+                // 32 log-spaced bands at ~30 Hz — Ressac scrolls the
+                // history client-side to build the waterfall.
+                var in, mags;
+                in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                mags = Array.fill(32, { |i|
+                    var freq = 60 * (1.18 ** i);
+                    Amplitude.kr(BPF.ar(in, freq, 0.5), 0.01, 0.1)
+                });
+                SendReply.kr(Impulse.kr(30), '/ressac/scope/spectrogram', mags);
+                Silent.ar(1)
+            }.play(addToTail: true);
+        }
+        { type == \peak } {
+            ~ressacScopeSynth = {
+                // Instantaneous peak + slow-decay hold + clip flag.
+                var in, peak, hold, clip;
+                in = InFeedback.ar(0, 1).abs.max(InFeedback.ar(1, 1).abs);
+                peak = Amplitude.kr(in, 0.001, 0.05);
+                hold = RunningMax.kr(peak, Impulse.kr(0.5));   // 2s hold
+                clip = K2A.kr(peak > 0.99);
+                SendReply.kr(Impulse.kr(60), '/ressac/scope/peak',
+                             [peak, hold, A2K.kr(clip)]);
+                Silent.ar(1)
+            }.play(addToTail: true);
+        }
+        { type == \pitch } {
+            ~ressacScopeSynth = {
+                // Track fundamental + confidence so Ressac can show
+                // both the Hz reading AND a "locked?" indicator.
+                var in, pitch, freq, hasFreq;
+                in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                # freq, hasFreq = Pitch.kr(in, initFreq: 220, ampThreshold: 0.01);
+                SendReply.kr(Impulse.kr(30), '/ressac/scope/pitch',
+                             [freq, hasFreq]);
+                Silent.ar(1)
+            }.play(addToTail: true);
+        }
+        { type == \onset } {
+            ~ressacScopeSynth = {
+                // Onset detector via FFT-based energy gradient. Each
+                // detected onset latches an envelope so Ressac sees a
+                // sustained "1" for a frame or two.
+                var in, fft, onsets, latch;
+                in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                fft = FFT(LocalBuf(512), in);
+                onsets = Onsets.kr(fft, 0.3, \rcomplex);
+                latch = EnvGen.kr(Env.perc(0, 0.08), onsets);
+                SendReply.kr(Impulse.kr(60), '/ressac/scope/onset', [latch]);
+                Silent.ar(1)
+            }.play(addToTail: true);
+        }
+        { type == \hist } {
+            ~ressacScopeSynth = {
+                // Sample-value distribution: count which of 32 bins
+                // each sample falls into per kr block. Sent as a
+                // smoothed average so the display doesn't jitter.
+                var in, bin, counts;
+                in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                bin = ((in.clip(-1, 1) + 1) * 0.5 * 31).floor.asInteger;
+                counts = Array.fill(32, { |i|
+                    Lag.kr(A2K.kr(BinaryOpUGen('==', K2A.kr(i), bin)), 0.05)
+                });
+                SendReply.kr(Impulse.kr(30), '/ressac/scope/hist', counts);
+                Silent.ar(1)
+            }.play(addToTail: true);
+        }
+        { type == \corr } {
+            ~ressacScopeSynth = {
+                // Stereo correlation coefficient. -1 = out of phase,
+                // 0 = uncorrelated, +1 = mono. Standard mixing aid.
+                var l, r, sl, sr, slr, varl, varr, coef;
+                l = InFeedback.ar(0, 1); r = InFeedback.ar(1, 1);
+                sl = Integrator.ar(l * 0.001);
+                sr = Integrator.ar(r * 0.001);
+                slr = Integrator.ar(l * r * 0.001);
+                varl = Integrator.ar(l * l * 0.001);
+                varr = Integrator.ar(r * r * 0.001);
+                coef = (slr - sl * sr) / (((varl - sl * sl) * (varr - sr * sr)).sqrt + 0.0001);
+                SendReply.kr(Impulse.kr(30), '/ressac/scope/corr', [A2K.kr(coef)]);
                 Silent.ar(1)
             }.play(addToTail: true);
         };

@@ -753,9 +753,21 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     elseif cmd in ("tabprev", "tabp")
         _cycle_synth_tab!(m; dir=-1)
     elseif cmd in ("w", "save-synth")
-        _save_current_synth!(m)
-    elseif (mt = match(r"^w\s+(\w+)$", cmd)) !== nothing
-        _save_current_synth!(m; new_name = mt.captures[1])
+        # `:w` in synth pane saves the synth; in patterns pane saves
+        # the buffer as the default session (./sessions/_last.txt).
+        if m.focus === :synth && _synth_pane_open(m)
+            _save_current_synth!(m)
+        else
+            _save_session_app!(m, "_last")
+        end
+    elseif (mt = match(r"^w\s+(\S+)$", cmd)) !== nothing
+        # `:w <name>` — in synth pane = save-as. In patterns pane = save
+        # this buffer as ./sessions/<name>.txt.
+        if m.focus === :synth && _synth_pane_open(m)
+            _save_current_synth!(m; new_name = mt.captures[1])
+        else
+            _save_session_app!(m, mt.captures[1])
+        end
     elseif cmd in ("test", "t")
         _synth_pane_open(m) && _test_current_synth!(m)
     elseif cmd == "test-raw"
@@ -1392,7 +1404,7 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Title row — show the zoom for wave so the user sees the keys' effect.
     title = type === :wave ?
         "scope: wave  Y×$(round(m.scope_zoom; digits=2)) X×$(round(m.scope_zoom_x; digits=2))   (+/-/= amp,  >/</= time)" :
-        "scope: $type   (S cycles : amp → wave → spectrum → off)"
+        "scope: $type   (S cycles, :scope <type> picks: amp wave spectrum xy goni spectrogram peak pitch onset hist corr)"
     TK.set_string!(buf, area.x, area.y, rpad(first(title, w), w),
                    TK.tstyle(:accent, bold=true))
     body_y = area.y + 1
@@ -1411,6 +1423,22 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                          zoom = m.scope_zoom, zoom_x = m.scope_zoom_x)
     elseif type === :spectrum
         _app_render_spectrum(data, body_area, buf)
+    elseif type === :xy
+        _app_render_xy(data, body_area, buf; rotate45=false)
+    elseif type === :goni
+        _app_render_xy(data, body_area, buf; rotate45=true)
+    elseif type === :spectrogram
+        _app_render_spectrogram(body_area, buf)
+    elseif type === :peak
+        _app_render_peak(data, body_area, buf)
+    elseif type === :pitch
+        _app_render_pitch(data, body_area, buf)
+    elseif type === :onset
+        _app_render_onset(data, body_area, buf)
+    elseif type === :hist
+        _app_render_hist(data, body_area, buf)
+    elseif type === :corr
+        _app_render_corr(data, body_area, buf)
     end
 end
 
@@ -1483,6 +1511,197 @@ function _app_render_spectrum(data, area::TK.Rect, buf::TK.Buffer)
         end
     end
     TK.render(canvas, area, buf)
+end
+
+"""
+    _app_render_xy(data, area, buf; rotate45=false)
+
+XY / Lissajous scatter of stereo samples. `data` is laid out as
+[L0, R0, L1, R1, …] — we draw each (L, R) as a single dot in the
+canvas, mapping `[-1, 1]` × `[-1, 1]` to the panel rect. When
+`rotate45` is true we rotate to (L+R, L-R) for goniometer mode:
+mono signals collapse to a vertical line, perfectly out-of-phase
+ones collapse to horizontal — the standard mixing aid.
+"""
+function _app_render_xy(data, area::TK.Rect, buf::TK.Buffer; rotate45::Bool=false)
+    canvas = TK.Canvas(area.width, area.height; style=TK.tstyle(:primary))
+    n = length(data)
+    n < 2 && (TK.render(canvas, area, buf); return)
+    width_dots  = area.width * 2
+    height_dots = area.height * 4
+    peak = maximum(abs.(data); init=0.001f0)
+    scale = peak < 0.1 ? 1.0 : 1.0 / max(Float64(peak), 0.1)
+    cx = width_dots ÷ 2
+    cy = height_dots ÷ 2
+    for i in 1:2:(n-1)
+        l = Float64(data[i]) * scale
+        r = Float64(data[i+1]) * scale
+        x, y = if rotate45
+            ((l + r) / sqrt(2), (l - r) / sqrt(2))
+        else
+            (l, r)
+        end
+        dx = clamp(cx + round(Int, x * cx), 0, width_dots - 1)
+        dy = clamp(cy - round(Int, y * cy), 0, height_dots - 1)
+        TK.set_point!(canvas, dx, dy)
+    end
+    TK.render(canvas, area, buf)
+end
+
+"""
+    _app_render_spectrogram(area, buf)
+
+Waterfall display: vertical = time (most recent at the bottom),
+horizontal = frequency. Pulls from `_APP_SPECTROGRAM_HISTORY` so
+each call uses the buffered last ~60 frames. Shading via the
+░▒▓█ ramp — no colour gradient needed.
+"""
+function _app_render_spectrogram(area::TK.Rect, buf::TK.Buffer)
+    history = _APP_SPECTROGRAM_HISTORY[]
+    isempty(history) && return
+    rows = min(area.height, length(history))
+    cols = area.width
+    glyphs = (' ', '░', '▒', '▓', '█')
+    # Latest frame at the bottom of the panel; older frames stack upward.
+    for r in 0:(rows - 1)
+        frame_idx = length(history) - r
+        frame_idx < 1 && break
+        frame = history[frame_idx]
+        nb = length(frame)
+        nb == 0 && continue
+        for c in 0:(cols - 1)
+            band = clamp(floor(Int, c * nb / cols) + 1, 1, nb)
+            v = clamp(Float64(frame[band]), 0.0, 1.0)
+            g = glyphs[clamp(1 + floor(Int, v * (length(glyphs) - 1)), 1, length(glyphs))]
+            TK.set_string!(buf, area.x + c, area.y + (area.height - 1 - r),
+                           string(g), TK.tstyle(:primary))
+        end
+    end
+end
+
+"""
+    _app_render_peak(data, area, buf)
+
+VU-style peak meter with a slow-decay hold marker and a clip
+indicator. `data = [peak, hold, clipped]`.
+"""
+function _app_render_peak(data, area::TK.Rect, buf::TK.Buffer)
+    length(data) >= 1 || return
+    peak = clamp(Float64(data[1]), 0.0, 1.0)
+    hold = length(data) >= 2 ? clamp(Float64(data[2]), 0.0, 1.0) : peak
+    clipped = length(data) >= 3 && Float64(data[3]) > 0.5
+    w = area.width
+    bar_w = floor(Int, peak * w)
+    hold_x = floor(Int, hold * w)
+    bar = "█" ^ bar_w
+    pad = " " ^ max(0, w - bar_w)
+    style_bar = clipped ? TK.tstyle(:error, bold=true) : TK.tstyle(:primary)
+    TK.set_string!(buf, area.x, area.y, bar * pad, style_bar)
+    if 0 <= hold_x < w
+        TK.set_string!(buf, area.x + hold_x, area.y, "│",
+                       TK.tstyle(:warning, bold=true))
+    end
+    db = peak > 0 ? round(20 * log10(peak); digits=1) : -Inf
+    label = "  peak $(round(peak; digits=3))  hold $(round(hold; digits=3))  ($(db) dB)" *
+            (clipped ? "  CLIP" : "")
+    TK.set_string!(buf, area.x, area.y + 1,
+                   first(label, w), clipped ? TK.tstyle(:error) : TK.tstyle(:text_dim))
+end
+
+"""
+    _app_render_pitch(data, area, buf)
+
+Pitch tracker. `data = [freq, hasFreq]`. Shows Hz reading, derives
+a note name from equal-temperament, dims the line when hasFreq <
+0.5 (low confidence).
+"""
+function _app_render_pitch(data, area::TK.Rect, buf::TK.Buffer)
+    length(data) >= 1 || return
+    freq = Float64(data[1])
+    conf = length(data) >= 2 ? Float64(data[2]) : 1.0
+    if freq < 20 || freq > 20000
+        TK.set_string!(buf, area.x, area.y,
+                       "  pitch — no signal", TK.tstyle(:text_dim))
+        return
+    end
+    midi = 69 + 12 * log2(freq / 440)
+    note_idx = mod(round(Int, midi), 12) + 1
+    octave = (round(Int, midi) ÷ 12) - 1
+    notes = ("C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B")
+    label = "  ♬  $(round(freq; digits=1)) Hz   →   $(notes[note_idx])$octave   (conf $(round(conf; digits=2)))"
+    style = conf > 0.5 ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text_dim)
+    TK.set_string!(buf, area.x, area.y, first(label, area.width), style)
+end
+
+"""
+    _app_render_onset(data, area, buf)
+
+Onset detector flash. When a transient is detected SC sends a
+sustained ~80 ms latch (1.0 → 0). We render a full-panel block
+proportional to that latch value, so the panel "pulses" on each
+hit.
+"""
+function _app_render_onset(data, area::TK.Rect, buf::TK.Buffer)
+    v = length(data) >= 1 ? clamp(Float64(data[1]), 0.0, 1.0) : 0.0
+    intensity = floor(Int, v * 4)
+    glyph = (intensity < 1) ? " " :
+            (intensity < 2) ? "░" :
+            (intensity < 3) ? "▒" :
+            (intensity < 4) ? "▓" : "█"
+    style = v > 0.5 ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text_dim)
+    row = glyph ^ area.width
+    for y in 0:(area.height - 1)
+        TK.set_string!(buf, area.x, area.y + y, row, style)
+    end
+end
+
+"""
+    _app_render_hist(data, area, buf)
+
+Sample-value histogram. 32 vertical bars showing how often a
+sample landed in each amplitude bin (-1 to +1). Useful for spotting
+DC offset or asymmetric distortion.
+"""
+function _app_render_hist(data, area::TK.Rect, buf::TK.Buffer)
+    canvas = TK.Canvas(area.width, area.height; style=TK.tstyle(:primary))
+    n = length(data)
+    n == 0 && (TK.render(canvas, area, buf); return)
+    peak = maximum(data; init=0.001f0)
+    norm = peak < 0.01 ? 1.0 : 1.0 / Float64(peak)
+    width_dots  = area.width * 2
+    height_dots = area.height * 4
+    for band_idx in 1:n
+        v = clamp(Float64(data[band_idx]) * norm, 0.0, 1.0)
+        bar_h = clamp(round(Int, v * (height_dots - 1)), 0, height_dots - 1)
+        dx = (band_idx - 1) * (width_dots ÷ max(1, n))
+        for h in 0:bar_h
+            TK.set_point!(canvas, dx, height_dots - 1 - h)
+        end
+    end
+    TK.render(canvas, area, buf)
+end
+
+"""
+    _app_render_corr(data, area, buf)
+
+Stereo correlation meter. -1 = out of phase, 0 = uncorrelated,
++1 = mono. Standard mixing aid — red zone below 0 warns about
+mono-summing issues.
+"""
+function _app_render_corr(data, area::TK.Rect, buf::TK.Buffer)
+    v = length(data) >= 1 ? clamp(Float64(data[1]), -1.0, 1.0) : 0.0
+    w = area.width
+    cx = w ÷ 2
+    pos = clamp(cx + round(Int, v * cx), 0, w - 1)
+    # Draw the axis line.
+    line_chars = fill('─', w)
+    line_chars[cx + 1] = '┼'
+    line_chars[clamp(pos + 1, 1, w)] = '●'
+    TK.set_string!(buf, area.x, area.y, String(line_chars),
+                   v < 0 ? TK.tstyle(:error, bold=true) : TK.tstyle(:primary))
+    label = "  L-R correlation: $(round(v; digits=3))   (-1 phase-inverted  ·  0 stereo  ·  +1 mono)"
+    TK.set_string!(buf, area.x, area.y + 1,
+                   first(label, w), TK.tstyle(:text_dim))
 end
 
 function TK.view(m::RessacApp, f::TK.Frame)

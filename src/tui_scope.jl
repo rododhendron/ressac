@@ -4,7 +4,12 @@
 # m.scope_data, and renders ASCII viz inside the synth pane.
 
 const _SCOPE_LISTEN_PORT = 57121
-const _SCOPE_CYCLE_ORDER = (:off, :amp, :wave, :spectrum)
+const _SCOPE_CYCLE_ORDER = (:off, :amp, :wave, :spectrum,
+                            :xy, :goni, :spectrogram, :peak,
+                            :pitch, :onset, :hist, :corr)
+# Rolling history for the waterfall spectrogram. Each entry is a
+# 32-band magnitude snapshot; oldest at front, newest at back.
+const _APP_SPECTROGRAM_HISTORY = Ref{Vector{Vector{Float32}}}(Vector{Float32}[])
 const _SCOPE_LISTENER_TASK = Ref{Union{Task,Nothing}}(nothing)
 const _SCOPE_LISTENER_SOCKET = Ref{Union{UDPSocket,Nothing}}(nothing)
 const _SCOPE_LISTENER_RUNNING = Threads.Atomic{Bool}(false)
@@ -188,7 +193,22 @@ function _app_scope_listener_loop()
                     push!(floats, Float32(v))
                 end
             end
-            isempty(floats) || (_APP_SCOPE_DATA[] = floats; _APP_SCOPE_TS[] = time())
+            if !isempty(floats)
+                _APP_SCOPE_DATA[] = floats
+                _APP_SCOPE_TS[]   = time()
+                # Spectrogram waterfall: keep a rolling history so the
+                # renderer can stack frames vertically. We append every
+                # frame regardless of current scope type — the renderer
+                # only reads it when type == :spectrogram, and the cost
+                # of keeping ~60 small Vector{Float32} alive is trivial.
+                if endswith(String(msg.address), "/spectrogram")
+                    hist = _APP_SPECTROGRAM_HISTORY[]
+                    push!(hist, copy(floats))
+                    while length(hist) > 60
+                        popfirst!(hist)
+                    end
+                end
+            end
         catch err
             err isa InterruptException && break
         end
