@@ -25,6 +25,7 @@ include("tui_view.jl")
 include("tui_overlay.jl")
 include("tui_mouse.jl")
 include("tui.jl")
+include("app.jl")
 include("live_api.jl")
 include("plugins.jl")
 include("tui_browser.jl")
@@ -43,7 +44,7 @@ export mask
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
 export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, schedule_pattern!
-export live, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
+export live, live2, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
 export register_section_handler!, unregister_section_handler!, get_section_handler
 export load_plugin, parse_manifest, discover_plugins, default_plugin_path
 export SampleEntry, sample_info, list_samples, register_sample!
