@@ -312,18 +312,40 @@ function TUI.render(s::_SplitEditor, area::TUI.Rect, buf::TUI.Buffer)
     m = s.model
     w = TUI.width(area)
     h = TUI.height(area)
+    h < 3 && return  # need a row for titles + at least one for content
     # Reserve a thin gutter column between the two panes.
     half = max(1, (w - 1) ÷ 2)
-    left_area  = TUI.Rect(TUI.left(area), TUI.top(area), half, h)
-    gutter_x   = TUI.left(area) + half
-    right_area = TUI.Rect(gutter_x + 1, TUI.top(area), w - half - 1, h)
-    # Gutter glyphs.
+    left_w  = half
+    right_w = w - half - 1
+    gutter_x = TUI.left(area) + half
+    # Title row for each pane — makes the split unambiguous: bold yellow
+    # on the focused side, dim grey on the other.
+    title_y = TUI.top(area)
+    left_title  = " patterns"
+    right_title = " synth: " * m.synth_editing * ".scd"
+    left_style  = m.focus === :main ?
+                  TUI.Crayon(; foreground=:yellow, bold=true) :
+                  TUI.Crayon(; foreground=:dark_gray)
+    right_style = m.focus === :synth ?
+                  TUI.Crayon(; foreground=:yellow, bold=true) :
+                  TUI.Crayon(; foreground=:dark_gray)
+    TUI.set(buf, TUI.left(area),  title_y, rpad(first(left_title,  left_w),  left_w),  left_style)
+    TUI.set(buf, gutter_x + 1,    title_y, rpad(first(right_title, right_w), right_w), right_style)
+    # Underline under each title — visually separates header from content.
+    TUI.set(buf, TUI.left(area), title_y + 1, "─"^left_w,  TUI.Crayon(; foreground=:dark_gray))
+    TUI.set(buf, gutter_x + 1,   title_y + 1, "─"^right_w, TUI.Crayon(; foreground=:dark_gray))
+    # Gutter glyphs (full height including title rows).
     for y in 0:(h - 1)
         TUI.set(buf, gutter_x, TUI.top(area) + y, "│",
                 TUI.Crayon(; foreground=:dark_gray))
     end
-    TUI.render(_build_pane_for_main(m),  left_area,  buf)
-    TUI.render(_build_pane_for_synth(m), right_area, buf)
+    # Content areas live below the title + underline (2 rows reserved).
+    content_top = title_y + 2
+    content_h   = h - 2
+    left_content  = TUI.Rect(TUI.left(area), content_top, left_w,  content_h)
+    right_content = TUI.Rect(gutter_x + 1,   content_top, right_w, content_h)
+    TUI.render(_build_pane_for_main(m),  left_content,  buf)
+    TUI.render(_build_pane_for_synth(m), right_content, buf)
 end
 
 """
