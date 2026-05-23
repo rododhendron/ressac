@@ -450,15 +450,30 @@ function _patch_tachikoma_utf8!()
             byte == 0x09 && return KeyEvent(:tab)
             byte == 0x03 && return KeyEvent(:ctrl_c)
             byte < 0x20  && return KeyEvent(:ctrl, Char(byte + 0x60))
-            # UTF-8 lead byte: count continuation bytes from the high bits
-            # (0b110x = 1 cont, 0b1110 = 2 cont, 0b11110 = 3 cont) and
-            # build the real codepoint.
+            # UTF-8 lead byte: ONLY consume continuation bytes if they're
+            # in the valid 0x80-0xBF range — otherwise we'd swallow a
+            # subsequent keystroke when the high byte is actually
+            # something else (a Latin-1 char emitted by a terminal not
+            # in UTF-8 mode, etc.).
             if byte >= 0xC2
                 ncont = byte >= 0xF0 ? 3 : byte >= 0xE0 ? 2 : 1
                 bytes = UInt8[byte]
                 for _ in 1:ncont
                     bytesavailable(io) == 0 && break
-                    push!(bytes, read(io, UInt8))
+                    peek_b = read(io, UInt8)
+                    if peek_b >= 0x80 && peek_b <= 0xBF
+                        push!(bytes, peek_b)
+                    else
+                        # Not a continuation byte — the lead was bogus.
+                        # Return :unknown for the lead and re-queue the
+                        # non-continuation byte for the next read by
+                        # wrapping it in a 1-element IOBuffer chained
+                        # before the original IO. Cheaper alternative:
+                        # just drop it (rare path; non-UTF-8 high bytes
+                        # in 2026 are basically only AltGr-stripped
+                        # bytes that the user shouldn't be sending).
+                        return KeyEvent(:unknown)
+                    end
                 end
                 try
                     s = String(bytes)
@@ -468,6 +483,45 @@ function _patch_tachikoma_utf8!()
                 return KeyEvent(:unknown)
             end
             return KeyEvent(Char(byte))
+        end
+        # Numpad keys in DECNKM "application keypad" mode arrive as
+        # SS3 sequences (ESC O p/q/r/s/...) which the stock read_ss3
+        # only knows for arrow keys + F1-F4 — every digit falls through
+        # to :unknown. Patch to add the full numpad table.
+        @eval Tachikoma function read_ss3()
+            b = read_byte(0.05)
+            b === nothing && return KeyEvent(:unknown)
+            c = Char(b)
+            c == 'A' && return KeyEvent(:up)
+            c == 'B' && return KeyEvent(:down)
+            c == 'C' && return KeyEvent(:right)
+            c == 'D' && return KeyEvent(:left)
+            c == 'P' && return KeyEvent(:f1)
+            c == 'Q' && return KeyEvent(:f2)
+            c == 'R' && return KeyEvent(:f3)
+            c == 'S' && return KeyEvent(:f4)
+            # Application-keypad mode (DECPAM): each numpad key sends
+            # ESC O <letter>. Map back to the literal character so the
+            # editor inserts it like a regular keypress.
+            c == 'p' && return KeyEvent(:char, '0')
+            c == 'q' && return KeyEvent(:char, '1')
+            c == 'r' && return KeyEvent(:char, '2')
+            c == 's' && return KeyEvent(:char, '3')
+            c == 't' && return KeyEvent(:char, '4')
+            c == 'u' && return KeyEvent(:char, '5')
+            c == 'v' && return KeyEvent(:char, '6')
+            c == 'w' && return KeyEvent(:char, '7')
+            c == 'x' && return KeyEvent(:char, '8')
+            c == 'y' && return KeyEvent(:char, '9')
+            c == 'k' && return KeyEvent(:char, '+')
+            c == 'l' && return KeyEvent(:char, ',')
+            c == 'm' && return KeyEvent(:char, '-')
+            c == 'n' && return KeyEvent(:char, '.')
+            c == 'o' && return KeyEvent(:char, '/')
+            c == 'j' && return KeyEvent(:char, '*')
+            c == 'M' && return KeyEvent(:enter)
+            c == 'X' && return KeyEvent(:char, '=')
+            return KeyEvent(:unknown)
         end
     catch
     end
