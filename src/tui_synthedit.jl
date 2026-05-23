@@ -217,31 +217,18 @@ _synth_source_path(name::AbstractString) =
     joinpath(pwd(), _SYNTH_PLUGIN_DIR, String(name) * ".scd")
 
 """
-    _test_synth!(m; n=nothing)
+    _test_synth!(m)
 
-Reload the synth source to SuperCollider and fire one preview note.
+`T` / `:test` — eval + fire the synth with its OWN defaults. This is
+the same routing that pattern events use when targeting a
+user-defined synth (`@d1 p"mywob"` with no extra params plays
+EXACTLY what T plays). No SuperDirt auto-injection of freq/sustain/
+gain — your defaults are the sound.
 
-CRITICAL: we send `s` + `cut` only — **no `n`, `freq`, `gain`,
-`release`, `sustain`**. The reason: when those keys are present in
-`/dirt/play`, SuperDirt passes its own computed values to the synth
-(freq derived from n, sustain from cycle duration, gain as a global
-multiplier), which **OVERRIDES** the user's `freq = 220` etc.
-defaults in the SynthDef parameter list. The user edits the
-template, presses T, and hears no difference because SuperDirt
-forced the params back.
-
-By passing only `s` + `cut`, the SynthDef's own defaults take effect,
-so editing `rate = 4` → `rate = 1` or `freq = 110` → `freq = 220`
-actually changes the audio.
-
-If the user wants to test with a specific note (because their synth
-uses `freq` from SuperDirt), `:test -12` re-introduces `n` so
-SuperDirt computes freq. That's the explicit opt-in.
-
-Cut group is shared with K/browser previews so consecutive presses
-truncate the previous voice — no overlapping reverb tails.
+Server-side `s.sync` guarantees the SynthDef is registered before the
+play fires.
 """
-function _test_synth!(m::LiveModel; raw::Bool = false)
+function _test_synth!(m::LiveModel)
     if isempty(m.synth_editing)
         _push_log!(m, "[ERROR] :test — not editing a synth")
         return
@@ -253,16 +240,10 @@ function _test_synth!(m::LiveModel; raw::Bool = false)
     end
     synth_lines, _, _ = _synth_buffer_view(m)
     src = join(synth_lines, "\n")
-    # T / :test  → /ressac/reloadAndPlay (SuperCollider's Routine calls
-    #              SuperDirt's /dirt/play after s.sync, so the sound
-    #              matches what `@d1 p"name"` produces).
-    # :test-raw  → /ressac/evalAndPlay (Synth(name) direct, no SuperDirt
-    #              overrides, the SynthDef's own defaults play).
-    address = raw ? "/ressac/evalAndPlay" : "/ressac/reloadAndPlay"
     send_osc(sched.osc,
-             encode(OSCMessage(address, Any[String(m.synth_editing), src])))
-    label = raw ? "raw (synth defaults)" : "via SuperDirt (pattern context)"
-    _push_log!(m, "[INFO] :test — $(m.synth_editing) — $label")
+             encode(OSCMessage("/ressac/evalAndPlay",
+                                Any[String(m.synth_editing), src])))
+    _push_log!(m, "[INFO] :test — $(m.synth_editing) (synth defaults active)")
 end
 
 """

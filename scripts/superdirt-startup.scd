@@ -93,22 +93,27 @@ s.waitForBoot({
         }.play(AppClock);
     }, '/ressac/evalAndPlay');
 
-    // Eval + play via SuperDirt's pipeline. After interpret + s.sync,
-    // sends a regular /dirt/play to localhost so SuperDirt processes it
-    // exactly like a pattern would. Bound to T / :test. Lets the user
-    // hear what their synth sounds like in pattern context — same
-    // freq/sustain/gain overrides that an `@d1 p"name"` would apply.
-    ~ressacLocalAddr = NetAddr.new("127.0.0.1", 57120);
-    OSCdef(\ressacReloadAndPlay, { |msg|
-        var name = msg[1].asString;
-        var src  = msg[2].asString;
-        ("[ressac] reloadAndPlay (via dirt) " ++ name ++ " (" ++ src.size.asString ++ " chars)").postln;
-        Routine {
-            src.interpret;
-            s.sync;
-            ~ressacLocalAddr.sendMsg('/dirt/play', \s, name, \n, 0, \cut, 9999);
-        }.play(AppClock);
-    }, '/ressac/reloadAndPlay');
+    // Direct synth-fire used by both T (in synth-edit mode) and pattern
+    // events that target a user-defined synth. Bypasses SuperDirt's
+    // auto-injection of freq/sustain/gain so the SynthDef's own param
+    // defaults are the baseline. msg arrives as
+    // [\s, name, key1, val1, key2, val2, ...] — explicit pairs only.
+    ~ressacTrackSynth = IdentityDictionary.new;  // name → currently-playing Synth
+    OSCdef(\ressacPlay, { |msg|
+        var name = msg[1].asString.asSymbol;
+        var args = List.new;
+        var i = 2;
+        var existing;
+        while ({ i < msg.size }) {
+            args.add(msg[i].asString.asSymbol);
+            args.add(msg[i+1]);
+            i = i + 2;
+        };
+        ("[ressac] play " ++ name).postln;
+        existing = ~ressacTrackSynth.at(name);
+        if(existing.notNil) { existing.free };
+        ~ressacTrackSynth.put(name, Synth(name, args.asArray ++ [\out, 0]));
+    }, '/ressac/play');
 
     OSCdef(\ressacRegisterSample, { |msg|
         var name = msg[1].asString.asSymbol;

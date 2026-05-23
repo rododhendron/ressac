@@ -124,20 +124,34 @@ function event_to_osc(ev::Event{ControlMap})
         sym = routing isa Symbol ? routing : Symbol(routing)
         instr = instrument_info(sym)
         if instr !== nothing
-            # Preset is the base; preset's :s is the literal target.
             for (k, v) in instr.params
                 final[Symbol(k)] = v
             end
         else
-            # No preset → :s is a literal sample name.
             final[:s] = routing
         end
     end
 
-    # Pipe overrides every key except :s (preset/routing already settled it).
     for (k, v) in cm
         k === :s && continue
         final[k] = v
+    end
+
+    # Route user-defined synths through /ressac/play to bypass SuperDirt's
+    # freq/sustain/gain auto-injection. Pattern events end up using the
+    # SynthDef's own defaults unless the user explicitly set the key.
+    # Samples + super* synths from SuperDirt keep /dirt/play (they need
+    # SuperDirt's machinery).
+    target = haskey(final, :s) ? Symbol(final[:s] isa Symbol ? final[:s] : Symbol(final[:s])) : nothing
+    if target !== nothing && _is_user_synth(target)
+        args = Any[String(target)]
+        delete!(final, :s)
+        for k in sort!(collect(keys(final)))
+            v_conv = _osc_value(final[k])
+            v_conv === missing && continue
+            push!(args, String(k)); push!(args, v_conv)
+        end
+        return OSCMessage("/ressac/play", args)
     end
 
     args = Any[]
@@ -152,6 +166,20 @@ function event_to_osc(ev::Event{ControlMap})
         push!(args, String(k)); push!(args, v_conv)
     end
     return OSCMessage("/dirt/play", args)
+end
+
+"""
+    _is_user_synth(name::Symbol) -> Bool
+
+True if `name` is registered as a synth from the user-synths plugin
+(authored live via :synth + :save-synth). Used by `event_to_osc` to
+decide between /ressac/play (defaults-honouring) and /dirt/play
+(SuperDirt-controlled).
+"""
+function _is_user_synth(name::Symbol)
+    entry = synth_info(name)
+    entry === nothing && return false
+    return entry.plugin == "user-synths"
 end
 
 event_to_osc(ev::Event) = throw(ArgumentError(
