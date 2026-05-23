@@ -157,21 +157,22 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             return
         end
     end
+    # Nudge: fires on key_press AND key_repeat so the user can HOLD
+    # +/-/*//to scrub through values. Other normal-mode actions stay
+    # press-only (we don't want T fires to repeat on held key).
+    if ed.mode === :normal &&
+       (evt.action === TK.key_press || evt.action === TK.key_repeat) &&
+       evt.char in ('+','-','*','/') && _has_number_under_cursor(ed)
+        step = evt.char == '+' ? 1 :
+               evt.char == '-' ? -1 :
+               evt.char == '*' ? 10 : -10
+        _nudge_number_under_cursor!(m, ed, step)
+        return
+    end
     # Intercept our normal-mode actions BEFORE handle_key! so the
     # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
     # potential vim commands and consumes the keystroke).
     if is_press && ed.mode === :normal
-        # + / - / * / / nudge a number under the cursor. Checked FIRST
-        # so the same keys can fall through to scope zoom when the
-        # cursor isn't on a number — same physical key, two distinct
-        # roles depending on context.
-        if evt.char in ('+','-','*','/') && _has_number_under_cursor(ed)
-            step = evt.char == '+' ? 1 :
-                   evt.char == '-' ? -1 :
-                   evt.char == '*' ? 10 : -10
-            _nudge_number_under_cursor!(m, ed, step)
-            return
-        end
         if evt.char == 'e' && m.focus === :patterns
             # `e` evals the current line as Julia. Only meaningful in the
             # patterns pane — the synth pane buffer contains SuperCollider
