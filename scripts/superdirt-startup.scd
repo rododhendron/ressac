@@ -64,6 +64,19 @@ s.waitForBoot({
         src.interpret;
     }, '/dirt/evalSC');
 
+    // Bypass SuperDirt for live SynthDef previewing — fires a Synth
+    // directly so the SynthDef's parameter DEFAULTS take effect.
+    // SuperDirt's /dirt/play overrides freq/gain/sustain with computed
+    // values from n + cycle duration; we want the user's `freq = 220`
+    // etc. to be what they hear when iterating with `T` / `:test`.
+    ~ressacTestSynth = nil;
+    OSCdef(\ressacTestSynth, { |msg|
+        var name = msg[1].asString.asSymbol;
+        ("[ressac] testSynth " ++ name).postln;
+        if(~ressacTestSynth.notNil) { ~ressacTestSynth.free };
+        ~ressacTestSynth = Synth(name, [\out, 0]);
+    }, '/ressac/testSynth');
+
     OSCdef(\ressacRegisterSample, { |msg|
         var name = msg[1].asString.asSymbol;
         var path = msg[2].asString;

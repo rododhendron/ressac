@@ -20,11 +20,17 @@ LFO → ADSR amp envelope → DirtPan. A solid blank canvas for a wobble
 bass, swap the UGens to taste.
 """
 _STARTER_SYNTHDEF(name) = [
-    "// $(name).scd — edit, then :reload to push to SuperCollider, :save-synth to persist.",
-    "// Available params become OSC keys you can drive from Ressac via set(:key, x).",
+    "// $(name).scd  —  press T to test, :reload to push, :save-synth to persist.",
+    "//",
+    "// PARAMS = OSC keys drivable from Ressac: `p\"$name\" |> set(:rate, 8)` etc.",
+    "// DEFAULTS below ARE used by T (the test trigger sends only `s` + `cut`,",
+    "// so changing `rate = 4` to `rate = 1` is audible). When you use the",
+    "// synth from a pattern (`@d1 p\"$name\"`), SuperDirt overrides `freq`,",
+    "// `gain`, `sustain` from cycle + n — patterns shape the music, defaults",
+    "// shape the timbre.",
     "",
-    "SynthDef(\\$(name), { |out, pan = 0, freq = 110, sustain = 1, gain = 1, accelerate = 0,",
-    "                    attack = 0.01, release = 0.2,",
+    "SynthDef(\\$(name), { |out, pan = 0, freq = 220, sustain = 1, gain = 0.5, accelerate = 0,",
+    "                    attack = 0.01, release = 0.4,",
     "                    rate = 4, depth = 2000, centre = 800, q = 0.3, shape = 0|",
     "    var lfo, osc, filt, env, sig;",
     "    lfo  = SinOsc.kr(rate).range(centre - depth, centre + depth).max(40);",
@@ -211,19 +217,31 @@ _synth_source_path(name::AbstractString) =
     joinpath(pwd(), _SYNTH_PLUGIN_DIR, String(name) * ".scd")
 
 """
-    _test_synth!(m; n=0, release=0.6, gain=1.5)
+    _test_synth!(m; n=nothing)
 
-Reload the synth source to SuperCollider and immediately fire one
-preview note. Cut group is shared with other previews (K, browser) so
-successive `:test`/`K`-in-synth-pane calls silence the previous voice
-— no chord-by-accident while iterating.
+Reload the synth source to SuperCollider and fire one preview note.
 
-Bound to `K` when focus is on the synth pane, and to `:test` as an
-ex-command. The default note is 0 (synth's freq param controls the
-real pitch); we send `release` so synths without an envelope are
-audible.
+CRITICAL: we send `s` + `cut` only — **no `n`, `freq`, `gain`,
+`release`, `sustain`**. The reason: when those keys are present in
+`/dirt/play`, SuperDirt passes its own computed values to the synth
+(freq derived from n, sustain from cycle duration, gain as a global
+multiplier), which **OVERRIDES** the user's `freq = 220` etc.
+defaults in the SynthDef parameter list. The user edits the
+template, presses T, and hears no difference because SuperDirt
+forced the params back.
+
+By passing only `s` + `cut`, the SynthDef's own defaults take effect,
+so editing `rate = 4` → `rate = 1` or `freq = 110` → `freq = 220`
+actually changes the audio.
+
+If the user wants to test with a specific note (because their synth
+uses `freq` from SuperDirt), `:test -12` re-introduces `n` so
+SuperDirt computes freq. That's the explicit opt-in.
+
+Cut group is shared with K/browser previews so consecutive presses
+truncate the previous voice — no overlapping reverb tails.
 """
-function _test_synth!(m::LiveModel; n::Int = 0, release::Real = 0.6, gain::Real = 1.5)
+function _test_synth!(m::LiveModel; n::Union{Int,Nothing} = nothing)
     if isempty(m.synth_editing)
         _push_log!(m, "[ERROR] :test — not editing a synth")
         return
@@ -233,25 +251,18 @@ function _test_synth!(m::LiveModel; n::Int = 0, release::Real = 0.6, gain::Real 
         _push_log!(m, "[ERROR] :test — no live session")
         return
     end
-    # Step 1: ship the latest source so SuperCollider compiles the
-    # SynthDef. Fires immediately.
+    # Step 1: ship the latest source. Immediate.
     _reload_synth!(m)
-    # Step 2: play one note. Scheduled ~200 ms in the future via an
-    # OSC bundle time-tag so scsynth has time to receive + register
-    # the new SynthDef before the play message executes. Without this,
-    # /dirt/play raced against /dirt/evalSC and triggered the previous
-    # version of the synth — the user couldn't hear their edits.
-    args = Any[
-        "s", String(m.synth_editing),
-        "n", Int32(n),
-        "release", Float32(release),
-        "gain", Float32(gain),
-        "cut", Int32(_PREVIEW_CUT_GROUP),
-    ]
+    # Step 2: trigger the synth directly via our custom /ressac/testSynth
+    # OSCdef. Bypasses SuperDirt entirely so the SynthDef's own param
+    # defaults (freq/gain/sustain/release/etc.) are what actually play.
+    # Scheduled +200 ms via OSC bundle so the new SynthDef is fully
+    # registered in scsynth before the play executes.
     fire_time = time() + 0.2
-    bundle = OSCBundle(fire_time, [OSCMessage("/dirt/play", args)])
+    bundle = OSCBundle(fire_time,
+        [OSCMessage("/ressac/testSynth", Any[String(m.synth_editing)])])
     send_osc(sched.osc, encode(bundle))
-    _push_log!(m, "[INFO] :test — fired preview of $(m.synth_editing) (n=$n, release=$release, +200ms after eval)")
+    _push_log!(m, "[INFO] :test — $(m.synth_editing) via /ressac/testSynth (synth defaults are active; relaunch `just audio` if you see no sound, that ships the new OSCdef)")
 end
 
 """
