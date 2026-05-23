@@ -245,6 +245,12 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             # doesn't conflict with vim repeat (which we don't use
             # since the editor handles motions itself).
             _panic!(m); return
+        elseif evt.char == ','
+            # Soft hush — pulls patterns from the scheduler but lets
+            # SC's currently-playing synths complete their envelope
+            # naturally. Use for "stop the loop but don't slaughter
+            # the reverb tail".
+            _hush!(m); return
         elseif evt.char == '+' && _APP_SCOPE_TYPE[] === :wave
             m.scope_zoom = clamp(m.scope_zoom * 1.5, 0.1, 32.0)
             _push_app_log!(m, "[INFO] scope Y-zoom ×$(round(m.scope_zoom; digits=2))"); return
@@ -524,7 +530,7 @@ const _EX_COMMAND_VERBS = String[
     "theme", "reload-config", "reload-cfg", "sccode", "sc",
     "panic", "hush", "stop", "sccode-tag", "sctag",
     "snip", "snippets", "snippet",
-    "rec", "record",
+    "rec", "record", "export", "export-synth",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -804,10 +810,16 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _direct_load_sccode!(m, mt.captures[1])
     elseif (mt = match(r"^(?:sccode-tag|sctag)\s+(\S+)$", cmd)) !== nothing
         _open_sccode!(m; tag = mt.captures[1])
-    elseif cmd in ("panic", "hush", "stop")
+    elseif cmd in ("panic",)
         _panic!(m)
+    elseif cmd in ("hush", "stop", "silence")
+        _hush!(m)
     elseif cmd in ("rec", "record")
         _toggle_recording!(m)
+    elseif (mt = match(r"^export(?:-synth)?\s+(\S+)$", cmd)) !== nothing
+        _export_current_synth!(m; duration = parse(Float64, mt.captures[1]))
+    elseif cmd in ("export", "export-synth")
+        _export_current_synth!(m)
     elseif (mt = match(r"^rec(?:ord)?\s+start\s+(\S+)$", cmd)) !== nothing
         _start_recording!(m, mt.captures[1])
     elseif (mt = match(r"^rec(?:ord)?\s+start$", cmd)) !== nothing
@@ -1872,6 +1884,66 @@ end
 _toggle_recording!(m::RessacApp) =
     m.recording ? _stop_recording!(m) : _start_recording!(m)
 
+"""
+    _export_current_synth!(m; duration = 4.0)
+
+One-shot WAV export of the currently-open synth. Sequence:
+
+  1. Pull all patterns (`hush!`) so nothing else lands in the take.
+  2. Write to `./recordings/<synthname>_<ts>.wav`, sample the SC
+     master out for `duration` seconds.
+  3. While the recording is live, fire the synth once via the same
+     /ressac/evalAndPlay path that T uses (so we capture exactly
+     what the user hears when they hit T).
+  4. After `duration` seconds, stop the recording.
+
+Runs the timing on an `@async` Task so the UI stays interactive.
+"""
+function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
+    _synth_pane_open(m) ||
+        (_push_app_log!(m, "[ERROR] export: open a synth first (:synth <name>)"); return)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing &&
+        (_push_app_log!(m, "[ERROR] export: no live session"); return)
+    m.recording &&
+        (_push_app_log!(m, "[WARN] export: stop the current :rec first"); return)
+    tab = _current_synth_tab(m)
+    src = TK.text(tab.editor)
+    dir = joinpath(pwd(), "recordings")
+    isdir(dir) || mkpath(dir)
+    ts = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
+    fname = "$(tab.name)_$(ts).wav"
+    path = joinpath(dir, fname)
+    # 1. quiet the scheduler so the take is just this synth.
+    hush!(sched)
+    # 2. open the WAV.
+    send_osc(sched.osc, encode(OSCMessage("/ressac/recStart", Any[path])))
+    m.recording = true
+    m.recording_path = path
+    m.recording_start_ts = time()
+    _push_app_log!(m, "[INFO] export ● $(fname) ($(duration)s)")
+    # 3+4. fire the synth then schedule the stop. @async keeps the UI
+    # responsive while we sleep the take's duration.
+    @async begin
+        try
+            # A short head-pad so the WAV has 80 ms of silence before
+            # the attack — saves trimming downstream.
+            sleep(0.08)
+            send_osc(sched.osc,
+                     encode(OSCMessage("/ressac/evalAndPlay",
+                                        Any[tab.name, src])))
+            sleep(duration)
+            send_osc(sched.osc, encode(OSCMessage("/ressac/recStop", Any[])))
+            m.recording = false
+            m.recording_path = ""
+            _push_app_log!(m, "[INFO] export ■ → $(path)")
+        catch err
+            _push_app_log!(m, "[ERROR] export: $(sprint(showerror, err))")
+            m.recording = false
+        end
+    end
+end
+
 # ---------------------------------------------------------------------
 # Snippets — context-aware multi-line templates
 # ---------------------------------------------------------------------
@@ -2065,7 +2137,24 @@ function _panic!(m::RessacApp)
     if sched !== nothing
         send_osc(sched.osc, encode(OSCMessage("/ressac/panic", Any[])))
     end
-    _push_app_log!(m, "[INFO] PANIC — all sound stopped")
+    _push_app_log!(m, "[INFO] PANIC — all sound killed")
+end
+
+"""
+    _hush!(m)
+
+Softer counterpart to `_panic!`: clears every pattern from the
+scheduler so no new events fire, but does NOT free running synths
+on the SC server. Notes already in the air play out their
+envelopes naturally — reverb tails, drone fade-outs, release
+phases all complete cleanly. Bound to `,` and the :hush / :stop /
+:silence ex-commands.
+"""
+function _hush!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    hush!(sched)
+    _push_app_log!(m, "[INFO] hush — patterns stopped, tails ringing out")
 end
 
 # ---------------------------------------------------------------------
