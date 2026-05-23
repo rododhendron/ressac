@@ -630,9 +630,9 @@ end
         # Spec sanity: guide content covers the key sections.
         guide_text = join(Ressac._GUIDE_LINES, "\n")
         @test occursin("Ressac guide", guide_text)
-        @test occursin(":samples", guide_text)
-        @test occursin(":instruments", guide_text)
-        @test occursin(":synths", guide_text)
+        @test occursin("PATTERNS", guide_text)
+        @test occursin(":browse", guide_text)
+        @test occursin(":synth ", guide_text)
     end
 
     @testset ":help and :? alias :guide" begin
