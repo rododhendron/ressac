@@ -208,6 +208,20 @@ function _handle_normal!(m::LiveModel, evt)
         return
     end
 
+    # Vim Ctrl-w prefix chord (window/pane swap). Only meaningful while the
+    # synth side panel is open — does nothing otherwise.
+    if m.pending_chord === :ctrl_w
+        m.pending_chord = :none
+        if code == "w"
+            _swap_focus!(m)
+        end
+        return
+    end
+    if code == "w" && _has_modifier(evt, "Ctrl")
+        m.pending_chord = :ctrl_w
+        return
+    end
+
     # Mutating commands snapshot first so `u` undoes the next change as a
     # whole logical step (entering insert mode is the boundary).
     _mutating_normal_cmd = code in ("i", "I", "a", "A", "o", "O", "x", "p", "P",
@@ -619,6 +633,8 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _reload_synth!(m)
     elseif body == "save-synth"
         _save_synth!(m)
+    elseif body == "swap"
+        _swap_focus!(m)
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing

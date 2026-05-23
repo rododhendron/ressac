@@ -49,11 +49,14 @@ function _enter_synth_edit!(m::LiveModel, name::AbstractString)
         _push_log!(m, "[INFO] already editing synth '$(m.synth_editing)'. :back first.")
         return
     end
-    # Stash main state.
+    # Stash main state. After this swap:
+    #   m.buffer / m.cursor_*       = synth source (focused)
+    #   m.synth_stash_*              = main pattern state (unfocused)
     m.synth_stash_buffer = m.buffer
     m.synth_stash_row    = m.cursor_row
     m.synth_stash_col    = m.cursor_col
     m.synth_editing      = String(name)
+    m.focus              = :synth
     # Load source.
     path = _synth_source_path(name)
     if isfile(path)
@@ -88,16 +91,61 @@ function _exit_synth_edit!(m::LiveModel)
         return
     end
     name = m.synth_editing
-    m.buffer     = m.synth_stash_buffer
-    m.cursor_row = m.synth_stash_row
-    m.cursor_col = m.synth_stash_col
-    m.synth_editing = ""
+    # Make sure main state ends up in m.buffer regardless of which pane
+    # was focused last.
+    if m.focus === :synth
+        # m.buffer = synth source, m.synth_stash_* = main → swap back.
+        m.buffer     = m.synth_stash_buffer
+        m.cursor_row = m.synth_stash_row
+        m.cursor_col = m.synth_stash_col
+    end
+    # If focus was :main, m.buffer already holds main → nothing to do.
+    m.synth_editing      = ""
     m.synth_stash_buffer = String[]
+    m.focus              = :main
     m.mode = :normal
     _clear_completions!(m)
     empty!(m.history)
     empty!(m.redo_stack)
     _push_log!(m, "[INFO] closed synth '$name', back to patterns")
+end
+
+"""
+    _swap_focus!(m)
+
+Swap the live (`m.buffer` / `m.cursor_*`) and stashed
+(`m.synth_stash_*`) editing states so the user can move focus
+between the patterns pane and the synth pane while both remain
+on screen.
+"""
+function _swap_focus!(m::LiveModel)
+    isempty(m.synth_editing) && return
+    m.buffer,     m.synth_stash_buffer = m.synth_stash_buffer, m.buffer
+    m.cursor_row, m.synth_stash_row    = m.synth_stash_row,    m.cursor_row
+    m.cursor_col, m.synth_stash_col    = m.synth_stash_col,    m.cursor_col
+    m.focus = m.focus === :main ? :synth : :main
+    _clear_completions!(m)
+end
+
+"""
+    _synth_buffer_view(m), _main_buffer_view(m)
+
+Helpers that return the synth or main editing state regardless of
+which side currently holds focus. Used by `_save_synth!` and the
+rendering helpers so they don't have to branch on `m.focus`.
+"""
+function _synth_buffer_view(m::LiveModel)
+    if m.focus === :synth
+        return (m.buffer, m.cursor_row, m.cursor_col)
+    end
+    return (m.synth_stash_buffer, m.synth_stash_row, m.synth_stash_col)
+end
+
+function _main_buffer_view(m::LiveModel)
+    if m.focus === :main
+        return (m.buffer, m.cursor_row, m.cursor_col)
+    end
+    return (m.synth_stash_buffer, m.synth_stash_row, m.synth_stash_col)
 end
 
 """
@@ -117,7 +165,8 @@ function _reload_synth!(m::LiveModel)
         _push_log!(m, "[ERROR] :reload — no live session")
         return
     end
-    src = join(m.buffer, "\n")
+    synth_lines, _, _ = _synth_buffer_view(m)
+    src = join(synth_lines, "\n")
     send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[src])))
     _push_log!(m, "[INFO] :reload sent $(length(src)) chars to SuperCollider — check audio logs if it errors")
 end
@@ -138,9 +187,10 @@ function _save_synth!(m::LiveModel)
     dir = joinpath(pwd(), _SYNTH_PLUGIN_DIR)
     isdir(dir) || mkpath(dir)
     scd_path = _synth_source_path(name)
+    synth_lines, _, _ = _synth_buffer_view(m)
     try
         open(scd_path, "w") do io
-            for line in m.buffer
+            for line in synth_lines
                 write(io, line, "\n")
             end
         end

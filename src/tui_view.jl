@@ -98,7 +98,8 @@ doesn't lose any editor rows to the new visual UX.
 """
 function _footer_line(m::LiveModel)
     if !isempty(m.synth_editing) && m.mode !== :command
-        text = "[SYNTH $(m.synth_editing).scd] :reload push  |  :save-synth persist  |  :back return"
+        side = m.focus === :synth ? "SYNTH→ $(m.synth_editing).scd" : "←PATTERNS  :synth $(m.synth_editing).scd"
+        text = "[$side] Ctrl-w w / :swap | :reload push | :save-synth | :back close"
         return _TextLines([text], TUI.Crayon(; foreground=:yellow))
     end
     if m.mode === :command
@@ -222,13 +223,29 @@ function TUI.render(p::_TextLines, area::TUI.Rect, buf::TUI.Buffer)
 end
 
 function _editor_pane(m::LiveModel)
+    # When a synth is being edited, split the editor area horizontally:
+    # patterns on the left, synth source on the right. Always-on; the
+    # focused side has its cursor highlighted.
+    if !isempty(m.synth_editing)
+        return _SplitEditor(m)
+    end
+    return _build_pane_for_main(m)
+end
+
+"""
+    _build_pane_for_main(m)
+
+Render the main pattern buffer with pattern-viz lines interleaved.
+Used both as the single-pane editor and as the left side of the split.
+"""
+function _build_pane_for_main(m::LiveModel)
+    lines, row, col = _focus_safe_main_view(m)
     rendered = String[]
-    # Track which logical buffer row each rendered row maps to, so the
-    # cursor overlay can find its line even when viz rows are interleaved.
-    logical = Int[]
-    for (i, line) in enumerate(m.buffer)
+    logical  = Int[]
+    visual_active = (m.focus === :main) && m.mode === :visual_line && m.visual_anchor !== nothing
+    for (i, line) in enumerate(lines)
         prefix = ""
-        if m.mode === :visual_line && m.visual_anchor !== nothing
+        if visual_active
             rs, re = _visual_range(m)
             if rs <= i <= re
                 prefix = "│ "
@@ -237,15 +254,73 @@ function _editor_pane(m::LiveModel)
         marker = _active_marker(m, i)
         push!(rendered, prefix * line * marker)
         push!(logical, i)
-        # Pattern viz: render a sparse grid under any line that looks
-        # like a slot definition with a mini-notation literal.
         viz = _pattern_viz_line(line)
         if viz !== nothing
             push!(rendered, "    " * viz)
-            push!(logical, 0)   # 0 = synthetic line, no buffer mapping
+            push!(logical, 0)
         end
     end
-    _EditorPane(m, rendered, logical)
+    is_focused = m.focus === :main
+    _EditorPane(m, rendered, logical, row, col, is_focused)
+end
+
+"""
+    _build_pane_for_synth(m)
+
+Render the synth source (no pattern viz — this is SCD code, not
+mini-notation). Used as the right side of the split.
+"""
+function _build_pane_for_synth(m::LiveModel)
+    lines, row, col = _synth_buffer_view(m)
+    rendered = String[]
+    logical  = Int[]
+    for (i, line) in enumerate(lines)
+        push!(rendered, line)
+        push!(logical, i)
+    end
+    is_focused = m.focus === :synth
+    _EditorPane(m, rendered, logical, row, col, is_focused)
+end
+
+"""
+    _focus_safe_main_view(m) -> (lines, row, col)
+
+Return the main buffer's view regardless of which side has focus.
+"""
+function _focus_safe_main_view(m::LiveModel)
+    if m.focus === :main
+        return (m.buffer, m.cursor_row, m.cursor_col)
+    end
+    return (m.synth_stash_buffer, m.synth_stash_row, m.synth_stash_col)
+end
+
+"""
+    _SplitEditor(model)
+
+Horizontal split of the editor area into a main pane (left) and a
+synth-edit pane (right). The split is 50/50 with a 1-column gutter.
+Each side renders its own cursor; the unfocused one is grey.
+"""
+struct _SplitEditor
+    model::LiveModel
+end
+
+function TUI.render(s::_SplitEditor, area::TUI.Rect, buf::TUI.Buffer)
+    m = s.model
+    w = TUI.width(area)
+    h = TUI.height(area)
+    # Reserve a thin gutter column between the two panes.
+    half = max(1, (w - 1) ÷ 2)
+    left_area  = TUI.Rect(TUI.left(area), TUI.top(area), half, h)
+    gutter_x   = TUI.left(area) + half
+    right_area = TUI.Rect(gutter_x + 1, TUI.top(area), w - half - 1, h)
+    # Gutter glyphs.
+    for y in 0:(h - 1)
+        TUI.set(buf, gutter_x, TUI.top(area) + y, "│",
+                TUI.Crayon(; foreground=:dark_gray))
+    end
+    TUI.render(_build_pane_for_main(m),  left_area,  buf)
+    TUI.render(_build_pane_for_synth(m), right_area, buf)
 end
 
 """
@@ -259,39 +334,71 @@ events can translate terminal (col, row) coordinates back into buffer
 struct _EditorPane
     model::LiveModel
     lines::Vector{String}
-    logical::Vector{Int}  # buffer row each rendered line maps to (0 = synthetic)
+    logical::Vector{Int}
+    pane_cursor_row::Int    # cursor in THIS pane's buffer (may differ from m.cursor_*)
+    pane_cursor_col::Int
+    is_focused::Bool
 end
+
+# Backwards-compatible 3-arg constructor used in legacy code paths.
+_EditorPane(m::LiveModel, lines::Vector{String}, logical::Vector{Int}) =
+    _EditorPane(m, lines, logical, m.cursor_row, m.cursor_col, true)
 
 function TUI.render(p::_EditorPane, area::TUI.Rect, buf::TUI.Buffer)
     m = p.model
-    m.editor_screen_left   = TUI.left(area)
-    m.editor_screen_top    = TUI.top(area)
-    m.editor_screen_height = TUI.height(area)
+    # Only the focused pane drives the mouse-wheel screen-space mapping.
+    if p.is_focused
+        m.editor_screen_left   = TUI.left(area)
+        m.editor_screen_top    = TUI.top(area)
+        m.editor_screen_height = TUI.height(area)
+    end
     TUI.height(area) < 1 && return
     avail = TUI.height(area)
-    # Render each line with a per-line style: synthetic viz lines get a
-    # dim grey so they read as annotations, not code.
+    base_style = p.is_focused ? TUI.Crayon() : TUI.Crayon(; foreground=:dark_gray)
     for (i, line) in enumerate(p.lines)
         i > avail && break
         clipped = first(line, TUI.width(area))
         is_viz = p.logical[i] == 0
-        style = is_viz ? TUI.Crayon(; foreground=:dark_gray) : TUI.Crayon()
+        style = is_viz ? TUI.Crayon(; foreground=:dark_gray) : base_style
         TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), style)
     end
-    # Find the rendered row that maps to m.cursor_row so we can overlay
-    # the cursor in the right place (viz lines push subsequent buffer
-    # rows down).
+    # Cursor overlay — focused pane gets inverted (block) cursor, unfocused
+    # gets nothing (its position is preserved in state but invisible).
+    p.is_focused || return
     m.mode in (:insert, :normal) || return
-    cursor_render_row = findfirst(==(m.cursor_row), p.logical)
+    cursor_render_row = findfirst(==(p.pane_cursor_row), p.logical)
     cursor_render_row === nothing && return
     cursor_render_row <= avail || return
-    line = m.buffer[m.cursor_row]
-    col = clamp(m.cursor_col, 1, lastindex(line) + 1)
-    ch = col > lastindex(line) ? " " : string(line[col])
+    line = p.lines[cursor_render_row]
+    # The on-screen line includes a possible "│ " visual prefix and a marker
+    # suffix — but the cursor col is a byte index into the *raw* buffer line.
+    # Recompute via the raw buffer, not the rendered one.
+    1 <= p.pane_cursor_row <= length_raw_buffer(m, p.is_focused) || return
+    raw_line = raw_buffer_line(m, p.pane_cursor_row, p.is_focused)
+    col = clamp(p.pane_cursor_col, 1, lastindex(raw_line) + 1)
+    ch  = col > lastindex(raw_line) ? " " : string(raw_line[col])
     cursor_x = TUI.left(area) + col - 1
     cursor_y = TUI.top(area) + cursor_render_row - 1
     cursor_x < TUI.left(area) + TUI.width(area) || return
     TUI.set(buf, cursor_x, cursor_y, ch, TUI.Crayon(; negative=true))
+end
+
+# Pick the right backing buffer for cursor-position computation.
+function length_raw_buffer(m::LiveModel, focused::Bool)
+    if isempty(m.synth_editing)
+        return length(m.buffer)
+    end
+    lines = focused ?
+            (m.focus === :main ? m.buffer : m.buffer) :
+            (m.focus === :main ? m.synth_stash_buffer : m.synth_stash_buffer)
+    return length(lines)
+end
+function raw_buffer_line(m::LiveModel, row::Int, focused::Bool)
+    # Focused pane always reads from m.buffer; unfocused from synth_stash_*.
+    if !isempty(m.synth_editing) && !focused
+        return m.synth_stash_buffer[row]
+    end
+    return m.buffer[row]
 end
 
 """

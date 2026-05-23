@@ -63,6 +63,10 @@ Backing model for the multi-line TUI. See
     synth_stash_buffer::Vector{String}                   = String[]
     synth_stash_row::Int                                 = 1
     synth_stash_col::Int                                 = 1
+    # SP11.5 — side-by-side panel. `focus` says which side currently
+    # holds the live `m.buffer`/`m.cursor_*` fields; the other side
+    # lives in `m.synth_stash_*`. Toggle with Ctrl-w w or `:swap`.
+    focus::Symbol                                        = :main   # :main | :synth
 end
 
 const _UNDO_HISTORY_LIMIT = 200
