@@ -233,11 +233,14 @@ function _test_synth!(m::LiveModel; n::Int = 0, release::Real = 0.6, gain::Real 
         _push_log!(m, "[ERROR] :test — no live session")
         return
     end
-    # Step 1: ship the latest source so SuperCollider has the most
-    # recent SynthDef before the play message arrives.
+    # Step 1: ship the latest source so SuperCollider compiles the
+    # SynthDef. Fires immediately.
     _reload_synth!(m)
-    # Step 2: play one note. n + release + gain make almost any synth
-    # audible without further setup. cut keeps voices from stacking.
+    # Step 2: play one note. Scheduled ~200 ms in the future via an
+    # OSC bundle time-tag so scsynth has time to receive + register
+    # the new SynthDef before the play message executes. Without this,
+    # /dirt/play raced against /dirt/evalSC and triggered the previous
+    # version of the synth — the user couldn't hear their edits.
     args = Any[
         "s", String(m.synth_editing),
         "n", Int32(n),
@@ -245,8 +248,10 @@ function _test_synth!(m::LiveModel; n::Int = 0, release::Real = 0.6, gain::Real 
         "gain", Float32(gain),
         "cut", Int32(_PREVIEW_CUT_GROUP),
     ]
-    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
-    _push_log!(m, "[INFO] :test — fired preview of $(m.synth_editing) (n=$n, release=$release)")
+    fire_time = time() + 0.2
+    bundle = OSCBundle(fire_time, [OSCMessage("/dirt/play", args)])
+    send_osc(sched.osc, encode(bundle))
+    _push_log!(m, "[INFO] :test — fired preview of $(m.synth_editing) (n=$n, release=$release, +200ms after eval)")
 end
 
 """
