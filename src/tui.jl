@@ -106,6 +106,15 @@ function _ressac_app!(m::LiveModel; frame_period::Float64 = 1/60)
     return nothing
 end
 
+"""
+    live(; host, port, cps, lookahead)
+
+Boot the Tachikoma-based TUI on top of an active (or freshly-started)
+scheduler. This used to call into the TerminalUserInterfaces.jl
+LiveModel app; switched to the new Tachikoma RessacApp on the SP13
+migration. The legacy LiveModel/_ressac_app! code stays in-tree for
+now while the rest of the features are ported over.
+"""
 function live(; host::AbstractString = "127.0.0.1",
                 port::Integer = 57120,
                 cps::Real = 0.5,
@@ -113,7 +122,7 @@ function live(; host::AbstractString = "127.0.0.1",
     existed = _LIVE_SCHEDULER[] !== nothing
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     try
-        _ressac_app!(LiveModel(; scheduler=sched))
+        Tachikoma.app(RessacApp(; scheduler=sched); fps=60)
     finally
         existed || stop_live!()
     end

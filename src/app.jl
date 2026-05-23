@@ -118,22 +118,3 @@ function _eval_current_line!(m::RessacApp)
     end
 end
 
-"""
-    live2(; host, port, cps, lookahead)
-
-New Tachikoma-based live entry. Parallel to `live()` during the
-migration; eventually replaces it.
-"""
-function live2(; host::AbstractString = "127.0.0.1",
-                 port::Integer = 57120,
-                 cps::Real = 0.5,
-                 lookahead::Real = 0.05)
-    existed = _LIVE_SCHEDULER[] !== nothing
-    sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
-    try
-        TK.app(RessacApp(; scheduler=sched); fps=60)
-    finally
-        existed || stop_live!()
-    end
-    return nothing
-end

@@ -44,7 +44,7 @@ export mask
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
 export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, schedule_pattern!
-export live, live2, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
+export live, start_live!, stop_live!, restart_live!, d!, unset!, hush_all!, cps!
 export register_section_handler!, unregister_section_handler!, get_section_handler
 export load_plugin, parse_manifest, discover_plugins, default_plugin_path
 export SampleEntry, sample_info, list_samples, register_sample!
