@@ -1698,17 +1698,28 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
     _synth_pane_open(m) || (_push_app_log!(m, "[ERROR] :w — no synth open"); return)
     tab = _current_synth_tab(m)
     old_name = tab.name
-    name = new_name === nothing ? old_name : String(new_name)
     text = TK.text(tab.editor)
-    if new_name !== nothing
-        text = replace(text, "SynthDef(\\$(old_name)" => "SynthDef(\\$(name)")
-        TK.set_text!(tab.editor, text)
-        tab.name = name
-    end
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
-    write(_app_synth_path(name), text)
-    _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(name))")
+    if new_name === nothing
+        # Plain :w — overwrite the current tab's backing file.
+        write(_app_synth_path(old_name), text)
+        register_synth!(SynthEntry(Symbol(old_name), "user-synths", Dict{String,Any}(
+            "description" => "live-edited synth", "tags" => ["user"])))
+        _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(old_name))")
+    else
+        # :w newname — Save-As semantics. Write a NEW file under the
+        # given name with the SynthDef declaration rewritten to match,
+        # register it, and open it in a fresh tab so the user lands on
+        # the new file with the old one still available for revisits.
+        name = String(new_name)
+        new_text = replace(text, "SynthDef(\\$(old_name)" => "SynthDef(\\$(name)")
+        write(_app_synth_path(name), new_text)
+        register_synth!(SynthEntry(Symbol(name), "user-synths", Dict{String,Any}(
+            "description" => "live-edited synth", "tags" => ["user"])))
+        _push_app_log!(m, "[INFO] saved synth as → $(_app_synth_path(name))")
+        _open_synth_tab!(m, name)
+    end
 end
 
 """
