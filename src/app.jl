@@ -58,6 +58,30 @@ non-empty), and the focus toggle for keystroke routing.
     # the panel; >1 amplifies; <1 attenuates. Adjusted with + / - in
     # normal mode (any focus), only meaningful while scope is :wave.
     scope_zoom::Float64          = 1.0
+    # :keydebug toggles a verbose-input mode that pushes every KeyEvent
+    # received from the terminal to the log pane. Lets the user see the
+    # exact symbol + char + action for any keystroke when diagnosing
+    # layout or terminal issues.
+    keydebug::Bool               = false
+end
+
+# Kitty CSI u reports numpad keys with their own :kp_<n> symbol instead
+# of a :char event, so the CodeEditor (which only inserts on :char) drops
+# them silently. Translate the numpad symbol set into the equivalent
+# printable char + :char key so the editor handles them like regular
+# digit / punctuation keystrokes.
+const _NUMPAD_TO_CHAR = Dict{Symbol,Char}(
+    :kp_0 => '0', :kp_1 => '1', :kp_2 => '2', :kp_3 => '3', :kp_4 => '4',
+    :kp_5 => '5', :kp_6 => '6', :kp_7 => '7', :kp_8 => '8', :kp_9 => '9',
+    :kp_decimal => '.', :kp_divide => '/', :kp_multiply => '*',
+    :kp_subtract => '-', :kp_add => '+', :kp_equal => '=',
+    :kp_separator => ',',
+)
+
+function _normalise_event(evt::TK.KeyEvent)
+    c = get(_NUMPAD_TO_CHAR, evt.key, nothing)
+    c === nothing && return evt
+    return TK.KeyEvent(:char, c, evt.action)
 end
 
 """
@@ -78,6 +102,10 @@ _current_synth_tab(m::RessacApp) = m.synth_tabs[m.synth_tab_idx]
 TK.should_quit(m::RessacApp) = m.quit
 
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
+    if m.keydebug
+        _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
+    end
+    evt = _normalise_event(evt)
     if m.modal !== :none && evt.action === TK.key_press
         _handle_modal_key!(m, evt)
         return
@@ -233,7 +261,7 @@ const _EX_COMMAND_VERBS = String[
     "tabs", "tabnext", "tabprev", "tabprevious", "scope", "guide",
     "synth-guide", "browse", "doc", "starter", "scale", "cps",
     "mute", "unmute", "solo", "save-session", "load-session",
-    "save-synth", "save-synth-as", "reload",
+    "save-synth", "save-synth-as", "reload", "keydebug",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -495,6 +523,9 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _doc_command!(m, mt.captures[1])
     elseif cmd == "doc"
         _push_app_log!(m, "[INFO] :doc <name> — try gain/release/cutoff/cps/gate/…")
+    elseif cmd == "keydebug"
+        m.keydebug = !m.keydebug
+        _push_app_log!(m, "[INFO] keydebug $(m.keydebug ? "ON" : "OFF") — every keypress will be logged")
     elseif (mt = match(r"^starter\s+(\w+)$", cmd)) !== nothing
         _starter_command!(m, mt.captures[1])
     elseif cmd == "starter"
