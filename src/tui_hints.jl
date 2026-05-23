@@ -153,7 +153,18 @@ function _command_arg_candidates(verb::AbstractString)
     verb == "samples"     && return String.(keys(_SAMPLE_REGISTRY))
     verb == "instruments" && return String.(keys(_INSTRUMENT_REGISTRY))
     verb == "synths"      && return String.(keys(_SYNTH_REGISTRY))
+    verb == "doc"         && return collect(keys(_PARAM_DOCS))
+    verb == "starter"     && return collect(keys(_STARTER_PACKS))
+    verb == "scale"       && return String.(keys(_SCALES))
+    verb == "snippet"     && return _known_snippet_names()
+    verb == "load-session" && return _known_session_names()
     return nothing
+end
+
+function _known_session_names()
+    dir = joinpath(pwd(), "sessions")
+    isdir(dir) || return String[]
+    [splitext(f)[1] for f in readdir(dir) if endswith(f, ".txt")]
 end
 
 """
