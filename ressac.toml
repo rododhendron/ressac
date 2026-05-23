@@ -1,0 +1,30 @@
+# Ressac project config. Edit + `:reload-config` to apply without
+# restarting. Every key here mirrors a field of `RessacConfig` in
+# src/config.jl — see there for documentation.
+
+[ui]
+# Theme name. Customs: cyberpunk, solarpunk. Tachikoma built-ins
+# include: kokaku, esper, motoko, kaneda, neuromancer, catppuccin,
+# solarized, dracula, outrun, zenburn, iceberg, paper, latte, solaris,
+# sakura, ayu, gruvbox, frost, meadow, dune, lavender, horizon,
+# overcast, dusk.
+theme = "cyberpunk"
+fps   = 60
+
+[input]
+# T (test synth) held-key acceleration. First repeat after
+# `t_hold_initial_ms`, each subsequent fire shrinks the wait by
+# `t_hold_accel` until `t_hold_min_ms`.
+t_hold_initial_ms = 250
+t_hold_min_ms     = 60
+t_hold_accel      = 0.85
+
+# Nudge step magnitudes for + / - / * / /
+nudge_int_small   = 1
+nudge_int_big     = 10
+nudge_float_small = 1.0
+nudge_float_big   = 0.1
+
+[scope]
+scope_zoom_step = 1.5
+scope_zoom_max  = 32.0

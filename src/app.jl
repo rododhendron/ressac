@@ -81,6 +81,11 @@ non-empty), and the focus toggle for keystroke routing.
     # and copy text from the terminal without the next frame overwriting
     # the selection highlight. Any keypress (handled in update!) resumes.
     paused::Bool                 = false
+    # Held-T acceleration state. last_t_fire = time() of the previous
+    # `_test_current_synth!` call; t_hold_interval_ms = current wait
+    # before the next fire (decays toward config.t_hold_min_ms).
+    last_t_fire::Float64         = 0.0
+    t_hold_interval_ms::Float64  = 0.0
 end
 
 # Kitty CSI u reports numpad keys with their own :kp_<n> symbol instead
@@ -159,7 +164,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     end
     # Nudge: fires on key_press AND key_repeat so the user can HOLD
     # +/-/*//to scrub through values. Other normal-mode actions stay
-    # press-only (we don't want T fires to repeat on held key).
+    # press-only (we don't want every action to retrigger on held key).
     if ed.mode === :normal &&
        (evt.action === TK.key_press || evt.action === TK.key_repeat) &&
        evt.char in ('+','-','*','/') && _has_number_under_cursor(ed)
@@ -167,6 +172,16 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
                evt.char == '-' ? -1 :
                evt.char == '*' ? 10 : -10
         _nudge_number_under_cursor!(m, ed, step)
+        return
+    end
+    # T held: fire repeatedly with accelerating interval. The initial
+    # press goes through the normal-mode block below; key_repeat events
+    # are handled here so they bypass the press-only gate. Each fire
+    # multiplies the interval by config.t_hold_accel (clamped to
+    # t_hold_min_ms), so a held T ramps from ~4 fires/sec up to ~17.
+    if ed.mode === :normal && evt.action === TK.key_repeat &&
+       evt.char == 'T' && _synth_pane_open(m)
+        _fire_t_with_accel!(m; held=true)
         return
     end
     # Intercept our normal-mode actions BEFORE handle_key! so the
@@ -180,7 +195,8 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             # vim "end of word" motion there.
             _eval_current_line!(m); return
         elseif evt.char == 'T' && _synth_pane_open(m)
-            _test_current_synth!(m); return
+            _fire_t_with_accel!(m)
+            return
         elseif evt.char == 'K' && m.focus === :patterns
             _preview_word_under_cursor!(m); return
         elseif evt.char == 'S' && _synth_pane_open(m)
@@ -463,6 +479,7 @@ const _EX_COMMAND_VERBS = String[
     "mute", "unmute", "solo", "save-session", "load-session",
     "save-synth", "save-synth-as", "reload", "keydebug", "pause", "freeze",
     "copylogs", "yanklogs", "synthlib", "synth-library", "lib",
+    "theme", "reload-config", "reload-cfg",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -722,6 +739,20 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _open_browser!(m)
     elseif cmd in ("synthlib", "synth-library", "lib")
         _open_synth_library!(m)
+    elseif (mt = match(r"^theme\s+(\w+)$", cmd)) !== nothing
+        name = Symbol(mt.captures[1])
+        if _apply_theme!(name)
+            _push_app_log!(m, "[INFO] theme → $name")
+        else
+            _push_app_log!(m, "[ERROR] theme '$name' not found — try: " *
+                           join(_available_themes()[1:min(end,8)], ", ") * ", …")
+        end
+    elseif cmd == "theme"
+        _push_app_log!(m, "[INFO] themes: " * join(_available_themes(), ", "))
+    elseif cmd in ("reload-config", "reload-cfg")
+        cfg = _load_ressac_config!()
+        _apply_theme!(cfg.theme)
+        _push_app_log!(m, "[INFO] config reloaded — theme=$(cfg.theme), t_init=$(cfg.t_hold_initial_ms)ms accel=$(cfg.t_hold_accel)")
     elseif (mt = match(r"^doc\s+(\w+)$", cmd)) !== nothing
         _doc_command!(m, mt.captures[1])
     elseif cmd == "doc"
@@ -1724,11 +1755,41 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
 end
 
 """
+    _fire_t_with_accel!(m; held=false)
+
+Drive a single T press, throttled by `config.t_hold_initial_ms` /
+`t_hold_min_ms` / `t_hold_accel`. On a fresh press (`held=false`) we
+reset the interval to its initial value and fire immediately. On
+key_repeat we only fire if at least `t_hold_interval_ms` ms have
+elapsed since the last fire — and on each successful fire the
+interval shrinks toward the floor.
+"""
+function _fire_t_with_accel!(m::RessacApp; held::Bool=false)
+    cfg = ressac_config()
+    now = time() * 1000   # ms
+    if !held
+        # Fresh press → fire, reset interval clock.
+        m.t_hold_interval_ms = Float64(cfg.t_hold_initial_ms)
+        m.last_t_fire = now
+        _test_current_synth!(m)
+        return
+    end
+    # key_repeat path: gate by interval.
+    if now - m.last_t_fire < m.t_hold_interval_ms
+        return
+    end
+    m.t_hold_interval_ms = max(Float64(cfg.t_hold_min_ms),
+                               m.t_hold_interval_ms * cfg.t_hold_accel)
+    m.last_t_fire = now
     _test_current_synth!(m)
+end
+
+"""
+    _test_current_synth!(m; raw=false)
 
 Reload the synth source on the SC side and fire a preview note via
-`/ressac/reloadAndPlay`. Server-side `s.sync` ensures the new
-SynthDef is registered before the play fires.
+`/ressac/evalAndPlay`. Server-side `s.sync` ensures the new SynthDef
+is registered before the play fires.
 """
 function _test_current_synth!(m::RessacApp; raw::Bool = false)
     _synth_pane_open(m) || return

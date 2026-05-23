@@ -33,6 +33,8 @@ include("tui_synthedit.jl")
 include("tui_livedoc.jl")
 include("tui_scope.jl")
 include("synth_library.jl")
+include("config.jl")
+include("themes.jl")
 include("app.jl")
 include("plugin_handlers.jl")
 
@@ -422,6 +424,12 @@ function __init__()
     # Shift+`.` (already mapped) and never hit `<` with shift.
     try
         Tachikoma._SHIFT_SYMBOL_MAP['<'] = '>'
+    catch
+    end
+    # Register custom themes and load config (best-effort — neither is
+    # critical to start, but both shape the look of the live() UI).
+    try
+        _init_custom_themes!()
     catch
     end
     # Tachikoma's KITTY_FUNCTIONAL_KEYS stops at 57452 (right_meta).

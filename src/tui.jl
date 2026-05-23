@@ -121,8 +121,10 @@ function live(; host::AbstractString = "127.0.0.1",
                 lookahead::Real = 0.05)
     existed = _LIVE_SCHEDULER[] !== nothing
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
+    cfg = _load_ressac_config!()
+    _apply_theme!(cfg.theme)
     try
-        Tachikoma.app(RessacApp(; scheduler=sched); fps=120)
+        Tachikoma.app(RessacApp(; scheduler=sched); fps=cfg.fps)
     finally
         existed || stop_live!()
     end
