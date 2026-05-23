@@ -262,15 +262,14 @@ function _save_synth_as!(m::LiveModel, new_name::AbstractString)
     end
     old_name = m.synth_editing
     new_name = String(new_name)
-    # Rewrite the SynthDef name in every line so the new file is
-    # self-consistent — old name as a value, new name as a Symbol.
+    # Rewrite `SynthDef(\old_name` → `SynthDef(\new_name` line by line.
+    # Use plain-string (not Regex) replace so backslash escapes don't
+    # double-up — the regex/SubstitutionString machinery treats `\` in
+    # the replacement as a capture reference and was outputting `\\`.
     synth_lines, _, _ = _synth_buffer_view(m)
-    rewritten = String[]
-    pattern = Regex("SynthDef\\(\\\\$(old_name)\\b")
-    replacement = "SynthDef(\\\\$(new_name)"
-    for line in synth_lines
-        push!(rewritten, replace(line, pattern => replacement))
-    end
+    needle  = "SynthDef(\\$(old_name)"
+    rebuild = "SynthDef(\\$(new_name)"
+    rewritten = [replace(line, needle => rebuild) for line in synth_lines]
     # Write the rewritten source into the focused buffer + rename
     # m.synth_editing so :save-synth machinery targets the new name.
     if m.focus === :synth
