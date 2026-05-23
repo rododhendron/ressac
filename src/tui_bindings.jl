@@ -611,6 +611,14 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _snippet_insert!(m, mt.captures[1])
     elseif body == "snippets"
         _list_snippets!(m)
+    elseif (mt = match(r"^synth\s+(\w+)$", body)) !== nothing
+        _enter_synth_edit!(m, mt.captures[1])
+    elseif body == "back"
+        _exit_synth_edit!(m)
+    elseif body == "reload"
+        _reload_synth!(m)
+    elseif body == "save-synth"
+        _save_synth!(m)
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing

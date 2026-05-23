@@ -97,6 +97,10 @@ before SP6 (status + editor + 1 footer + logs), so a 24-line terminal
 doesn't lose any editor rows to the new visual UX.
 """
 function _footer_line(m::LiveModel)
+    if !isempty(m.synth_editing) && m.mode !== :command
+        text = "[SYNTH $(m.synth_editing).scd] :reload push  |  :save-synth persist  |  :back return"
+        return _TextLines([text], TUI.Crayon(; foreground=:yellow))
+    end
     if m.mode === :command
         text = "$(m.command_prefix)$(m.command_buffer)█"
         if !isempty(m.completions)

@@ -56,6 +56,13 @@ Backing model for the multi-line TUI. See
     # restore them; track solo set so :unsolo knows what to bring back.
     muted_patterns::Dict{Symbol,Pattern}                 = Dict{Symbol,Pattern}()
     solo_active::Set{Symbol}                             = Set{Symbol}()
+    # SP11 — SynthDef editor: when `:synth <name>` is run we stash the
+    # main pattern buffer here and the active `m.buffer` becomes the
+    # SCD source. `:back` swaps them back; `:save-synth` persists.
+    synth_editing::String                                = ""
+    synth_stash_buffer::Vector{String}                   = String[]
+    synth_stash_row::Int                                 = 1
+    synth_stash_col::Int                                 = 1
 end
 
 const _UNDO_HISTORY_LIMIT = 200
