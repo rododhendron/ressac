@@ -410,4 +410,67 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     end
 end
 
+function __init__()
+    # Patch Tachikoma's US-keyboard shift-symbol fallback to cover the
+    # `<`→`>` pair that's common outside US layouts (azerty has `<` as
+    # the base char of the key left of Z and `>` as its shifted form).
+    # On terminals that don't speak the Kitty keyboard protocol (no
+    # shifted_keycode in CSI u events), pressing Shift+`<` falls through
+    # this map; without the patch the user would see `<` again instead
+    # of `>`. Safe to set unconditionally — US layouts produce `>` from
+    # Shift+`.` (already mapped) and never hit `<` with shift.
+    try
+        Tachikoma._SHIFT_SYMBOL_MAP['<'] = '>'
+    catch
+    end
+    # Patch read_event so non-ASCII / multi-byte UTF-8 input (à, é, €,
+    # any AltGr-produced char on azerty) is decoded into one KeyEvent
+    # carrying the real codepoint. The stock implementation reads ONE
+    # byte and emits Char(byte) — for a 2-byte sequence like é
+    # (0xC3 0xA9) that produces an invalid Char(0xC3) plus a stranded
+    # continuation byte interpreted as its own keypress, hence the
+    # "strange character" the user saw.
+    _patch_tachikoma_utf8!()
+end
+
+function _patch_tachikoma_utf8!()
+    # Redefining a top-level function in another module is supported but
+    # produces a method-overwrite warning. Wrapping in a try makes it
+    # idempotent on Revise reloads and survives any future signature
+    # change in Tachikoma (we just leave the original intact then).
+    try
+        @eval Tachikoma function read_event()
+            io = _input_io()
+            bytesavailable(io) == 0 && return KeyEvent(:unknown)
+            byte = read(io, UInt8)
+            byte == 0x1b && return read_escape()
+            byte == 0x0d && return KeyEvent(:enter)
+            byte == 0x7f && return KeyEvent(:backspace)
+            byte == 0x08 && return KeyEvent(:backspace)
+            byte == 0x09 && return KeyEvent(:tab)
+            byte == 0x03 && return KeyEvent(:ctrl_c)
+            byte < 0x20  && return KeyEvent(:ctrl, Char(byte + 0x60))
+            # UTF-8 lead byte: count continuation bytes from the high bits
+            # (0b110x = 1 cont, 0b1110 = 2 cont, 0b11110 = 3 cont) and
+            # build the real codepoint.
+            if byte >= 0xC2
+                ncont = byte >= 0xF0 ? 3 : byte >= 0xE0 ? 2 : 1
+                bytes = UInt8[byte]
+                for _ in 1:ncont
+                    bytesavailable(io) == 0 && break
+                    push!(bytes, read(io, UInt8))
+                end
+                try
+                    s = String(bytes)
+                    isempty(s) || return KeyEvent(:char, first(s), key_press)
+                catch
+                end
+                return KeyEvent(:unknown)
+            end
+            return KeyEvent(Char(byte))
+        end
+    catch
+    end
+end
+
 end # module Ressac

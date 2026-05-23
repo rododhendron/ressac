@@ -54,6 +54,10 @@ non-empty), and the focus toggle for keystroke routing.
     logs::Vector{String}         = ["[INFO] Ressac live (Tachikoma) — :q to quit, e to eval, :synth <name> to design a sound"]
     quit::Bool                   = false
     tick::Int                    = 0
+    # Manual amplitude zoom for the wave scope. 1.0 = auto-normalize to
+    # the panel; >1 amplifies; <1 attenuates. Adjusted with + / - in
+    # normal mode (any focus), only meaningful while scope is :wave.
+    scope_zoom::Float64          = 1.0
 end
 
 """
@@ -112,6 +116,15 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _scope_cycle_key!(m); return
         elseif evt.char == 'm' && m.focus === :patterns
             _toggle_mute_current_line!(m); return
+        elseif evt.char == '+' && _APP_SCOPE_TYPE[] === :wave
+            m.scope_zoom = clamp(m.scope_zoom * 1.5, 0.1, 32.0)
+            _push_app_log!(m, "[INFO] scope zoom ×$(round(m.scope_zoom; digits=2))"); return
+        elseif evt.char == '-' && _APP_SCOPE_TYPE[] === :wave
+            m.scope_zoom = clamp(m.scope_zoom / 1.5, 0.1, 32.0)
+            _push_app_log!(m, "[INFO] scope zoom ×$(round(m.scope_zoom; digits=2))"); return
+        elseif evt.char == '=' && _APP_SCOPE_TYPE[] === :wave
+            m.scope_zoom = 1.0
+            _push_app_log!(m, "[INFO] scope zoom reset"); return
         end
     end
     # Tab autocomplete in :insert mode (word under cursor → registry /
@@ -911,19 +924,22 @@ function _scope_command!(m::RessacApp, type::Symbol)
 end
 
 """
-    _render_app_scope(area, buf)
+    _render_app_scope(m, area, buf)
 
 Draw the current scope frame into `area`. Pulls latest data from the
 `_APP_SCOPE_DATA` global. amp = bouncing meter; wave = braille
-waveform via Canvas; spectrum = vertical bars (1 column per band).
+waveform via Canvas (zoom from `m.scope_zoom`); spectrum = vertical
+bars (1 column per band).
 """
-function _render_app_scope(area::TK.Rect, buf::TK.Buffer)
+function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     type = _APP_SCOPE_TYPE[]
     data = _APP_SCOPE_DATA[]
     h, w = area.height, area.width
     h < 2 && return
-    # Title row.
-    title = "scope: $type   ([cycle via :scope amp/wave/spectrum/off])"
+    # Title row — show the zoom for wave so the user sees the +/-/= effect.
+    title = type === :wave ?
+        "scope: wave  zoom ×$(round(m.scope_zoom; digits=2))   (+ / - / = to adjust, S cycles)" :
+        "scope: $type   (S cycles : amp → wave → spectrum → off)"
     TK.set_string!(buf, area.x, area.y, rpad(first(title, w), w),
                    TK.tstyle(:accent, bold=true))
     body_y = area.y + 1
@@ -938,7 +954,7 @@ function _render_app_scope(area::TK.Rect, buf::TK.Buffer)
     if type === :amp
         _app_render_amp(data, body_area, buf)
     elseif type === :wave
-        _app_render_wave(data, body_area, buf)
+        _app_render_wave(data, body_area, buf; zoom = m.scope_zoom)
     elseif type === :spectrum
         _app_render_spectrum(data, body_area, buf)
     end
@@ -955,29 +971,26 @@ function _app_render_amp(data, area::TK.Rect, buf::TK.Buffer)
                    TK.tstyle(:primary))
 end
 
-function _app_render_wave(data, area::TK.Rect, buf::TK.Buffer)
-    # Use Tachikoma's Canvas: 2 dots per col, 4 dots per row — high res.
+function _app_render_wave(data, area::TK.Rect, buf::TK.Buffer; zoom::Float64 = 1.0)
     canvas = TK.Canvas(area.width, area.height; style=TK.tstyle(:primary))
     n = length(data)
     n == 0 && (TK.render(canvas, area, buf); return)
     width_dots  = area.width * 2
     height_dots = area.height * 4
-    # Adaptive peak normalize so quiet signals fill the panel.
+    # Adaptive peak normalize so quiet signals fill the panel; user zoom
+    # then multiplies on top of that. zoom=1.0 means "fill the panel";
+    # zoom>1 pushes the wave off-screen on transients (deliberate — lets
+    # the user see fine structure in quiet sections).
     peak = maximum(abs.(data); init=0.001f0)
-    scale = peak < 0.05 ? 1.0 : 1.0 / max(Float64(peak), 0.05)
-    # Centre line.
+    auto_scale = peak < 0.05 ? 1.0 : 1.0 / max(Float64(peak), 0.05)
+    scale = auto_scale * zoom
     centre_dy = height_dots ÷ 2
-    for dx in 0:(width_dots - 1)
-        TK.set_point!(canvas, dx, centre_dy)
-    end
-    # Plot.
     last_dy = centre_dy
     for dx in 0:(width_dots - 1)
         sample_idx = clamp(round(Int, dx / max(1, width_dots - 1) * (n - 1)) + 1, 1, n)
         val = clamp(Float64(data[sample_idx]) * scale, -1.0, 1.0)
         dy = clamp(round(Int, (1 - (val + 1) / 2) * (height_dots - 1)), 0, height_dots - 1)
         TK.set_point!(canvas, dx, dy)
-        # Connect with previous sample so the waveform reads as a continuous line.
         if dx > 0
             for fill_dy in min(dy, last_dy):max(dy, last_dy)
                 TK.set_point!(canvas, dx, fill_dy)
@@ -1069,7 +1082,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
 
     # Scope panel (if any)
     if scope_area !== nothing
-        _render_app_scope(scope_area, buf)
+        _render_app_scope(m, scope_area, buf)
     end
 
     # Live doc row — word under cursor → doc string
