@@ -32,6 +32,7 @@ include("tui_docs.jl")
 include("tui_synthedit.jl")
 include("tui_livedoc.jl")
 include("tui_scope.jl")
+include("synth_library.jl")
 include("app.jl")
 include("plugin_handlers.jl")
 

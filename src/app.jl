@@ -43,9 +43,12 @@ non-empty), and the focus toggle for keystroke routing.
     synth_tabs::Vector{SynthTab} = SynthTab[]
     synth_tab_idx::Int           = 0      # 1-based; 0 when no tabs open
     focus::Symbol                = :patterns
-    # Modal overlay state — `:none`, `:guide`, `:synth_guide`, `:browse`.
+    # Modal overlay state — `:none`, `:guide`, `:synth_guide`, `:browse`,
+    # `:synth_library`.
     modal::Symbol                = :none
     modal_scroll::Int            = 0
+    # Synth library picker state (only meaningful when modal === :synth_library).
+    synthlib_cursor::Int         = 1
     # Browser modal state (only meaningful when modal === :browse).
     browser_query::String        = ""
     browser_cursor::Int          = 1
@@ -438,7 +441,7 @@ const _EX_COMMAND_VERBS = String[
     "synth-guide", "browse", "doc", "starter", "scale", "cps",
     "mute", "unmute", "solo", "save-session", "load-session",
     "save-synth", "save-synth-as", "reload", "keydebug", "pause", "freeze",
-    "copylogs", "yanklogs",
+    "copylogs", "yanklogs", "synthlib", "synth-library", "lib",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -696,6 +699,8 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         m.modal = :synth_guide; m.modal_scroll = 0
     elseif cmd in ("browse", "b")
         _open_browser!(m)
+    elseif cmd in ("synthlib", "synth-library", "lib")
+        _open_synth_library!(m)
     elseif (mt = match(r"^doc\s+(\w+)$", cmd)) !== nothing
         _doc_command!(m, mt.captures[1])
     elseif cmd == "doc"
@@ -863,6 +868,61 @@ function _open_browser!(m::RessacApp)
     m.browser_cursor = 1
     m.browser_filter = :all
     m.modal_scroll = 0
+end
+
+# ---------------------------------------------------------------------
+# Synth library picker
+# ---------------------------------------------------------------------
+
+function _open_synth_library!(m::RessacApp)
+    m.modal = :synth_library
+    m.synthlib_cursor = 1
+end
+
+function _handle_synthlib_key!(m::RessacApp, evt::TK.KeyEvent)
+    n = length(_SYNTH_LIBRARY)
+    if evt.key === :escape || evt.char == 'q'
+        m.modal = :none
+    elseif evt.char == 'j' || evt.key === :down
+        m.synthlib_cursor = min(m.synthlib_cursor + 1, n)
+    elseif evt.char == 'k' || evt.key === :up
+        m.synthlib_cursor = max(m.synthlib_cursor - 1, 1)
+    elseif evt.key === :enter || evt.char == '\r' || evt.char == ' '
+        _instantiate_synth_from_library!(m)
+    end
+end
+
+"""
+    _instantiate_synth_from_library!(m)
+
+Selected library entry → write the source to plugins/user-synths/
+<name>.scd (renaming if the file already exists so we don't clobber the
+user's edits) and open it as a new synth tab. The user can iterate on
+the copy without affecting the canonical template.
+"""
+function _instantiate_synth_from_library!(m::RessacApp)
+    1 <= m.synthlib_cursor <= length(_SYNTH_LIBRARY) || return
+    entry = _SYNTH_LIBRARY[m.synthlib_cursor]
+    name = entry.name
+    dir = joinpath(pwd(), "plugins", "user-synths")
+    isdir(dir) || mkpath(dir)
+    # If <name>.scd already exists, append -2, -3, ... so we never
+    # overwrite a synth the user has been working on.
+    target = joinpath(dir, "$name.scd")
+    n = 1
+    while isfile(target)
+        n += 1
+        target = joinpath(dir, "$name-$n.scd")
+    end
+    final_name = n == 1 ? name : "$name-$n"
+    # The SynthDef declaration inside `source` is hard-coded to the
+    # original name; rewrite it so the file's name matches the
+    # SynthDef name (SC needs them to match for the load path).
+    src = replace(entry.source, "SynthDef(\\$(entry.name)" => "SynthDef(\\$(final_name)")
+    write(target, src)
+    m.modal = :none
+    _open_synth_tab!(m, final_name)
+    _push_app_log!(m, "[INFO] synth library: instantiated $final_name from \"$(entry.name)\"")
 end
 
 function _browser_entries(m::RessacApp)
@@ -1073,6 +1133,9 @@ _modal_lines(m::RessacApp) =
 function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     if m.modal === :browse
         _handle_browser_key!(m, evt)
+        return
+    elseif m.modal === :synth_library
+        _handle_synthlib_key!(m, evt)
         return
     end
     lines = _modal_lines(m)
@@ -1347,9 +1410,45 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # Modal overlay (after everything else so it sits on top).
     if m.modal === :browse
         _render_browser_modal!(m, f.area, buf)
+    elseif m.modal === :synth_library
+        _render_synth_library_modal!(m, f.area, buf)
     elseif m.modal !== :none
         _render_modal!(m, f.area, buf)
     end
+end
+
+"""
+    _render_synth_library_modal!(m, area, buf)
+
+Centered list of `_SYNTH_LIBRARY` entries. Each row shows the synth
+name, its category, and the one-line description. Cursor row inverted
+so the user can see what Enter will instantiate.
+"""
+function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    aw, ah = area.width, area.height
+    box_w = max(60, min(aw - 4, 100))
+    box_h = max(10, min(ah - 4, length(_SYNTH_LIBRARY) + 6))
+    box_x = area.x + max(0, (aw - box_w) ÷ 2)
+    box_y = area.y + max(0, (ah - box_h) ÷ 2)
+    # Title.
+    suffix_w = max(0, box_w - 41)
+    title = "┌ synth library — j/k move, Enter open, q close " * "─" ^ suffix_w * "┐"
+    TK.set_string!(buf, box_x, box_y, first(title, box_w),
+                   TK.tstyle(:title, bold=true))
+    # Body rows.
+    for (i, entry) in enumerate(_SYNTH_LIBRARY)
+        i + 1 >= box_h - 1 && break
+        is_cur = i == m.synthlib_cursor
+        marker = is_cur ? "▶ " : "  "
+        text = "$marker$(rpad(entry.name, 12)) [$(rpad(entry.category, 5))]  $(entry.description)"
+        style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
+        line = "│ " * first(text, box_w - 4) * " │"
+        TK.set_string!(buf, box_x, box_y + i, line, style)
+    end
+    # Footer.
+    foot = "└" * "─" ^ (box_w - 2) * "┘"
+    TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
+                   TK.tstyle(:title, bold=true))
 end
 
 function _push_app_log!(m::RessacApp, line::AbstractString)
