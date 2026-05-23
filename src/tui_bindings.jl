@@ -221,6 +221,19 @@ function _handle_normal!(m::LiveModel, evt)
         m.pending_chord = :ctrl_w
         return
     end
+    # Tab in normal mode swaps focus when the synth side panel is open.
+    # Some terminals swallow Ctrl-W (tmux, GNOME Terminal "close tab"),
+    # so Tab is the reliable backup.
+    if code == "Tab" && !isempty(m.synth_editing)
+        _swap_focus!(m)
+        return
+    end
+    # `T` always triggers a synth preview while editing — works from
+    # either pane, doesn't depend on getting K right.
+    if code == "T" && !isempty(m.synth_editing)
+        _test_synth!(m)
+        return
+    end
 
     # Mutating commands snapshot first so `u` undoes the next change as a
     # whole logical step (entering insert mode is the boundary).
