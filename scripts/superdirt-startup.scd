@@ -98,21 +98,23 @@ s.waitForBoot({
     // auto-injection of freq/sustain/gain so the SynthDef's own param
     // defaults are the baseline. msg arrives as
     // [\s, name, key1, val1, key2, val2, ...] — explicit pairs only.
-    ~ressacTrackSynth = IdentityDictionary.new;  // name → currently-playing Synth
+    // No previous-instance tracking: each pattern hit spawns a fresh
+    // Synth and the SynthDef's own doneAction (typically `2` via
+    // Env.linen / Env.adsr) frees it once the envelope completes. Cutting
+    // the previous note chopped off the release tail the user designed
+    // into their SynthDef — letting notes overlap is how the release is
+    // actually heard, and the natural polyphony matches Tidal/SuperDirt
+    // semantics for user synths.
     OSCdef(\ressacPlay, { |msg|
         var name = msg[1].asString.asSymbol;
         var args = List.new;
         var i = 2;
-        var existing;
         while ({ i < msg.size }) {
             args.add(msg[i].asString.asSymbol);
             args.add(msg[i+1]);
             i = i + 2;
         };
-        ("[ressac] play " ++ name).postln;
-        existing = ~ressacTrackSynth.at(name);
-        if(existing.notNil) { existing.free };
-        ~ressacTrackSynth.put(name, Synth(name, args.asArray ++ [\out, 0]));
+        Synth(name, args.asArray ++ [\out, 0]);
     }, '/ressac/play');
 
     // ── Live scope: tap audio bus 0 + push analysis frames to Ressac ──
@@ -126,6 +128,11 @@ s.waitForBoot({
         ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
     }, '/ressac/scope/amp');
     OSCFunc({ |msg|
+        // Once-per-second heartbeat (60Hz → mod 60) so the user can see
+        // in the SC log whether wave packets are actually being produced.
+        if((msg[2] ? 0) % 60 == 0) {
+            ("[ressac] scope/wave forwarding " ++ (msg.size - 3).asString ++ " samples").postln;
+        };
         ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
     }, '/ressac/scope/wave');
     OSCFunc({ |msg|
@@ -149,9 +156,15 @@ s.waitForBoot({
         { type == \wave } {
             ~ressacScopeSynth = {
                 var in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
-                // 128 taps spaced 0.25 ms apart → 32 ms window.
-                var samples = Array.fill(128, { |i|
-                    DelayN.ar(in, 0.040, i * 0.00025)
+                // 64 taps spaced 0.5 ms apart → 32 ms window. Wrapping ar
+                // through A2K.kr is the explicit-conversion form
+                // SendReply.kr expects; passing raw ar arrays has been
+                // unreliable across SC versions (the trigger samples
+                // each value but the multichannel expansion of an ar
+                // array inside a kr SendReply silently drops on some
+                // builds).
+                var samples = Array.fill(64, { |i|
+                    A2K.kr(DelayN.ar(in, 0.04, i * 0.0005))
                 });
                 SendReply.kr(Impulse.kr(60), '/ressac/scope/wave', samples);
                 Silent.ar(1)

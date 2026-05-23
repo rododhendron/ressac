@@ -122,6 +122,14 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             return
         end
     end
+    # Tab in :command (ex-command line, ":synth wob...") autocompletes
+    # the command verb itself OR the argument (synth/sample/instrument
+    # name) when one already has been typed.
+    if is_press && evt.key === :tab && ed.mode === :command
+        if _try_ex_autocomplete!(ed)
+            return
+        end
+    end
     TK.handle_key!(ed, evt)
     cmd = TK.pending_command!(ed)
     isempty(cmd) || _handle_ex_command!(m, cmd)
@@ -201,6 +209,117 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     ed.cursor_row = row
     ed.cursor_col = start_col + length(replacement)
     return true
+end
+
+# Ex-command verbs (`:foo`). Kept here, not derived from the dispatch
+# table, because the dispatch lives inside _handle_ex_command! as a chain
+# of `match()` calls; centralising the list keeps autocomplete and the
+# real handler in step manually — when adding a verb, add it here too.
+const _EX_COMMAND_VERBS = String[
+    "q", "quit", "synth", "back", "close", "w", "write", "test", "test-raw",
+    "tabs", "tabnext", "tabprev", "tabprevious", "scope", "guide",
+    "synth-guide", "browse", "doc", "starter", "scale", "cps",
+    "mute", "unmute", "solo", "save-session", "load-session",
+    "save-synth", "save-synth-as", "reload",
+]
+
+# Verbs that take a name argument autocompleted against the synth / sample
+# / instrument registries (so `:synth wo<Tab>` finds wob1, `:doc gai<Tab>`
+# finds gain). The empty value `:_all` is a sentinel — see the lookup.
+const _EX_COMMAND_ARG_KIND = Dict{String,Symbol}(
+    "synth"          => :synths,
+    "save-synth-as"  => :synths,
+    "browse"         => :all,
+    "doc"            => :all,
+    "starter"        => :starters,
+    "scale"          => :scales,
+    "mute"           => :slots,
+    "unmute"         => :slots,
+    "solo"           => :slots,
+    "scope"          => :scopes,
+)
+
+const _EX_COMMAND_ARG_LITERALS = Dict{String,Vector{String}}(
+    "scope" => ["off", "amp", "wave", "spectrum"],
+)
+
+"""
+    _try_ex_autocomplete!(ed) -> Bool
+
+Tab inside the ex-command line. Splits `command_buffer` on the first
+space: no space → autocomplete the verb; with space → autocomplete the
+argument against the verb-specific candidate set. Returns true if the
+buffer was rewritten (and the Tab consumed).
+"""
+function _try_ex_autocomplete!(ed::TK.CodeEditor)
+    buf = String(ed.command_buffer)
+    isempty(buf) && return false
+    sp = findfirst(' ', buf)
+    if sp === nothing
+        # Autocomplete the verb itself.
+        partial = buf
+        scored = Tuple{Int,Int,String}[]
+        for verb in _EX_COMMAND_VERBS
+            sc = _fuzzy_score(partial, verb)
+            sc === nothing && continue
+            push!(scored, (sc, length(verb), verb))
+        end
+        isempty(scored) && return false
+        sort!(scored, by = t -> (t[1], t[2], t[3]))
+        replacement = scored[1][3]
+        empty!(ed.command_buffer)
+        append!(ed.command_buffer, collect(replacement))
+        return true
+    else
+        verb = buf[1:sp-1]
+        rest = buf[sp+1:end]
+        # Last token in `rest` is the partial to complete; earlier tokens
+        # are kept verbatim. `_doc` etc. take just one arg, but being
+        # token-aware here is the right shape for multi-arg verbs later.
+        toks = split(rest, ' '; keepempty=true)
+        partial = isempty(toks) ? "" : String(toks[end])
+        candidates = _ex_arg_candidates(verb)
+        isempty(candidates) && return false
+        scored = Tuple{Int,Int,String}[]
+        for cand in candidates
+            sc = _fuzzy_score(partial, cand)
+            sc === nothing && continue
+            push!(scored, (sc, length(cand), cand))
+        end
+        isempty(scored) && return false
+        sort!(scored, by = t -> (t[1], t[2], t[3]))
+        replacement = scored[1][3]
+        toks[end] = replacement
+        new_rest = join(toks, ' ')
+        new_buf = verb * " " * new_rest
+        empty!(ed.command_buffer)
+        append!(ed.command_buffer, collect(new_buf))
+        return true
+    end
+end
+
+function _ex_arg_candidates(verb::AbstractString)
+    kind = get(_EX_COMMAND_ARG_KIND, String(verb), nothing)
+    kind === nothing && return String[]
+    if kind === :scopes
+        return _EX_COMMAND_ARG_LITERALS["scope"]
+    elseif kind === :synths
+        return String.(keys(_SYNTH_REGISTRY))
+    elseif kind === :starters
+        return collect(keys(_STARTER_PACKS))
+    elseif kind === :scales
+        return String.(keys(_SCALES))
+    elseif kind === :slots
+        return [string('d', i) for i in 1:16]   # :mute d3 etc.
+    elseif kind === :all
+        out = String[]
+        append!(out, String.(keys(_SYNTH_REGISTRY)))
+        append!(out, String.(keys(_INSTRUMENT_REGISTRY)))
+        append!(out, String.(keys(_SAMPLE_REGISTRY)))
+        unique!(out)
+        return out
+    end
+    return String[]
 end
 
 const _ACTIVE_SLOT_RX_APP   = r"^\s*@(d\d+)\b"
