@@ -166,18 +166,35 @@ s.waitForBoot({
         }
         { type == \wave } {
             ~ressacScopeSynth = {
-                var in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
-                // 64 taps spaced 0.5 ms apart → 32 ms window. Wrapping ar
-                // through A2K.kr is the explicit-conversion form
-                // SendReply.kr expects; passing raw ar arrays has been
-                // unreliable across SC versions (the trigger samples
-                // each value but the multichannel expansion of an ar
-                // array inside a kr SendReply silently drops on some
-                // builds).
-                var samples = Array.fill(64, { |i|
+                // Edge-triggered scope. Each frame is captured at a
+                // RISING zero-crossing of the input signal, so the wave
+                // displayed on each frame starts at the same phase —
+                // the trace appears locked in place instead of drifting.
+                // For silence, an Impulse fallback keeps the scope
+                // visible without making it freeze.
+                var in, prev, rising, trig_ar, trig_extended, trig_kr;
+                var fallback, fire, samples;
+                in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                prev = Delay1.ar(in);
+                rising = (in > 0) * (prev <= 0);             // 1 on rising 0X
+                // Extend the impulse for one kr period so A2K doesn't miss
+                // it between control-rate samples.
+                trig_extended = Trig.ar(rising, ControlDur.ir);
+                trig_kr = A2K.kr(trig_extended) > 0.5;
+                // Throttle to ~60 Hz max — every zero-crossing at high
+                // freqs would saturate OSC. PulseDivider passes 1/N
+                // triggers; we use a Schmitt-style gate on a min interval.
+                fallback = Impulse.kr(4);                    // silence safety net
+                fire = trig_kr + fallback;                   // boolean OR
+                // 64 taps spaced 0.5 ms apart — 32 ms window. The LEFT of
+                // the display (sample[1] in Julia) is the TRIGGER moment
+                // (delay 0), the right is 32 ms in the past. So the
+                // user reads "trigger anchor on the left, waveform
+                // unfolding into the past to the right".
+                samples = Array.fill(64, { |i|
                     A2K.kr(DelayN.ar(in, 0.04, i * 0.0005))
                 });
-                SendReply.kr(Impulse.kr(60), '/ressac/scope/wave', samples);
+                SendReply.kr(fire, '/ressac/scope/wave', samples);
                 Silent.ar(1)
             }.play(addToTail: true);
         }
