@@ -138,9 +138,117 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _save_current_synth!(m; new_name = mt.captures[1])
     elseif cmd in ("test", "t")
         _synth_pane_open(m) && _test_current_synth!(m)
+    elseif (mt = match(r"^scope\s+(\w+)$", cmd)) !== nothing
+        _scope_command!(m, Symbol(mt.captures[1]))
+    elseif cmd == "scope"
+        _scope_command!(m, :off)
     else
         _push_app_log!(m, "[WARN] unknown command: :$cmd")
     end
+end
+
+function _scope_command!(m::RessacApp, type::Symbol)
+    if _app_scope_set!(type)
+        _push_app_log!(m, "[INFO] :scope $type")
+    else
+        _push_app_log!(m, "[ERROR] :scope — unknown type or no live session")
+    end
+end
+
+"""
+    _render_app_scope(area, buf)
+
+Draw the current scope frame into `area`. Pulls latest data from the
+`_APP_SCOPE_DATA` global. amp = bouncing meter; wave = braille
+waveform via Canvas; spectrum = vertical bars (1 column per band).
+"""
+function _render_app_scope(area::TK.Rect, buf::TK.Buffer)
+    type = _APP_SCOPE_TYPE[]
+    data = _APP_SCOPE_DATA[]
+    h, w = area.height, area.width
+    h < 2 && return
+    # Title row.
+    title = "scope: $type   ([cycle via :scope amp/wave/spectrum/off])"
+    TK.set_string!(buf, area.x, area.y, rpad(first(title, w), w),
+                   TK.tstyle(:accent, bold=true))
+    body_y = area.y + 1
+    body_h = h - 1
+    body_area = TK.Rect(area.x, body_y, w, body_h)
+    if isempty(data)
+        TK.set_string!(buf, area.x, body_y,
+                       "  (waiting for audio — press T to test the synth)",
+                       TK.tstyle(:text_dim))
+        return
+    end
+    if type === :amp
+        _app_render_amp(data, body_area, buf)
+    elseif type === :wave
+        _app_render_wave(data, body_area, buf)
+    elseif type === :spectrum
+        _app_render_spectrum(data, body_area, buf)
+    end
+end
+
+function _app_render_amp(data, area::TK.Rect, buf::TK.Buffer)
+    amp = clamp(Float64(data[1]), 0.0, 1.0)
+    bar_w = floor(Int, amp * area.width)
+    bar = "▌" ^ bar_w
+    db = amp > 0 ? round(20 * log10(amp); digits=1) : -Inf
+    label = " amp $(round(amp; digits=3)) ($(db) dB)"
+    TK.set_string!(buf, area.x, area.y,
+                   rpad(bar * label, area.width),
+                   TK.tstyle(:primary))
+end
+
+function _app_render_wave(data, area::TK.Rect, buf::TK.Buffer)
+    # Use Tachikoma's Canvas: 2 dots per col, 4 dots per row — high res.
+    canvas = TK.Canvas(area.width, area.height; style=TK.tstyle(:primary))
+    n = length(data)
+    n == 0 && (TK.render(canvas, area, buf); return)
+    width_dots  = area.width * 2
+    height_dots = area.height * 4
+    # Adaptive peak normalize so quiet signals fill the panel.
+    peak = maximum(abs.(data); init=0.001f0)
+    scale = peak < 0.05 ? 1.0 : 1.0 / max(Float64(peak), 0.05)
+    # Centre line.
+    centre_dy = height_dots ÷ 2
+    for dx in 0:(width_dots - 1)
+        TK.set_point!(canvas, dx, centre_dy)
+    end
+    # Plot.
+    last_dy = centre_dy
+    for dx in 0:(width_dots - 1)
+        sample_idx = clamp(round(Int, dx / max(1, width_dots - 1) * (n - 1)) + 1, 1, n)
+        val = clamp(Float64(data[sample_idx]) * scale, -1.0, 1.0)
+        dy = clamp(round(Int, (1 - (val + 1) / 2) * (height_dots - 1)), 0, height_dots - 1)
+        TK.set_point!(canvas, dx, dy)
+        # Connect with previous sample so the waveform reads as a continuous line.
+        if dx > 0
+            for fill_dy in min(dy, last_dy):max(dy, last_dy)
+                TK.set_point!(canvas, dx, fill_dy)
+            end
+        end
+        last_dy = dy
+    end
+    TK.render(canvas, area, buf)
+end
+
+function _app_render_spectrum(data, area::TK.Rect, buf::TK.Buffer)
+    canvas = TK.Canvas(area.width, area.height; style=TK.tstyle(:primary))
+    n = length(data)
+    n == 0 && (TK.render(canvas, area, buf); return)
+    width_dots  = area.width * 2
+    height_dots = area.height * 4
+    bands = min(n, width_dots)
+    for band_idx in 1:bands
+        val = clamp(Float64(data[band_idx]), 0.0, 1.0)
+        bar_dy = clamp(round(Int, val * (height_dots - 1)), 0, height_dots - 1)
+        dx = (band_idx - 1) * (width_dots ÷ max(1, bands))
+        for h in 0:bar_dy
+            TK.set_point!(canvas, dx, height_dots - 1 - h)
+        end
+    end
+    TK.render(canvas, area, buf)
 end
 
 function TK.view(m::RessacApp, f::TK.Frame)
@@ -151,12 +259,21 @@ function TK.view(m::RessacApp, f::TK.Frame)
     end
     buf = f.buffer
 
-    rows = TK.split_layout(
-        TK.Layout(TK.Vertical, [TK.Fixed(1), TK.Fill(), TK.Fixed(1), TK.Fixed(8)]),
-        f.area,
-    )
+    scope_active = _APP_SCOPE_TYPE[] !== :off
+    scope_height = scope_active ? 14 : 0
+    constraints = scope_active ?
+        [TK.Fixed(1), TK.Fill(), TK.Fixed(scope_height), TK.Fixed(1), TK.Fixed(8)] :
+        [TK.Fixed(1), TK.Fill(), TK.Fixed(1), TK.Fixed(8)]
+    rows = TK.split_layout(TK.Layout(TK.Vertical, constraints), f.area)
     length(rows) < 4 && return
-    status_area, body_area, footer_area, logs_area = rows[1], rows[2], rows[3], rows[4]
+    if scope_active
+        status_area, body_area, scope_area, footer_area, logs_area =
+            rows[1], rows[2], rows[3], rows[4], rows[5]
+    else
+        status_area, body_area, footer_area, logs_area =
+            rows[1], rows[2], rows[3], rows[4]
+        scope_area = nothing
+    end
 
     # Status bar
     sched = m.scheduler
@@ -192,6 +309,11 @@ function TK.view(m::RessacApp, f::TK.Frame)
                 TK.render(_current_synth_tab(m).editor, cols[2], buf)
             end
         end
+    end
+
+    # Scope panel (if any)
+    if scope_area !== nothing
+        _render_app_scope(scope_area, buf)
     end
 
     # Footer (mode + hint)

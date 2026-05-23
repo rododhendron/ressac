@@ -9,6 +9,13 @@ const _SCOPE_LISTENER_TASK = Ref{Union{Task,Nothing}}(nothing)
 const _SCOPE_LISTENER_SOCKET = Ref{Union{UDPSocket,Nothing}}(nothing)
 const _SCOPE_LISTENER_RUNNING = Threads.Atomic{Bool}(false)
 const _SCOPE_LIVE_MODEL = Ref{Union{LiveModel,Nothing}}(nothing)
+# Model-agnostic scope state — used by the new Tachikoma app (which
+# doesn't have a LiveModel reference). Always populated by the
+# listener; old LiveModel-based code keeps using m.scope_data via
+# the existing path.
+const _APP_SCOPE_DATA  = Ref{Vector{Float32}}(Float32[])
+const _APP_SCOPE_TYPE  = Ref{Symbol}(:off)
+const _APP_SCOPE_TS    = Ref{Float64}(0.0)
 
 """
     _scope_set!(m, type)
@@ -106,7 +113,6 @@ function _handle_scope_packet!(m::LiveModel, bytes::Vector{UInt8})
     catch
         return
     end
-    # Strip SendReply's leading nodeID + replyID; keep the floats.
     floats = Float32[]
     skipped = 0
     for v in msg.args
@@ -119,8 +125,74 @@ function _handle_scope_packet!(m::LiveModel, bytes::Vector{UInt8})
         end
     end
     isempty(floats) && return
+    # Update the model-agnostic globals (used by the new Tachikoma app)
+    # AND the LiveModel fields (back-compat with the old TUI).
+    _APP_SCOPE_DATA[] = floats
+    _APP_SCOPE_TS[]   = time()
     m.scope_data = floats
     m.scope_last_update = time()
+end
+
+"""
+    _app_scope_set!(type)
+
+Set the scope type for the new Tachikoma app. Doesn't need a model
+reference; the listener writes to globals and the app reads from
+them at render time. `type ∈ (:off, :amp, :wave, :spectrum)`.
+"""
+function _app_scope_set!(type::Symbol)
+    type in _SCOPE_CYCLE_ORDER ||
+        return false
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return false
+    if type !== :off
+        _ensure_app_scope_listener!()
+    end
+    _APP_SCOPE_TYPE[] = type
+    empty!(_APP_SCOPE_DATA[])
+    send_osc(sched.osc, encode(OSCMessage("/ressac/scope", Any[String(type)])))
+    return true
+end
+
+function _ensure_app_scope_listener!()
+    _SCOPE_LISTENER_SOCKET[] !== nothing && return
+    try
+        sock = UDPSocket()
+        bind(sock, ip"127.0.0.1", _SCOPE_LISTEN_PORT)
+        _SCOPE_LISTENER_SOCKET[] = sock
+        _SCOPE_LISTENER_RUNNING[] = true
+        _SCOPE_LISTENER_TASK[] = Threads.@spawn _app_scope_listener_loop()
+    catch
+    end
+end
+
+function _app_scope_listener_loop()
+    sock = _SCOPE_LISTENER_SOCKET[]
+    sock === nothing && return
+    while _SCOPE_LISTENER_RUNNING[]
+        try
+            data = recv(sock)
+            msg = try
+                decode_message(data)
+            catch
+                continue
+            end
+            floats = Float32[]
+            skipped = 0
+            for v in msg.args
+                if v isa Number
+                    if skipped < 2 && v isa Integer
+                        skipped += 1
+                        continue
+                    end
+                    push!(floats, Float32(v))
+                end
+            end
+            isempty(floats) || (_APP_SCOPE_DATA[] = floats; _APP_SCOPE_TS[] = time())
+        catch err
+            err isa InterruptException && break
+        end
+    end
 end
 
 # ---------------------------------------------------------------------
