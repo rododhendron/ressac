@@ -10,12 +10,25 @@ using Tachikoma
 const TK = Tachikoma
 
 """
+    SynthTab
+
+One open synth in the side panel. Holds the editable file name and a
+CodeEditor with its own buffer + cursor. The side panel is open when
+`RessacApp.synth_tabs` is non-empty.
+"""
+mutable struct SynthTab
+    name::String
+    editor::TK.CodeEditor
+end
+
+"""
     RessacApp
 
-Top-level Tachikoma model. Wraps the live scheduler + a CodeEditor for
-the pattern buffer. Other panels (synth edit, scope, modals) get added
-in subsequent commits.
+Top-level Tachikoma model. Holds the live scheduler, a patterns
+CodeEditor, an optional stack of synth tabs (side panel when
+non-empty), and the focus toggle for keystroke routing.
 """
+
 @kwdef mutable struct RessacApp <: TK.Model
     scheduler::Scheduler
     editor::TK.CodeEditor = TK.CodeEditor(;
@@ -27,45 +40,73 @@ in subsequent commits.
         tick     = 0,
         mode     = :normal,
     )
-    # Synth editor — nothing when the side panel is closed.
-    synth_editor::Union{Nothing, TK.CodeEditor} = nothing
-    synth_name::String   = ""
-    focus::Symbol        = :patterns   # :patterns | :synth
-    logs::Vector{String} = ["[INFO] Ressac live (Tachikoma) — :q to quit, e to eval, :synth <name> to design a sound"]
-    quit::Bool           = false
-    tick::Int            = 0
+    synth_tabs::Vector{SynthTab} = SynthTab[]
+    synth_tab_idx::Int           = 0      # 1-based; 0 when no tabs open
+    focus::Symbol                = :patterns
+    logs::Vector{String}         = ["[INFO] Ressac live (Tachikoma) — :q to quit, e to eval, :synth <name> to design a sound"]
+    quit::Bool                   = false
+    tick::Int                    = 0
 end
 
 """
     _active_editor(m) -> CodeEditor
 
-The currently-focused editor (patterns or synth).
+The currently-focused editor (patterns OR active synth tab).
 """
-_active_editor(m::RessacApp) = m.focus === :synth && m.synth_editor !== nothing ?
-                                m.synth_editor : m.editor
+function _active_editor(m::RessacApp)
+    if m.focus === :synth && !isempty(m.synth_tabs)
+        return m.synth_tabs[m.synth_tab_idx].editor
+    end
+    return m.editor
+end
+
+_synth_pane_open(m::RessacApp) = !isempty(m.synth_tabs)
+_current_synth_tab(m::RessacApp) = m.synth_tabs[m.synth_tab_idx]
 
 TK.should_quit(m::RessacApp) = m.quit
 
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
-    # Tab in normal mode swaps focus between the patterns and synth
-    # panes (intercept BEFORE the editor consumes the keystroke).
     ed = _active_editor(m)
+    # Tab in :normal swaps focus between patterns and the active synth
+    # tab. Only meaningful when at least one synth tab is open.
     if evt.key === :tab && ed.mode === :normal &&
-       m.synth_editor !== nothing && evt.action === TK.key_press
-        m.focus = m.focus === :patterns ? :synth : :patterns
-        m.editor.focused        = (m.focus === :patterns)
-        m.synth_editor.focused  = (m.focus === :synth)
+       _synth_pane_open(m) && evt.action === TK.key_press
+        _swap_focus!(m)
         return
+    end
+    # gt / gT cycle synth tabs while focused on the synth pane (vim
+    # convention). Handled directly because the editor consumes 'g'
+    # otherwise — we peek at the next char via Tachikoma's pending_key.
+    if ed.mode === :normal && evt.action === TK.key_press &&
+       m.focus === :synth && length(m.synth_tabs) > 1
+        if evt.char == 't' && ed.pending_key == 'g'
+            ed.pending_key = nothing
+            _cycle_synth_tab!(m; dir=+1)
+            return
+        elseif evt.char == 'T' && ed.pending_key == 'g'
+            ed.pending_key = nothing
+            _cycle_synth_tab!(m; dir=-1)
+            return
+        end
     end
     TK.handle_key!(ed, evt)
     cmd = TK.pending_command!(ed)
     isempty(cmd) || _handle_ex_command!(m, cmd)
-    # Normal-mode chars trigger custom actions (eval, test synth).
     if ed.mode === :normal && evt.action === TK.key_press
         if evt.char == 'e'
             _eval_current_line!(m)
-        elseif evt.char == 'T' && m.synth_editor !== nothing
+        elseif evt.char == 'T' && _synth_pane_open(m)
             _test_current_synth!(m)
+        end
+    end
+end
+
+function _swap_focus!(m::RessacApp)
+    m.focus = m.focus === :patterns ? :synth : :patterns
+    m.editor.focused = (m.focus === :patterns)
+    if _synth_pane_open(m)
+        for (i, tab) in enumerate(m.synth_tabs)
+            tab.editor.focused = (m.focus === :synth && i == m.synth_tab_idx)
         end
     end
 end
@@ -80,15 +121,23 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     if cmd in ("q", "quit", "q!", "qa", "qa!")
         m.quit = true
     elseif (mt = match(r"^synth\s+(\w+)$", cmd)) !== nothing
-        _open_synth_pane!(m, mt.captures[1])
-    elseif cmd in ("back", "close")
+        _open_synth_tab!(m, mt.captures[1])
+    elseif cmd == "back"
         _close_synth_pane!(m)
+    elseif cmd == "close"
+        _close_active_synth_tab!(m)
+    elseif cmd == "tabs"
+        _list_synth_tabs!(m)
+    elseif cmd in ("tabnext", "tabn")
+        _cycle_synth_tab!(m; dir=+1)
+    elseif cmd in ("tabprev", "tabp")
+        _cycle_synth_tab!(m; dir=-1)
     elseif cmd in ("w", "save-synth")
         _save_current_synth!(m)
     elseif (mt = match(r"^w\s+(\w+)$", cmd)) !== nothing
         _save_current_synth!(m; new_name = mt.captures[1])
     elseif cmd in ("test", "t")
-        m.synth_editor !== nothing && _test_current_synth!(m)
+        _synth_pane_open(m) && _test_current_synth!(m)
     else
         _push_app_log!(m, "[WARN] unknown command: :$cmd")
     end
@@ -97,7 +146,9 @@ end
 function TK.view(m::RessacApp, f::TK.Frame)
     m.tick += 1
     m.editor.tick = m.tick
-    m.synth_editor !== nothing && (m.synth_editor.tick = m.tick)
+    for tab in m.synth_tabs
+        tab.editor.tick = m.tick
+    end
     buf = f.buffer
 
     rows = TK.split_layout(
@@ -110,27 +161,49 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # Status bar
     sched = m.scheduler
     status = "ressac | $(round(sched.cps; digits=3)) cps | ev:$(sched.events_shipped[])"
-    m.synth_editor !== nothing && (status *= " | synth: $(m.synth_name).scd")
+    if _synth_pane_open(m)
+        status *= " | synth: $(_current_synth_tab(m).name).scd"
+        if length(m.synth_tabs) > 1
+            status *= " [tab $(m.synth_tab_idx)/$(length(m.synth_tabs))]"
+        end
+    end
     TK.set_string!(buf, status_area.x, status_area.y,
                    rpad(status, status_area.width), TK.tstyle(:title, bold=true))
 
-    # Editor body — split horizontally when the synth panel is open.
-    if m.synth_editor === nothing
+    # Editor body — split horizontally when at least one synth tab open.
+    if !_synth_pane_open(m)
         TK.render(m.editor, body_area, buf)
     else
         cols = TK.split_layout(TK.Layout(TK.Horizontal, [TK.Fill(), TK.Fill()]), body_area)
         if length(cols) >= 2
-            TK.render(m.editor,       cols[1], buf)
-            TK.render(m.synth_editor, cols[2], buf)
+            TK.render(m.editor, cols[1], buf)
+            # Right pane: optional TabBar on top (when >1 tabs) + editor below.
+            if length(m.synth_tabs) > 1
+                synth_rows = TK.split_layout(
+                    TK.Layout(TK.Vertical, [TK.Fixed(1), TK.Fill()]), cols[2])
+                if length(synth_rows) >= 2
+                    bar = TK.TabBar([tab.name for tab in m.synth_tabs];
+                                    active  = m.synth_tab_idx,
+                                    focused = (m.focus === :synth))
+                    TK.render(bar, synth_rows[1], buf)
+                    TK.render(_current_synth_tab(m).editor, synth_rows[2], buf)
+                end
+            else
+                TK.render(_current_synth_tab(m).editor, cols[2], buf)
+            end
         end
     end
 
     # Footer (mode + hint)
     ed = _active_editor(m)
     mode_label = uppercase(String(ed.mode))
-    footer = m.synth_editor === nothing ?
-        " [$mode_label]  e=eval  i=insert  Esc=normal  :synth <name>  :q=quit" :
+    footer = if !_synth_pane_open(m)
+        " [$mode_label]  e=eval  i=insert  Esc=normal  :synth <name>  :q=quit"
+    elseif length(m.synth_tabs) > 1
+        " [$mode_label @ $(m.focus)]  e=eval  T=test  Tab=swap  gt/gT=cycle tab  :w save  :close drop  :back exit"
+    else
         " [$mode_label @ $(m.focus)]  e=eval  T=test  Tab=swap  :w save  :back close  :q"
+    end
     TK.set_string!(buf, footer_area.x, footer_area.y,
                    rpad(footer, footer_area.width), TK.tstyle(:accent))
 
@@ -182,17 +255,25 @@ _app_synth_path(name::AbstractString) =
     joinpath(pwd(), "plugins", "user-synths", String(name) * ".scd")
 
 """
-    _open_synth_pane!(m, name)
+    _open_synth_tab!(m, name)
 
-Open the synth side panel and load `<name>.scd` from
-`plugins/user-synths/` (or the starter template if the file doesn't
-exist yet). Focus moves to the synth pane.
+If `name` is already an open tab, switch to it. Otherwise create a
+new tab (loading the source from disk or a starter template) and
+push it onto the stack.
 """
-function _open_synth_pane!(m::RessacApp, name::AbstractString)
+function _open_synth_tab!(m::RessacApp, name::AbstractString)
     name = String(name)
+    existing = findfirst(t -> t.name == name, m.synth_tabs)
+    if existing !== nothing
+        m.synth_tab_idx = existing
+        m.focus = :synth
+        _swap_focus!(m); m.focus = :synth   # ensure the right editor has focused=true
+        _push_app_log!(m, "[INFO] switched to tab '$name'")
+        return
+    end
     path = _app_synth_path(name)
     src = isfile(path) ? read(path, String) : join(_STARTER_SYNTHDEF(name), "\n")
-    m.synth_editor = TK.CodeEditor(;
+    editor = TK.CodeEditor(;
         text  = src,
         block = TK.Block(title = "synth: $name.scd",
                          border_style = TK.tstyle(:border),
@@ -201,20 +282,67 @@ function _open_synth_pane!(m::RessacApp, name::AbstractString)
         tick    = m.tick,
         mode    = :normal,
     )
-    m.synth_name = name
+    push!(m.synth_tabs, SynthTab(name, editor))
+    m.synth_tab_idx = length(m.synth_tabs)
     m.focus = :synth
     m.editor.focused = false
-    _push_app_log!(m, "[INFO] opened synth '$name' — T to test, :w to save, Tab to swap, :back to close")
+    _swap_focus!(m); m.focus = :synth
+    _push_app_log!(m, "[INFO] opened synth '$name' — T test, :w save, Tab swap, gt cycle, :close drop")
 end
 
+"""
+    _close_synth_pane!(m)
+
+Close every tab and return focus to the patterns editor. Triggered
+by `:back`. To drop just the active tab, see `_close_active_synth_tab!`.
+"""
 function _close_synth_pane!(m::RessacApp)
-    m.synth_editor === nothing && return
-    name = m.synth_name
-    m.synth_editor = nothing
-    m.synth_name = ""
+    isempty(m.synth_tabs) && return
+    empty!(m.synth_tabs)
+    m.synth_tab_idx = 0
     m.focus = :patterns
     m.editor.focused = true
-    _push_app_log!(m, "[INFO] closed synth '$name'")
+    _push_app_log!(m, "[INFO] closed synth pane")
+end
+
+"""
+    _close_active_synth_tab!(m)
+
+Drop the active tab. If it was the last one, falls through to
+`_close_synth_pane!` (which restores focus to patterns).
+"""
+function _close_active_synth_tab!(m::RessacApp)
+    isempty(m.synth_tabs) && return
+    name = _current_synth_tab(m).name
+    deleteat!(m.synth_tabs, m.synth_tab_idx)
+    if isempty(m.synth_tabs)
+        m.synth_tab_idx = 0
+        m.focus = :patterns
+        m.editor.focused = true
+        _push_app_log!(m, "[INFO] closed last synth tab '$name'")
+    else
+        m.synth_tab_idx = clamp(m.synth_tab_idx - 1, 1, length(m.synth_tabs))
+        _swap_focus!(m); m.focus = :synth
+        _push_app_log!(m, "[INFO] closed '$name' — now on '$(_current_synth_tab(m).name)'")
+    end
+end
+
+function _cycle_synth_tab!(m::RessacApp; dir::Int = +1)
+    length(m.synth_tabs) <= 1 && return
+    n = length(m.synth_tabs)
+    m.synth_tab_idx = mod(m.synth_tab_idx + dir - 1, n) + 1
+    _swap_focus!(m); m.focus = :synth
+end
+
+function _list_synth_tabs!(m::RessacApp)
+    if isempty(m.synth_tabs)
+        _push_app_log!(m, "[INFO] no synth tabs open")
+        return
+    end
+    for (i, tab) in enumerate(m.synth_tabs)
+        marker = i == m.synth_tab_idx ? "▶" : " "
+        _push_app_log!(m, "  $marker $i. $(tab.name)")
+    end
 end
 
 """
@@ -225,15 +353,15 @@ Persist the synth source to `plugins/user-synths/<name>.scd`. If
 the new identity (rewriting the `SynthDef(\\old, ...)` declaration).
 """
 function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractString}=nothing)
-    m.synth_editor === nothing && (_push_app_log!(m, "[ERROR] :w — no synth open"); return)
-    old_name = m.synth_name
+    _synth_pane_open(m) || (_push_app_log!(m, "[ERROR] :w — no synth open"); return)
+    tab = _current_synth_tab(m)
+    old_name = tab.name
     name = new_name === nothing ? old_name : String(new_name)
-    text = TK.text(m.synth_editor)
+    text = TK.text(tab.editor)
     if new_name !== nothing
-        # Rewrite SynthDef(\old, → SynthDef(\new, in source.
         text = replace(text, "SynthDef(\\$(old_name)" => "SynthDef(\\$(name)")
-        TK.set_text!(m.synth_editor, text)
-        m.synth_name = name
+        TK.set_text!(tab.editor, text)
+        tab.name = name
     end
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
@@ -249,13 +377,13 @@ Reload the synth source on the SC side and fire a preview note via
 SynthDef is registered before the play fires.
 """
 function _test_current_synth!(m::RessacApp)
-    m.synth_editor === nothing && return
+    _synth_pane_open(m) || return
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
-    src = TK.text(m.synth_editor)
+    tab = _current_synth_tab(m)
+    src = TK.text(tab.editor)
     send_osc(sched.osc,
-             encode(OSCMessage("/ressac/reloadAndPlay",
-                                Any[m.synth_name, src])))
-    _push_app_log!(m, "[INFO] T — test $(m.synth_name)")
+             encode(OSCMessage("/ressac/reloadAndPlay", Any[tab.name, src])))
+    _push_app_log!(m, "[INFO] T — test $(tab.name)")
 end
 
