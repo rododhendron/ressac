@@ -314,12 +314,13 @@ function TUI.render(s::_SplitEditor, area::TUI.Rect, buf::TUI.Buffer)
     m = s.model
     w = TUI.width(area)
     h = TUI.height(area)
-    h < 3 && return  # need a row for titles + at least one for content
-    # Reserve a thin gutter column between the two panes.
+    h < 3 && return
     half = max(1, (w - 1) ÷ 2)
     left_w  = half
     right_w = w - half - 1
     gutter_x = TUI.left(area) + half
+    # Reserve room at the bottom of the right pane for the scope, if any.
+    scope_h = _scope_panel_height(m)
     # Title row for each pane — makes the split unambiguous: bold yellow
     # on the focused side, dim grey on the other.
     title_y = TUI.top(area)
@@ -342,12 +343,18 @@ function TUI.render(s::_SplitEditor, area::TUI.Rect, buf::TUI.Buffer)
                 TUI.Crayon(; foreground=:dark_gray))
     end
     # Content areas live below the title + underline (2 rows reserved).
+    # If scope is open, its rows come out of the right pane's bottom.
     content_top = title_y + 2
     content_h   = h - 2
-    left_content  = TUI.Rect(TUI.left(area), content_top, left_w,  content_h)
-    right_content = TUI.Rect(gutter_x + 1,   content_top, right_w, content_h)
+    right_synth_h = max(1, content_h - scope_h)
+    left_content   = TUI.Rect(TUI.left(area), content_top, left_w,  content_h)
+    right_content  = TUI.Rect(gutter_x + 1,   content_top, right_w, right_synth_h)
     TUI.render(_build_pane_for_main(m),  left_content,  buf)
     TUI.render(_build_pane_for_synth(m), right_content, buf)
+    if scope_h > 0
+        scope_area = TUI.Rect(gutter_x + 1, content_top + right_synth_h, right_w, scope_h)
+        TUI.render(_ScopePanel(m), scope_area, buf)
+    end
 end
 
 """

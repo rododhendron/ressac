@@ -115,6 +115,64 @@ s.waitForBoot({
         ~ressacTrackSynth.put(name, Synth(name, args.asArray ++ [\out, 0]));
     }, '/ressac/play');
 
+    // ── Live scope: tap audio bus 0 + push analysis frames to Ressac ──
+    // Triggered by /ressac/scope <type> where type ∈ \off, \amp, \wave,
+    // \spectrum. Each call replaces the previous scope synth. Frames
+    // are sent back via /ressac/scope/<type> at ~30 Hz to the Ressac
+    // listener (UDP port 57121).
+    ~ressacScopeAddr  = NetAddr.new("127.0.0.1", 57121);
+    ~ressacScopeSynth = nil;
+    ~ressacScopeBuf   = Buffer.alloc(s, 64);  // for waveform tap
+    OSCdef(\ressacScope, { |msg|
+        var type = msg[1].asString.asSymbol;
+        ("[ressac] scope " ++ type).postln;
+        if(~ressacScopeSynth.notNil) { ~ressacScopeSynth.free; ~ressacScopeSynth = nil };
+        case
+        { type == \off } {
+            // nothing more — synth already freed.
+        }
+        { type == \amp } {
+            ~ressacScopeSynth = {
+                var in  = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                var amp = Amplitude.kr(in, 0.01, 0.1);
+                SendReply.kr(Impulse.kr(30), '/ressac/scope/amp', amp);
+                Silent.ar(1)
+            }.play;
+        }
+        { type == \wave } {
+            ~ressacScopeSynth = {
+                var in   = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                var phasor, samples;
+                // 64-sample snapshot, refreshed every cycle of the phasor.
+                phasor = Phasor.ar(0, 1, 0, BufFrames.kr(~ressacScopeBuf.bufnum));
+                BufWr.ar(in.softclip * 0.5, ~ressacScopeBuf.bufnum, phasor);
+                samples = Array.fill(64, { |i|
+                    BufRd.kr(1, ~ressacScopeBuf.bufnum, K2A.ar(DC.ar(i)), 0, 1)
+                });
+                SendReply.kr(Impulse.kr(20), '/ressac/scope/wave', samples);
+                Silent.ar(1)
+            }.play;
+        }
+        { type == \spectrum } {
+            ~ressacScopeSynth = {
+                var in, fft, mags;
+                in = InFeedback.ar(0, 1) + InFeedback.ar(1, 1);
+                fft = FFT(LocalBuf(512), in);
+                // PV_MagAbove gives mag spectrum; we read 32 bands via PV_BinScramble?
+                // Simpler: use SpecFlatness / SpecCentroid / SpecPcile to get a few
+                // summary values, OR use Pitch/RunningSum trickery. For a quick MVP
+                // just send 16 bandpassed RMS values across the spectrum.
+                mags = Array.fill(16, { |i|
+                    var lo = 80 * (1.5 ** i);
+                    var hi = 80 * (1.5 ** (i + 1));
+                    Amplitude.kr(BPF.ar(in, (lo + hi) / 2, 1.0), 0.01, 0.1)
+                });
+                SendReply.kr(Impulse.kr(15), '/ressac/scope/spectrum', mags);
+                Silent.ar(1)
+            }.play;
+        };
+    }, '/ressac/scope');
+
     OSCdef(\ressacRegisterSample, { |msg|
         var name = msg[1].asString.asSymbol;
         var path = msg[2].asString;

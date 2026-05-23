@@ -234,6 +234,13 @@ function _handle_normal!(m::LiveModel, evt)
         _test_synth!(m)
         return
     end
+    # Scope cycle keys (only active while editing a synth).
+    if code == "]" && !isempty(m.synth_editing)
+        _scope_cycle!(m); return
+    end
+    if code == "[" && !isempty(m.synth_editing)
+        _scope_cycle_back!(m); return
+    end
 
     # Mutating commands snapshot first so `u` undoes the next change as a
     # whole logical step (entering insert mode is the boundary).
@@ -661,6 +668,10 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _test_synth!(m)
     elseif body == "test-raw"
         _test_synth!(m; raw=true)
+    elseif body == "scope" || body == "scope off"
+        _scope_set!(m, :off)
+    elseif (mt = match(r"^scope\s+(\w+)$", body)) !== nothing
+        _scope_set!(m, Symbol(mt.captures[1]))
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing

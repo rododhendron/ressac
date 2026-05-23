@@ -31,6 +31,7 @@ include("tui_browser.jl")
 include("tui_docs.jl")
 include("tui_synthedit.jl")
 include("tui_livedoc.jl")
+include("tui_scope.jl")
 include("plugin_handlers.jl")
 
 # Module includes added by upcoming milestones:

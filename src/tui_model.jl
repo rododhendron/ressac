@@ -67,6 +67,10 @@ Backing model for the multi-line TUI. See
     # holds the live `m.buffer`/`m.cursor_*` fields; the other side
     # lives in `m.synth_stash_*`. Toggle with Ctrl-w w or `:swap`.
     focus::Symbol                                        = :main   # :main | :synth
+    # SP12 — scope: live audio analysis viz inside the synth pane.
+    scope_type::Symbol                                   = :off    # :off | :amp | :wave | :spectrum
+    scope_data::Vector{Float32}                          = Float32[]
+    scope_last_update::Float64                           = 0.0
 end
 
 const _UNDO_HISTORY_LIMIT = 200
