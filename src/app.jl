@@ -54,10 +54,12 @@ non-empty), and the focus toggle for keystroke routing.
     logs::Vector{String}         = ["[INFO] Ressac live (Tachikoma) — :q to quit, e to eval, :synth <name> to design a sound"]
     quit::Bool                   = false
     tick::Int                    = 0
-    # Manual amplitude zoom for the wave scope. 1.0 = auto-normalize to
-    # the panel; >1 amplifies; <1 attenuates. Adjusted with + / - in
-    # normal mode (any focus), only meaningful while scope is :wave.
-    scope_zoom::Float64          = 1.0
+    # Manual zoom for the wave scope. Two independent axes — Y for
+    # amplitude (+ / - / =), X for time-window width (> / < / |). Both
+    # default 1.0; >1 zooms in, <1 zooms out. Only meaningful while
+    # scope is :wave and the user is in normal mode.
+    scope_zoom::Float64          = 1.0       # Y / amplitude
+    scope_zoom_x::Float64        = 1.0       # X / time
     # :keydebug toggles a verbose-input mode that pushes every KeyEvent
     # received from the terminal to the log pane. Lets the user see the
     # exact symbol + char + action for any keystroke when diagnosing
@@ -163,13 +165,19 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _toggle_mute_current_line!(m); return
         elseif evt.char == '+' && _APP_SCOPE_TYPE[] === :wave
             m.scope_zoom = clamp(m.scope_zoom * 1.5, 0.1, 32.0)
-            _push_app_log!(m, "[INFO] scope zoom ×$(round(m.scope_zoom; digits=2))"); return
+            _push_app_log!(m, "[INFO] scope Y-zoom ×$(round(m.scope_zoom; digits=2))"); return
         elseif evt.char == '-' && _APP_SCOPE_TYPE[] === :wave
             m.scope_zoom = clamp(m.scope_zoom / 1.5, 0.1, 32.0)
-            _push_app_log!(m, "[INFO] scope zoom ×$(round(m.scope_zoom; digits=2))"); return
+            _push_app_log!(m, "[INFO] scope Y-zoom ×$(round(m.scope_zoom; digits=2))"); return
         elseif evt.char == '=' && _APP_SCOPE_TYPE[] === :wave
-            m.scope_zoom = 1.0
-            _push_app_log!(m, "[INFO] scope zoom reset"); return
+            m.scope_zoom = 1.0; m.scope_zoom_x = 1.0
+            _push_app_log!(m, "[INFO] scope zoom reset (X & Y)"); return
+        elseif evt.char == '>' && _APP_SCOPE_TYPE[] === :wave
+            m.scope_zoom_x = clamp(m.scope_zoom_x * 1.5, 0.1, 32.0)
+            _push_app_log!(m, "[INFO] scope X-zoom ×$(round(m.scope_zoom_x; digits=2))"); return
+        elseif evt.char == '<' && _APP_SCOPE_TYPE[] === :wave
+            m.scope_zoom_x = clamp(m.scope_zoom_x / 1.5, 0.1, 32.0)
+            _push_app_log!(m, "[INFO] scope X-zoom ×$(round(m.scope_zoom_x; digits=2))"); return
         end
     end
     # Tab autocomplete in :insert mode (word under cursor → registry /
@@ -990,9 +998,9 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     data = _APP_SCOPE_DATA[]
     h, w = area.height, area.width
     h < 2 && return
-    # Title row — show the zoom for wave so the user sees the +/-/= effect.
+    # Title row — show the zoom for wave so the user sees the keys' effect.
     title = type === :wave ?
-        "scope: wave  zoom ×$(round(m.scope_zoom; digits=2))   (+ / - / = to adjust, S cycles)" :
+        "scope: wave  Y×$(round(m.scope_zoom; digits=2)) X×$(round(m.scope_zoom_x; digits=2))   (+/-/= amp,  >/</= time)" :
         "scope: $type   (S cycles : amp → wave → spectrum → off)"
     TK.set_string!(buf, area.x, area.y, rpad(first(title, w), w),
                    TK.tstyle(:accent, bold=true))
@@ -1008,7 +1016,8 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     if type === :amp
         _app_render_amp(data, body_area, buf)
     elseif type === :wave
-        _app_render_wave(data, body_area, buf; zoom = m.scope_zoom)
+        _app_render_wave(data, body_area, buf;
+                         zoom = m.scope_zoom, zoom_x = m.scope_zoom_x)
     elseif type === :spectrum
         _app_render_spectrum(data, body_area, buf)
     end
@@ -1025,24 +1034,36 @@ function _app_render_amp(data, area::TK.Rect, buf::TK.Buffer)
                    TK.tstyle(:primary))
 end
 
-function _app_render_wave(data, area::TK.Rect, buf::TK.Buffer; zoom::Float64 = 1.0)
+function _app_render_wave(data, area::TK.Rect, buf::TK.Buffer;
+                          zoom::Float64 = 1.0, zoom_x::Float64 = 1.0)
     canvas = TK.Canvas(area.width, area.height; style=TK.tstyle(:primary))
     n = length(data)
     n == 0 && (TK.render(canvas, area, buf); return)
     width_dots  = area.width * 2
     height_dots = area.height * 4
+    # X-zoom: keep a slice of `data` centred around the midpoint. Larger
+    # zoom_x → narrower visible slice → fewer samples stretched across
+    # the same column count, so each cycle of the waveform appears
+    # wider on screen. zoom_x<1 isn't very useful (only 64 samples
+    # arrive — you'd just be padding) but we still clamp at >=2 samples
+    # to keep the renderer's interpolation defined.
+    n_visible = clamp(round(Int, n / max(zoom_x, 0.01)), 2, n)
+    start_idx = max(1, (n - n_visible) ÷ 2 + 1)
+    end_idx   = min(n, start_idx + n_visible - 1)
+    sliced = @view data[start_idx:end_idx]
+    nv = length(sliced)
     # Adaptive peak normalize so quiet signals fill the panel; user zoom
     # then multiplies on top of that. zoom=1.0 means "fill the panel";
     # zoom>1 pushes the wave off-screen on transients (deliberate — lets
     # the user see fine structure in quiet sections).
-    peak = maximum(abs.(data); init=0.001f0)
+    peak = maximum(abs.(sliced); init=0.001f0)
     auto_scale = peak < 0.05 ? 1.0 : 1.0 / max(Float64(peak), 0.05)
     scale = auto_scale * zoom
     centre_dy = height_dots ÷ 2
     last_dy = centre_dy
     for dx in 0:(width_dots - 1)
-        sample_idx = clamp(round(Int, dx / max(1, width_dots - 1) * (n - 1)) + 1, 1, n)
-        val = clamp(Float64(data[sample_idx]) * scale, -1.0, 1.0)
+        sample_idx = clamp(round(Int, dx / max(1, width_dots - 1) * (nv - 1)) + 1, 1, nv)
+        val = clamp(Float64(sliced[sample_idx]) * scale, -1.0, 1.0)
         dy = clamp(round(Int, (1 - (val + 1) / 2) * (height_dots - 1)), 0, height_dots - 1)
         TK.set_point!(canvas, dx, dy)
         if dx > 0
