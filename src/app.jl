@@ -110,8 +110,86 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _eval_current_line!(m)
         elseif evt.char == 'T' && _synth_pane_open(m)
             _test_current_synth!(m)
+        elseif evt.char == 'K' && m.focus === :patterns
+            _preview_word_under_cursor!(m)
+        elseif evt.char == 'S' && _synth_pane_open(m)
+            _scope_cycle_key!(m)
         end
     end
+end
+
+"""
+    _preview_word_under_cursor!(m)
+
+K in normal mode — find the identifier under the cursor and ship a
+one-shot /dirt/play. Resolution order: instrument → sample → synth.
+A trailing `:N` suffix overrides the n param.
+"""
+function _preview_word_under_cursor!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    ed = _active_editor(m)
+    1 <= ed.cursor_row <= length(ed.lines) || return
+    line_chars = ed.lines[ed.cursor_row]
+    isempty(line_chars) && return
+    col = clamp(ed.cursor_col + 1, 1, length(line_chars))
+    # Word allows : suffix for variant indices.
+    is_word = c -> isletter(c) || isdigit(c) || c == '_' || c == ':'
+    start_col = col
+    while start_col > 1 && is_word(line_chars[start_col - 1])
+        start_col -= 1
+    end
+    end_col = col - 1
+    while end_col + 1 <= length(line_chars) && is_word(line_chars[end_col + 1])
+        end_col += 1
+    end
+    end_col < start_col && return
+    word = String(line_chars[start_col:end_col])
+    mt = match(r"^([A-Za-z_]\w*)(?::(\d+))?$", word)
+    mt === nothing && (_push_app_log!(m, "[WARN] K — no name at cursor"); return)
+    name = Symbol(mt.captures[1])
+    variant = mt.captures[2] === nothing ? 0 : parse(Int, mt.captures[2])
+
+    args = Any[]
+    kind = "?"
+    if (instr = instrument_info(name)) !== nothing
+        kind = "instrument"
+        has_n = false
+        for (k, v) in instr.params
+            if k == "n"
+                has_n = true
+                if variant != 0
+                    push!(args, "n"); push!(args, Int32(variant)); continue
+                end
+            end
+            converted = _osc_value(v)
+            converted === missing && continue
+            push!(args, k); push!(args, converted)
+        end
+        variant != 0 && !has_n && (push!(args, "n"); push!(args, Int32(variant)))
+    elseif sample_info(name) !== nothing
+        kind = "sample"
+        push!(args, "s"); push!(args, String(name))
+        variant != 0 && (push!(args, "n"); push!(args, Int32(variant)))
+    elseif synth_info(name) !== nothing
+        kind = "synth"
+        push!(args, "s"); push!(args, String(name))
+    else
+        _push_app_log!(m, "[WARN] K — no instrument/sample/synth '$(mt.captures[1])'")
+        return
+    end
+    push!(args, "cut"); push!(args, Int32(_PREVIEW_CUT_GROUP))
+    send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
+    _push_app_log!(m, "[INFO] K — preview $kind $(mt.captures[1])")
+end
+
+function _scope_cycle_key!(m::RessacApp)
+    order = (:off, :amp, :wave, :spectrum)
+    i = findfirst(==(_APP_SCOPE_TYPE[]), order)
+    i === nothing && (i = 1)
+    next = order[(i % length(order)) + 1]
+    _app_scope_set!(next)
+    _push_app_log!(m, "[INFO] scope → $next")
 end
 
 function _swap_focus!(m::RessacApp)
@@ -151,6 +229,8 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _save_current_synth!(m; new_name = mt.captures[1])
     elseif cmd in ("test", "t")
         _synth_pane_open(m) && _test_current_synth!(m)
+    elseif cmd == "test-raw"
+        _synth_pane_open(m) && _test_current_synth!(m; raw=true)
     elseif (mt = match(r"^scope\s+(\w+)$", cmd)) !== nothing
         _scope_command!(m, Symbol(mt.captures[1]))
     elseif cmd == "scope"
@@ -197,6 +277,10 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _solo_pattern_slot!(m, Symbol(mt.captures[1]))
     elseif cmd == "unsolo"
         _unmute_all_patterns!(m)
+    elseif (mt = match(r"^save-session\s+(\S+)$", cmd)) !== nothing
+        _save_session_app!(m, mt.captures[1])
+    elseif (mt = match(r"^load-session\s+(\S+)$", cmd)) !== nothing
+        _load_session_app!(m, mt.captures[1])
     else
         _push_app_log!(m, "[WARN] unknown command: :$cmd")
     end
@@ -257,6 +341,33 @@ function _unmute_all_patterns!(m::RessacApp)
     end
     empty!(_APP_MUTED_PATTERNS)
     _push_app_log!(m, "[INFO] unmuted $n slot(s)")
+end
+
+function _save_session_app!(m::RessacApp, name::AbstractString)
+    dir = joinpath(pwd(), "sessions")
+    isdir(dir) || mkpath(dir)
+    path = joinpath(dir, String(name) * ".txt")
+    try
+        write(path, TK.text(m.editor))
+        _push_app_log!(m, "[INFO] saved session → $path")
+    catch err
+        _push_app_log!(m, "[ERROR] save-session: $(sprint(showerror, err))")
+    end
+end
+
+function _load_session_app!(m::RessacApp, name::AbstractString)
+    path = joinpath(pwd(), "sessions", String(name) * ".txt")
+    if !isfile(path)
+        _push_app_log!(m, "[ERROR] load-session: no file at $path")
+        return
+    end
+    try
+        TK.set_text!(m.editor, read(path, String))
+        m.editor.cursor_row = 1; m.editor.cursor_col = 0
+        _push_app_log!(m, "[INFO] loaded session '$name'")
+    catch err
+        _push_app_log!(m, "[ERROR] load-session: $(sprint(showerror, err))")
+    end
 end
 
 function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
@@ -916,14 +1027,15 @@ Reload the synth source on the SC side and fire a preview note via
 `/ressac/reloadAndPlay`. Server-side `s.sync` ensures the new
 SynthDef is registered before the play fires.
 """
-function _test_current_synth!(m::RessacApp)
+function _test_current_synth!(m::RessacApp; raw::Bool = false)
     _synth_pane_open(m) || return
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     tab = _current_synth_tab(m)
     src = TK.text(tab.editor)
-    send_osc(sched.osc,
-             encode(OSCMessage("/ressac/reloadAndPlay", Any[tab.name, src])))
-    _push_app_log!(m, "[INFO] T — test $(tab.name)")
+    addr = raw ? "/ressac/evalAndPlay" : "/ressac/reloadAndPlay"
+    send_osc(sched.osc, encode(OSCMessage(addr, Any[tab.name, src])))
+    label = raw ? "raw" : "via SuperDirt"
+    _push_app_log!(m, "[INFO] T — test $(tab.name) ($label)")
 end
 
