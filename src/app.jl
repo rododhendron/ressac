@@ -43,6 +43,9 @@ non-empty), and the focus toggle for keystroke routing.
     synth_tabs::Vector{SynthTab} = SynthTab[]
     synth_tab_idx::Int           = 0      # 1-based; 0 when no tabs open
     focus::Symbol                = :patterns
+    # Modal overlay state — `:none`, `:guide`, `:synth_guide`, `:browse`.
+    modal::Symbol                = :none
+    modal_scroll::Int            = 0
     logs::Vector{String}         = ["[INFO] Ressac live (Tachikoma) — :q to quit, e to eval, :synth <name> to design a sound"]
     quit::Bool                   = false
     tick::Int                    = 0
@@ -66,6 +69,11 @@ _current_synth_tab(m::RessacApp) = m.synth_tabs[m.synth_tab_idx]
 TK.should_quit(m::RessacApp) = m.quit
 
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
+    # Modal intercepts every keystroke when active.
+    if m.modal !== :none && evt.action === TK.key_press
+        _handle_modal_key!(m, evt)
+        return
+    end
     ed = _active_editor(m)
     # Tab in :normal swaps focus between patterns and the active synth
     # tab. Only meaningful when at least one synth tab is open.
@@ -142,9 +150,77 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _scope_command!(m, Symbol(mt.captures[1]))
     elseif cmd == "scope"
         _scope_command!(m, :off)
+    elseif cmd in ("guide", "help", "?")
+        m.modal = :guide; m.modal_scroll = 0
+    elseif cmd == "synth-guide"
+        m.modal = :synth_guide; m.modal_scroll = 0
     else
         _push_app_log!(m, "[WARN] unknown command: :$cmd")
     end
+end
+
+# ---------------------------------------------------------------------
+# Modal handlers
+# ---------------------------------------------------------------------
+
+_modal_lines(m::RessacApp) =
+    m.modal === :guide       ? _GUIDE_LINES :
+    m.modal === :synth_guide ? _SYNTH_GUIDE_LINES :
+    String[]
+
+function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
+    lines = _modal_lines(m)
+    n = length(lines)
+    if evt.key === :escape || evt.char == 'q'
+        m.modal = :none; m.modal_scroll = 0
+    elseif evt.char == 'j' || evt.key === :down
+        m.modal_scroll = min(m.modal_scroll + 1, max(0, n - 1))
+    elseif evt.char == 'k' || evt.key === :up
+        m.modal_scroll = max(0, m.modal_scroll - 1)
+    elseif evt.char == 'G'
+        m.modal_scroll = max(0, n - 1)
+    elseif evt.char == 'g'
+        # naive: any g resets to top (no gg chord)
+        m.modal_scroll = 0
+    end
+end
+
+"""
+    _render_modal!(m, area, buf)
+
+Draw a centered modal box over the rendered scene. Pulls the line
+vector from `_modal_lines(m)`, applies `m.modal_scroll`, clips lines
+to box width.
+"""
+function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    lines = _modal_lines(m)
+    isempty(lines) && return
+    aw, ah = area.width, area.height
+    box_w = max(40, min(aw - 4, 100))
+    box_h = max(8, min(ah - 4, length(lines) + 4))
+    box_x = area.x + max(0, (aw - box_w) ÷ 2)
+    box_y = area.y + max(0, (ah - box_h) ÷ 2)
+    inner_w = box_w - 2
+    inner_h = box_h - 2
+    # Title.
+    title = m.modal === :guide ? ":guide" :
+            m.modal === :synth_guide ? ":synth-guide" : ""
+    title_str = "┌ $title — j/k scroll, q close" * "─" ^ max(0, box_w - length(title) - 30) * "┐"
+    TK.set_string!(buf, box_x, box_y, first(title_str, box_w),
+                   TK.tstyle(:title, bold=true))
+    # Body.
+    visible_end = min(length(lines), m.modal_scroll + inner_h)
+    visible = m.modal_scroll + 1 <= length(lines) ?
+              lines[(m.modal_scroll + 1):visible_end] :
+              String[]
+    for i in 1:inner_h
+        line = i <= length(visible) ? visible[i] : ""
+        padded = "│" * rpad(first(line, inner_w), inner_w) * "│"
+        TK.set_string!(buf, box_x, box_y + i, padded, TK.tstyle(:text))
+    end
+    # Bottom border.
+    bot = "└" * "─" ^ inner_w * "┘"
+    TK.set_string!(buf, box_x, box_y + box_h - 1, bot, TK.tstyle(:title, bold=true))
 end
 
 function _scope_command!(m::RessacApp, type::Symbol)
@@ -339,6 +415,9 @@ function TK.view(m::RessacApp, f::TK.Frame)
                        first(line, logs_area.width),
                        TK.tstyle(:text_dim))
     end
+
+    # Modal overlay (after everything else so it sits on top).
+    m.modal === :none || _render_modal!(m, f.area, buf)
 end
 
 function _push_app_log!(m::RessacApp, line::AbstractString)
