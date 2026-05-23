@@ -251,18 +251,17 @@ function _test_synth!(m::LiveModel; n::Union{Int,Nothing} = nothing)
         _push_log!(m, "[ERROR] :test — no live session")
         return
     end
-    # Step 1: ship the latest source. Immediate.
-    _reload_synth!(m)
-    # Step 2: trigger the synth directly via our custom /ressac/testSynth
-    # OSCdef. Bypasses SuperDirt entirely so the SynthDef's own param
-    # defaults (freq/gain/sustain/release/etc.) are what actually play.
-    # Scheduled +200 ms via OSC bundle so the new SynthDef is fully
-    # registered in scsynth before the play executes.
-    fire_time = time() + 0.2
-    bundle = OSCBundle(fire_time,
-        [OSCMessage("/ressac/testSynth", Any[String(m.synth_editing)])])
-    send_osc(sched.osc, encode(bundle))
-    _push_log!(m, "[INFO] :test — $(m.synth_editing) via /ressac/testSynth (synth defaults are active; relaunch `just audio` if you see no sound, that ships the new OSCdef)")
+    # Single OSC call to /ressac/evalAndPlay: SuperCollider side runs
+    # interpret(src) → s.sync (waits for scsynth to register the new
+    # SynthDef) → Synth(name). No Julia-side delay needed because the
+    # SC Routine sequences everything correctly. Fixes the "first T
+    # plays the old version or silence" race that 200 ms time-tags
+    # didn't fully cover on cold compiles.
+    synth_lines, _, _ = _synth_buffer_view(m)
+    src = join(synth_lines, "\n")
+    msg = OSCMessage("/ressac/evalAndPlay", Any[String(m.synth_editing), src])
+    send_osc(sched.osc, encode(msg))
+    _push_log!(m, "[INFO] :test — $(m.synth_editing) ($(length(src)) chars sent, played after server sync)")
 end
 
 """

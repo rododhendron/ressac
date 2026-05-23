@@ -77,6 +77,25 @@ s.waitForBoot({
         ~ressacTestSynth = Synth(name, [\out, 0]);
     }, '/ressac/testSynth');
 
+    // One-shot eval + play with proper server-side sync. The previous
+    // approach scheduled the play 200 ms after the eval, but on the
+    // FIRST run after entering the synth pane the SynthDef compilation
+    // can take longer than that — user heard either silence or the
+    // previous version. Here we run interpret + s.sync (waits for
+    // scsynth to fully register the SynthDef) + Synth in a Routine,
+    // guaranteeing the new SynthDef is live before the synth starts.
+    OSCdef(\ressacEvalAndPlay, { |msg|
+        var name = msg[1].asString.asSymbol;
+        var src  = msg[2].asString;
+        ("[ressac] evalAndPlay " ++ name ++ " (" ++ src.size.asString ++ " chars)").postln;
+        Routine {
+            src.interpret;
+            s.sync;
+            if(~ressacTestSynth.notNil) { ~ressacTestSynth.free };
+            ~ressacTestSynth = Synth(name, [\out, 0]);
+        }.play(AppClock);
+    }, '/ressac/evalAndPlay');
+
     OSCdef(\ressacRegisterSample, { |msg|
         var name = msg[1].asString.asSymbol;
         var path = msg[2].asString;
