@@ -275,6 +275,7 @@ const _EX_COMMAND_VERBS = String[
     "synth-guide", "browse", "doc", "starter", "scale", "cps",
     "mute", "unmute", "solo", "save-session", "load-session",
     "save-synth", "save-synth-as", "reload", "keydebug", "pause", "freeze",
+    "copylogs", "yanklogs",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -542,6 +543,8 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     elseif cmd in ("pause", "freeze")
         m.paused = true
         _push_app_log!(m, "[INFO] paused — shift-drag to select & copy, any key resumes")
+    elseif cmd in ("copylogs", "yanklogs")
+        _copy_logs_to_clipboard!(m)
     elseif (mt = match(r"^starter\s+(\w+)$", cmd)) !== nothing
         _starter_command!(m, mt.captures[1])
     elseif cmd == "starter"
@@ -1176,6 +1179,36 @@ end
 function _push_app_log!(m::RessacApp, line::AbstractString)
     push!(m.logs, String(line))
     length(m.logs) > 200 && popfirst!(m.logs)
+end
+
+"""
+    _copy_logs_to_clipboard!(m)
+
+Pipe the current log buffer to a clipboard tool so the user can paste
+elsewhere (we're inside a TUI capturing mouse, so terminal-native
+selection requires Shift-drag and is finicky — this is the reliable
+path). Tries wl-copy (Wayland) first, falls back to xclip (X11) and
+xsel; reports which one worked, or what failed.
+"""
+function _copy_logs_to_clipboard!(m::RessacApp)
+    text = join(m.logs, "\n")
+    for (name, argv) in (
+        ("wl-copy", `wl-copy`),
+        ("xclip",   `xclip -selection clipboard`),
+        ("xsel",    `xsel --clipboard --input`),
+    )
+        Sys.which(name) === nothing && continue
+        try
+            open(pipeline(argv; stderr=devnull), "w") do io
+                write(io, text)
+            end
+            _push_app_log!(m, "[INFO] $(length(m.logs)) log lines → $name clipboard")
+            return
+        catch err
+            _push_app_log!(m, "[WARN] $name failed: $(sprint(showerror, err))")
+        end
+    end
+    _push_app_log!(m, "[ERROR] :copylogs — no clipboard tool found (install wl-copy, xclip, or xsel)")
 end
 
 """
