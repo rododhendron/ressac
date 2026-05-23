@@ -25,6 +25,7 @@ in subsequent commits.
                             title_style  = TK.tstyle(:title)),
         focused  = true,
         tick     = 0,
+        mode     = :normal,  # vim convention: start in normal so navigation works
     )
     logs::Vector{String} = ["[INFO] Ressac live (Tachikoma) — :q to quit, e to eval"]
     quit::Bool           = false
@@ -102,7 +103,7 @@ the result.
 """
 function _eval_current_line!(m::RessacApp)
     ce = m.editor
-    text = TK.get_text(ce)
+    text = TK.text(ce)
     lines = split(text, '\n'; keepempty=true)
     row = ce.cursor_row
     1 <= row <= length(lines) || return
