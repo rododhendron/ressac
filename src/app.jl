@@ -1165,9 +1165,14 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
     sched === nothing && return
     tab = _current_synth_tab(m)
     src = TK.text(tab.editor)
-    addr = raw ? "/ressac/evalAndPlay" : "/ressac/reloadAndPlay"
+    # Default T uses /ressac/evalAndPlay: SC interprets + s.syncs + fires
+    # `Synth(name, [\out, 0])` directly. The SynthDef's own param defaults
+    # (freq, gain, sustain, release, ...) are heard exactly as written —
+    # no SuperDirt override of n→freq or amp gain. Matches the model the
+    # user signed off on. :test-raw used to be the explicit form; both
+    # now go through the same code path because :test-raw was redundant.
+    addr = raw ? "/ressac/evalAndPlay" : "/ressac/evalAndPlay"
     send_osc(sched.osc, encode(OSCMessage(addr, Any[tab.name, src])))
-    label = raw ? "raw" : "via SuperDirt"
-    _push_app_log!(m, "[INFO] T — test $(tab.name) ($label)")
+    _push_app_log!(m, "[INFO] T — test $(tab.name) (synth defaults active)")
 end
 
