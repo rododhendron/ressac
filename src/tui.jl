@@ -122,7 +122,7 @@ function live(; host::AbstractString = "127.0.0.1",
     existed = _LIVE_SCHEDULER[] !== nothing
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     try
-        Tachikoma.app(RessacApp(; scheduler=sched); fps=60)
+        Tachikoma.app(RessacApp(; scheduler=sched); fps=120)
     finally
         existed || stop_live!()
     end
