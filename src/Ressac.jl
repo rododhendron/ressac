@@ -296,6 +296,87 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     catch
         empty!(_INSTRUMENT_REGISTRY)
     end
+
+    # SP7-SP10 hot paths: mouse wheel, word motions, browser, undo,
+    # :doc/:starter/:scale/:mute, degree(), pattern viz, log tail,
+    # session/snippet ops, vim editing commands. All best-effort —
+    # any catch keeps the rest of precompile going.
+    try
+        # Mouse wheel value tweaking: regex + bump + replace + re-eval path.
+        _find_number_at("@d1 p\"bd\" |> gain(0.8)", 22)
+        _bump_literal("0.8", 0.1, true)
+        _bump_literal("3", 1.0, false)
+
+        # Word motions (w/b/W/B).
+        mw = LiveModel(; scheduler=sched)
+        mw.mode = :normal
+        mw.buffer = ["bd hh sn cp"]
+        mw.cursor_col = 1
+        _word_motion!(mw; dir=:forward, big=false)
+        _word_motion!(mw; dir=:backward, big=false)
+
+        # Browser modal: collect + filter + preview-ready entries.
+        empty!(_INSTRUMENT_REGISTRY)
+        register_instrument!(InstrumentEntry(:_pc_browse, "pc",
+            Pair{String,Any}["s" => "bd"], Dict{String,Any}()))
+        mb = LiveModel(; scheduler=sched)
+        mb.browser_filter = :all
+        mb.browser_query = "br"
+        _browser_collect(:all)
+        _browser_filtered(mb)
+        empty!(_INSTRUMENT_REGISTRY)
+
+        # Undo / redo: snapshot then bounce.
+        mu = LiveModel(; scheduler=sched)
+        mu.buffer = ["orig"]
+        _snapshot!(mu)
+        mu.buffer = ["modified"]
+        _undo!(mu)
+        _redo!(mu)
+
+        # :doc / :starter / :scale (warm the ex-command dispatcher).
+        mdoc = LiveModel(; scheduler=sched)
+        _execute_ex_command!(mdoc, "doc gain")
+        _execute_ex_command!(mdoc, "doc gate")
+        _execute_ex_command!(mdoc, "scale minor")
+
+        # degree() with scale: scalar + pattern variant.
+        _CURRENT_SCALE[] = :minor
+        _scale_offset(2, :minor)
+        ds = pure(:bd) |> degree(2)
+        ds_evs = ds(0//1, 1//1)
+        isempty(ds_evs) || event_to_osc(ds_evs[1])
+        _CURRENT_SCALE[] = :chromatic
+
+        # Pattern viz: parse + grid render.
+        _pattern_viz_line("@d1 p\"bd ~ ~ bd ~ ~ bd ~\" |> gain(1.2)")
+        _pattern_viz_line("@d2 p\"bd*4\"")
+        _pattern_viz_line("@d3 gate(:bd, p\"1 0 0 0\")")
+        _pattern_viz_line("# commented")
+
+        # gate combinator.
+        gp_evs = gate(:super808, parse_minino("1 0 0 1 0 0 1 0"))(0//1, 1//1)
+
+        # Vim editing helpers.
+        mv = LiveModel(; scheduler=sched)
+        mv.buffer = ["  hello world"]
+        mv.cursor_row = 1
+        mv.cursor_col = 1
+        _first_non_blank(mv.buffer[1])
+        mv.cursor_col = 5
+        _delete_to_eol!(mv)
+        _replace_char_under_cursor!(mv, 'X')
+
+        # Logs pane + editor pane + fast vstack render path.
+        mr = LiveModel(; scheduler=sched)
+        mr.buffer = ["@d1 p\"bd hh\""]
+        for i in 1:5; _push_log!(mr, "[INFO] warmup $i"); end
+        area = TUI.Rect(1, 1, 80, 24)
+        bufx = TUI.Buffer(area)
+        TUI.render(TUI.view(mr), area, bufx)
+    catch
+        # Best-effort: precompile failures here only cost first-call latency.
+    end
 end
 
 end # module Ressac
