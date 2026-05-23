@@ -1171,10 +1171,21 @@ function _render_livedoc_row(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     isempty(word) && return
     doc = _lookup_livedoc(word)
     doc === nothing && return
-    text = "📖 $word — $doc"
-    TK.set_string!(buf, area.x, area.y,
-                   first(text, area.width),
-                   TK.tstyle(:success))
+    # Two-tone row: word in accent, doc in plain text — makes the
+    # word jump out so the eye can confirm what's being documented.
+    prefix = "  ✎ "
+    w = "$word"
+    sep = " ──  "
+    TK.set_string!(buf, area.x, area.y, prefix, TK.tstyle(:text_dim))
+    x = area.x + length(prefix)
+    TK.set_string!(buf, x, area.y, w, TK.tstyle(:accent, bold=true))
+    x += length(w)
+    TK.set_string!(buf, x, area.y, sep, TK.tstyle(:text_dim))
+    x += length(sep)
+    remaining = max(0, area.width - (x - area.x))
+    TK.set_string!(buf, x, area.y,
+                   first(String(doc), remaining),
+                   TK.tstyle(:text))
 end
 
 function _word_under_cursor_chars(chars::Vector{Char}, col::Integer)
@@ -1412,17 +1423,10 @@ function TK.view(m::RessacApp, f::TK.Frame)
         scope_area = nothing
     end
 
-    # Status bar
-    sched = m.scheduler
-    status = "ressac | $(round(sched.cps; digits=3)) cps | ev:$(sched.events_shipped[])"
-    if _synth_pane_open(m)
-        status *= " | synth: $(_current_synth_tab(m).name).scd"
-        if length(m.synth_tabs) > 1
-            status *= " [tab $(m.synth_tab_idx)/$(length(m.synth_tabs))]"
-        end
-    end
-    TK.set_string!(buf, status_area.x, status_area.y,
-                   rpad(status, status_area.width), TK.tstyle(:title, bold=true))
+    # Status bar — left: app badge + tempo + cycle progress + counters,
+    # right: mode + focus. Icons stay ASCII-safe (no emoji) so any
+    # monospace font renders them aligned.
+    _render_status_bar(m, status_area, buf)
 
     # Editor body — split horizontally when at least one synth tab open.
     if !_synth_pane_open(m)
@@ -1456,29 +1460,9 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # Live doc row — word under cursor → doc string
     _render_livedoc_row(m, livedoc_area, buf)
 
-    # Footer (mode + hint)
-    ed = _active_editor(m)
-    mode_label = uppercase(String(ed.mode))
-    footer = if !_synth_pane_open(m)
-        " [$mode_label]  e=eval  i=insert  Esc=normal  :synth <name>  :q=quit"
-    elseif length(m.synth_tabs) > 1
-        " [$mode_label @ $(m.focus)]  e=eval  T=test  Tab=swap  gt/gT=cycle tab  :w save  :close drop  :back exit"
-    else
-        " [$mode_label @ $(m.focus)]  e=eval  T=test  Tab=swap  :w save  :back close  :q"
-    end
-    TK.set_string!(buf, footer_area.x, footer_area.y,
-                   rpad(footer, footer_area.width), TK.tstyle(:accent))
-
-    # Logs (last N)
-    tail = m.logs[max(1, end - logs_area.height + 1):end]
-    for (i, line) in enumerate(tail)
-        i > logs_area.height && break
-        TK.set_string!(buf,
-                       logs_area.x,
-                       logs_area.y + i - 1,
-                       first(line, logs_area.width),
-                       TK.tstyle(:text_dim))
-    end
+    # Footer (key hints) + logs with per-level coloring.
+    _render_footer(m, footer_area, buf)
+    _render_logs(m, logs_area, buf)
 
     # Modal overlay (after everything else so it sits on top).
     if m.modal === :browse
@@ -1487,6 +1471,109 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_synth_library_modal!(m, f.area, buf)
     elseif m.modal !== :none
         _render_modal!(m, f.area, buf)
+    end
+end
+
+"""
+    _render_status_bar(m, area, buf)
+
+Top row: ressac badge + tempo + cycle phase bar + event count +
+synth tab name (if open), right-aligned mode/focus badge. Colours
+come from the active Tachikoma theme so it respects the user's
+`:theme` choice.
+"""
+function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    sched = m.scheduler
+    # t_start can be 0 / NaN if the scheduler hasn't been started yet —
+    # in either case "0 cycle phase" is the right default for the bar.
+    raw_phase = sched.t_start > 0 ?
+                ((time() - sched.t_start) * sched.cps) % 1.0 : 0.0
+    cycle_phase = isnan(raw_phase) ? 0.0 : clamp(raw_phase, 0.0, 0.999)
+    bar_w = 10
+    filled = clamp(floor(Int, cycle_phase * bar_w), 0, bar_w)
+    bar = "█" ^ filled * "░" ^ (bar_w - filled)
+
+    cps_str = "♪ $(round(sched.cps; digits=2)) cps"
+    cycle_str = "◐ $bar"
+    ev_str = "✧ $(sched.events_shipped[])"
+    synth_str = if _synth_pane_open(m)
+        s = "♬ $(_current_synth_tab(m).name)"
+        length(m.synth_tabs) > 1 ?
+            s * " [$(m.synth_tab_idx)/$(length(m.synth_tabs))]" : s
+    else
+        ""
+    end
+    ed = _active_editor(m)
+    badge = "  ⟪ $(uppercase(String(ed.mode))) @ $(m.focus) ⟫"
+
+    # Compose left segment with bullet separators.
+    parts = String[]
+    push!(parts, "▓ ressac")
+    push!(parts, cps_str)
+    push!(parts, cycle_str)
+    push!(parts, ev_str)
+    isempty(synth_str) || push!(parts, synth_str)
+    left = join(parts, "  •  ")
+
+    # Layout: left + right pad + badge. Truncate left if too tight.
+    available = area.width - length(badge)
+    left_trimmed = first(left, max(available, 0))
+    pad = max(0, available - length(left_trimmed))
+    full = left_trimmed * " " ^ pad * badge
+    TK.set_string!(buf, area.x, area.y,
+                   first(full, area.width),
+                   TK.tstyle(:title, bold=true))
+end
+
+"""
+    _render_footer(m, area, buf)
+
+Bottom hints row. Keeps the per-context cheat-sheet but renders the
+mode badge in `:accent` and the rest in `:text_dim` so the eye lands
+on the mode first.
+"""
+function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    ed = _active_editor(m)
+    mode_label = uppercase(String(ed.mode))
+    hint = if !_synth_pane_open(m)
+        "e eval • i insert • Esc normal • :synth <name> • :lib library • :theme • :q"
+    elseif length(m.synth_tabs) > 1
+        "e eval • T test (hold=accel) • Tab swap • gt/gT cycle • :w save • :close • :back"
+    else
+        "e eval • T test (hold=accel) • Tab swap • :w save • :back close • :q"
+    end
+    badge = "[$mode_label]"
+    TK.set_string!(buf, area.x, area.y, badge,
+                   TK.tstyle(:accent, bold=true))
+    TK.set_string!(buf, area.x + length(badge) + 1, area.y,
+                   first(hint, max(0, area.width - length(badge) - 1)),
+                   TK.tstyle(:text_dim))
+end
+
+"""
+    _render_logs(m, area, buf)
+
+Bottom-of-screen log tail with per-level colouring: ERROR in red,
+WARN in yellow, INFO in dim text, KEY in accent. Lets the user scan
+output by colour rather than parsing every line.
+"""
+function _render_logs(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    tail = m.logs[max(1, end - area.height + 1):end]
+    for (i, line) in enumerate(tail)
+        i > area.height && break
+        style = if startswith(line, "[ERROR]")
+            TK.tstyle(:error)
+        elseif startswith(line, "[WARN]")
+            TK.tstyle(:warning)
+        elseif startswith(line, "[KEY]")
+            TK.tstyle(:accent, dim=true)
+        elseif startswith(line, "[INFO]")
+            TK.tstyle(:text)
+        else
+            TK.tstyle(:text_dim)
+        end
+        TK.set_string!(buf, area.x, area.y + i - 1,
+                       first(line, area.width), style)
     end
 end
 
