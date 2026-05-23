@@ -653,6 +653,8 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         _reload_synth!(m)
     elseif body == "save-synth"
         _save_synth!(m)
+    elseif (mt = match(r"^save-synth-as\s+(\w+)$", body)) !== nothing
+        _save_synth_as!(m, mt.captures[1])
     elseif body == "swap"
         _swap_focus!(m)
     elseif body == "test"
@@ -672,6 +674,14 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
         m.mode = :guide
         m.guide_scroll = 0
         m.pending_chord = :none
+    elseif body == "synth-guide"
+        m.mode = :guide
+        m.guide_scroll = 0
+        m.pending_chord = :none
+        # Stash the regular guide source and temporarily install the synth
+        # guide so :guide-mode navigation works on it.
+        global _GUIDE_ACTIVE_SOURCE
+        _GUIDE_ACTIVE_SOURCE = :synth
     elseif body == "browse" || body == "b"
         m.mode = :browser
         m.browser_query = ""
@@ -1548,14 +1558,26 @@ Keystrokes for the modal :guide overlay. j/k scroll, gg/G jump,
 Ctrl-d/u half-page, q/Esc closes. / jumps into :command mode with
 the `guide_search_active` flag set so the search routes back here.
 """
+_GUIDE_ACTIVE_SOURCE = :main
+
+"""
+    _active_guide_lines() -> Vector{String}
+
+Return the lines for whatever guide is currently displayed —
+`_GUIDE_LINES` (default) or `_SYNTH_GUIDE_LINES` (after `:synth-guide`).
+"""
+_active_guide_lines() = _GUIDE_ACTIVE_SOURCE === :synth ? _SYNTH_GUIDE_LINES : _GUIDE_LINES
+
 function _handle_guide!(m::LiveModel, evt)
     code = evt.code
     if code == "q" || code == "Esc"
         m.mode = :normal
         m.guide_scroll = 0
         m.pending_chord = :none
+        global _GUIDE_ACTIVE_SOURCE
+        _GUIDE_ACTIVE_SOURCE = :main
     elseif code == "j" || code == "Down"
-        m.guide_scroll = min(m.guide_scroll + 1, max(0, length(_GUIDE_LINES) - 1))
+        m.guide_scroll = min(m.guide_scroll + 1, max(0, length(_active_guide_lines()) - 1))
     elseif code == "k" || code == "Up"
         m.guide_scroll = max(0, m.guide_scroll - 1)
     elseif code == "g"
@@ -1566,10 +1588,10 @@ function _handle_guide!(m::LiveModel, evt)
             m.pending_chord = :g
         end
     elseif code == "G"
-        m.guide_scroll = max(0, length(_GUIDE_LINES) - 1)
+        m.guide_scroll = max(0, length(_active_guide_lines()) - 1)
         m.pending_chord = :none
     elseif code == "d" && _has_modifier(evt, "Ctrl")
-        m.guide_scroll = min(m.guide_scroll + 10, max(0, length(_GUIDE_LINES) - 1))
+        m.guide_scroll = min(m.guide_scroll + 10, max(0, length(_active_guide_lines()) - 1))
     elseif code == "u" && _has_modifier(evt, "Ctrl")
         m.guide_scroll = max(0, m.guide_scroll - 10)
     elseif code == "/"

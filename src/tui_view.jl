@@ -59,11 +59,13 @@ function _build_main_layout(m::LiveModel)
             _separator(),
             _editor_pane(m),
             _separator(),
+            _livedoc_line(m),
+            _separator(),
             _footer_line(m),
             _separator(),
             _logs_pane(m)],
-        [1, 1, 0, 1, 1, 1, 5],   # 0 for the expand slot — recomputed at render
-        3,                        # editor
+        [1, 1, 0, 1, 1, 1, 1, 1, 5],
+        3,
     )
 end
 

@@ -115,5 +115,9 @@ function _help_overlay(m::LiveModel)
 end
 
 function _guide_overlay(m::LiveModel)
-    _Overlay(_GUIDE_LINES, ":guide — j/k scroll, q close"; scroll = m.guide_scroll)
+    lines = _active_guide_lines()
+    title = _GUIDE_ACTIVE_SOURCE === :synth ?
+            ":synth-guide — j/k scroll, q close" :
+            ":guide — j/k scroll, q close"
+    _Overlay(lines, title; scroll = m.guide_scroll)
 end

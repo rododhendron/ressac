@@ -266,6 +266,42 @@ function _test_synth!(m::LiveModel; raw::Bool = false)
 end
 
 """
+    _save_synth_as!(m, new_name)
+
+Like `:save-synth`, but writes to `<new_name>.scd` and registers a
+SynthDef of that new name. Lets the user fork a design under a
+different name without losing the original. The buffer is rewritten
+so the `SynthDef(\\old, …)` declaration becomes `SynthDef(\\new, …)`,
+then everything proceeds as `:save-synth`.
+"""
+function _save_synth_as!(m::LiveModel, new_name::AbstractString)
+    if isempty(m.synth_editing)
+        _push_log!(m, "[ERROR] :save-synth-as — not editing a synth")
+        return
+    end
+    old_name = m.synth_editing
+    new_name = String(new_name)
+    # Rewrite the SynthDef name in every line so the new file is
+    # self-consistent — old name as a value, new name as a Symbol.
+    synth_lines, _, _ = _synth_buffer_view(m)
+    rewritten = String[]
+    pattern = Regex("SynthDef\\(\\\\$(old_name)\\b")
+    replacement = "SynthDef(\\\\$(new_name)"
+    for line in synth_lines
+        push!(rewritten, replace(line, pattern => replacement))
+    end
+    # Write the rewritten source into the focused buffer + rename
+    # m.synth_editing so :save-synth machinery targets the new name.
+    if m.focus === :synth
+        m.buffer = rewritten
+    else
+        m.synth_stash_buffer = rewritten
+    end
+    m.synth_editing = new_name
+    _save_synth!(m)
+end
+
+"""
     _ensure_synth_plugin_manifest!(name)
 
 Create or update plugins/user-synths/plugin.toml so SynthDef files in
