@@ -106,6 +106,8 @@ const _COMMAND_NAMES = [
     "browse", "save", "doc", "starter",
     "mute", "unmute", "solo", "unsolo",
     "scale",
+    "save-session", "load-session", "sessions",
+    "snippet", "snippets",
 ]
 
 const _COMBINATOR_NAMES = [

@@ -599,6 +599,18 @@ function _execute_ex_command!(m::LiveModel, body::AbstractString)
     elseif body == "scale"
         _push_log!(m, "[INFO] current scale: $(Ressac._CURRENT_SCALE[]) — :scale <name>; known: " *
                        join(sort!(collect(String.(keys(Ressac._SCALES)))), ", "))
+    elseif (mt = match(r"^save-session\s+(\S+)$", body)) !== nothing
+        _save_session!(m, mt.captures[1])
+    elseif (mt = match(r"^load-session\s+(\S+)$", body)) !== nothing
+        _load_session!(m, mt.captures[1])
+    elseif body == "sessions"
+        _list_sessions!(m)
+    elseif (mt = match(r"^snippet\s+save\s+(\w+)$", body)) !== nothing
+        _snippet_save!(m, mt.captures[1])
+    elseif (mt = match(r"^snippet\s+(\w+)$", body)) !== nothing
+        _snippet_insert!(m, mt.captures[1])
+    elseif body == "snippets"
+        _list_snippets!(m)
     elseif (mt = match(r"^doc\s+(\w+)$", body)) !== nothing
         _doc_param!(m, mt.captures[1])
     elseif (mt = match(r"^starter\s+(\w+)$", body)) !== nothing
@@ -1229,6 +1241,148 @@ end
 function _unsolo!(m::LiveModel)
     empty!(m.solo_active)
     _unmute_all!(m)
+end
+
+# ---------------------------------------------------------------------
+# Session save/load
+# ---------------------------------------------------------------------
+
+_session_path(name::AbstractString) =
+    joinpath(pwd(), "sessions", String(name) * ".txt")
+
+function _save_session!(m::LiveModel, name::AbstractString)
+    dir = joinpath(pwd(), "sessions")
+    isdir(dir) || mkpath(dir)
+    path = _session_path(name)
+    try
+        open(path, "w") do io
+            for line in m.buffer
+                write(io, line, "\n")
+            end
+        end
+        _push_log!(m, "[INFO] saved session '$name' ($(length(m.buffer)) lines) → $path")
+    catch err
+        _push_log!(m, "[ERROR] save-session: $(sprint(showerror, err))")
+    end
+end
+
+function _load_session!(m::LiveModel, name::AbstractString)
+    path = _session_path(name)
+    if !isfile(path)
+        _push_log!(m, "[ERROR] load-session: no file at $path")
+        return
+    end
+    try
+        text = read(path, String)
+        lines = split(text, '\n'; keepempty=true)
+        # Drop trailing blank produced by the trailing newline in _save_session!
+        while !isempty(lines) && isempty(lines[end])
+            pop!(lines)
+        end
+        _snapshot!(m)
+        m.buffer = String.(lines)
+        isempty(m.buffer) && push!(m.buffer, "")
+        m.cursor_row = 1
+        m.cursor_col = 1
+        _push_log!(m, "[INFO] loaded session '$name' ($(length(m.buffer)) lines) — eval slots with `e`")
+    catch err
+        _push_log!(m, "[ERROR] load-session: $(sprint(showerror, err))")
+    end
+end
+
+function _list_sessions!(m::LiveModel)
+    dir = joinpath(pwd(), "sessions")
+    if !isdir(dir)
+        _push_log!(m, "[INFO] no sessions directory yet — :save-session <name> creates one")
+        return
+    end
+    files = filter(f -> endswith(f, ".txt"), readdir(dir))
+    if isempty(files)
+        _push_log!(m, "[INFO] (no saved sessions)")
+    else
+        for f in sort!(files)
+            _push_log!(m, "  " * splitext(f)[1])
+        end
+    end
+end
+
+# ---------------------------------------------------------------------
+# Snippet library
+# ---------------------------------------------------------------------
+
+_snippet_path(name::AbstractString) =
+    joinpath(pwd(), "snippets", String(name) * ".txt")
+
+"""
+    _snippet_save!(m, name)
+
+Save the current paragraph (cursor's logical block) under `name` in
+`snippets/<name>.txt`. Replaces any existing snippet of that name.
+"""
+function _snippet_save!(m::LiveModel, name::AbstractString)
+    dir = joinpath(pwd(), "snippets")
+    isdir(dir) || mkpath(dir)
+    text = _block_text(m)
+    if isempty(strip(text))
+        _push_log!(m, "[WARN] snippet save: empty paragraph at cursor")
+        return
+    end
+    path = _snippet_path(name)
+    try
+        write(path, text)
+        _push_log!(m, "[INFO] snippet '$name' saved ($(length(split(text, '\n'))) lines)")
+    catch err
+        _push_log!(m, "[ERROR] snippet save: $(sprint(showerror, err))")
+    end
+end
+
+"""
+    _snippet_insert!(m, name)
+
+Read `snippets/<name>.txt` and splice its lines at the cursor row
+(above the current line). Snapshots first so `u` rolls it back.
+"""
+function _snippet_insert!(m::LiveModel, name::AbstractString)
+    path = _snippet_path(name)
+    if !isfile(path)
+        _push_log!(m, "[ERROR] snippet: no file at $path. Available: " *
+                       join(_known_snippet_names(), ", "))
+        return
+    end
+    try
+        text = read(path, String)
+        new_lines = split(text, '\n'; keepempty=true)
+        while !isempty(new_lines) && isempty(new_lines[end])
+            pop!(new_lines)
+        end
+        isempty(new_lines) && return
+        _snapshot!(m)
+        # Insert before the current row.
+        for (i, ln) in enumerate(new_lines)
+            insert!(m.buffer, m.cursor_row + i - 1, String(ln))
+        end
+        m.cursor_row += length(new_lines)
+        _push_log!(m, "[INFO] snippet '$name' inserted ($(length(new_lines)) lines)")
+    catch err
+        _push_log!(m, "[ERROR] snippet: $(sprint(showerror, err))")
+    end
+end
+
+function _known_snippet_names()
+    dir = joinpath(pwd(), "snippets")
+    isdir(dir) || return String[]
+    [splitext(f)[1] for f in readdir(dir) if endswith(f, ".txt")]
+end
+
+function _list_snippets!(m::LiveModel)
+    names = _known_snippet_names()
+    if isempty(names)
+        _push_log!(m, "[INFO] (no snippets) — :snippet save <name> stores the paragraph at the cursor")
+    else
+        for nm in sort(names)
+            _push_log!(m, "  " * nm)
+        end
+    end
 end
 
 function _set_scale!(m::LiveModel, name::Symbol)
