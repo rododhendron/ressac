@@ -63,6 +63,10 @@ non-empty), and the focus toggle for keystroke routing.
     # exact symbol + char + action for any keystroke when diagnosing
     # layout or terminal issues.
     keydebug::Bool               = false
+    # :pause freezes the render loop so the user can shift-drag-select
+    # and copy text from the terminal without the next frame overwriting
+    # the selection highlight. Any keypress (handled in update!) resumes.
+    paused::Bool                 = false
 end
 
 # Kitty CSI u reports numpad keys with their own :kp_<n> symbol instead
@@ -104,6 +108,15 @@ TK.should_quit(m::RessacApp) = m.quit
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
+    end
+    # Paused: any key_press resumes and is then swallowed (so the
+    # resume key doesn't double-act as e.g. an insert-mode character).
+    if m.paused
+        if evt.action === TK.key_press
+            m.paused = false
+            _push_app_log!(m, "[INFO] resumed")
+        end
+        return
     end
     evt = _normalise_event(evt)
     if m.modal !== :none && evt.action === TK.key_press
@@ -261,7 +274,7 @@ const _EX_COMMAND_VERBS = String[
     "tabs", "tabnext", "tabprev", "tabprevious", "scope", "guide",
     "synth-guide", "browse", "doc", "starter", "scale", "cps",
     "mute", "unmute", "solo", "save-session", "load-session",
-    "save-synth", "save-synth-as", "reload", "keydebug",
+    "save-synth", "save-synth-as", "reload", "keydebug", "pause", "freeze",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -526,6 +539,9 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     elseif cmd == "keydebug"
         m.keydebug = !m.keydebug
         _push_app_log!(m, "[INFO] keydebug $(m.keydebug ? "ON" : "OFF") — every keypress will be logged")
+    elseif cmd in ("pause", "freeze")
+        m.paused = true
+        _push_app_log!(m, "[INFO] paused — shift-drag to select & copy, any key resumes")
     elseif (mt = match(r"^starter\s+(\w+)$", cmd)) !== nothing
         _starter_command!(m, mt.captures[1])
     elseif cmd == "starter"
@@ -1051,6 +1067,12 @@ function _app_render_spectrum(data, area::TK.Rect, buf::TK.Buffer)
 end
 
 function TK.view(m::RessacApp, f::TK.Frame)
+    # Paused: skip the whole draw so the terminal's last frame stays put
+    # and the user can shift-drag-select + copy without our next render
+    # wiping the highlight. update! flips paused=false on any keypress,
+    # which will cause the next view() to render normally and the
+    # selection to clear — by then the user has already copied.
+    m.paused && return
     m.tick += 1
     m.editor.tick = m.tick
     for tab in m.synth_tabs
