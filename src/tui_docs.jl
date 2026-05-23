@@ -67,7 +67,7 @@ finished track.
 """
 const _STARTER_PACKS = Dict{String,Vector{String}}(
     "house" => [
-        ":cps 0.5",
+        "cps!(0.5)",
         "",
         "@d1 gate(:super808, p\"1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0\") |> n(-12) |> release(0.4) |> gain(1.4)",
         "@d2 gate(:supersnare, p\"0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0\") |> gain(0.9) |> room(0.2)",
@@ -75,7 +75,7 @@ const _STARTER_PACKS = Dict{String,Vector{String}}(
         "@d4 p\"superreese*2\" |> n(p\"-12 -7\") |> release(0.6) |> gain(1.0) |> lpf(800)",
     ],
     "witchhouse" => [
-        ":cps 0.2",
+        "cps!(0.2)",
         "",
         "@d1 gate(:super808, p\"1 0 0 1 0 0 1 0\") |> n(-12) |> release(0.6) |> gain(1.6) |> room(0.3) |> shape(0.3)",
         "@d2 gate(:supersnare, p\"0 0 1 0\") |> n(-8) |> release(0.8) |> gain(0.7) |> room(0.7) |> lpf(2000)",
@@ -84,14 +84,14 @@ const _STARTER_PACKS = Dict{String,Vector{String}}(
         "@d5 p\"superhammond*2\" |> n(p\"-12 -5 -8 -3\") |> release(2.5) |> attack(0.5) |> gain(0.5) |> lpf(1200) |> room(0.6)",
     ],
     "ambient" => [
-        ":cps 0.15",
+        "cps!(0.15)",
         "",
         "@d1 p\"superhammond\" |> n(p\"-12 -5 -8 -3 0 -3 -5 -8\") |> release(4.0) |> attack(1.0) |> gain(0.4) |> lpf(800) |> room(0.85) |> delay(0.4)",
         "@d2 p\"superfork\" |> n(p\"24 19 12 19 24 19 12 24\") |> release(3.0) |> gain(0.3) |> room(0.9)",
         "@d3 p\"supersine*1\" |> n(-36) |> release(8.0) |> gain(0.5) |> lpf(120) |> shape(0.2)",
     ],
     "trap" => [
-        ":cps 0.4",
+        "cps!(0.4)",
         "",
         "@d1 gate(:super808, p\"1 0 0 1 0 0 0 1\") |> n(-12) |> release(0.5) |> gain(1.6)",
         "@d2 gate(:supersnare, p\"0 0 1 0\") |> gain(1.0) |> room(0.15)",
@@ -99,7 +99,7 @@ const _STARTER_PACKS = Dict{String,Vector{String}}(
         "@d4 p\"super808\" |> n(p\"-24 -22 -19 -17\") |> release(1.0) |> gain(1.3) |> lpf(250) |> shape(0.4)",
     ],
     "lofi" => [
-        ":cps 0.42",
+        "cps!(0.42)",
         "",
         "@d1 gate(:super808, p\"1 0 0 1\") |> gain(1.2) |> shape(0.3) |> lpf(2000)",
         "@d2 gate(:supersnare, p\"0 0 1 0\") |> gain(0.7) |> hpf(200) |> lpf(3000) |> room(0.4)",
