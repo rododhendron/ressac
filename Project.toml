@@ -4,6 +4,7 @@ version = "0.1.0-DEV"
 authors = ["Rodolphe Marbot <rododhendron@hey.com>"]
 
 [deps]
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
@@ -11,6 +12,7 @@ Tachikoma = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"
 TerminalUserInterfaces = "408767e4-586b-40c7-9657-f9758988469a"
 
 [compat]
+HTTP = "1.11.0"
 PrecompileTools = "1"
 Tachikoma = "2.1.0"
 TerminalUserInterfaces = "0.8"

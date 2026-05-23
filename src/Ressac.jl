@@ -35,6 +35,7 @@ include("tui_scope.jl")
 include("synth_library.jl")
 include("config.jl")
 include("themes.jl")
+include("sccode.jl")
 include("app.jl")
 include("plugin_handlers.jl")
 
