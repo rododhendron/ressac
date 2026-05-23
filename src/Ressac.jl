@@ -423,6 +423,19 @@ function __init__()
         Tachikoma._SHIFT_SYMBOL_MAP['<'] = '>'
     catch
     end
+    # Tachikoma's KITTY_FUNCTIONAL_KEYS stops at 57452 (right_meta).
+    # Codepoints 57453+ (the ISO_Level{3,5}_Shift modifiers, which is
+    # what AltGr on azerty/qwertz layouts actually IS at the X11/wayland
+    # level, plus a couple of locale-specific kp_keys past kp_begin)
+    # fall through to the "printable character" branch and get inserted
+    # into the buffer as U+E06D etc. Register them as modifier-only
+    # symbols so the editor ignores them.
+    try
+        kf = Tachikoma.KITTY_FUNCTIONAL_KEYS
+        kf[57453] = :iso_level3_shift   # AltGr on azerty
+        kf[57454] = :iso_level5_shift
+    catch
+    end
     # Patch read_event so non-ASCII / multi-byte UTF-8 input (à, é, €,
     # any AltGr-produced char on azerty) is decoded into one KeyEvent
     # carrying the real codepoint. The stock implementation reads ONE
