@@ -364,6 +364,36 @@ function _command_line(m::LiveModel)
 end
 
 function _logs_pane(m::LiveModel)
-    raw = isempty(m.logs) ? String[""] : collect(last(m.logs, 8))
-    _TextLines(raw, TUI.Crayon(; foreground=:blue))
+    _LogsPane(m)
+end
+
+"""
+    _LogsPane(model)
+
+Renders the tail of `m.logs` — always the **last** `height(area)`
+entries so newly-pushed lines are immediately visible. The previous
+`_TextLines(last(logs, 8))` rendered from the top of the widget, so
+when the pane shrunk to 5-6 rows the newest 2-3 lines were clipped.
+"""
+struct _LogsPane
+    model::LiveModel
+end
+
+function TUI.render(p::_LogsPane, area::TUI.Rect, buf::TUI.Buffer)
+    h = TUI.height(area)
+    h < 1 && return
+    logs = p.model.logs
+    n = length(logs)
+    if n == 0
+        TUI.set(buf, TUI.left(area), TUI.top(area), "",
+                TUI.Crayon(; foreground=:blue))
+        return
+    end
+    start = max(1, n - h + 1)
+    tail = view(logs, start:n)
+    style = TUI.Crayon(; foreground=:blue)
+    for (i, line) in enumerate(tail)
+        clipped = first(line, TUI.width(area))
+        TUI.set(buf, TUI.left(area), TUI.top(area) + i - 1, String(clipped), style)
+    end
 end
