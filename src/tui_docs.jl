@@ -86,6 +86,28 @@ const _PARAM_DOCS = Dict{String,String}(
     "begin"       => "Sample start position (0-1).",
     "end"         => "Sample end position (0-1).",
     "cut"         => "Cut group: voices sharing the same positive int truncate each other.",
+    # --- COMMON SYNTHDEF PARAMS (used in our starter template + common conventions) ---
+    "rate"        => "LFO rate in Hz. 4 = 4 cycles/sec, 0.5 = slow swell, 16 = fast wobble.",
+    "depth"       => "Modulation depth. For an LFO on cutoff: how wide the cutoff sweeps around `centre`.",
+    "centre"      => "Centre / pivot value an LFO modulates around. Used together with `depth` for symmetric sweeps.",
+    "center"      => "Alias for centre. American spelling.",
+    "q"           => "Filter resonance/quality (inverse 'rq'). 0.1=sharp peak, 0.5=medium, 1=no resonance. Higher q = more whistle.",
+    "rq"          => "Reciprocal Q for SuperCollider filters (RLPF, RHPF). 1.0=no resonance, 0.1=very resonant.",
+    "out"         => "Synth output bus number. 0=master left, 1=master right. SuperDirt routes through DirtPan via this.",
+    "decay"       => "Decay time in sec. ADSR's D — how long from peak to sustain level.",
+    "damp"        => "Damping (0-1). In reverbs: high freq absorption. In drums: sharpness of the body.",
+    "mix"         => "Dry/wet mix for FX (0=dry, 1=wet).",
+    "modfreq"     => "Modulator frequency for FM synthesis.",
+    "moddepth"    => "Modulator depth / amplitude for FM.",
+    "velocity"    => "Note velocity (0-1). Often shaped into amplitude or filter cutoff.",
+    "threshold"   => "Compressor / gate threshold (typically in dB or amp 0-1).",
+    "ratio"       => "Compressor ratio (1=no compression, 4=4:1, ∞=limiting).",
+    "feedback"    => "Delay or comb feedback amount (0-0.95). High = long tails / oscillation.",
+    "freqshift"   => "Frequency shifter amount (Hz, signed).",
+    "pitchshift"  => "Pitch shifter amount (semitones).",
+    "spread"      => "Stereo spread / detuning amount.",
+    "fade"        => "Fade-in or crossfade time (sec).",
+    "size"        => "Reverb size / room size (0-1). Larger = bigger virtual space.",
 )
 
 """
