@@ -36,7 +36,11 @@ function _eval_block!(m::LiveModel; mode::Symbol = :immediate, n::Int = 0)
     start, stop = _paragraph_bounds(m)
     slot = _block_slot(text)
     try
-        ex = Meta.parse(text)
+        # Wrap in begin/end so multi-statement paragraphs (e.g. several
+        # consecutive `@dN ...` lines from a starter pack) parse as one
+        # expression instead of "extra token after end of expression".
+        wrapped = "begin\n" * text * "\nend"
+        ex = Meta.parse(wrapped)
         result = nothing
         prev_mode = _EVAL_MODE[]
         _EVAL_MODE[] = (mode, n)
