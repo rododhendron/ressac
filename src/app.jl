@@ -1181,7 +1181,12 @@ function TK.view(m::RessacApp, f::TK.Frame)
 end
 
 function _push_app_log!(m::RessacApp, line::AbstractString)
-    s = String(line)
+    # Flatten embedded newlines & carriage returns to a visible glyph
+    # so a multi-line message (a Julia stacktrace, a ParseError diagram)
+    # stays inside its log row instead of pushing the rest of the layout
+    # down. Also trim trailing whitespace so collapsed-glyph runs don't
+    # leave dangling separators.
+    s = rstrip(replace(replace(String(line), "\r\n" => " ↩ "), "\n" => " ↩ "))
     # Dedupe consecutive identical entries — if the same line is being
     # pushed repeatedly (key-repeat on T, autofiring scope updates, …),
     # collapse to "<line>  ×N" in place rather than letting the buffer
