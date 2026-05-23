@@ -225,6 +225,32 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         empty!(_SYNTH_REGISTRY)
     end
 
+    # Warm the new Tachikoma TUI: build RessacApp, dispatch the
+    # keystrokes that typically arrive in the first few seconds (arrows,
+    # i, Esc, :, e, quit chord), render through a TestBackend. Cold-JIT
+    # compile of these paths used to make the first arrow press lag
+    # visibly — now they're precompiled.
+    try
+        ressac_app = RessacApp(; scheduler=sched)
+        tb = Tachikoma.TestBackend(80, 24)
+        frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 80, 24),
+                                Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+        Tachikoma.view(ressac_app, frame)
+        # Arrow keys
+        for k in (:left, :right, :up, :down)
+            Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(k, '\0', Tachikoma.key_press))
+        end
+        # Mode toggles
+        Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(:i, 'i', Tachikoma.key_press))
+        Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(:escape, '\0', Tachikoma.key_press))
+        # Eval trigger
+        Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(:e, 'e', Tachikoma.key_press))
+        # Render once more after some state changes
+        Tachikoma.view(ressac_app, frame)
+    catch
+        # Best-effort: precompile failures only cost first-call latency.
+    end
+
     # Warm the TUI ex-command paths for instruments/synths/guide so first
     # invocation in a live session is instant.
     try
