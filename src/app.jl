@@ -161,6 +161,17 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
     # potential vim commands and consumes the keystroke).
     if is_press && ed.mode === :normal
+        # + / - / * / / nudge a number under the cursor. Checked FIRST
+        # so the same keys can fall through to scope zoom when the
+        # cursor isn't on a number — same physical key, two distinct
+        # roles depending on context.
+        if evt.char in ('+','-','*','/') && _has_number_under_cursor(ed)
+            step = evt.char == '+' ? 1 :
+                   evt.char == '-' ? -1 :
+                   evt.char == '*' ? 10 : -10
+            _nudge_number_under_cursor!(m, ed, step)
+            return
+        end
         if evt.char == 'e' && m.focus === :patterns
             # `e` evals the current line as Julia. Only meaningful in the
             # patterns pane — the synth pane buffer contains SuperCollider
@@ -204,17 +215,6 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         else
             _reset_completion!(m)
         end
-    end
-    # Nudge numbers under cursor (works in :insert or :normal). Ctrl+a /
-    # Ctrl+x step by 1 (or 1.0 for floats); Ctrl+u / Ctrl+d step by 10
-    # (or 0.1 for floats). Common live-coding affordance — way faster
-    # than `r<digit>` cycles to dial a value.
-    if is_press && evt.key === :ctrl && (evt.char in ('a','x','u','d'))
-        step = evt.char == 'a' ? 1 :
-               evt.char == 'x' ? -1 :
-               evt.char == 'u' ? 10 : -10
-        _nudge_number_under_cursor!(m, ed, step)
-        return
     end
     # Tab in :command (ex-command line, ":synth wob...") autocompletes
     # the command verb itself OR the argument (synth/sample/instrument
@@ -363,6 +363,26 @@ end
 # Anchored at the START of the candidate span, not the line — we'll
 # scan around the cursor for the nearest match.
 const _NUMBER_RX = r"-?\d+(?:\.\d+)?"
+
+"""
+    _has_number_under_cursor(ed) -> Bool
+
+True iff the cursor sits inside a numeric literal — used to decide
+whether + / - in normal mode should nudge the value or fall through
+to scope zoom. Cheap: a regex scan of one line.
+"""
+function _has_number_under_cursor(ed::TK.CodeEditor)
+    row = ed.cursor_row
+    1 <= row <= length(ed.lines) || return false
+    line = String(ed.lines[row])
+    col = ed.cursor_col
+    for mt in eachmatch(_NUMBER_RX, line)
+        s = mt.offset
+        e = s + length(mt.match) - 1
+        s - 1 <= col <= e && return true
+    end
+    return false
+end
 
 """
     _nudge_number_under_cursor!(m, ed, step)
