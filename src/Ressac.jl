@@ -412,6 +412,146 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     catch
         # Best-effort: precompile failures here only cost first-call latency.
     end
+
+    # ── Exhaustive Tachikoma RessacApp paths ───────────────────────
+    # Cover every update!/view branch we ship today so the first
+    # keystroke / modal / theme switch is JIT-cached.
+    try
+        _init_custom_themes!()
+        cfg = RessacConfig()
+        _RESSAC_CONFIG[] = cfg
+        _apply_theme!(:cyberpunk)
+        _apply_theme!(:solarpunk)
+        _apply_theme!(:kokaku)
+
+        app = RessacApp(; scheduler=sched)
+        _LIVE_SCHEDULER[] = sched
+        tb = Tachikoma.TestBackend(120, 32)
+        frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 120, 32),
+                                Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+
+        # Press / repeat / release for every key shape we care about.
+        for (key, ch) in ((:char, 'i'), (:char, 'e'), (:char, 'T'),
+                          (:char, 'K'), (:char, 'S'), (:char, 'm'),
+                          (:char, 'j'), (:char, 'k'), (:char, '+'),
+                          (:char, '-'), (:char, '*'), (:char, '/'),
+                          (:char, '<'), (:char, '>'), (:char, '='),
+                          (:char, '.'), (:char, ' '),
+                          (:tab, '\0'), (:escape, '\0'),
+                          (:enter, '\0'), (:backspace, '\0'),
+                          (:left, '\0'), (:right, '\0'),
+                          (:up, '\0'), (:down, '\0'))
+            Tachikoma.update!(app, Tachikoma.KeyEvent(key, ch, Tachikoma.key_press))
+        end
+        # Numpad symbol normalisation.
+        for k in (:kp_0, :kp_5, :kp_add, :kp_subtract, :kp_decimal)
+            Tachikoma.update!(app, Tachikoma.KeyEvent(k, '\0', Tachikoma.key_press))
+        end
+        # Held T (key_repeat path).
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'T', Tachikoma.key_repeat))
+        # Held nudge.
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:char, '+', Tachikoma.key_repeat))
+
+        # Modal dispatch.
+        for verb in ("synth pluck", "lib", "back", "guide", "synth-guide",
+                     "browse", "doc gain", "scale minor", "starter techno",
+                     "panic", "hush", "theme outrun", "theme nonexistent",
+                     "reload-config")
+            try _handle_ex_command!(app, verb) catch end
+        end
+        # Close modals back to none.
+        app.modal = :none
+
+        # Render twice with config + theme.
+        Tachikoma.view(app, frame)
+        Tachikoma.view(app, frame)
+        # Render with scope active.
+        _APP_SCOPE_TYPE[] = :wave
+        _APP_SCOPE_DATA[] = Float32[sin(2π * i / 32) for i in 0:63]
+        Tachikoma.view(app, frame)
+        _APP_SCOPE_TYPE[] = :amp
+        _APP_SCOPE_DATA[] = Float32[0.5]
+        Tachikoma.view(app, frame)
+        _APP_SCOPE_TYPE[] = :spectrum
+        _APP_SCOPE_DATA[] = Float32[0.3 for _ in 1:48]
+        Tachikoma.view(app, frame)
+        _APP_SCOPE_TYPE[] = :off
+
+        # Synth pane open + render with split.
+        _open_synth_tab!(app, "warm_synth")
+        Tachikoma.view(app, frame)
+        # Tab cycle.
+        app.completion_idx = 0
+        ed = app.editor
+        ed.mode = :insert
+        Tachikoma.set_text!(ed, "@d1 p\"bd\" |> gai")
+        ed.cursor_row = 1
+        ed.cursor_col = lastindex(Tachikoma.text(ed)) - 1
+        _try_autocomplete!(app, ed)
+        _try_autocomplete!(app, ed)
+        _reset_completion!(app)
+
+        # Ex-command autocomplete.
+        ed.mode = :command
+        empty!(ed.command_buffer); append!(ed.command_buffer, collect("syn"))
+        _try_ex_autocomplete!(ed)
+        empty!(ed.command_buffer); append!(ed.command_buffer, collect("scope wav"))
+        _try_ex_autocomplete!(ed)
+        ed.mode = :normal
+
+        # Nudge on int + float.
+        Tachikoma.set_text!(app.editor, "rate = 4.5\ncount = 200")
+        app.editor.cursor_row = 1
+        app.editor.cursor_col = 8
+        _nudge_number_under_cursor!(app, app.editor, 1)
+        _nudge_number_under_cursor!(app, app.editor, 10)
+        app.editor.cursor_row = 2
+        app.editor.cursor_col = 10
+        _nudge_number_under_cursor!(app, app.editor, -1)
+
+        # Synth library: list, preview, instantiate paths.
+        _open_synth_library!(app)
+        _synthlib_all_entries()
+        _preview_synth_from_library!(app)
+        # don't actually instantiate (writes to disk); just touch the picker.
+        app.modal = :none
+
+        # Sccode in-memory paths (no network): seed entries, drive nav + filter.
+        app.modal = :sccode
+        app.sccode_entries = [_SccodeEntry("1-aaa", "Warm Synth"),
+                              _SccodeEntry("1-bbb", "Warm Bass"),
+                              _SccodeEntry("1-ccc", "Cold Pad")]
+        app.sccode_cursor = 1
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:char, '/', Tachikoma.key_press))
+        for c in "warm"
+            Tachikoma.update!(app, Tachikoma.KeyEvent(:char, c, Tachikoma.key_press))
+        end
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:enter, '\0', Tachikoma.key_press))
+        _sccode_filtered(app)
+        Tachikoma.view(app, frame)
+        app.modal = :none
+
+        # Log dedup + multi-line flatten + level styling.
+        _push_app_log!(app, "[INFO] warm")
+        _push_app_log!(app, "[INFO] warm")
+        _push_app_log!(app, "[INFO] warm")
+        _push_app_log!(app, "[ERROR] line1\nline2")
+        _push_app_log!(app, "[WARN] watchout")
+        _push_app_log!(app, "[KEY] something")
+
+        # Panic.
+        _panic!(app)
+
+        # Pause + resume render path.
+        app.paused = true
+        Tachikoma.view(app, frame)
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'x', Tachikoma.key_press))
+        Tachikoma.view(app, frame)
+
+        _LIVE_SCHEDULER[] = nothing
+    catch
+        _LIVE_SCHEDULER[] = nothing
+    end
 end
 
 function __init__()
