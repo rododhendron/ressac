@@ -31,16 +31,31 @@ target (if any) into `m.last_eval_block`. Errors are appended to
 `m.logs`, never re-thrown.
 """
 function _eval_block!(m::LiveModel; mode::Symbol = :immediate, n::Int = 0)
-    text = _block_text(m)
-    isempty(strip(text)) && return
-    start, stop = _paragraph_bounds(m)
+    # Eval the CURRENT LINE only by default. If the line is an incomplete
+    # Julia expression (`@d1 p"bd" |>` on its own), auto-expand downward
+    # one line at a time until parse succeeds — handles continuation
+    # blocks without forcing the user into visual mode.
+    isempty(strip(m.buffer[m.cursor_row])) && return
+    start = m.cursor_row
+    stop  = m.cursor_row
+    text  = m.buffer[start]
+    max_lookahead = min(start + 10, length(m.buffer))
+    for s in start:max_lookahead
+        candidate = join(m.buffer[start:s], "\n")
+        ex_try = try
+            Meta.parse(candidate; raise = false)
+        catch
+            nothing
+        end
+        if ex_try !== nothing && !(ex_try isa Expr && ex_try.head === :incomplete)
+            text = candidate
+            stop = s
+            break
+        end
+    end
     slot = _block_slot(text)
     try
-        # Wrap in begin/end so multi-statement paragraphs (e.g. several
-        # consecutive `@dN ...` lines from a starter pack) parse as one
-        # expression instead of "extra token after end of expression".
-        wrapped = "begin\n" * text * "\nend"
-        ex = Meta.parse(wrapped)
+        ex = Meta.parse(text)
         result = nothing
         prev_mode = _EVAL_MODE[]
         _EVAL_MODE[] = (mode, n)
