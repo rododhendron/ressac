@@ -931,8 +931,49 @@ function _open_synth_library!(m::RessacApp)
     m.synthlib_cursor = 1
 end
 
+"""
+    _synthlib_all_entries() -> Vector{_SynthLibEntry}
+
+Built-in starter pack + every `plugins/user-synths/*.scd` the user has
+saved, exposed as the same `_SynthLibEntry` shape. User entries get
+category "user" and an excerpt of their first comment line as the
+description, so the modal renders them alongside the built-ins.
+"""
+function _synthlib_all_entries()
+    entries = copy(_SYNTH_LIBRARY)
+    dir = joinpath(pwd(), "plugins", "user-synths")
+    isdir(dir) || return entries
+    for f in sort!(readdir(dir))
+        endswith(f, ".scd") || continue
+        name = String(splitext(f)[1])
+        # Don't double-list a user file that shadows a built-in name —
+        # the user's edits are what they want to revisit.
+        existing = findfirst(e -> e.name == name, entries)
+        path = joinpath(dir, f)
+        src = try read(path, String) catch; "" end
+        desc = _first_comment_line(src)
+        if existing !== nothing
+            entries[existing] = _SynthLibEntry(name, "user", desc, src)
+        else
+            push!(entries, _SynthLibEntry(name, "user", desc, src))
+        end
+    end
+    return entries
+end
+
+function _first_comment_line(src::AbstractString)
+    for line in split(src, '\n'; limit=20)
+        s = strip(line)
+        startswith(s, "//") || continue
+        body = strip(replace(String(s), r"^//+\s*" => ""))
+        isempty(body) && continue
+        return first(body, 60)
+    end
+    return "user synth"
+end
+
 function _handle_synthlib_key!(m::RessacApp, evt::TK.KeyEvent)
-    n = length(_SYNTH_LIBRARY)
+    n = length(_synthlib_all_entries())
     if evt.key === :escape || evt.char == 'q'
         m.modal = :none
     elseif evt.char == 'j' || evt.key === :down
@@ -955,10 +996,11 @@ the source, syncs, then `Synth(name, [\\out, 0])`). Lets the user
 audition library entries before deciding to instantiate one.
 """
 function _preview_synth_from_library!(m::RessacApp)
-    1 <= m.synthlib_cursor <= length(_SYNTH_LIBRARY) || return
+    entries = _synthlib_all_entries()
+    1 <= m.synthlib_cursor <= length(entries) || return
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
-    entry = _SYNTH_LIBRARY[m.synthlib_cursor]
+    entry = entries[m.synthlib_cursor]
     send_osc(sched.osc,
              encode(OSCMessage("/ressac/evalAndPlay",
                                 Any[entry.name, entry.source])))
@@ -974,8 +1016,15 @@ user's edits) and open it as a new synth tab. The user can iterate on
 the copy without affecting the canonical template.
 """
 function _instantiate_synth_from_library!(m::RessacApp)
-    1 <= m.synthlib_cursor <= length(_SYNTH_LIBRARY) || return
-    entry = _SYNTH_LIBRARY[m.synthlib_cursor]
+    entries = _synthlib_all_entries()
+    1 <= m.synthlib_cursor <= length(entries) || return
+    entry = entries[m.synthlib_cursor]
+    # User-saved synths: don't deep-copy, just open the existing file.
+    if entry.category == "user"
+        m.modal = :none
+        _open_synth_tab!(m, entry.name)
+        return
+    end
     name = entry.name
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
@@ -1585,27 +1634,30 @@ name, its category, and the one-line description. Cursor row inverted
 so the user can see what Enter will instantiate.
 """
 function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    entries = _synthlib_all_entries()
     aw, ah = area.width, area.height
     box_w = max(60, min(aw - 4, 100))
-    box_h = max(10, min(ah - 4, length(_SYNTH_LIBRARY) + 6))
+    box_h = max(10, min(ah - 4, length(entries) + 6))
     box_x = area.x + max(0, (aw - box_w) ÷ 2)
     box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    # Title.
     suffix_w = max(0, box_w - 56)
     title = "┌ synth library — j/k move, Space preview, Enter open, q close " * "─" ^ suffix_w * "┐"
     TK.set_string!(buf, box_x, box_y, first(title, box_w),
                    TK.tstyle(:title, bold=true))
-    # Body rows.
-    for (i, entry) in enumerate(_SYNTH_LIBRARY)
+    for (i, entry) in enumerate(entries)
         i + 1 >= box_h - 1 && break
         is_cur = i == m.synthlib_cursor
         marker = is_cur ? "▶ " : "  "
-        text = "$marker$(rpad(entry.name, 12)) [$(rpad(entry.category, 5))]  $(entry.description)"
-        style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
+        # User entries get a distinct visual hook so the eye separates
+        # "stock starter" from "your saved synth".
+        tag = entry.category == "user" ? "[user]  ★" : "[$(rpad(entry.category, 5))]"
+        text = "$marker$(rpad(entry.name, 14)) $tag  $(entry.description)"
+        base_style = entry.category == "user" ?
+            TK.tstyle(:success) : TK.tstyle(:text)
+        style = is_cur ? TK.tstyle(:accent, bold=true) : base_style
         line = "│ " * first(text, box_w - 4) * " │"
         TK.set_string!(buf, box_x, box_y + i, line, style)
     end
-    # Footer.
     foot = "└" * "─" ^ (box_w - 2) * "┘"
     TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
                    TK.tstyle(:title, bold=true))
