@@ -266,12 +266,12 @@ buffer's bounds.
 function _screen_to_editor_pos(ed::TK.CodeEditor, rect::TK.Rect, x::Int, y::Int)
     _in_rect(rect, x, y) || return nothing
     # The editor's title takes the first row of `rect`; content begins
-    # one row down. The viewport scrolls vertically via top_line (1-based).
+    # one row down. Vertical scroll lives in `scroll_offset` (0-based,
+    # "lines hidden above the visible window").
     body_y0 = rect.y + 1
     visual_row = y - body_y0
     visual_row < 0 && return nothing
-    top = max(1, ed.top_line)
-    row = top + visual_row
+    row = ed.scroll_offset + visual_row + 1
     1 <= row <= length(ed.lines) || return nothing
     col = clamp(x - rect.x - 1, 0, length(ed.lines[row]))
     return (row, col)
@@ -3007,13 +3007,6 @@ _app_synth_path(name::AbstractString) =
     joinpath(pwd(), "plugins", "user-synths", String(name) * ".scd")
 
 """
-    _open_synth_tab!(m, name)
-
-If `name` is already an open tab, switch to it. Otherwise create a
-new tab (loading the source from disk or a starter template) and
-push it onto the stack.
-"""
-"""
     _open_sandbox_synth!(m)
 
 Open a fresh synth tab with a randomised name (`sketch_<id>`) and
@@ -3032,6 +3025,13 @@ function _open_sandbox_synth!(m::RessacApp)
     _push_app_log!(m, "[INFO] sandbox synth '$name' — :w <realname> to save under a chosen name")
 end
 
+"""
+    _open_synth_tab!(m, name)
+
+If `name` is already an open tab, switch to it. Otherwise create a
+new tab (loading the source from disk or a starter template) and
+push it onto the stack.
+"""
 function _open_synth_tab!(m::RessacApp, name::AbstractString)
     name = String(name)
     existing = findfirst(t -> t.name == name, m.synth_tabs)
