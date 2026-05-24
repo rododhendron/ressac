@@ -138,6 +138,15 @@ non-empty), and the focus toggle for keystroke routing.
     tap_events::Vector{Float64}          = Float64[]
     tap_sample::String                   = "bd"
     tap_steps::Int                       = 16
+    # Piano mode — letter keys map to semitones, hitting one fires the
+    # current synth at that pitch. `piano_rec` toggles recording so
+    # Enter commits the played notes as `@dN :synth |> n(p"...")`.
+    piano_active::Bool                   = false
+    piano_rec::Bool                      = false
+    piano_synth::String                  = "fmbell"
+    piano_octave::Int                    = 4               # MIDI octave (4 ≈ A4 = 440Hz region)
+    piano_events::Vector{Tuple{Float64,Int}} = Tuple{Float64,Int}[]
+    piano_steps::Int                     = 16
     # Ghost autocomplete — a faded suggestion that follows the cursor in
     # insert mode. Tab accepts it (and bumps its usage count in the
     # global ranking). Computed on every insert keystroke from the
@@ -402,6 +411,26 @@ end
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
+    end
+    # Piano mode: letter keys → semitones → fire the current synth at
+    # that pitch. Octave shift via `[` and `]`. Enter commits the
+    # recording (if piano_rec is on), Esc exits.
+    if m.piano_active && evt.action === TK.key_press
+        if evt.key === :escape
+            _piano_stop!(m); return
+        elseif evt.key === :enter
+            m.piano_rec ? _piano_commit!(m) : _piano_stop!(m); return
+        elseif evt.char == '['
+            m.piano_octave = max(0, m.piano_octave - 1)
+            _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)"); return
+        elseif evt.char == ']'
+            m.piano_octave = min(9, m.piano_octave + 1)
+            _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)"); return
+        elseif haskey(_PIANO_KEYMAP, evt.char)
+            _piano_play!(m, _PIANO_KEYMAP[evt.char])
+            return
+        end
+        return  # swallow everything else
     end
     # Tap-record mode: capture Space as a hit, Enter to commit, Esc to
     # cancel. Every other key is swallowed so the user can hold the
@@ -1365,7 +1394,7 @@ const _EX_COMMAND_VERBS = String[
     "snip", "snippets", "snippet",
     "rec", "record", "export", "export-synth",
     "scratch", "sandbox", "e", "dsl", "dsl-guide", "synth-dsl", "safety",
-    "tap",
+    "tap", "piano", "piano-rec", "piano-record",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -1677,6 +1706,14 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     elseif (mt = match(r"^tap\s+(\w+)\s+(\d+)$", cmd)) !== nothing
         _tap_start!(m; sample = String(mt.captures[1]),
                        steps  = parse(Int, mt.captures[2]))
+    elseif cmd == "piano"
+        _piano_start!(m)
+    elseif (mt = match(r"^piano\s+(\w+)$", cmd)) !== nothing
+        _piano_start!(m; synth = String(mt.captures[1]))
+    elseif cmd in ("piano-rec", "piano-record")
+        _piano_start!(m; record = true)
+    elseif (mt = match(r"^piano-rec\s+(\w+)$", cmd)) !== nothing
+        _piano_start!(m; synth = String(mt.captures[1]), record = true)
     elseif cmd == "e" || (occursin('e', cmd) && all(c -> c == 'e' || isdigit(c), cmd))
         # :e evaluates the entire buffer (one slot eval per @dN, last
         # non-muted definition wins). :e1e5e15 restricts to d1/d5/d15.
@@ -3175,6 +3212,114 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
 end
 
 # ---------------------------------------------------------------------
+# Piano mode — letter keys → semitones → fire current synth
+# ---------------------------------------------------------------------
+#
+# Chromatic keyboard layout. Both qwerty (z = C) and azerty (w = C
+# because azerty's bottom-left key is W in the same physical spot)
+# point to the same notes — so the layout works on both without
+# reconfiguring. Black keys (#) live on the row above naturals:
+#
+#     s d _ g h j _ s d _ g h …      ← black keys (sharps)
+#     z x c v b n m , . / + …         ← naturals (qwerty)
+#     w x c v b n , ; : ! § …         ← naturals (azerty)
+#
+# 13 keys give a chromatic octave + 1.
+const _PIANO_KEYMAP = Dict{Char,Int}(
+    # Bottom row naturals + middle row sharps. Covers one chromatic
+    # octave + one note; `[` and `]` shift the octave for more range.
+    # Both qwerty (z=C) and azerty (w=C, same physical spot) bindings
+    # are defined so the layout works without per-layout config.
+    'z' => 0,  'w' => 0,   # C
+    's' => 1,              # C#
+    'x' => 2,              # D
+    'd' => 3,              # D#
+    'c' => 4,              # E
+    'v' => 5,              # F
+    'g' => 6,              # F#
+    'b' => 7,              # G
+    'h' => 8,              # G#
+    'n' => 9,              # A
+    'j' => 10,             # A#
+    ',' => 11, 'm' => 11,  # B
+    ';' => 12, '.' => 12,  # C above
+)
+
+function _piano_start!(m::RessacApp;
+                       synth::AbstractString = m.piano_synth,
+                       record::Bool = false)
+    m.piano_active = true
+    m.piano_rec = record
+    m.piano_synth = String(synth)
+    empty!(m.piano_events)
+    mode_label = record ? "RECORD" : "PLAY"
+    _push_app_log!(m, "[INFO] piano $mode_label — synth=$(m.piano_synth) · " *
+                   "[/] octave · Enter " *
+                   (record ? "commit" : "exit") * " · Esc exit")
+    _push_app_log!(m, "         keys: z=C s=C# x=D d=D# c=E v=F g=F# b=G h=G# n=A j=A# ,=B")
+end
+
+function _piano_stop!(m::RessacApp)
+    m.piano_active = false
+    m.piano_rec = false
+    empty!(m.piano_events)
+    _push_app_log!(m, "[INFO] piano off")
+end
+
+"""
+    _piano_play!(m, semitone)
+
+Fire the current synth at the pitch corresponding to `semitone` (0
+= C in the current octave). Sends `/ressac/play <synth> freq <hz>`
+which the SC OSCdef converts to a fresh Synth instance. If recording
+is active, also stash the (timestamp, semitone) for later commit.
+"""
+function _piano_play!(m::RessacApp, semitone::Int)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    midi = m.piano_octave * 12 + semitone
+    freq = 440.0 * 2.0 ^ ((midi - 69) / 12)
+    args = Any[m.piano_synth, "freq", Float32(freq)]
+    send_osc(sched.osc, encode(OSCMessage("/ressac/play", args)))
+    if m.piano_rec
+        push!(m.piano_events, (time(), semitone))
+    end
+    _push_app_log!(m, "[INFO] piano ♪ midi=$midi freq=$(round(Int, freq))Hz")
+end
+
+"""
+    _piano_commit!(m)
+
+Quantize the recorded note events into a `:synth |> n(p"...")`
+pattern and insert it below the cursor. Same quantization scheme
+as tap mode — bar = first→last interval over `piano_steps` cells.
+"""
+function _piano_commit!(m::RessacApp)
+    m.piano_active = false
+    n = length(m.piano_events)
+    if n < 2
+        _push_app_log!(m, "[WARN] piano: need at least 2 notes")
+        empty!(m.piano_events)
+        return
+    end
+    first_t = m.piano_events[1][1]
+    last_t  = m.piano_events[end][1]
+    bar = max(last_t - first_t, 1e-6)
+    N = m.piano_steps
+    cells = fill("~", N)
+    for (t, semi) in m.piano_events
+        idx = clamp(round(Int, (t - first_t) / bar * (N - 1)) + 1, 1, N)
+        cells[idx] = string(semi)
+    end
+    slot = _next_free_d_slot(m.editor)
+    line = "@d$(slot) :$(m.piano_synth) |> n(p\"" * join(cells, " ") * "\")"
+    _insert_line_after_cursor!(m.editor, line)
+    empty!(m.piano_events)
+    m.piano_rec = false
+    _push_app_log!(m, "[INFO] piano committed → $(line)")
+end
+
+# ---------------------------------------------------------------------
 # Tap-to-record rhythm
 # ---------------------------------------------------------------------
 
@@ -3670,6 +3815,10 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     end
     if m.tap_recording
         push!(parts, "● TAP $(length(m.tap_events)) hit$(length(m.tap_events) == 1 ? "" : "s")")
+    end
+    if m.piano_active
+        label = m.piano_rec ? "● PIANO REC" : "♪ PIANO"
+        push!(parts, "$label oct=$(m.piano_octave) [$(length(m.piano_events))]")
     end
     left = join(parts, "  •  ")
 
