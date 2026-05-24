@@ -3305,18 +3305,18 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
     if new_name === nothing
-        # Plain :w — overwrite the current tab's backing file.
+        # Plain :w — overwrite the current tab's backing file. Auto-align
+        # the SynthDef name in case the user edited it inconsistently.
+        text = _align_synthdef_name(text, old_name)
+        TK.set_text!(tab.editor, text)
         write(_app_synth_path(old_name), text)
         register_synth!(SynthEntry(Symbol(old_name), "user-synths", Dict{String,Any}(
             "description" => "live-edited synth", "tags" => ["user"])))
         _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(old_name))")
     else
-        # :w newname — Save-As semantics. Write a NEW file under the
-        # given name with the SynthDef declaration rewritten to match,
-        # register it, and open it in a fresh tab so the user lands on
-        # the new file with the old one still available for revisits.
+        # :w newname — Save-As. Rewrite the SynthDef name to match.
         name = String(new_name)
-        new_text = replace(text, "SynthDef(\\$(old_name)" => "SynthDef(\\$(name)")
+        new_text = _align_synthdef_name(text, name)
         write(_app_synth_path(name), new_text)
         register_synth!(SynthEntry(Symbol(name), "user-synths", Dict{String,Any}(
             "description" => "live-edited synth", "tags" => ["user"])))
@@ -3368,14 +3368,31 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
     sched === nothing && return
     tab = _current_synth_tab(m)
     src = TK.text(tab.editor)
-    # Default T uses /ressac/evalAndPlay: SC interprets + s.syncs + fires
-    # `Synth(name, [\out, 0])` directly. The SynthDef's own param defaults
-    # (freq, gain, sustain, release, ...) are heard exactly as written —
-    # no SuperDirt override of n→freq or amp gain. Matches the model the
-    # user signed off on. :test-raw used to be the explicit form; both
-    # now go through the same code path because :test-raw was redundant.
+    # Auto-rewrite the SynthDef name to match the tab name. Lets the
+    # user duplicate / rename / save-as without remembering to update
+    # the `\name` token by hand — the contract is "tab name ↔ SynthDef
+    # name", and we enforce it on every fire. Idempotent when they
+    # already match.
+    src = _align_synthdef_name(src, tab.name)
     addr = raw ? "/ressac/evalAndPlay" : "/ressac/evalAndPlay"
     send_osc(sched.osc, encode(OSCMessage(addr, Any[tab.name, src])))
     _push_app_log!(m, "[INFO] T — test $(tab.name) (synth defaults active)")
+end
+
+"""
+    _align_synthdef_name(src, target)
+
+Replace the FIRST `SynthDef(\\<anything>, …)` declaration in `src`
+so its name matches `target`. Returns the rewritten source. If no
+SynthDef declaration is found, `src` is returned unchanged — the
+user might be experimenting with a non-SynthDef snippet and we
+don't want to fight them.
+"""
+function _align_synthdef_name(src::AbstractString, target::AbstractString)
+    m = match(r"(SynthDef\s*\(\s*\\)(\w+)", src)
+    m === nothing && return src
+    current = m.captures[2]
+    current == target && return src
+    return replace(src, r"(SynthDef\s*\(\s*\\)(\w+)" => SubstitutionString("\\1$(target)"); count=1)
 end
 
