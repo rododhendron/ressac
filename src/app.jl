@@ -130,6 +130,14 @@ non-empty), and the focus toggle for keystroke routing.
     # Log scroll offset (lines from the bottom). 0 = bottom, increases
     # backwards into history. Bumped by wheel events over the log pane.
     log_scroll::Int                      = 0
+    # Tap-to-record rhythm. `:tap [sample] [steps]` enters this mode;
+    # Space records a hit at the current time, Enter commits the
+    # quantized pattern into the buffer, Esc cancels. Any other key is
+    # swallowed so the user can focus on tapping.
+    tap_recording::Bool                  = false
+    tap_events::Vector{Float64}          = Float64[]
+    tap_sample::String                   = "bd"
+    tap_steps::Int                       = 16
     # Ghost autocomplete — a faded suggestion that follows the cursor in
     # insert mode. Tab accepts it (and bumps its usage count in the
     # global ranking). Computed on every insert keystroke from the
@@ -394,6 +402,21 @@ end
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
+    end
+    # Tap-record mode: capture Space as a hit, Enter to commit, Esc to
+    # cancel. Every other key is swallowed so the user can hold the
+    # tempo without accidentally editing the buffer.
+    if m.tap_recording && evt.action === TK.key_press
+        if evt.key === :enter
+            _tap_commit!(m); return
+        elseif evt.key === :escape
+            m.tap_recording = false
+            empty!(m.tap_events)
+            _push_app_log!(m, "[INFO] tap cancelled"); return
+        elseif evt.char == ' '
+            _tap_hit!(m); return
+        end
+        return
     end
     # Paused: any key_press resumes and is then swallowed (so the
     # resume key doesn't double-act as e.g. an insert-mode character).
@@ -1342,6 +1365,7 @@ const _EX_COMMAND_VERBS = String[
     "snip", "snippets", "snippet",
     "rec", "record", "export", "export-synth",
     "scratch", "sandbox", "e", "dsl", "dsl-guide", "synth-dsl", "safety",
+    "tap",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -1646,6 +1670,13 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _hush!(m)
     elseif cmd in ("rec", "record")
         _toggle_recording!(m)
+    elseif cmd == "tap"
+        _tap_start!(m)
+    elseif (mt = match(r"^tap\s+(\w+)$", cmd)) !== nothing
+        _tap_start!(m; sample = String(mt.captures[1]))
+    elseif (mt = match(r"^tap\s+(\w+)\s+(\d+)$", cmd)) !== nothing
+        _tap_start!(m; sample = String(mt.captures[1]),
+                       steps  = parse(Int, mt.captures[2]))
     elseif cmd == "e" || (occursin('e', cmd) && all(c -> c == 'e' || isdigit(c), cmd))
         # :e evaluates the entire buffer (one slot eval per @dN, last
         # non-muted definition wins). :e1e5e15 restricts to d1/d5/d15.
@@ -3144,6 +3175,85 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
 end
 
 # ---------------------------------------------------------------------
+# Tap-to-record rhythm
+# ---------------------------------------------------------------------
+
+"""
+    _tap_start!(m; sample="bd", steps=16)
+
+Enter tap-record mode. Status bar shows `● TAP …` while active.
+Space records a hit at the current time, Enter quantizes the hits
+to `steps` and inserts the resulting `@dN p"..."` below the cursor,
+Esc cancels.
+"""
+function _tap_start!(m::RessacApp; sample::AbstractString = "bd",
+                                    steps::Int = 16)
+    m.tap_recording = true
+    empty!(m.tap_events)
+    m.tap_sample = String(sample)
+    m.tap_steps  = steps
+    _push_app_log!(m, "[INFO] tap — Space for hit (≥2), Enter commit, Esc cancel · sample=$(sample), steps=$(steps)")
+end
+
+function _tap_hit!(m::RessacApp)
+    push!(m.tap_events, time())
+    _push_app_log!(m, "[INFO] tap #$(length(m.tap_events))")
+end
+
+"""
+    _tap_commit!(m)
+
+Quantize the recorded hits over `m.tap_steps` divisions, build a
+mini-notation string, and insert `@d<next-free-slot> p"..."` below
+the cursor. The bar length is taken from the first→last tap
+interval; both endpoints land on the first and last grid step
+respectively.
+"""
+function _tap_commit!(m::RessacApp)
+    m.tap_recording = false
+    n = length(m.tap_events)
+    if n < 2
+        _push_app_log!(m, "[WARN] tap: need at least 2 hits to define a bar")
+        empty!(m.tap_events)
+        return
+    end
+    first_t = m.tap_events[1]
+    last_t  = m.tap_events[end]
+    bar = max(last_t - first_t, 1e-6)
+    N = m.tap_steps
+    cells = fill("~", N)
+    for t in m.tap_events
+        idx = clamp(round(Int, (t - first_t) / bar * (N - 1)) + 1, 1, N)
+        cells[idx] = m.tap_sample
+    end
+    slot = _next_free_d_slot(m.editor)
+    line = "@d$(slot) p\"" * join(cells, " ") * "\""
+    _insert_line_after_cursor!(m.editor, line)
+    empty!(m.tap_events)
+    _push_app_log!(m, "[INFO] tap → $(line)")
+end
+
+function _next_free_d_slot(ed::TK.CodeEditor)
+    used = Set{Int}()
+    for mt in eachmatch(r"@d(\d+)", TK.text(ed))
+        push!(used, parse(Int, mt.captures[1]))
+    end
+    n = 1
+    while n in used; n += 1; end
+    return n
+end
+
+function _insert_line_after_cursor!(ed::TK.CodeEditor, line::AbstractString)
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty=true))
+    row = clamp(ed.cursor_row, 1, length(lines))
+    insert!(lines, row + 1, String(line))
+    TK.set_text!(ed, join(lines, '\n'))
+    ed.cursor_row = row + 1
+    ed.cursor_col = length(line)
+end
+
+# ---------------------------------------------------------------------
 # Panic
 # ---------------------------------------------------------------------
 
@@ -3557,6 +3667,9 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         secs = floor(Int, time() - m.recording_start_ts)
         mins, s = divrem(secs, 60)
         push!(parts, "● REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0'))")
+    end
+    if m.tap_recording
+        push!(parts, "● TAP $(length(m.tap_events)) hit$(length(m.tap_events) == 1 ? "" : "s")")
     end
     left = join(parts, "  •  ")
 
