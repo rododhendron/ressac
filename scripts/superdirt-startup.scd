@@ -126,16 +126,25 @@ s.waitForBoot({
         var path = msg[1].asString;
         if(~ressacRecording.not) {
             ("[ressac] rec start → " ++ path).postln;
-            s.prepareForRecord(path);
-            s.sync;
-            s.record;
+            // s.sync must run inside a Routine — outside, it doesn't
+            // actually yield, so s.record would fire before
+            // prepareForRecord finished allocating the disk buffer
+            // and the resulting WAV would be just the header.
             ~ressacRecording = true;
+            Routine {
+                s.prepareForRecord(path);
+                s.sync;
+                s.record;
+            }.play(AppClock);
         };
     }, '/ressac/recStart');
     OSCdef(\ressacRecStop, { |msg|
         if(~ressacRecording) {
             "[ressac] rec stop".postln;
-            s.stopRecording;
+            Routine {
+                s.stopRecording;
+                s.sync;
+            }.play(AppClock);
             ~ressacRecording = false;
         };
     }, '/ressac/recStop');

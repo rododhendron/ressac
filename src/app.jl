@@ -110,6 +110,20 @@ non-empty), and the focus toggle for keystroke routing.
     recording::Bool              = false
     recording_path::String       = ""
     recording_start_ts::Float64  = 0.0
+    # Layout rects refreshed every frame in view(). The mouse handler
+    # uses these to map (x, y) → which pane was clicked and where.
+    # nothing = the pane wasn't on screen on the last frame.
+    layout_patterns::Union{Nothing,TK.Rect} = nothing
+    layout_synth::Union{Nothing,TK.Rect}    = nothing
+    layout_synth_tabs::Union{Nothing,TK.Rect} = nothing
+    layout_scope::Union{Nothing,TK.Rect}    = nothing
+    layout_logs::Union{Nothing,TK.Rect}     = nothing
+    # Per-modal row → entry-index mapping built during render so the
+    # mouse handler can resolve "click row N" → "select entry K".
+    modal_rows::Vector{Tuple{Int,Int}}   = Tuple{Int,Int}[]  # (screen_y, entry_idx)
+    # Log scroll offset (lines from the bottom). 0 = bottom, increases
+    # backwards into history. Bumped by wheel events over the log pane.
+    log_scroll::Int                      = 0
 end
 
 # Kitty CSI u reports numpad keys with their own :kp_<n> symbol instead
@@ -151,28 +165,209 @@ TK.should_quit(m::RessacApp) = m.quit
 """
     TK.update!(m::RessacApp, evt::TK.MouseEvent)
 
-Mouse handling — scroll-wheel-as-nudge is the prime case.
+Full mouse routing. Each pane records its rect during render so we
+can map (x, y) → which widget under the pointer. Behaviours:
 
-  Wheel up    → +1 / +1.0  (or +10 / +0.1 with Shift)
-  Wheel down  → −1 / −1.0  (or −10 / −0.1 with Shift)
-
-Only when the cursor sits on a number. Outside that case the wheel
-is a no-op for now; we don't synthesise log scrolling because the
-log pane has its own infrastructure that I'd rather keep clean.
+  • Wheel over a number (in any editor pane)     → nudge ±1
+    + Shift                                       → nudge ±10
+  • Wheel over the log pane (and no number)      → scroll log
+  • Wheel over the scope panel                   → cycle scope
+  • Left-click in patterns pane                  → focus + move cursor
+  • Left-click in synth pane                     → focus + move cursor
+  • Left-click on tab bar                        → switch synth tab
+  • Left-click in modal row                      → highlight that row
+  • Middle-click in modal row                    → highlight + activate (Enter)
 """
 function TK.update!(m::RessacApp, evt::TK.MouseEvent)
-    ed = _active_editor(m)
+    # Modal click routing has priority.
+    if m.modal !== :none && evt.action === TK.mouse_press &&
+       evt.button === TK.mouse_left
+        _modal_click!(m, evt.x, evt.y); return
+    end
+    # Wheel — context-aware.
     if evt.button === TK.mouse_scroll_up || evt.button === TK.mouse_scroll_down
-        if _has_number_under_cursor(ed)
-            sign = evt.button === TK.mouse_scroll_up ? 1 : -1
-            mag  = evt.shift ? 10 : 1
-            _nudge_number_under_cursor!(m, ed, sign * mag)
-        end
+        _mouse_wheel!(m, evt)
         return
     end
-    # Future: left-click in the editor area would move the cursor.
-    # That needs to track the editor's last-rendered Rect; deferring
-    # until the layout helper that returns those areas is centralised.
+    # Left-click routing.
+    if evt.action === TK.mouse_press && evt.button === TK.mouse_left
+        # Tab bar?
+        if m.layout_synth_tabs !== nothing && _in_rect(m.layout_synth_tabs, evt.x, evt.y)
+            _click_tab_bar!(m, evt.x); return
+        end
+        # Synth editor?
+        if m.layout_synth !== nothing && _in_rect(m.layout_synth, evt.x, evt.y)
+            m.focus = :synth; _refresh_focus_flags!(m)
+            _click_into_editor!(_current_synth_tab(m).editor,
+                                m.layout_synth, evt.x, evt.y); return
+        end
+        # Patterns editor?
+        if m.layout_patterns !== nothing && _in_rect(m.layout_patterns, evt.x, evt.y)
+            m.focus = :patterns; _refresh_focus_flags!(m)
+            _click_into_editor!(m.editor, m.layout_patterns, evt.x, evt.y)
+            return
+        end
+        # Scope panel click → cycle.
+        if m.layout_scope !== nothing && _in_rect(m.layout_scope, evt.x, evt.y)
+            _scope_cycle_key!(m); return
+        end
+    end
+end
+
+_in_rect(r::TK.Rect, x::Int, y::Int) =
+    x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+
+"""
+    _mouse_wheel!(m, evt)
+
+Wheel dispatch. Priority: hover-nudge a number in whichever editor
+the pointer is over (cursor doesn't have to be on the number — the
+mouse position resolves it). Falls back to log scroll for wheels
+over the log pane, scope cycle for wheels over the scope panel.
+"""
+function _mouse_wheel!(m::RessacApp, evt::TK.MouseEvent)
+    sign = evt.button === TK.mouse_scroll_up ? 1 : -1
+    mag  = evt.shift ? 10 : 1
+    # 1. Hover wheel-nudge in any editor.
+    for (rect, ed) in ((m.layout_patterns, m.editor),
+                       (m.layout_synth, _synth_pane_open(m) ?
+                                        _current_synth_tab(m).editor : nothing))
+        rect === nothing && continue
+        ed === nothing && continue
+        _in_rect(rect, evt.x, evt.y) || continue
+        rc = _screen_to_editor_pos(ed, rect, evt.x, evt.y)
+        rc === nothing && return
+        row, col = rc
+        if _try_nudge_at!(m, ed, row, col, sign * mag)
+            return
+        end
+        return  # over editor but no number → don't fall through
+    end
+    # 2. Wheel over log pane → scroll log.
+    if m.layout_logs !== nothing && _in_rect(m.layout_logs, evt.x, evt.y)
+        m.log_scroll = max(0, m.log_scroll + sign)
+        return
+    end
+    # 3. Wheel over scope → cycle.
+    if m.layout_scope !== nothing && _in_rect(m.layout_scope, evt.x, evt.y)
+        sign > 0 ? _scope_cycle_key!(m) : _scope_cycle_key!(m)
+        return
+    end
+end
+
+"""
+    _screen_to_editor_pos(ed, rect, x, y) -> Union{Tuple{Int,Int},Nothing}
+
+Convert screen (x, y) into a 1-based (row, col-0-based) inside the
+CodeEditor. Accounts for the editor's `top_line` scroll offset.
+Returns nothing when (x, y) is outside the rect or past the
+buffer's bounds.
+"""
+function _screen_to_editor_pos(ed::TK.CodeEditor, rect::TK.Rect, x::Int, y::Int)
+    _in_rect(rect, x, y) || return nothing
+    # The editor's title takes the first row of `rect`; content begins
+    # one row down. The viewport scrolls vertically via top_line (1-based).
+    body_y0 = rect.y + 1
+    visual_row = y - body_y0
+    visual_row < 0 && return nothing
+    top = max(1, ed.top_line)
+    row = top + visual_row
+    1 <= row <= length(ed.lines) || return nothing
+    col = clamp(x - rect.x - 1, 0, length(ed.lines[row]))
+    return (row, col)
+end
+
+"""
+    _try_nudge_at!(m, ed, row, col, step) -> Bool
+
+Find the numeric literal that COVERS the (row, col) coordinate and
+nudge it by `step`. Returns true if a number was found and nudged.
+Doesn't touch the keyboard cursor — useful for wheel-over-number
+hover.
+"""
+function _try_nudge_at!(m::RessacApp, ed::TK.CodeEditor, row::Int, col::Int, step::Int)
+    1 <= row <= length(ed.lines) || return false
+    line = String(ed.lines[row])
+    best = nothing
+    for mt in eachmatch(_NUMBER_RX, line)
+        s = mt.offset
+        e = s + length(mt.match) - 1
+        s - 1 <= col <= e && (best = mt; break)
+    end
+    best === nothing && return false
+    txt = best.match
+    s = best.offset
+    e = s + length(txt) - 1
+    is_float = occursin('.', txt)
+    new_str = if is_float
+        delta = abs(step) == 10 ? (step > 0 ? 0.1 : -0.1) : Float64(step)
+        val = parse(Float64, txt) + delta
+        dot = findfirst('.', txt)
+        decimals = length(txt) - dot
+        string(round(val; digits = decimals))
+    else
+        string(parse(Int, txt) + step)
+    end
+    new_line = (s > 1 ? line[1:s-1] : "") * new_str *
+               (e >= lastindex(line) ? "" : line[e+1:end])
+    TK.set_text!(ed, _set_one_line(ed, row, new_line))
+    _push_app_log!(m, "[INFO] nudge $txt → $new_str  @ row $row")
+    return true
+end
+
+"""
+    _click_into_editor!(ed, rect, x, y)
+
+Move the editor's cursor to the screen position the user clicked.
+Cheap wrapper around _screen_to_editor_pos.
+"""
+function _click_into_editor!(ed::TK.CodeEditor, rect::TK.Rect, x::Int, y::Int)
+    rc = _screen_to_editor_pos(ed, rect, x, y)
+    rc === nothing && return
+    ed.cursor_row, ed.cursor_col = rc
+end
+
+"""
+    _click_tab_bar!(m, x)
+
+A click in the tab strip switches to the tab nearest the click
+column. The TabBar lays tabs out left-to-right with single-space
+padding, so we approximate by dividing the x offset by the average
+tab width.
+"""
+function _click_tab_bar!(m::RessacApp, x::Int)
+    isempty(m.synth_tabs) && return
+    rect = m.layout_synth_tabs
+    rect === nothing && return
+    rel = clamp(x - rect.x, 0, rect.width - 1)
+    slot_w = max(4, rect.width ÷ length(m.synth_tabs))
+    idx = clamp(rel ÷ slot_w + 1, 1, length(m.synth_tabs))
+    m.synth_tab_idx = idx
+    m.focus = :synth
+    _refresh_focus_flags!(m)
+end
+
+"""
+    _modal_click!(m, x, y)
+
+Click in a modal — map y to the row that was rendered there and set
+the appropriate cursor. We track the (screen_y → entry_idx) mapping
+during render via m.modal_rows.
+"""
+function _modal_click!(m::RessacApp, x::Int, y::Int)
+    isempty(m.modal_rows) && return
+    for (yy, idx) in m.modal_rows
+        if y == yy
+            if m.modal === :synth_library
+                m.synthlib_cursor = idx
+            elseif m.modal === :snippets
+                m.snip_cursor = idx
+            elseif m.modal === :sccode
+                m.sccode_cursor = idx
+            end
+            return
+        end
+    end
 end
 
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
@@ -1570,11 +1765,12 @@ function _app_render_spectrum(data, area::TK.Rect, buf::TK.Buffer)
     n == 0 && (TK.render(canvas, area, buf); return)
     width_dots  = area.width * 2
     height_dots = area.height * 4
-    bands = min(n, width_dots)
-    for band_idx in 1:bands
+    # Map each x-column in dot-space to its corresponding band. This
+    # produces filled bars instead of skinny one-dot spikes.
+    for dx in 0:(width_dots - 1)
+        band_idx = clamp(floor(Int, dx * n / width_dots) + 1, 1, n)
         val = clamp(Float64(data[band_idx]), 0.0, 1.0)
         bar_dy = clamp(round(Int, val * (height_dots - 1)), 0, height_dots - 1)
-        dx = (band_idx - 1) * (width_dots ÷ max(1, bands))
         for h in 0:bar_dy
             TK.set_point!(canvas, dx, height_dots - 1 - h)
         end
@@ -1595,13 +1791,24 @@ ones collapse to horizontal — the standard mixing aid.
 function _app_render_xy(data, area::TK.Rect, buf::TK.Buffer; rotate45::Bool=false)
     canvas = TK.Canvas(area.width, area.height; style=TK.tstyle(:primary))
     n = length(data)
-    n < 2 && (TK.render(canvas, area, buf); return)
+    n < 4 && (TK.render(canvas, area, buf); return)
     width_dots  = area.width * 2
     height_dots = area.height * 4
     peak = maximum(abs.(data); init=0.001f0)
     scale = peak < 0.1 ? 1.0 : 1.0 / max(Float64(peak), 0.1)
     cx = width_dots ÷ 2
     cy = height_dots ÷ 2
+    # Cross-hairs (mid lines, very faint) — anchors the axes when the
+    # signal is quiet. Only the centre column + centre row.
+    for dx in 0:(width_dots - 1)
+        TK.set_point!(canvas, dx, cy)
+    end
+    for dy in 0:(height_dots - 1)
+        TK.set_point!(canvas, cx, dy)
+    end
+    # Lissajous: draw lines between consecutive points so the trace
+    # forms a closed curve instead of a sparse scatter.
+    last_dx = last_dy = -1
     for i in 1:2:(n-1)
         l = Float64(data[i]) * scale
         r = Float64(data[i+1]) * scale
@@ -1612,7 +1819,12 @@ function _app_render_xy(data, area::TK.Rect, buf::TK.Buffer; rotate45::Bool=fals
         end
         dx = clamp(cx + round(Int, x * cx), 0, width_dots - 1)
         dy = clamp(cy - round(Int, y * cy), 0, height_dots - 1)
-        TK.set_point!(canvas, dx, dy)
+        if last_dx >= 0
+            TK.line!(canvas, last_dx, last_dy, dx, dy)
+        else
+            TK.set_point!(canvas, dx, dy)
+        end
+        last_dx, last_dy = dx, dy
     end
     TK.render(canvas, area, buf)
 end
@@ -1712,15 +1924,17 @@ hit.
 """
 function _app_render_onset(data, area::TK.Rect, buf::TK.Buffer)
     v = length(data) >= 1 ? clamp(Float64(data[1]), 0.0, 1.0) : 0.0
-    intensity = floor(Int, v * 4)
-    glyph = (intensity < 1) ? " " :
-            (intensity < 2) ? "░" :
-            (intensity < 3) ? "▒" :
-            (intensity < 4) ? "▓" : "█"
+    # Single-row pulse — width tracks the latch value so it visually
+    # decays after each hit. A label underneath shows the live value
+    # so the user knows the detector is alive even between hits.
+    bar_w = floor(Int, v * area.width)
+    bar = "█" ^ bar_w * "·" ^ (area.width - bar_w)
     style = v > 0.5 ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text_dim)
-    row = glyph ^ area.width
-    for y in 0:(area.height - 1)
-        TK.set_string!(buf, area.x, area.y + y, row, style)
+    TK.set_string!(buf, area.x, area.y, first(bar, area.width), style)
+    label = "  onset detector — flashes on each transient (latch $(round(v; digits=2)))"
+    if area.height >= 2
+        TK.set_string!(buf, area.x, area.y + 1,
+                       first(label, area.width), TK.tstyle(:text_dim))
     end
 end
 
@@ -1739,10 +1953,12 @@ function _app_render_hist(data, area::TK.Rect, buf::TK.Buffer)
     norm = peak < 0.01 ? 1.0 : 1.0 / Float64(peak)
     width_dots  = area.width * 2
     height_dots = area.height * 4
-    for band_idx in 1:n
+    # Fill every dot column with the matching bin so bars look solid,
+    # not skinny one-dot spikes (same fix as spectrum).
+    for dx in 0:(width_dots - 1)
+        band_idx = clamp(floor(Int, dx * n / width_dots) + 1, 1, n)
         v = clamp(Float64(data[band_idx]) * norm, 0.0, 1.0)
         bar_h = clamp(round(Int, v * (height_dots - 1)), 0, height_dots - 1)
-        dx = (band_idx - 1) * (width_dots ÷ max(1, n))
         for h in 0:bar_h
             TK.set_point!(canvas, dx, height_dots - 1 - h)
         end
@@ -1810,13 +2026,18 @@ function TK.view(m::RessacApp, f::TK.Frame)
     _render_status_bar(m, status_area, buf)
 
     # Editor body — split horizontally when at least one synth tab open.
+    # Record each pane's screen rect so the mouse handler can route
+    # clicks / hovers to the right widget.
+    m.layout_synth = nothing
+    m.layout_synth_tabs = nothing
     if !_synth_pane_open(m)
+        m.layout_patterns = body_area
         TK.render(m.editor, body_area, buf)
     else
         cols = TK.split_layout(TK.Layout(TK.Horizontal, [TK.Fill(), TK.Fill()]), body_area)
         if length(cols) >= 2
+            m.layout_patterns = cols[1]
             TK.render(m.editor, cols[1], buf)
-            # Right pane: optional TabBar on top (when >1 tabs) + editor below.
             if length(m.synth_tabs) > 1
                 synth_rows = TK.split_layout(
                     TK.Layout(TK.Vertical, [TK.Fixed(1), TK.Fill()]), cols[2])
@@ -1826,14 +2047,18 @@ function TK.view(m::RessacApp, f::TK.Frame)
                                     focused = (m.focus === :synth))
                     TK.render(bar, synth_rows[1], buf)
                     TK.render(_current_synth_tab(m).editor, synth_rows[2], buf)
+                    m.layout_synth_tabs = synth_rows[1]
+                    m.layout_synth = synth_rows[2]
                 end
             else
+                m.layout_synth = cols[2]
                 TK.render(_current_synth_tab(m).editor, cols[2], buf)
             end
         end
     end
 
     # Scope panel (if any)
+    m.layout_scope = scope_area
     if scope_area !== nothing
         _render_app_scope(m, scope_area, buf)
     end
@@ -1843,6 +2068,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
 
     # Footer (key hints) + logs with per-level coloring.
     _render_footer(m, footer_area, buf)
+    m.layout_logs = logs_area
     _render_logs(m, logs_area, buf)
 
     # Modal overlay (after everything else so it sits on top).
@@ -1958,9 +2184,12 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
     # responsive while we sleep the take's duration.
     @async begin
         try
-            # A short head-pad so the WAV has 80 ms of silence before
-            # the attack — saves trimming downstream.
-            sleep(0.08)
+            # SC's prepareForRecord allocates a disk buffer and isn't
+            # instantaneous — wait long enough for the Routine in the
+            # OSCdef to actually engage record before we fire the note.
+            # A side-effect of the wait: the WAV has a fade-in margin of
+            # silence which is convenient for downstream editing.
+            sleep(0.3)
             send_osc(sched.osc,
                      encode(OSCMessage("/ressac/evalAndPlay",
                                         Any[tab.name, src])))
@@ -2133,6 +2362,7 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         start_i = max(1, m.snip_cursor - body_h ÷ 2)
         end_i = min(n, start_i + body_h - 1)
         start_i = max(1, end_i - body_h + 1)
+        empty!(m.modal_rows)
         for (slot, i) in enumerate(start_i:end_i)
             s = snips[i]
             is_cur = i == m.snip_cursor
@@ -2140,7 +2370,9 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             label = "$(marker)$(rpad(s.trigger, 18)) [$(rpad(s.category, 9))]  $(s.description)"
             style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
             line = "│ " * first(label, box_w - 4) * " │"
-            TK.set_string!(buf, box_x, box_y + 1 + slot, line, style)
+            screen_y = box_y + 1 + slot
+            TK.set_string!(buf, box_x, screen_y, line, style)
+            push!(m.modal_rows, (screen_y, i))
         end
     end
     pageline = "│ " * rpad("$(n) snippets shown · ctx = $(_snip_context(m))", box_w - 4) * " │"
@@ -2498,6 +2730,7 @@ function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         start_i = max(1, m.sccode_cursor - body_h ÷ 2)
         end_i = min(n, start_i + body_h - 1)
         start_i = max(1, end_i - body_h + 1)
+        empty!(m.modal_rows)
         for (slot, i) in enumerate(start_i:end_i)
             e = filtered[i]
             is_cur = i == m.sccode_cursor
@@ -2505,7 +2738,9 @@ function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             label = "$(marker)#$(rpad(e.id, 8)) $(e.title)"
             style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
             line = "│ " * first(label, box_w - 4) * " │"
-            TK.set_string!(buf, box_x, box_y + 1 + slot, line, style)
+            screen_y = box_y + 1 + slot
+            TK.set_string!(buf, box_x, screen_y, line, style)
+            push!(m.modal_rows, (screen_y, i))
         end
     end
     # Page indicator near the bottom.
@@ -2608,7 +2843,14 @@ WARN in yellow, INFO in dim text, KEY in accent. Lets the user scan
 output by colour rather than parsing every line.
 """
 function _render_logs(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    tail = m.logs[max(1, end - area.height + 1):end]
+    # log_scroll = lines to skip from the bottom. Clamped so we can't
+    # scroll past the last entry.
+    n = length(m.logs)
+    max_scroll = max(0, n - area.height)
+    m.log_scroll = clamp(m.log_scroll, 0, max_scroll)
+    last_idx = n - m.log_scroll
+    first_idx = max(1, last_idx - area.height + 1)
+    tail = first_idx <= last_idx ? m.logs[first_idx:last_idx] : String[]
     for (i, line) in enumerate(tail)
         i > area.height && break
         style = if startswith(line, "[ERROR]")
@@ -2625,6 +2867,9 @@ function _render_logs(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         TK.set_string!(buf, area.x, area.y + i - 1,
                        first(line, area.width), style)
     end
+    # Tiny scroll indicator in the last column when not at the bottom.
+    m.log_scroll > 0 && TK.set_string!(buf,
+        area.x + area.width - 1, area.y, "↑", TK.tstyle(:warning, bold=true))
 end
 
 """
@@ -2645,19 +2890,20 @@ function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffe
     title = "┌ synth library — j/k move, Space preview, Enter open, q close " * "─" ^ suffix_w * "┐"
     TK.set_string!(buf, box_x, box_y, first(title, box_w),
                    TK.tstyle(:title, bold=true))
+    empty!(m.modal_rows)
     for (i, entry) in enumerate(entries)
         i + 1 >= box_h - 1 && break
         is_cur = i == m.synthlib_cursor
         marker = is_cur ? "▶ " : "  "
-        # User entries get a distinct visual hook so the eye separates
-        # "stock starter" from "your saved synth".
         tag = entry.category == "user" ? "[user]  ★" : "[$(rpad(entry.category, 5))]"
         text = "$marker$(rpad(entry.name, 14)) $tag  $(entry.description)"
         base_style = entry.category == "user" ?
             TK.tstyle(:success) : TK.tstyle(:text)
         style = is_cur ? TK.tstyle(:accent, bold=true) : base_style
         line = "│ " * first(text, box_w - 4) * " │"
-        TK.set_string!(buf, box_x, box_y + i, line, style)
+        screen_y = box_y + i
+        TK.set_string!(buf, box_x, screen_y, line, style)
+        push!(m.modal_rows, (screen_y, i))
     end
     foot = "└" * "─" ^ (box_w - 2) * "┘"
     TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
