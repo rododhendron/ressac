@@ -354,8 +354,25 @@ function build_synth(name::Symbol, sig::Sig;
                      pan = 0,
                      auto_env::Bool = true,
                      auto_gain::Bool = true)
+    # SynthDef args in SuperCollider must be numeric — `false` / `true`
+    # as a default value throws DoesNotUnderstandError. So if the user
+    # wrote `(freq=110, auto_env=false)` as a single tuple (which is the
+    # natural typing flow), pull build-time options out of `params`
+    # BEFORE we emit them as SynthDef args.
+    local_params = NamedTuple()
+    for (k, v) in pairs(params)
+        if k === :auto_env
+            auto_env = v isa Bool ? v : auto_env
+        elseif k === :auto_gain
+            auto_gain = v isa Bool ? v : auto_gain
+        elseif k === :pan
+            pan = v
+        else
+            local_params = merge(local_params, NamedTuple{(k,)}((v,)))
+        end
+    end
     # Merge default params in (user-provided keys win).
-    merged = merge(_DEFAULT_PARAMS, params)
+    merged = merge(_DEFAULT_PARAMS, local_params)
 
     code = sig.code
     # Auto-envelope only when the chain doesn't already have one.

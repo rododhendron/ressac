@@ -111,6 +111,93 @@ const _PARAM_DOCS = Dict{String,String}(
 )
 
 """
+    _PARAM_EXAMPLES
+
+Maps the same names as `_PARAM_DOCS` to a list of one-line usage
+examples surfaced by `:doc <name>`. Keep each line copy-pasteable —
+the whole point is the user can drop it into the patterns pane and
+press `e`. Not every entry needs examples; absence is fine.
+"""
+const _PARAM_EXAMPLES = Dict{String,Vector{String}}(
+    "n" => [
+        "@d1 :bd |> n(p\"0 3 5 0\")           # bd:0 bd:3 bd:5 bd:0 (sample variants)",
+        "@d1 :wobble |> n(p\"0 3 7 12\") |> gain(0.7)   # root → m3 → fifth → octave",
+        "@d1 :bass |> n(p\"<0 -5 7 -3>\")     # alternate the offset across cycles",
+    ],
+    "degree" => [
+        "cps!(0.5); :scale minor",
+        "@d1 :wobble |> degree(p\"0 2 4 7\") |> gain(0.6)  # scale-aware (no #s in mini-notation)",
+    ],
+    "gain" => [
+        "@d1 p\"bd*4\" |> gain(0.8)",
+        "@d1 p\"hh hh hh hh\" |> gain(p\"0.8 0.4 0.6 0.4\")  # accent pattern",
+        "@d1 p\"sn\" |> gain(0.7) |> gain(1.4)             # composes ×, becomes 0.98",
+    ],
+    "pan" => [
+        "@d1 p\"hh*8\" |> pan(p\"0.2 0.8\")    # ping-pong",
+        "@d1 p\"bd\" |> pan(0.5)              # dead-center",
+    ],
+    "lpf" => [
+        "@d1 p\"bd*4\" |> lpf(400)             # muffled kick",
+        "@d1 :supersaw |> lpf(p\"<2000 800 4000>\")  # filter sweep across cycles",
+    ],
+    "hpf" => [
+        "@d1 p\"oh*8\" |> hpf(6000) |> gain(0.5)   # tight click hat",
+    ],
+    "speed" => [
+        "@d1 p\"bd*2\" |> speed(0.5)           # pitched down + slower",
+        "@d1 p\"vinyl\" |> speed(p\"1 0.95 1 1.05\")  # turntable wow",
+    ],
+    "room" => [
+        "@d1 p\"cp\" |> room(0.8) |> gain(0.6)",
+    ],
+    "delay" => [
+        "@d1 p\"sn\" |> delay(0.6) |> delaytime(0.375) |> delayfeedback(0.5)",
+    ],
+    "cps" => [
+        "cps!(0.5)        # 30 BPM at 4 beats/cycle, default",
+        "cps!(0.75)       # ~45 BPM",
+        ":bpm             # tap-tempo: 4 hits + Enter sets cps live",
+    ],
+    "fast" => [
+        "@d1 p\"bd hh sn hh\" |> fast(2)        # twice as fast",
+        "@d1 p\"bd hh\" |> every(4, fast(3))    # triplet every 4th cycle",
+    ],
+    "slow" => [
+        "@d1 p\"bd sn cp ~\" |> slow(2)         # spread across 2 cycles",
+    ],
+    "every" => [
+        "@d1 p\"bd hh sn hh\" |> every(4, rev)  # reverse every 4th cycle",
+        "@d1 p\"bd hh sn hh\" |> every(3, fast(2))",
+    ],
+    "rev" => [
+        "@d1 p\"bd hh sn hh\" |> rev            # hh sn hh bd",
+    ],
+    "stack" => [
+        "@d1 stack(p\"bd*4\", p\"~ cp ~ cp\")     # layered drums",
+    ],
+    "cat" => [
+        "@d1 cat([p\"bd*4\", p\"bd ~ bd ~\"])   # alternate beats each cycle",
+    ],
+    "mask" => [
+        "@d1 mask(p\"bd*8\", p\"1 0 1 1 0 1 0 1\")  # gate the kicks",
+    ],
+    "p" => [
+        "@d1 p\"bd ~ sn ~\"            # 4 events per cycle",
+        "@d1 p\"[bd bd] ~ sn ~\"       # nested = same time, two kicks",
+        "@d1 p\"bd <hh sn cp> bd ~\"   # < > alternates each cycle",
+    ],
+    "gate" => [
+        "@d1 gate(:bd, p\"1 0 1 0 1 0 1 0\")",
+    ],
+    "@dN" => [
+        "@d1 p\"bd*4\"                  # slot d1",
+        "@d2 p\"hh hh hh hh\" |> gain(0.4)",
+        "# @d1 …                        # commented = muted, key `m` toggles",
+    ],
+)
+
+"""
     _STARTER_PACKS
 
 Genre starter sketches. Each value is a list of buffer lines that

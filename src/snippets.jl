@@ -274,8 +274,142 @@ const _SNIPPETS = _Snippet[
         @d2 p"hh*16" |> gain(0.25)
         """),
 
+    # ── Patterns: cheatsheets — commented reference blocks ──────────
+    # Insert one of these to see what's available. Lines are Julia
+    # comments so they sit in the buffer without breaking eval.
+    _Snippet("cheat_combinators", :patterns, "reference",
+        "Cheatsheet: every pattern combinator with a one-line example.", raw"""
+        # ── Combinators (pattern transforms) ──
+        # pure(:bd)                  — pattern firing :bd once per cycle
+        # silence(Symbol)            — empty pattern (placeholder)
+        # fast(2, p)  /  p |> fast(2)        — ×2 speed
+        # slow(2, p)  /  p |> slow(2)        — ÷2 speed (dilate)
+        # density(2, p)              — alias for fast
+        # rev(p)                     — reverse events within each cycle
+        # every(4, fast(2), p)       — apply fast(2) every 4th cycle
+        # every(4, rev, p)           — reverse every 4th cycle
+        # stack(p, q, r)             — play patterns in parallel
+        # cat([p, q, r])             — alternate one per cycle
+        # mask(p, q::Pattern{Bool})  — gate p by q (true = let through)
+        # gate(:bd, p"1 0 1 1")      — substitute :bd for every "1" event
+        # degree(x)                  — note as scale degree (set :scale first)
+        # n(x)                       — sample variant index OR semitone offset
+        """),
+
+    _Snippet("cheat_controls", :patterns, "reference",
+        "Cheatsheet: every effect / control op and its composition rule.", raw"""
+        # ── Controls (chain with |>) ──
+        # gain(0.8)        — volume multiplier        (composes ×)
+        # pan(0.3)         — stereo position          (last write wins)
+        # speed(0.5)       — sample playback rate     (composes ×)
+        # lpf(2000)        — low-pass cutoff Hz       (composes min — strictest wins)
+        # hpf(200)         — high-pass cutoff Hz      (composes max)
+        # n(p"0 3 5")      — sample variant / semitones (overwrite)
+        # room(0.4)        — reverb send 0..1
+        # delay(0.4)       — delay send 0..1
+        # delaytime(0.25)  — delay time in beats (¼ = 16th note at 4 cps)
+        # delayfeedback(0.5)
+        # shape(0.2)       — waveshaper drive
+        # attack / release / sustain / hold — envelope shape per note
+        # cutoff / resonance — synth-internal filter
+        # vowel(:a/:e/:i/:o/:u)  — formant filter
+        # crush(8) / coarse(4)   — bit-crush / sample-rate reduce
+        # accelerate(2) — pitch sweep semis/sec
+        # set(:any_key, val)     — override any OSC param verbatim
+        """),
+
+    _Snippet("cheat_mini", :patterns, "reference",
+        "Cheatsheet: the mini-notation grammar inside p\"…\".", raw"""
+        # ── Mini-notation (inside p"…") ──
+        # bd hh sn hh        — 4 equal events per cycle
+        # ~                  — rest / silence
+        # bd*4               — repeat 4 times inside the slot (subdivide)
+        # bd!3               — same bd in 3 successive slots (no subdivide)
+        # [bd bd]            — group: 2 events in one slot's time
+        # <bd sn cp>         — alternate: one per cycle, round-robin
+        # bd(3,8)            — Euclidean rhythm: 3 hits over 8 steps
+        # bd:2               — variant index — bd, bd:1, bd:2, ...
+        # bd@2               — weight: this token gets 2 slots
+        # combine: <[bd*2] sn> ~ bd ~
+        """),
+
+    _Snippet("cheat_commands", :patterns, "reference",
+        "Cheatsheet: every :ex-command grouped by purpose.", raw"""
+        # ── Tempo & transport ──
+        # :cps 0.5            set tempo (cycles/sec). 0.5 = 120 BPM @ 4 beats/cycle
+        # :bpm  /  :tap-tempo tap-set tempo: 2+ Space hits then Enter
+        # :hush  /  :panic    soft / nuclear stop
+        # :pause              freeze render to mouse-select & copy
+
+        # ── Slots ──
+        # :mute d1            mute @d1 (toggle with `m` in normal mode)
+        # :unmute d1
+        # :solo d1            mute everything else
+        # E (normal mode)     eval every @dN block in the buffer
+
+        # ── Browse / library ──
+        # :browse             samples + synths + instruments picker
+        # :lib                synth library (built-in + your saved ones)
+        # :sccode             search sccode.org
+        # :sccode <id>        import one entry
+        # :doc <name>         description + usage examples
+        # :wiki  /  :guide    in-app docs
+
+        # ── Snippets / starters ──
+        # :snip               this picker
+        # :starter house      genre starter pack (house/dnb/techno/…)
+
+        # ── Sessions ──
+        # :save  <name>       save patterns buffer
+        # :load  <name>       reload it (then press E to eval)
+        # :sessions           list saved files
+
+        # ── Tap / piano ──
+        # :tap                tap a rhythm; Enter auto-detects period + cps
+        # :tap-strict         no loop detection (single-bar quantize)
+        # :piano <synth>      keyboard plays chromatic semitones
+        # :piano-rec          same + records into a @dN line
+
+        # ── Scope / visual ──
+        # :scope amp|wave|spectrum|xy|goni|spectrogram|peak|pitch|onset|hist|corr
+        # :theme <name>       switch theme  (:theme alone lists)
+        # :safety on|off      limiter + DC block + 10 Hz HPF
+        """),
+
+    _Snippet("cheat_pipes", :patterns, "reference",
+        "Cheatsheet: how |> threads through pattern → control → output.", raw"""
+        # ── Pipe-chain anatomy ──
+        # Pattern  |>  control  |>  control  …
+        #   :bd                    a bare symbol = pure(:bd) (lifted)
+        #   p"bd ~ sn ~"           mini-notation literal
+        #   gate(:bd, p"1 0 1 1")  named pattern
+        #
+        # Then each |> wraps the pattern in a ControlMap layer:
+        #
+        #   @d1 p"bd hh sn hh" |> gain(0.8) |> lpf(1500) |> pan(0.3)
+        #
+        # @dN macro is the final stage — installs the pattern at the slot.
+        # Composition rules (most useful):
+        #   gain * gain → ×          lpf min lpf → strictest
+        #   pan / n / room / delay → overwrite (last wins)
+        """),
+
+    _Snippet("helpers_tour", :patterns, "reference",
+        "Working example showcasing helpers — eval & iterate.", raw"""
+        cps!(0.5)
+        @d1 p"bd*4" |> gain(0.9)
+        @d2 p"~ sn ~ sn" |> gain(0.7) |> room(0.2)
+        @d3 p"hh*8" |> gain(0.35) |> hpf(4000) |> pan(p"0.4 -0.4")
+        @d4 :bass |> n(p"0 0 3 5") |> gain(0.6) |> lpf(800)
+        # Try:
+        #   m on @d2     → mute the snare
+        #   :solo d3     → only the hat
+        #   :tap         → tap a rhythm to replace @d5
+        #   :save demo   → snapshot this state
+        """),
+
     # ── Synth pane: SynthDef skeletons ──────────────────────────────
-    _Snippet("synth_skeleton", :synth, "skeleton",
+    _Snippet("synth_skeleton", :synth_sc, "skeleton",
         "Minimal SynthDef boilerplate ready to fill in.", raw"""
         SynthDef(\myname, { |out, pan = 0, freq = 220, sustain = 0.5, gain = 0.5|
             var osc, amp, sig;
@@ -285,7 +419,7 @@ const _SNIPPETS = _Snippet[
             OffsetOut.ar(out, DirtPan.ar(sig, ~dirt.numChannels, pan));
         }).add;
         """),
-    _Snippet("synth_filtered", :synth, "skeleton",
+    _Snippet("synth_filtered", :synth_sc, "skeleton",
         "Saw → resonant filter → envelope, the bread-and-butter synth.", raw"""
         SynthDef(\myname, { |out, pan = 0, freq = 220, sustain = 0.5, gain = 0.5,
                             cutoff = 2000, resonance = 0.4|
@@ -299,81 +433,160 @@ const _SNIPPETS = _Snippet[
         """),
 
     # ── Synth pane: envelopes ───────────────────────────────────────
-    _Snippet("env_adsr", :synth, "envelope",
+    _Snippet("env_adsr", :synth_sc, "envelope",
         "ADSR envelope. Needs a gate arg in the SynthDef params.", raw"""
         amp = EnvGen.kr(Env.adsr(attack, decay, sustain_level, release),
                         gate, doneAction: 2);
         """),
-    _Snippet("env_perc", :synth, "envelope",
+    _Snippet("env_perc", :synth_sc, "envelope",
         "One-shot percussive envelope. No gate needed.", raw"""
         amp = EnvGen.kr(Env.perc(attack, sustain, 1, -4), doneAction: 2);
         """),
-    _Snippet("env_linen", :synth, "envelope",
+    _Snippet("env_linen", :synth_sc, "envelope",
         "Linear-attack/sustain/release — predictable note length.", raw"""
         amp = EnvGen.kr(Env.linen(attack, sustain, release), doneAction: 2);
         """),
-    _Snippet("env_pluck", :synth, "envelope",
+    _Snippet("env_pluck", :synth_sc, "envelope",
         "Sharp pluck envelope with exponential decay.", raw"""
         amp = EnvGen.kr(Env([0, 1, 0], [0.001, sustain], [0, -8]),
                         doneAction: 2);
         """),
 
     # ── Synth pane: filters ─────────────────────────────────────────
-    _Snippet("rlpf_env", :synth, "filter",
+    _Snippet("rlpf_env", :synth_sc, "filter",
         "Resonant LPF with envelope on cutoff — acid filter sweep.", raw"""
         var cenv = EnvGen.kr(Env.perc(0.001, 0.3, 1, -3)) * 4;
         filt = RLPF.ar(osc, cutoff * (1 + cenv), q);
         """),
-    _Snippet("lfo_filter", :synth, "filter",
+    _Snippet("lfo_filter", :synth_sc, "filter",
         "LFO-modulated cutoff — wobble bass core.", raw"""
         var lfo = SinOsc.kr(rate).range(low, high);
         filt = RLPF.ar(osc, lfo, q);
         """),
-    _Snippet("formant", :synth, "filter",
+    _Snippet("formant", :synth_sc, "filter",
         "Bandpass at a swept formant freq — vowel-y mouth sounds.", raw"""
         var vow = SinOsc.kr(vowel_rate).range(400, 1800);
         filt = BPF.ar(osc, vow, 0.25);
         """),
 
     # ── Synth pane: oscillator stacks ───────────────────────────────
-    _Snippet("saw_stack", :synth, "osc",
+    _Snippet("saw_stack", :synth_sc, "osc",
         "Detuned saw stack (super-saw) for fat leads / pads.", raw"""
         var saws = Mix.ar(Array.fill(5, { |i|
             Saw.ar(freq * (1 + ((i - 2) * 0.012)))
         })) * 0.2;
         """),
-    _Snippet("fm_2op", :synth, "osc",
+    _Snippet("fm_2op", :synth_sc, "osc",
         "Classic 2-op FM. mratio drives timbre, mindex its evolution.", raw"""
         var mod = SinOsc.ar(freq * mratio) *
                   EnvGen.kr(Env([mindex, 0.3], [decay], \exp)) * freq;
         sig = SinOsc.ar(freq + mod);
         """),
-    _Snippet("karplus", :synth, "osc",
+    _Snippet("karplus", :synth_sc, "osc",
         "Karplus-Strong pluck — noise burst into a feedback delay.", raw"""
         var exc = WhiteNoise.ar * EnvGen.kr(Env.perc(0, 0.005));
         var loop = CombL.ar(exc, 0.05, 1 / freq, sustain);
         loop = LPF.ar(loop, freq * 4);
         """),
-    _Snippet("sub_drop", :synth, "osc",
+    _Snippet("sub_drop", :synth_sc, "osc",
         "Pitch-drop sine for kick / sub.", raw"""
         var pitch = EnvGen.kr(Env([start_freq, freq], [drop], \exp));
         sig = SinOsc.ar(pitch);
         """),
 
     # ── Synth pane: output stages ───────────────────────────────────
-    _Snippet("dirt_out", :synth, "output",
+    _Snippet("dirt_out", :synth_sc, "output",
         "Standard SuperDirt output line.", raw"""
         OffsetOut.ar(out, DirtPan.ar(sig, ~dirt.numChannels, pan));
         """),
-    _Snippet("tanh_drive", :synth, "output",
+    _Snippet("tanh_drive", :synth_sc, "output",
         "Soft saturation — warm clip without harsh distortion.", raw"""
         sig = (sig * (1 + drive)).tanh;
         """),
-    _Snippet("stereo_widen", :synth, "output",
+    _Snippet("stereo_widen", :synth_sc, "output",
         "Cheap stereo widening via tiny L/R delays.", raw"""
         var ch_l = DelayN.ar(sig, 0.05, 0.011);
         var ch_r = DelayN.ar(sig, 0.05, 0.017);
         sig = (ch_l + ch_r) * 0.5;
+        """),
+
+    # ── Synth pane (DSL / .jl): @synth-macro skeletons ──────────────
+    # These insert Julia DSL syntax. Auto-env + auto-gain mean the
+    # minimal forms still produce a complete, freeing synth.
+    _Snippet("dsl_skeleton", :synth_dsl, "skeleton",
+        "Minimal @synth — sine wave, default freq/sustain/gain.", raw"""
+        @synth :myname sin_osc(:freq)
+        """),
+    _Snippet("dsl_filtered", :synth_dsl, "skeleton",
+        "Saw → resonant LPF. Add params for cutoff/q.", raw"""
+        @synth :myname (freq=220, cutoff=1200, q=0.3) saw(:freq) |> rlpf(:cutoff, :q)
+        """),
+    _Snippet("dsl_drone", :synth_dsl, "skeleton",
+        "No-env drone — runs until you :hush. Note auto_env=false.", raw"""
+        @synth :drone (freq=110, sustain=999) (auto_env=false,) saw(:freq) |> rlpf(800, 0.3)
+        """),
+
+    _Snippet("dsl_env_perc", :synth_dsl, "envelope",
+        "Percussive envelope — fast attack, exponential release.", raw"""
+        sin_osc(:freq) |> env_perc(0.001, :sustain)
+        """),
+    _Snippet("dsl_env_linen", :synth_dsl, "envelope",
+        "Linear envelope (attack, sustain, release).", raw"""
+        saw(:freq) |> env_linen(0.005, :sustain, 0.05)
+        """),
+    _Snippet("dsl_env_adsr", :synth_dsl, "envelope",
+        "ADSR envelope — needs gate (held note).", raw"""
+        sin_osc(:freq) |> env_adsr(0.01, 0.1, 0.7, 0.3; gate=:gate)
+        """),
+    _Snippet("dsl_env_pluck", :synth_dsl, "envelope",
+        "Sharp pluck — short release with curved decay.", raw"""
+        saw(:freq) |> env_perc(0.001, 0.2; curve=-8)
+        """),
+
+    _Snippet("dsl_lfo_filter", :synth_dsl, "filter",
+        "LFO-modulated cutoff — wobble bass core.", raw"""
+        @synth :wobble (freq=80, rate=4) saw(:freq) |>
+            rlpf(lfo(:rate; low=300, high=2400), 0.4)
+        """),
+    _Snippet("dsl_filter_env", :synth_dsl, "filter",
+        "Filter envelope sweep — acid 303 character.", raw"""
+        @synth :acid (freq=80, cutoff=2000, envmod=4) saw(:freq) |>
+            rlpf(:cutoff * (1 + :envmod), 0.3)
+        """),
+    _Snippet("dsl_bandpass", :synth_dsl, "filter",
+        "Vowel-y bandpass on noise.", raw"""
+        white() |> band_pass(800, 0.25) |> env_perc(0.001, :sustain)
+        """),
+
+    _Snippet("dsl_fm", :synth_dsl, "osc",
+        "2-op FM. Modulator at freq*mratio, depth via mindex.", raw"""
+        @synth :fm (freq=220, mratio=2, mindex=300) sin_osc(:freq + sin_osc(:freq * :mratio) * :mindex)
+        """),
+    _Snippet("dsl_saw_stack", :synth_dsl, "osc",
+        "Detuned saw stack — fat super-saw lead.", raw"""
+        @synth :supersaw (freq=220, detune=0.012) (
+            saw(:freq) + saw(:freq * (1 + :detune)) + saw(:freq * (1 - :detune))
+        ) * 0.33
+        """),
+    _Snippet("dsl_pluck", :synth_dsl, "osc",
+        "Karplus-style pluck via comb-filtered noise.", raw"""
+        @synth :pluck (freq=220) white() |> env_perc(0, 0.005) |>
+            delay_c(1 / :freq) |> low_pass(:freq * 4)
+        """),
+    _Snippet("dsl_kick_drop", :synth_dsl, "osc",
+        "Sub kick with pitch drop — sine + click.", raw"""
+        @synth :kick (sustain=0.4) sin_osc(line(120, 40, 0.05)) |>
+            env_perc(0.001, :sustain) |>
+            offset((white() |> env_perc(0, 0.005)) * 0.5)
+        """),
+
+    _Snippet("dsl_drive", :synth_dsl, "output",
+        "Soft tanh saturation — warmth without crunch.", raw"""
+        saw(:freq) |> tanh_drive(2.0)
+        """),
+    _Snippet("dsl_layer", :synth_dsl, "output",
+        "Layer multiple oscs with `+`. Useful for thickening.", raw"""
+        (sin_osc(:freq) + saw(:freq * 1.005) + pulse(:freq * 0.5, 0.4))
         """),
 ]
 

@@ -133,6 +133,13 @@ function live(; host::AbstractString = "127.0.0.1",
     try
         Tachikoma.app(RessacApp(; scheduler=sched); fps=cfg.fps)
     finally
+        # Always free SC voices on exit — drones with auto_env=false
+        # would otherwise keep playing after Ressac closes. Cheap nuke
+        # via /ressac/panic.
+        try
+            send_osc(sched.osc, encode(OSCMessage("/ressac/panic", Any[])))
+        catch
+        end
         existed || stop_live!()
     end
     return nothing

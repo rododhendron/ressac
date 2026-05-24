@@ -59,7 +59,7 @@ end
 Curried form: `fast(n)(p) == fast(n, p)`. Lets `p |> fast(n)` thread the
 pattern as the right-hand arg under Julia's native `|>`.
 """
-fast(n::Real) = p::Pattern -> fast(n, p)
+fast(n::Real) = x -> fast(n, x isa Symbol ? pure(x) : x)
 
 """
     slow(n, p) -> Pattern{T}
@@ -76,7 +76,7 @@ end
 
 Curried form: `slow(n)(p) == slow(n, p)`.
 """
-slow(n::Real) = p::Pattern -> slow(n, p)
+slow(n::Real) = x -> slow(n, x isa Symbol ? pure(x) : x)
 
 """
     density(n, p)
@@ -147,7 +147,7 @@ end
 
 Curried form: `every(n, f)(p) == every(n, f, p)`.
 """
-every(n::Int, f) = p::Pattern -> every(n, f, p)
+every(n::Int, f) = x -> every(n, f, x isa Symbol ? pure(x) : x)
 
 """
     stack(ps::Pattern{T}...) -> Pattern{T}

@@ -60,6 +60,8 @@ non-empty), and the focus toggle for keystroke routing.
     snip_cursor::Int             = 1
     snip_query::String           = ""
     snip_search_mode::Bool       = false
+    # Active category tab — empty string = "all". Tab / Shift-Tab cycle.
+    snip_category::String        = ""
     # Wiki state (only meaningful when modal === :wiki). Pages re-read
     # at every :wiki so editing a .md file in docs/wiki/ takes effect
     # without restarting.
@@ -85,6 +87,27 @@ non-empty), and the focus toggle for keystroke routing.
     # max(anchor, cursor)] then exit; Esc cancels without action.
     visual_active::Bool          = false
     visual_anchor_row::Int       = 1
+    visual_anchor_col::Int       = 0
+    # :line (capital V, whole-line yank/delete) or :char (lowercase v,
+    # character-wise across rows). Default :line for backward compat.
+    visual_kind::Symbol          = :line
+    # Space-leader snippet expansion. `pending_leader` flips true after
+    # Space in normal mode and waits for the trigger char; the trigger
+    # expands a template that may contain $1, $2, … placeholders.
+    # `placeholder_active` is then true while the user fills them, with
+    # Tab navigating to the next position. All positions are tracked on
+    # the same `placeholder_row` for now (every current template fits a
+    # single line; multi-line would require a parallel `placeholder_rows`).
+    pending_leader::Bool         = false
+    placeholder_active::Bool     = false
+    placeholder_row::Int         = 0
+    placeholder_cols::Vector{Int} = Int[]
+    placeholder_idx::Int         = 0
+    # Post-eval flash — rows that were just evaluated (one per @dN
+    # block). _render_eval_flash! paints them in :success for the
+    # FLASH_DURATION_S window, fading toward the end.
+    eval_flash_rows::Vector{Int} = Int[]
+    eval_flash_ts::Float64       = 0.0
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
@@ -512,9 +535,36 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # `V` (capital) enters visual-line mode.
     if is_press && ed.mode === :normal && evt.char == 'V' && !m.visual_active
         m.visual_active = true
+        m.visual_kind = :line
         m.visual_anchor_row = ed.cursor_row
+        m.visual_anchor_col = ed.cursor_col
         _push_app_log!(m, "[INFO] V — visual line · j/k extend · d/y/c act · Esc cancel")
         return
+    end
+    # `v` (lowercase) enters character-wise visual.
+    if is_press && ed.mode === :normal && evt.char == 'v' && !m.visual_active
+        m.visual_active = true
+        m.visual_kind = :char
+        m.visual_anchor_row = ed.cursor_row
+        m.visual_anchor_col = ed.cursor_col
+        _push_app_log!(m, "[INFO] v — visual char · hjkl extend · d/y/c act · Esc cancel")
+        return
+    end
+    # Pattern editor — context-aware ops fire only when the cursor is
+    # inside a `p"…"` body. Outside, the keys fall through to the
+    # editor's normal vim behaviour (indent / motion).
+    if is_press && ed.mode === :normal && _pat_at_cursor(ed) !== nothing
+        if evt.char == '>'
+            _pat_zoom!(m, ed, +1); return
+        elseif evt.char == '<'
+            _pat_zoom!(m, ed, -1); return
+        elseif evt.char == 'L'
+            _pat_shift!(m, ed, +1); return
+        elseif evt.char == 'H'
+            _pat_shift!(m, ed, -1); return
+        elseif evt.char == 'X'
+            _pat_silence!(m, ed); return
+        end
     end
     # Track insert-session text so `.` has something to replay.
     _vim_record_keystroke!(m, ed, evt, is_press)
@@ -578,6 +628,34 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             return
         end
     end
+    # Space-leader trigger lookup. Runs BEFORE other normal-mode
+    # handlers so the trigger char isn't stolen by `e` / `m` / etc.
+    # Actions (open picker / modal) win over snippet expansions on the
+    # same char, since callbacks don't need cursor state.
+    if is_press && ed.mode === :normal && m.pending_leader
+        # Escape cancels the leader without firing anything.
+        if evt.key === :escape
+            m.pending_leader = false; return
+        end
+        # Ignore non-char keystrokes — this includes modifier-only
+        # events (Shift / Alt by themselves) emitted by some terminals
+        # in between Space and the actual trigger char. Without this
+        # guard, pressing Space then Shift+E would consume the leader
+        # on the Shift event and `E` never gets the snippet.
+        if evt.key !== :char || evt.char == '\0'
+            return
+        end
+        m.pending_leader = false
+        if haskey(_LEADER_ACTIONS, evt.char)
+            _LEADER_ACTIONS[evt.char](m); return
+        end
+        if haskey(_LEADER_SNIPPETS, evt.char)
+            _expand_snippet!(m, ed, _LEADER_SNIPPETS[evt.char])
+            return
+        end
+        # Unknown trigger — silently cancel leader.
+        return
+    end
     # Intercept our normal-mode actions BEFORE handle_key! so the
     # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
     # potential vim commands and consumes the keystroke).
@@ -589,11 +667,17 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             # vim "end of word" motion there.
             _eval_current_line!(m); return
         elseif (evt.char == 'T' || evt.char == 't' || evt.char == ' ') &&
-               _synth_pane_open(m)
-            # t / T / Space all fire the test. Vim's `t` (till motion)
-            # isn't useful in the synth pane, and giving up the shift
-            # keypress is worth it for the iteration speed.
+               _synth_pane_open(m) && m.focus === :synth
+            # t / T / Space all fire the test in the synth pane. Vim's
+            # `t` (till motion) isn't useful there, and giving up the
+            # shift keypress is worth it for the iteration speed.
             _fire_t_with_accel!(m)
+            return
+        elseif evt.char == ' ' && m.focus === :patterns && !m.tap_recording
+            # Space-as-leader for snippet expansion. Patterns pane
+            # only — synth pane uses Space to fire the test synth.
+            # The next char picks a template from _LEADER_SNIPPETS.
+            m.pending_leader = true
             return
         elseif evt.char == 'K' && m.focus === :patterns
             _preview_word_under_cursor!(m); return
@@ -637,6 +721,20 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # On any non-Tab keystroke in insert mode we reset the cycle state
     # and recompute the ghost from the new context.
     if is_press && ed.mode === :insert
+        # Placeholder navigation takes priority over autocomplete when
+        # a snippet expansion is being filled. Tab/Shift-Tab move
+        # between $1, $2, …; Esc exits placeholder tracking (the next
+        # Esc returns to normal mode via the editor's default).
+        if m.placeholder_active && evt.key === :tab
+            _placeholder_jump!(m, ed, +1); return
+        end
+        if m.placeholder_active && evt.key === :backtab
+            _placeholder_jump!(m, ed, -1); return
+        end
+        if m.placeholder_active && evt.key === :escape
+            m.placeholder_active = false
+            # fall through to TK so Esc still exits insert mode.
+        end
         if evt.key === :tab
             if !isempty(m.ghost) && _accept_ghost!(m)
                 _compute_ghost!(m)
@@ -648,11 +746,15 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             end
         else
             _reset_completion!(m)
-            # Let the editor process the keystroke first, THEN recompute
-            # so the ghost reflects the post-keystroke buffer.
+            # Snapshot line length pre-edit so the placeholder tracker
+            # can shift remaining $N positions by the right delta.
+            pre_len = (m.placeholder_active &&
+                       1 <= ed.cursor_row <= length(ed.lines)) ?
+                      length(ed.lines[ed.cursor_row]) : 0
             TK.handle_key!(ed, evt)
             cmd = TK.pending_command!(ed)
             isempty(cmd) || _handle_ex_command!(m, cmd)
+            m.placeholder_active && _placeholder_track_change!(m, ed, pre_len)
             _compute_ghost!(m)
             return
         end
@@ -1204,6 +1306,45 @@ end
 ed_h_scroll(ed::TK.CodeEditor) = ed.h_scroll
 
 """
+    _render_eval_flash!(m, rect, buf)
+
+After `:e` (or `E`) evals a block, paint the corresponding @dN line
+in :success bold so the user gets a visual "this just ran" pulse.
+Fades over `_EVAL_FLASH_DURATION` seconds; after that nothing draws
+until the next eval.
+"""
+const _EVAL_FLASH_DURATION = 0.6
+function _render_eval_flash!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
+    isempty(m.eval_flash_rows) && return
+    age = time() - m.eval_flash_ts
+    age > _EVAL_FLASH_DURATION && (empty!(m.eval_flash_rows); return)
+    # Fade: full strength at age=0, none at duration. We pick :success
+    # for the first half, then :accent dim — gives a "green then settle"
+    # feel without needing per-cell alpha.
+    style = age < _EVAL_FLASH_DURATION / 2 ?
+        TK.tstyle(:success, bold = true) :
+        TK.tstyle(:success)
+    gw = m.editor.show_line_numbers ?
+         ndigits(max(length(m.editor.lines), 1)) + 1 : 0
+    first_row = m.editor.scroll_offset + 1
+    last_row  = first_row + rect.height - 1
+    for row in m.eval_flash_rows
+        (row < first_row || row > last_row) && continue
+        screen_y = rect.y + (row - first_row)
+        row <= length(m.editor.lines) || continue
+        line_chars = m.editor.lines[row]
+        # Repaint each char on the row in the flash style, preserving
+        # the source char. Skip the line-number gutter.
+        for (col_in_line, ch) in enumerate(line_chars)
+            screen_x = rect.x + gw + col_in_line - 1 - m.editor.h_scroll
+            screen_x < rect.x + gw && continue
+            screen_x >= rect.x + rect.width && break
+            TK.set_char!(buf, screen_x, screen_y, ch, style)
+        end
+    end
+end
+
+"""
     _split_minino_top(body) -> Vector{Tuple{Int,Int}}
 
 Split `body` (the inside of a `p"…"` string) into top-level
@@ -1234,6 +1375,398 @@ function _split_minino_top(body::AbstractString)
     end
     tok_start >= 0 && push!(out, (tok_start, n - 1))
     return out
+end
+
+# ---------------------------------------------------------------------
+# Pattern editor — context-aware ops on the p"…" the cursor sits in
+# ---------------------------------------------------------------------
+
+"""
+    _pat_at_cursor(ed) -> Union{Nothing, NamedTuple}
+
+If the editor's cursor is inside a `p"…"` (or `n("…")` etc.) on the
+current line, return a NamedTuple describing the pattern so callers
+can mutate it:
+
+  • `row`             — 1-based line index
+  • `body`            — the string between the quotes
+  • `body_start_col`  — column where `body[1]` lives (0-based)
+  • `tokens`          — `Vector{Tuple{Int,Int}}` from `_split_minino_top`
+  • `tok_idx`         — which token contains the cursor (or nearest)
+
+Returns `nothing` when the cursor isn't inside a `p"…"` string.
+"""
+function _pat_at_cursor(ed::TK.CodeEditor)
+    row = ed.cursor_row
+    1 <= row <= length(ed.lines) || return nothing
+    line = String(ed.lines[row])
+    # Find the p"…" enclosing the cursor. Scan for the last `p"` start
+    # at or before the cursor that has its closing `"` after the cursor.
+    cur = ed.cursor_col
+    rx = r"\bp\"([^\"]*)\""
+    for mt in eachmatch(rx, line)
+        body_start = mt.offsets[1] - 1            # 0-based col of body[1]
+        body_end   = body_start + length(mt.captures[1])  # exclusive
+        if body_start - 2 <= cur <= body_end
+            body = String(mt.captures[1])
+            tokens = _split_minino_top(body)
+            isempty(tokens) && return nothing
+            # Which token contains the cursor? Cursor col is relative
+            # to line; translate to body-relative.
+            cur_in_body = clamp(cur - body_start, 0, length(body))
+            idx = findlast(t -> t[1] <= cur_in_body <= t[2] + 1, tokens)
+            idx === nothing && (idx = length(tokens))
+            return (row = row, body = body,
+                    body_start_col = body_start,
+                    tokens = tokens, tok_idx = idx)
+        end
+    end
+    return nothing
+end
+
+"""
+    _pat_replace_body!(m, ed, info, new_body)
+
+Rewrite the line `info.row` swapping the pattern body for `new_body`.
+The `p"` quotes stay. Cursor is repositioned at the start of the new
+body — callers can re-find their token afterwards if needed.
+"""
+function _pat_replace_body!(m::RessacApp, ed::TK.CodeEditor, info, new_body::AbstractString)
+    line = String(ed.lines[info.row])
+    before = line[1:info.body_start_col]
+    after  = line[info.body_start_col + length(info.body) + 1 : end]
+    new_line = before * String(new_body) * after
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty = true))
+    lines[info.row] = new_line
+    TK.set_text!(ed, join(lines, '\n'))
+    ed.cursor_row = info.row
+    ed.cursor_col = clamp(info.body_start_col, 0, length(ed.lines[info.row]))
+end
+
+"""
+    _pat_zoom!(m, ed, dir)
+
+`dir = +1` doubles the resolution: every adjacent pair of tokens
+gets a `~` inserted between them, so a `p"bd hh"` becomes
+`p"bd ~ hh ~"` — the audio stays exactly the same, but each
+original step is now two cells and the user has slots to fill.
+
+`dir = -1` halves: keep every other token, drop the in-between
+ones. Lossy if the dropped slots had hits — warns in the log.
+"""
+function _pat_zoom!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
+    info = _pat_at_cursor(ed)
+    info === nothing && return _push_app_log!(m, "[WARN] zoom: cursor isn't in a p\"…\"")
+    body = info.body
+    tokens = info.tokens
+    strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
+    if dir > 0
+        # Interleave a rest after every token to double the grid.
+        new_tokens = String[]
+        for s in strs
+            push!(new_tokens, s); push!(new_tokens, "~")
+        end
+        new_body = join(new_tokens, " ")
+        _pat_replace_body!(m, ed, info, new_body)
+        _push_app_log!(m, "[INFO] pattern zoom ×2 → $(length(new_tokens)) steps")
+    else
+        # Keep odd-indexed (1, 3, 5, …) tokens; warn if any dropped
+        # token wasn't a silence.
+        kept = String[]
+        dropped_hits = 0
+        for (i, s) in enumerate(strs)
+            if isodd(i)
+                push!(kept, s)
+            elseif s != "~"
+                dropped_hits += 1
+            end
+        end
+        isempty(kept) && (kept = ["~"])
+        new_body = join(kept, " ")
+        _pat_replace_body!(m, ed, info, new_body)
+        if dropped_hits > 0
+            _push_app_log!(m,
+                "[WARN] pattern zoom ÷2 → $(length(kept)) steps · " *
+                "dropped $(dropped_hits) hit$(dropped_hits == 1 ? "" : "s")")
+        else
+            _push_app_log!(m, "[INFO] pattern zoom ÷2 → $(length(kept)) steps")
+        end
+    end
+end
+
+"""
+    _pat_shift!(m, ed, dir)
+
+Swap the token at cursor with its neighbour in `dir` (±1) within
+the same `p"…"`. Cursor follows the moved token so successive
+presses keep moving the same note.
+"""
+function _pat_shift!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
+    info = _pat_at_cursor(ed)
+    info === nothing && return _push_app_log!(m, "[WARN] shift: cursor isn't in a p\"…\"")
+    tokens = info.tokens
+    i = info.tok_idx
+    j = i + dir
+    (1 <= j <= length(tokens)) || return _push_app_log!(m, "[INFO] shift: at edge of pattern")
+    body = info.body
+    strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
+    strs[i], strs[j] = strs[j], strs[i]
+    new_body = join(strs, " ")
+    _pat_replace_body!(m, ed, info, new_body)
+    # Re-tokenise and place cursor inside the moved token at its new index.
+    info2 = _pat_at_cursor(ed)
+    if info2 !== nothing && j <= length(info2.tokens)
+        ed.cursor_col = info.body_start_col + info2.tokens[j][1]
+    end
+end
+
+"""
+    _pat_silence!(m, ed)
+
+Replace the token under cursor with `~`. Same shape as `x` in vim,
+but operates at token granularity inside a pattern.
+"""
+function _pat_silence!(m::RessacApp, ed::TK.CodeEditor)
+    info = _pat_at_cursor(ed)
+    info === nothing && return _push_app_log!(m, "[WARN] silence: cursor isn't in a p\"…\"")
+    body = info.body
+    tokens = info.tokens
+    strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
+    strs[info.tok_idx] = "~"
+    new_body = join(strs, " ")
+    _pat_replace_body!(m, ed, info, new_body)
+end
+
+"""
+    _pat_subdivide!(m, ed, n)
+
+Set the token under cursor to subdivide N times — `bd` → `bd*N` —
+or strip the subdivision when `n == 1`. Maps musically:
+
+    1 = noire (no subdivision, plain token)
+    2 = croche
+    3 = triolet
+    4 = double croche
+    6 = sextolet
+    8 = triple croche
+
+If the token already ends in `*K`, the K is replaced by N.
+"""
+function _pat_subdivide!(m::RessacApp, ed::TK.CodeEditor, n::Int)
+    info = _pat_at_cursor(ed)
+    info === nothing && return _push_app_log!(m, "[WARN] subdivide: cursor isn't in a p\"…\"")
+    body = info.body
+    tokens = info.tokens
+    strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
+    tok = strs[info.tok_idx]
+    # Strip any existing *K suffix at the top level (skip if inside [] etc).
+    base = replace(tok, r"\*\d+$" => "")
+    new_tok = n <= 1 ? base : "$(base)*$(n)"
+    strs[info.tok_idx] = new_tok
+    new_body = join(strs, " ")
+    _pat_replace_body!(m, ed, info, new_body)
+    name = n == 1 ? "noire" :
+           n == 2 ? "croche" :
+           n == 3 ? "triolet" :
+           n == 4 ? "double croche" :
+           n == 6 ? "sextolet" :
+           n == 8 ? "triple croche" : "×$n"
+    _push_app_log!(m, "[INFO] subdivide: $tok → $new_tok ($name)")
+end
+
+# ---------------------------------------------------------------------
+# Space-leader snippet expansion + placeholder navigation
+# ---------------------------------------------------------------------
+#
+# Workflow: in normal mode, Space → trigger char → template expands at
+# cursor with the cursor on $1, editor auto-enters insert. Tab jumps
+# to $2 / $3 / … (Shift-Tab goes back). Esc exits placeholder mode
+# and falls back to standard insert→normal on the second press.
+
+"""
+    _LEADER_SNIPPETS
+
+Trigger char → template. `\$N` markers are tabstops. Single-line for
+now; the placeholder tracker assumes everything fits on the row
+where the snippet was inserted. Add multi-line templates only after
+extending the tracker to (row, col) tuples.
+"""
+const _LEADER_SNIPPETS = Dict{Char,String}(
+    'd' => "@d\$1 p\"\$2\"",
+    'g' => "|> gain(\$1)",
+    'l' => "|> lpf(\$1)",
+    'h' => "|> hpf(\$1)",
+    'p' => "|> pan(\$1)",
+    'f' => "|> fast(\$1)",
+    's' => "|> slow(\$1)",
+    'r' => "|> room(\$1)",
+    'n' => "|> n(p\"\$1\")",
+    'e' => "|> every(\$1, \$2)",
+    'm' => "|> mask(p\"\$1\")",
+    'D' => "|> delay(\$1) |> delaytime(\$2) |> delayfeedback(\$3)",
+    'c' => "|> cat([p\"\$1\", p\"\$2\"])",
+    'S' => "|> stack(p\"\$1\", p\"\$2\")",
+    'v' => "rev",     # no placeholder, just inserts as-is
+    # ── Euclidean rhythms (Bjorklund k-of-n) ──
+    # `E` = generic euclidean token: sample, k, n. Drop it inside a
+    # p"…" or as the body of a fresh pattern.  Examples:
+    #   Space E → bd Tab 3 Tab 8 → bd(3,8)         # jersey kick
+    #   Space E → cp Tab 1 Tab 8 → cp(1,8)         # single clap
+    'E' => "\$1(\$2,\$3)",
+    # `R` for rotated euclidean — useful for off-beat snares / claps.
+    # E.g. Space R → cp Tab 1 Tab 8 Tab 4 → cp(1,8,4)  # clap on beat 3
+    'R' => "\$1(\$2,\$3,\$4)",
+    # `J` = jersey starter — full @dN line with the iconic 3-against-8
+    # kick, ready to eval. Two placeholders: slot id + gain.
+    'J' => "@d\$1 p\"bd(3,8)\" |> gain(\$2)",
+)
+
+"""
+    _LEADER_ACTIONS
+
+Triggers that fire a callback instead of expanding text — useful
+for opening pickers / modals. `Space b` → browser, `Space ?` →
+guide, etc. Resolved before `_LEADER_SNIPPETS` so they take
+priority on the same char.
+"""
+const _LEADER_ACTIONS = Dict{Char,Function}(
+    'b' => m -> _open_browser!(m),       # all sounds (samples + insts + synths)
+    'L' => m -> _open_synth_library!(m), # synth library
+    '?' => m -> (m.modal = :guide;  m.modal_scroll = 0),
+    'w' => m -> _open_wiki!(m),
+    'I' => m -> _open_snippets!(m),      # I for "insert snippet" picker
+)
+
+"""
+    _LEADER_LABELS
+
+Short labels for the footer hint shown while a leader is pending.
+Keep each label terse — the footer is one row.
+"""
+const _LEADER_LABELS = Pair{Char,String}[
+    'd' => "slot",   'g' => "gain",   'l' => "lpf",
+    'h' => "hpf",    'p' => "pan",    'f' => "fast",
+    's' => "slow",   'r' => "room",   'n' => "n()",
+    'e' => "every",  'm' => "mask",   'D' => "delay-chain",
+    'c' => "cat",    'S' => "stack",  'v' => "rev",
+    'E' => "eucl",   'R' => "eucl-rot", 'J' => "jersey",
+    # ── pickers ──
+    'b' => "▸browse-sounds", 'L' => "▸synth-lib", 'I' => "▸snippets",
+    'w' => "▸wiki",  '?' => "▸guide",
+]
+
+"""
+    _parse_snippet_template(tpl) -> (text::String, placeholder_cols::Vector{Int})
+
+Strip `\$N` markers and return the bare text plus the column
+positions (0-based, relative to text start) where each placeholder
+ends up. Markers must be `\$` followed by a single digit.
+"""
+function _parse_snippet_template(tpl::AbstractString)
+    out = IOBuffer()
+    cols = Tuple{Int,Int}[]  # (placeholder_idx, col_in_text)
+    i = firstindex(tpl)
+    col = 0
+    while i <= ncodeunits(tpl)
+        c = tpl[i]
+        if c == '$' && i < ncodeunits(tpl) && isdigit(tpl[i+1])
+            n = parse(Int, string(tpl[i+1]))
+            push!(cols, (n, col))
+            i = nextind(tpl, i, 2)
+        else
+            print(out, c)
+            col += 1
+            i = nextind(tpl, i)
+        end
+    end
+    sort!(cols; by = first)
+    return (String(take!(out)), [c for (_, c) in cols])
+end
+
+"""
+    _expand_snippet!(m, ed, template)
+
+Insert `template`'s text at the cursor, record placeholder positions,
+move the cursor onto the first one, and switch to insert mode with
+placeholder tracking armed. Templates without placeholders just get
+inserted and we stay in normal mode (no nav needed).
+"""
+function _expand_snippet!(m::RessacApp, ed::TK.CodeEditor, template::AbstractString)
+    text, ph_offsets = _parse_snippet_template(template)
+    # Insert text at cursor on the current row.
+    row = ed.cursor_row
+    col = ed.cursor_col
+    1 <= row <= length(ed.lines) || return
+    line = String(ed.lines[row])
+    new_line = line[1:col] * text * line[col+1:end]
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty = true))
+    lines[row] = new_line
+    TK.set_text!(ed, join(lines, '\n'))
+    ed.cursor_row = row
+    if isempty(ph_offsets)
+        ed.cursor_col = col + length(text)
+        return
+    end
+    # Absolute placeholder columns = insert column + relative offset.
+    m.placeholder_row    = row
+    m.placeholder_cols   = [col + off for off in ph_offsets]
+    m.placeholder_idx    = 1
+    m.placeholder_active = true
+    ed.cursor_col = m.placeholder_cols[1]
+    ed.mode = :insert
+end
+
+"""
+    _placeholder_jump!(m, ed, dir)
+
+Move to the next (`dir = +1`) or previous (`dir = -1`) placeholder.
+Going past the last placeholder exits placeholder mode (stays in
+insert so the user can keep typing).
+"""
+function _placeholder_jump!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
+    m.placeholder_active || return false
+    new_idx = m.placeholder_idx + dir
+    if new_idx < 1 || new_idx > length(m.placeholder_cols)
+        m.placeholder_active = false
+        return true
+    end
+    m.placeholder_idx = new_idx
+    ed.cursor_row = m.placeholder_row
+    ed.cursor_col = clamp(m.placeholder_cols[new_idx], 0, length(ed.lines[m.placeholder_row]))
+    return true
+end
+
+"""
+    _placeholder_track_change!(m, ed, pre_len)
+
+Called after a buffer-modifying key in insert mode while
+`placeholder_active`. Adjusts all placeholder columns after the
+cursor by the delta `(post_len - pre_len)` so they stay aligned as
+the user fills in text. Also deactivates if the user moved to a
+different row.
+"""
+function _placeholder_track_change!(m::RessacApp, ed::TK.CodeEditor, pre_len::Int)
+    m.placeholder_active || return
+    if ed.cursor_row != m.placeholder_row
+        m.placeholder_active = false; return
+    end
+    row = ed.cursor_row
+    1 <= row <= length(ed.lines) || (m.placeholder_active = false; return)
+    post_len = length(ed.lines[row])
+    delta = post_len - pre_len
+    delta == 0 && return
+    cur = ed.cursor_col
+    # Shift placeholders that sit at or after the cursor by delta.
+    # Don't move the placeholder the user is currently filling — only
+    # the ones AHEAD so they don't slide under typed text.
+    for i in eachindex(m.placeholder_cols)
+        i == m.placeholder_idx && continue
+        if m.placeholder_cols[i] >= cur
+            m.placeholder_cols[i] += delta
+        end
+    end
 end
 
 # ---------------------------------------------------------------------
@@ -1614,6 +2147,11 @@ function _toggle_mute_current_line!(m::RessacApp)
         m.editor.cursor_row = row
         m.editor.cursor_col = col
         unset_pattern!(m.scheduler, slot)
+        # Best-effort voice kill: parse the slot line for synth/sample
+        # names and free any running voices with those defNames on SC.
+        # Drones (auto_env=false) wouldn't otherwise stop on mute since
+        # they have no envelope releasing them.
+        _kill_voices_for_line!(m, line)
         _push_app_log!(m, "[INFO] muted $slot")
     elseif match(_COMMENTED_SLOT_RX_APP, line) !== nothing
         lines[row] = replace(line, r"^\s*#+\s*" => ""; count=1)
@@ -1624,6 +2162,44 @@ function _toggle_mute_current_line!(m::RessacApp)
         _eval_current_line!(m)
     else
         _push_app_log!(m, "[WARN] m: cursor line isn't a slot def, no-op")
+    end
+end
+
+"""
+    _kill_voices_for_line!(m, line)
+
+Scan `line` for sample / synth / instrument names and send a
+`/ressac/freeByName` for each one to SC, freeing any running voice.
+Without this, muting a drone (auto_env=false) doesn't silence it —
+the pattern stops scheduling but the existing voice keeps running.
+
+Names are pulled from:
+  • the leading `:name`     (e.g. `@d1 :drone |> ...`)
+  • the body of `p"…"`      (mini-notation tokens — bd, hh, sn, …)
+  • the body of `gate(:n, …)` and `pure(:n)` calls
+"""
+function _kill_voices_for_line!(m::RessacApp, line::AbstractString)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    names = Set{Symbol}()
+    # Leading :name after @dN.
+    mt = match(r"@d\d+\s+:(\w+)", line)
+    mt !== nothing && push!(names, Symbol(mt.captures[1]))
+    # p"…" mini-notation: pull alphabetic tokens (skip ~ and numbers).
+    for mp in eachmatch(r"\bp\"([^\"]*)\"", line)
+        body = String(mp.captures[1])
+        for tok_match in eachmatch(r"[A-Za-z_]\w*", body)
+            push!(names, Symbol(tok_match.match))
+        end
+    end
+    # gate(:name, …)  /  pure(:name)  /  :name |> …
+    for mn in eachmatch(r":(\w+)", line)
+        push!(names, Symbol(mn.captures[1]))
+    end
+    isempty(names) && return
+    for name in names
+        send_osc(sched.osc,
+            encode(OSCMessage("/ressac/freeByName", Any[String(name)])))
     end
 end
 
@@ -2116,8 +2692,16 @@ function _doc_command!(m::RessacApp, name::AbstractString)
     desc = _lookup_livedoc(name)
     if desc === nothing
         _push_app_log!(m, "[WARN] :doc — no entry for '$name'")
-    else
-        _push_app_log!(m, "[doc] $name — $desc")
+        return
+    end
+    _push_app_log!(m, "[doc] $name — $desc")
+    # Surface any registered usage examples. Each line gets its own
+    # log entry so it copy-pastes cleanly with :copylogs.
+    examples = get(_PARAM_EXAMPLES, String(name), String[])
+    isempty(examples) && return
+    _push_app_log!(m, "[doc]   examples:")
+    for ex in examples
+        _push_app_log!(m, "[doc]     $ex")
     end
 end
 
@@ -2377,19 +2961,33 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     entries = _browser_entries(m)
     n = length(entries)
     inner = _render_modal_block!(buf, area;
-        title = "BROWSE",
-        title_right = "$(n) match$(n == 1 ? "" : "es") · j/k · K preview · Tab filter · Enter insert · q",
+        title = "BROWSE SOUNDS",
+        title_right = "Tab category · / search · j/k · Space preview · Enter insert · q",
         w_max = 120,
-        h_target = max(12, min(area.height - 4, n + 6)))
+        h_target = max(14, min(area.height - 4, n + 8)))
     inner.width < 20 && return
-    # First row: filter + query.
-    header = "filter: $(m.browser_filter)     query: $(m.browser_query)█"
-    TK.set_string!(buf, inner.x, inner.y,
-                   first(rpad(header, inner.width), inner.width),
-                   TK.tstyle(:text))
-    # Underline separator on row 2.
+    # ── Row 1: category tab strip ─────────────────────────────────
+    filters = (:all, :instruments, :samples, :synths)
+    tab_x = inner.x
+    for (i, f) in enumerate(filters)
+        label = String(f)
+        chip  = " " * label * " "
+        is_active = f === m.browser_filter
+        sty = is_active ? TK.tstyle(:accent, bold = true) :
+                          TK.tstyle(:text_dim)
+        tab_x + textwidth(chip) > inner.x + inner.width && break
+        TK.set_string!(buf, tab_x, inner.y, chip, sty)
+        tab_x += textwidth(chip)
+        if i < length(filters) && tab_x + 2 < inner.x + inner.width
+            TK.set_string!(buf, tab_x, inner.y, "·", TK.tstyle(:text_dim))
+            tab_x += 1
+        end
+    end
+    # ── Row 2: search bar ─────────────────────────────────────────
+    sb_text = "⌕ " * m.browser_query * "▏"
     TK.set_string!(buf, inner.x, inner.y + 1,
-                   "─" ^ inner.width, TK.tstyle(:text_dim))
+                   first(rpad(sb_text, inner.width), inner.width),
+                   TK.tstyle(:text_dim))
     # Body fills rows 3..end.
     body_y = inner.y + 2
     body_h = inner.height - 2
@@ -3212,6 +3810,13 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_app_scope(m, _inner_rect(scope_area), buf)
     end
 
+    # Post-eval flash — green pulse on the lines just successfully
+    # evaluated. Paints BEFORE the playhead so the playhead's accent
+    # still wins on the active token.
+    if m.layout_patterns !== nothing
+        _render_eval_flash!(m, m.layout_patterns, buf)
+    end
+
     # Playhead — highlights the active token in every @dN p"..." line
     # that's currently shipping events. Overlays AFTER the editor
     # rendered so we paint on top of the existing cells.
@@ -3397,22 +4002,44 @@ key we don't know about — Tachikoma will own it).
 function _visual_handle!(m::RessacApp, ed::TK.CodeEditor, evt::TK.KeyEvent)
     if evt.key === :escape
         m.visual_active = false
-        _push_app_log!(m, "[INFO] V cancelled")
+        _push_app_log!(m, "[INFO] visual cancelled")
         return true
     end
+    # Both kinds share vertical motion (j/k); :char additionally tracks
+    # horizontal (h/l, arrows, w/b/0/$).
     if evt.char == 'j' || evt.key === :down
         ed.cursor_row = min(ed.cursor_row + 1, length(ed.lines))
+        if m.visual_kind === :char
+            ed.cursor_col = clamp(ed.cursor_col, 0, length(ed.lines[ed.cursor_row]))
+        end
         return true
     end
     if evt.char == 'k' || evt.key === :up
         ed.cursor_row = max(1, ed.cursor_row - 1)
+        if m.visual_kind === :char
+            ed.cursor_col = clamp(ed.cursor_col, 0, length(ed.lines[ed.cursor_row]))
+        end
         return true
+    end
+    if m.visual_kind === :char
+        if evt.char == 'h' || evt.key === :left
+            ed.cursor_col = max(0, ed.cursor_col - 1); return true
+        end
+        if evt.char == 'l' || evt.key === :right
+            row_len = length(ed.lines[ed.cursor_row])
+            ed.cursor_col = min(row_len, ed.cursor_col + 1); return true
+        end
+        if evt.char == '0'
+            ed.cursor_col = 0; return true
+        end
+        if evt.char == '\$'
+            ed.cursor_col = length(ed.lines[ed.cursor_row]); return true
+        end
     end
     if evt.char == 'd' || evt.char == 'y' || evt.char == 'c'
         _visual_apply!(m, ed, evt.char)
         return true
     end
-    # Unknown key while in visual mode — exit and let it fall through.
     m.visual_active = false
     return false
 end
@@ -3424,6 +4051,15 @@ Run an operator (`'d'` / `'y'` / `'c'`) on the line range
 between visual_anchor_row and cursor_row, then exit visual mode.
 """
 function _visual_apply!(m::RessacApp, ed::TK.CodeEditor, op::Char)
+    if m.visual_kind === :char
+        _visual_apply_char!(m, ed, op)
+    else
+        _visual_apply_line!(m, ed, op)
+    end
+    m.visual_active = false
+end
+
+function _visual_apply_line!(m::RessacApp, ed::TK.CodeEditor, op::Char)
     r1 = min(m.visual_anchor_row, ed.cursor_row)
     r2 = max(m.visual_anchor_row, ed.cursor_row)
     txt = TK.text(ed)
@@ -3432,7 +4068,6 @@ function _visual_apply!(m::RessacApp, ed::TK.CodeEditor, op::Char)
     r2 = clamp(r2, 1, length(lines))
     selected = lines[r1:r2]
     if op == 'y'
-        # Just yank into Tachikoma's yank buffer (linewise).
         ed.yank_buffer = [collect(line) for line in selected]
         ed.yank_is_linewise = true
         _push_app_log!(m, "[INFO] V — yanked $(length(selected)) line(s)")
@@ -3440,20 +4075,76 @@ function _visual_apply!(m::RessacApp, ed::TK.CodeEditor, op::Char)
         ed.yank_buffer = [collect(line) for line in selected]
         ed.yank_is_linewise = true
         deleteat!(lines, r1:r2)
-        # Empty buffer → keep at least one blank line.
         isempty(lines) && push!(lines, "")
-        TK.set_text!(ed, join(lines, '\n'))
+        new_txt = join(lines, '\n')
+        TK.set_text!(ed, new_txt)
         ed.cursor_row = clamp(r1, 1, length(ed.lines))
         ed.cursor_col = 0
         if op == 'c'
-            # Insert a blank line at the deletion site, enter insert.
             insert!(ed.lines, ed.cursor_row, Char[])
             ed.cursor_col = 0
             ed.mode = :insert
         end
         _push_app_log!(m, "[INFO] V — $(op == 'c' ? "changed" : "deleted") $(length(selected)) line(s)")
+        ed === m.editor && _unschedule_removed_slots!(m, txt, new_txt)
     end
-    m.visual_active = false
+end
+
+"""
+    _visual_apply_char!(m, ed, op)
+
+Char-wise visual: collect chars from (anchor_row, anchor_col) to
+(cursor_row, cursor_col) inclusive (normalised so start <= end), then
+yank / delete / change. Single-line ranges stay on the same row;
+multi-line ranges keep the prefix of the start row, the suffix of
+the end row, and drop everything in between.
+"""
+function _visual_apply_char!(m::RessacApp, ed::TK.CodeEditor, op::Char)
+    a_r, a_c = m.visual_anchor_row, m.visual_anchor_col
+    c_r, c_c = ed.cursor_row,         ed.cursor_col
+    # Normalise: (r1, c1) is the visually-earlier point.
+    if (c_r, c_c) < (a_r, a_c)
+        r1, c1, r2, c2 = c_r, c_c, a_r, a_c
+    else
+        r1, c1, r2, c2 = a_r, a_c, c_r, c_c
+    end
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty = true))
+    r1 = clamp(r1, 1, length(lines))
+    r2 = clamp(r2, 1, length(lines))
+    c1 = clamp(c1, 0, length(lines[r1]))
+    c2 = clamp(c2 + 1, c1, length(lines[r2]))  # +1 = inclusive on end
+    # Build the yanked text. char-wise so yank_is_linewise = false.
+    yanked = if r1 == r2
+        lines[r1][c1+1 : c2]
+    else
+        join([lines[r1][c1+1 : end],
+              lines[r1+1 : r2-1]...,
+              lines[r2][1 : c2]], '\n')
+    end
+    ed.yank_buffer = [collect(line) for line in split(yanked, '\n')]
+    ed.yank_is_linewise = false
+    if op == 'y'
+        _push_app_log!(m, "[INFO] v — yanked $(length(yanked)) char(s)")
+        return
+    end
+    # Delete the range. Rebuild affected lines, then collapse.
+    if r1 == r2
+        lines[r1] = lines[r1][1 : c1] * lines[r1][c2+1 : end]
+    else
+        lines[r1] = lines[r1][1 : c1] * lines[r2][c2+1 : end]
+        deleteat!(lines, (r1+1) : r2)
+    end
+    isempty(lines) && push!(lines, "")
+    new_txt = join(lines, '\n')
+    TK.set_text!(ed, new_txt)
+    ed.cursor_row = clamp(r1, 1, length(ed.lines))
+    ed.cursor_col = clamp(c1, 0, length(ed.lines[ed.cursor_row]))
+    if op == 'c'
+        ed.mode = :insert
+    end
+    _push_app_log!(m, "[INFO] v — $(op == 'c' ? "changed" : "deleted") $(length(yanked)) char(s)")
+    ed === m.editor && _unschedule_removed_slots!(m, txt, new_txt)
 end
 
 # ---------------------------------------------------------------------
@@ -3494,6 +4185,51 @@ function _vim_record_keystroke!(m::RessacApp, ed::TK.CodeEditor,
 end
 
 """
+    _slots_in_text(txt) -> Set{Symbol}
+
+Return the set of `@dN` slot symbols present as ACTIVE (uncommented)
+slot definitions in `txt`. A line starting with `#` is treated as
+muted and contributes nothing. Used to detect which slots disappear
+across a buffer mutation so the scheduler can stop them.
+"""
+const _SLOT_PRESENT_RX = r"^\s*@(d\d+)\b"
+function _slots_in_text(txt::AbstractString)
+    out = Set{Symbol}()
+    for line in eachline(IOBuffer(String(txt)))
+        mt = match(_SLOT_PRESENT_RX, line)
+        mt !== nothing && push!(out, Symbol(mt.captures[1]))
+    end
+    return out
+end
+
+"""
+    _unschedule_removed_slots!(m, pre_text, post_text)
+
+Compare active slot sets between two snapshots; for each slot that
+was present before, isn't present after, AND is still scheduled,
+call `unset_pattern!` so the audio stops with the text. Mirrors
+what users expect from `dd` on a live `@dN` line.
+"""
+function _unschedule_removed_slots!(m::RessacApp,
+                                    pre_text::AbstractString,
+                                    post_text::AbstractString)
+    pre  = _slots_in_text(pre_text)
+    post = _slots_in_text(post_text)
+    removed = setdiff(pre, post)
+    isempty(removed) && return
+    sched = m.scheduler
+    actually = Symbol[]
+    for slot in removed
+        haskey(sched.patterns, slot) || continue
+        unset_pattern!(sched, slot)
+        push!(actually, slot)
+    end
+    isempty(actually) && return
+    names = join(("@" * String(s) for s in sort!(actually; by = String)), " ")
+    _push_app_log!(m, "[INFO] unscheduled $(names) (line deleted)")
+end
+
+"""
     _vim_post_normal!(m, ed, evt, pre_text)
 
 Called AFTER Tachikoma has processed a keystroke that began in
@@ -3529,6 +4265,11 @@ function _vim_post_normal!(m::RessacApp, ed::TK.CodeEditor,
         m.vim_last_normal = copy(m.vim_pending_normal)
         m.vim_last_kind   = :normal
         empty!(m.vim_pending_normal)
+        # Pattern lines that just vanished from the buffer should
+        # stop playing. Only meaningful in the patterns pane —
+        # synth-pane edits don't drive the scheduler directly.
+        ed === m.editor &&
+            _unschedule_removed_slots!(m, pre_text, post_text)
     end
 end
 
@@ -3680,17 +4421,26 @@ end
 """
     _snip_context(m) -> Symbol
 
-`:patterns` when the patterns pane is focused, `:synth` when a
-synth pane is open and focused. Used by the picker to filter
-snippets that don't make sense in the current pane.
+`:patterns` when the patterns pane is focused, `:synth_dsl` or
+`:synth_sc` when a synth pane is open and focused — distinguished
+so the picker only offers snippets that match the active tab's
+authoring language (DSL Julia vs raw SuperCollider).
 """
 function _snip_context(m::RessacApp)
-    (m.focus === :synth && _synth_pane_open(m)) ? :synth : :patterns
+    if m.focus === :synth && _synth_pane_open(m)
+        tab = _current_synth_tab(m)
+        return tab.mode === :dsl ? :synth_dsl : :synth_sc
+    end
+    return :patterns
 end
 
 function _snippets_visible(m::RessacApp)
     ctx = _snip_context(m)
     base = _snippets_for_context(ctx)
+    # Filter by active category tab (empty == "all").
+    if !isempty(m.snip_category)
+        base = [s for s in base if s.category == m.snip_category]
+    end
     isempty(m.snip_query) && return base
     q = lowercase(m.snip_query)
     return [s for s in base
@@ -3699,11 +4449,48 @@ function _snippets_visible(m::RessacApp)
                occursin(q, lowercase(s.description))]
 end
 
+"""
+    _snip_categories(m) -> Vector{String}
+
+Categories available for the current context, in declaration order so
+the tabs follow the visual grouping in snippets.jl. The empty string
+"" is prepended as the implicit "all" tab.
+"""
+function _snip_categories(m::RessacApp)
+    ctx = _snip_context(m)
+    base = _snippets_for_context(ctx)
+    cats = String[""]
+    seen = Set{String}()
+    for s in base
+        s.category in seen && continue
+        push!(seen, s.category); push!(cats, s.category)
+    end
+    return cats
+end
+
+"""
+    _snip_cycle_category!(m, dir)
+
+Move the active category tab by `dir` (±1), wrapping around. Resets
+the cursor to the top of the new filtered list so the user lands on
+the first snippet of the category.
+"""
+function _snip_cycle_category!(m::RessacApp, dir::Int)
+    cats = _snip_categories(m)
+    isempty(cats) && return
+    cur = findfirst(==(m.snip_category), cats)
+    cur === nothing && (cur = 1)
+    new = mod1(cur + dir, length(cats))
+    m.snip_category = cats[new]
+    m.snip_cursor = 1
+end
+
 function _open_snippets!(m::RessacApp)
     m.modal = :snippets
     m.snip_cursor = 1
     m.snip_query = ""
     m.snip_search_mode = false
+    m.snip_category = ""
 end
 
 function _handle_snippets_key!(m::RessacApp, evt::TK.KeyEvent)
@@ -3725,11 +4512,17 @@ function _handle_snippets_key!(m::RessacApp, evt::TK.KeyEvent)
     if evt.key === :escape || evt.char == 'q'
         if !isempty(m.snip_query)
             m.snip_query = ""; m.snip_cursor = 1
+        elseif !isempty(m.snip_category)
+            m.snip_category = ""; m.snip_cursor = 1
         else
             m.modal = :none
         end
     elseif evt.char == '/'
         m.snip_search_mode = true
+    elseif evt.key === :tab || evt.char == 'l' || evt.key === :right
+        _snip_cycle_category!(m, +1)
+    elseif evt.char == 'h' || evt.key === :left
+        _snip_cycle_category!(m, -1)
     elseif evt.char == 'j' || evt.key === :down
         m.snip_cursor = min(m.snip_cursor + 1, max(n, 1))
     elseif evt.char == 'k' || evt.key === :up
@@ -3799,28 +4592,49 @@ end
 
 function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     snips = _snippets_visible(m)
-    ctx_label = _snip_context(m) === :synth ? "synth" : "patterns"
+    ctx = _snip_context(m)
+    ctx_label = ctx === :synth_dsl ? "synth DSL (.jl)" :
+                ctx === :synth_sc  ? "synth SC (.scd)" : "patterns"
     inner = _render_modal_block!(buf, area;
         title = "SNIPPETS · $ctx_label",
-        title_right = "/ search · j/k · Space preview · Enter insert · q close",
+        title_right = "Tab/h-l category · / search · j/k · Space preview · Enter insert · q",
         w_max = 110,
-        h_target = max(12, area.height - 4))
+        h_target = max(14, area.height - 4))
     inner.width < 20 && return
-    # Search bar on first row of inner area.
+    # ── Row 1: category tab strip ─────────────────────────────────
+    cats = _snip_categories(m)
+    tab_x = inner.x
+    for cat in cats
+        label = cat == "" ? "all" : cat
+        chip  = " " * label * " "
+        is_active = cat == m.snip_category
+        sty = is_active ? TK.tstyle(:accent, bold = true) :
+                          TK.tstyle(:text_dim)
+        tab_x + textwidth(chip) > inner.x + inner.width && break
+        TK.set_string!(buf, tab_x, inner.y, chip, sty)
+        tab_x += textwidth(chip)
+        # Subtle dot separator
+        if cat != cats[end] && tab_x + 2 < inner.x + inner.width
+            TK.set_string!(buf, tab_x, inner.y, "·", TK.tstyle(:text_dim))
+            tab_x += 1
+        end
+    end
+    # ── Row 2: search bar ─────────────────────────────────────────
     sb_prefix = m.snip_search_mode ? "/" : "⌕ "
     sb_text = sb_prefix * m.snip_query * (m.snip_search_mode ? "▏" : "")
     sb_style = m.snip_search_mode ?
         TK.tstyle(:accent, bold = true) : TK.tstyle(:text_dim)
-    TK.set_string!(buf, inner.x, inner.y,
+    TK.set_string!(buf, inner.x, inner.y + 1,
                    first(rpad(sb_text, inner.width), inner.width), sb_style)
-    # Body fills rows 2..(end-1), footer line on last row.
-    body_h = inner.height - 2
+    # ── Body: rows 3..(end-1), footer on last row ────────────────
+    body_y0 = inner.y + 2
+    body_h  = inner.height - 3
     n = length(snips)
     if n == 0
         msg = isempty(m.snip_query) ?
-            "(no snippets for this context)" :
+            "(no snippets in category '$(m.snip_category)')" :
             "(no match for \"$(m.snip_query)\")"
-        TK.set_string!(buf, inner.x + 1, inner.y + 1, msg, TK.tstyle(:text_dim))
+        TK.set_string!(buf, inner.x + 1, body_y0, msg, TK.tstyle(:text_dim))
     else
         start_i = max(1, m.snip_cursor - body_h ÷ 2)
         end_i = min(n, start_i + body_h - 1)
@@ -3832,13 +4646,14 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             marker = is_cur ? "▶ " : "  "
             label = "$(marker)$(rpad(s.trigger, 18)) [$(rpad(s.category, 9))]  $(s.description)"
             style = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
-            screen_y = inner.y + slot
+            screen_y = body_y0 + slot - 1
             TK.set_string!(buf, inner.x, screen_y,
                            first(rpad(label, inner.width), inner.width), style)
             push!(m.modal_rows, (screen_y, i))
         end
     end
-    foot = "$(n) snippets shown · ctx = $(_snip_context(m))"
+    cat_label = isempty(m.snip_category) ? "all" : m.snip_category
+    foot = "$(n) shown · ctx = $ctx_label · cat = $cat_label"
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(rpad(foot, inner.width), inner.width),
                    TK.tstyle(:text_dim))
@@ -4099,7 +4914,12 @@ function _detect_tap_period(events::Vector{Float64};
 
     best_period = total
     best_score  = -Inf
-    n_bins = 32
+    # 16 bins instead of 32: each bin is ~1/16 of the period (≈ 62ms
+    # for a 1s bar), which absorbs ±30ms of human tap jitter without
+    # smearing taps across adjacent bins. With 32 bins, hits at the
+    # same musical phase often split across two bins and look like
+    # two distinct positions, killing the hot_count signal.
+    n_bins = 16
     for p in candidates
         p <= 0.001 && continue
         n_reps = total / p
@@ -4145,9 +4965,13 @@ function _detect_tap_period(events::Vector{Float64};
     end
 
     # If no candidate looks like a real loop, defer to single-bar
-    # quantization — the caller knows what to do.
+    # quantization. The n_reps floor used to be 1.5, which rejected
+    # the common "I tapped the pattern twice without the 3rd-bar
+    # downbeat" case (n_reps ≈ 1.375 for a 2-hit-per-bar rhythm).
+    # Drop to 1.25 — any candidate with n_reps below that is genuinely
+    # under-evidence and the score-based fallback handles it.
     n_reps_best = total / best_period
-    (best_score < 0.5 || n_reps_best < 1.5) && return nothing
+    (best_score < 0.5 || n_reps_best < 1.25) && return nothing
 
     n_bars = max(1, round(Int, n_reps_best))
 
@@ -4698,9 +5522,13 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Logo section
     push!(sections, [("▓ RESSAC", TK.tstyle(:accent, bold = true))])
 
-    # Tempo / cycle / events section
+    # Tempo / cycle / events section. BPM assumes 4 beats per cycle
+    # (the SuperDirt / TidalCycles convention) so cps=0.5 → 120 BPM.
+    bpm = round(Int, sched.cps * 4 * 60)
     tempo_section = Tuple{String,TK.Style}[
         ("♪ $(round(sched.cps; digits = 2)) cps", TK.tstyle(:title, bold = true)),
+        (" · ", TK.tstyle(:text_dim)),
+        ("$(bpm) bpm", TK.tstyle(:text_dim)),
         ("  ", TK.tstyle(:text)),
         ("◐ ", TK.tstyle(:text_dim)),
         (cycle_bar, TK.tstyle(:accent)),
@@ -4747,9 +5575,15 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         r1 = min(m.visual_anchor_row, m.editor.cursor_row)
         r2 = max(m.visual_anchor_row, m.editor.cursor_row)
         n = r2 - r1 + 1
-        push!(state_parts,
-            ("▌ VISUAL $r1-$r2 ($n line$(n == 1 ? "" : "s"))",
-             TK.tstyle(:accent, bold = true)))
+        if m.visual_kind === :char
+            push!(state_parts,
+                ("▌ VISUAL CHAR $(m.visual_anchor_row):$(m.visual_anchor_col)→$(m.editor.cursor_row):$(m.editor.cursor_col)",
+                 TK.tstyle(:accent, bold = true)))
+        else
+            push!(state_parts,
+                ("▌ VISUAL LINE $r1-$r2 ($n line$(n == 1 ? "" : "s"))",
+                 TK.tstyle(:accent, bold = true)))
+        end
     end
     isempty(state_parts) || push!(sections, state_parts)
 
@@ -4796,9 +5630,19 @@ on the mode first.
 function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     ed = _active_editor(m)
     mode_label = uppercase(String(ed.mode))
-    # Each hint is (key, action) so the key can be drawn in :accent and
-    # the rest in :text_dim — eye lands on the actionable char.
-    hints = if !_synth_pane_open(m)
+    # Context-aware hint sets — leader pending / placeholder active
+    # win over the default key cheatsheet so the user sees what's
+    # available at the moment they need it.
+    hints = if m.pending_leader
+        [(string(k), v) for (k, v) in _LEADER_LABELS]
+    elseif m.placeholder_active
+        [("Tab", "next"), ("S-Tab", "prev"), ("Esc", "exit"),
+         ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "filling")]
+    elseif ed.mode === :normal && m.focus === :patterns
+        [("Space", "snippet"), ("e", "eval"), ("E", "eval-all"),
+         ("i", "insert"), ("dd.", "repeat"),
+         (":tap", "loop"), (":snip", "browse"), (":q", "quit")]
+    elseif !_synth_pane_open(m)
         [("e", "eval"), ("i", "insert"), ("Esc", "normal"),
          (":synth", "<name>"), (":lib", "library"),
          (":tap", "loop"), (":wiki", "docs"), (":q", "quit")]
@@ -5015,6 +5859,7 @@ function _eval_pattern_blocks!(m::RessacApp, target)
         sort!(collect(keys(blocks)); by=s -> parse(Int, String(s)[2:end])) :
         target
     ok = 0; err = 0
+    ok_slots = Symbol[]
     for slot in targets
         src = get(blocks, slot, nothing)
         src === nothing && continue
@@ -5022,11 +5867,24 @@ function _eval_pattern_blocks!(m::RessacApp, target)
             ex = Meta.parse(src)
             Core.eval(Main, ex)
             ok += 1
+            push!(ok_slots, slot)
         catch e
             err += 1
             _push_app_log!(m, "[ERROR] eval $slot: $(sprint(showerror, e))")
         end
     end
+    # Record the rows we just successfully evaluated so the view can
+    # flash them green for a few frames — visual confirmation of "this
+    # line is now live".
+    flash = Int[]
+    for (idx, line) in enumerate(lines)
+        mt = match(head_rx, line)
+        mt === nothing && continue
+        mt.captures[1] === nothing || continue   # skip commented
+        Symbol("d", mt.captures[2]) in ok_slots && push!(flash, idx)
+    end
+    m.eval_flash_rows = flash
+    m.eval_flash_ts   = time()
     suffix = err > 0 ? " ($err failed)" : ""
     _push_app_log!(m, "[INFO] :e — ran $ok block$(ok == 1 ? "" : "s")$suffix")
 end

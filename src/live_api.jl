@@ -47,6 +47,18 @@ function _route_to_slot!(slot::Symbol)
     return nothing
 end
 
+"""
+    _route_to_slot!(slot::Symbol, sym::Symbol)
+
+Sample/synth name form: `@d1 :acid303` lifts to `pure(:acid303)`.
+Lets users skip the explicit `pure()` wrap when they just want a
+single named sound on a slot — matches the snippet library
+convention `@d1 :name |> n(p"…")`.
+"""
+function _route_to_slot!(slot::Symbol, sym::Symbol)
+    return _route_to_slot!(slot, pure(sym))
+end
+
 # Generate @d1..@d64. Each expands to a `_route_to_slot!(:dN, body)` call,
 # or `_route_to_slot!(:dN)` when called with no body.
 for n in 1:64

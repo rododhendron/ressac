@@ -208,6 +208,43 @@ s.waitForBoot({
         if(~ressacTrackSynth.notNil) { ~ressacTrackSynth.clear };
     }, '/ressac/panic');
 
+    // Free every running Synth whose defName matches the symbol arg.
+    // Used by Ressac on slot mute (`m`) when the slot is driving a
+    // synth (drone or otherwise) — without this, an auto_env=false
+    // voice would keep playing after the pattern stops scheduling.
+    // Uses /g_queryTree on the default group; the reply handler at
+    // the bottom of this file walks the response and frees matches.
+    ~ressacFreePending = IdentitySet.new;
+    OSCdef(\ressacFreeByName, { |msg|
+        var name = msg[1].asSymbol;
+        ~ressacFreePending.add(name);
+        s.sendMsg('/g_queryTree', 0, 0);  // root group, no ctl info
+    }, '/ressac/freeByName');
+
+    OSCFunc({ |msg|
+        // /g_queryTree.reply payload (no ctls):
+        //   [ctl_flag(0), root_id, root_nchildren, then for each child:
+        //     nodeID, nchildren_or_-1, [defName if Synth] ]
+        // nchildren == -1 means leaf (Synth). We free any whose defName
+        // is in the pending set, then clear it.
+        var i = 3, nid, nch, name;
+        if(~ressacFreePending.isEmpty) { ^nil };
+        while { i < msg.size } {
+            nid = msg[i];
+            nch = msg[i+1];
+            if(nch < 0) {
+                name = msg[i+2].asSymbol;
+                if(~ressacFreePending.includes(name)) {
+                    s.sendMsg('/n_free', nid);
+                };
+                i = i + 3;
+            } {
+                i = i + 2;
+            };
+        };
+        ~ressacFreePending.clear;
+    }, '/g_queryTree.reply');
+
     // ── Live scope: tap audio bus 0 + push analysis frames to Ressac ──
     // SendReply emits OSC to sclang's local port; OSCFunc forwarders
     // relay each frame to our Ressac listener on UDP 57121.

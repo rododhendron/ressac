@@ -134,7 +134,13 @@ just a write).
 """
 function _control_op(key::Symbol, op, val)
     resolved_scalar = _resolve_value(val)
-    return function (p::Pattern)
+    return function (p)
+        # Auto-lift a bare Symbol so users can write
+        # `:bd |> n(p"0 3 5")` instead of the more verbose
+        # `pure(:bd) |> n(p"0 3 5")`. Matches the way the existing
+        # snippet library uses `@d1 :acid303 |> n(...)`.
+        p = p isa Symbol ? pure(p) : p
+        p isa Pattern || throw(MethodError(_control_op, (key, op, val, p)))
         lifted = _lift_to_control(p)
         if val isa Pattern
             Pattern{ControlMap}((s::Rational, e::Rational) -> begin
