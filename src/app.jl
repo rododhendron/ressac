@@ -755,6 +755,7 @@ const _EX_COMMAND_VERBS = String[
     "panic", "hush", "stop", "sccode-tag", "sctag",
     "snip", "snippets", "snippet",
     "rec", "record", "export", "export-synth",
+    "scratch", "sandbox",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -987,6 +988,11 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         m.quit = true
     elseif (mt = match(r"^synth\s+(\w+)$", cmd)) !== nothing
         _open_synth_tab!(m, mt.captures[1])
+    elseif cmd in ("synth", "scratch", "sandbox")
+        # No name → spawn a fresh sandbox tab. The starter template
+        # loads with a randomised :sketch_<id> name; rename happens on
+        # `:w <real_name>` (which uses the existing save-as path).
+        _open_sandbox_synth!(m)
     elseif cmd == "back"
         _close_synth_pane!(m)
     elseif cmd == "close"
@@ -3007,6 +3013,25 @@ If `name` is already an open tab, switch to it. Otherwise create a
 new tab (loading the source from disk or a starter template) and
 push it onto the stack.
 """
+"""
+    _open_sandbox_synth!(m)
+
+Open a fresh synth tab with a randomised name (`sketch_<id>`) and
+the starter template — no manual naming needed. The user iterates
+in the tab; `:w realname` later renames it onto disk via the
+existing save-as path.
+"""
+function _open_sandbox_synth!(m::RessacApp)
+    # 3-char base36 id, e.g. "sketch_a7p". Cheap, collision-resistant
+    # enough for interactive use; if it ever does collide
+    # _open_synth_tab! switches to the existing tab which is also fine.
+    chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    id = String([chars[rand(1:length(chars))] for _ in 1:3])
+    name = "sketch_$(id)"
+    _open_synth_tab!(m, name)
+    _push_app_log!(m, "[INFO] sandbox synth '$name' — :w <realname> to save under a chosen name")
+end
+
 function _open_synth_tab!(m::RessacApp, name::AbstractString)
     name = String(name)
     existing = findfirst(t -> t.name == name, m.synth_tabs)
