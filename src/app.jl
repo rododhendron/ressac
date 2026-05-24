@@ -439,6 +439,25 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         _fire_t_with_accel!(m; held=true)
         return
     end
+    # Vim operator + motion combos (cw / dw / yw / c$ / d0 / …).
+    # Tachikoma sets ed.pending_key to the operator on the first
+    # press (c/d/y) and only knows how to handle cc/dd/yy. We piggyback
+    # so the SECOND press dispatches a word-motion-based operation
+    # when relevant, otherwise falls through to Tachikoma's own logic
+    # (so cc/dd/yy still work).
+    if is_press && ed.mode === :normal
+        pk = ed.pending_key
+        if pk !== nothing && pk in ('c', 'd', 'y') &&
+           evt.key === :char && evt.char in ('w', 'b', 'e', 'W', 'B', 'E', '\$', '0')
+            ed.pending_key = nothing
+            _vim_op_motion!(m, ed, pk, evt.char)
+            return
+        end
+        if pk === nothing && evt.key === :char && evt.char in ('w', 'b', 'W', 'B')
+            _vim_word_motion!(ed, evt.char)
+            return
+        end
+    end
     # Intercept our normal-mode actions BEFORE handle_key! so the
     # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
     # potential vim commands and consumes the keystroke).
@@ -645,6 +664,140 @@ fresh autocomplete from the (presumably new) word under the cursor.
 function _reset_completion!(m::RessacApp)
     m.completion_idx = 0
     empty!(m.completion_candidates)
+end
+
+# ---------------------------------------------------------------------
+# Vim word motions + operator combos (cw / dw / yw / c$ / d0 / …)
+# ---------------------------------------------------------------------
+
+"""
+    _word_bounds(line, col, big=false) -> (start, stop)
+
+Return the half-open [start, stop) range of the word at/after `col`
+(0-based). `big` selects WORD (whitespace-delimited) vs word
+(alphanumeric-delimited). Matches vim's `w` motion: jumps to the
+next word's first char, deleting up through but not including the
+following whitespace.
+"""
+function _word_bounds(line::AbstractString, col::Int; big::Bool=false)
+    n = length(line)
+    is_word = if big
+        c -> !isspace(c)
+    else
+        c -> isletter(c) || isdigit(c) || c == '_'
+    end
+    col = clamp(col, 0, n)
+    # Skip current word
+    i = col + 1
+    while i <= n && is_word(line[i]); i += 1; end
+    # Skip whitespace
+    while i <= n && isspace(line[i]); i += 1; end
+    stop = i - 1
+    return (col, stop)
+end
+
+"""
+    _word_back_bounds(line, col, big=false) -> col
+
+Position of the previous word's first char.
+"""
+function _word_back_bounds(line::AbstractString, col::Int; big::Bool=false)
+    n = length(line)
+    is_word = big ? (c -> !isspace(c)) :
+                    (c -> isletter(c) || isdigit(c) || c == '_')
+    col = clamp(col, 0, n)
+    col == 0 && return 0
+    i = col
+    # Step back past whitespace
+    while i > 0 && i <= n && isspace(line[i]); i -= 1; end
+    # Step back to the start of the current word
+    while i > 0 && i <= n && is_word(line[i]); i -= 1; end
+    return i
+end
+
+function _vim_word_motion!(ed::TK.CodeEditor, ch::Char)
+    row = ed.cursor_row
+    1 <= row <= length(ed.lines) || return
+    line = String(ed.lines[row])
+    big = (ch == 'W' || ch == 'B')
+    if ch == 'w' || ch == 'W'
+        _, stop = _word_bounds(line, ed.cursor_col; big=big)
+        ed.cursor_col = clamp(stop, 0, max(length(line) - 1, 0))
+    elseif ch == 'b' || ch == 'B'
+        ed.cursor_col = _word_back_bounds(line, ed.cursor_col; big=big)
+    end
+end
+
+"""
+    _vim_op_motion!(m, ed, op, motion)
+
+Execute one of cw / cb / c\$ / c0 (and their d/y variants). `op`
+is the operator char; `motion` is one of the supported motion
+chars. Word boundaries reuse the same helpers as the standalone
+motions so behaviour stays consistent.
+"""
+function _vim_op_motion!(m::RessacApp, ed::TK.CodeEditor, op::Char, motion::Char)
+    row = ed.cursor_row
+    1 <= row <= length(ed.lines) || return
+    line = String(ed.lines[row])
+    n = length(line)
+    col = ed.cursor_col
+    range_start, range_stop = if motion == 'w' || motion == 'W'
+        # Vim's cw is special: it stops at the END of the current word,
+        # not the next-word-start. Mirror that — operating on
+        # whitespace-included `w` deletes the gap too which is dw, but
+        # cw leaves it.
+        is_word = motion == 'W' ? (c -> !isspace(c)) :
+                                  (c -> isletter(c) || isdigit(c) || c == '_')
+        i = col + 1
+        while i <= n && is_word(line[i]); i += 1; end
+        word_end = i - 1
+        if op == 'c'
+            (col, word_end)
+        else
+            # dw/yw extend through trailing whitespace.
+            while i <= n && isspace(line[i]); i += 1; end
+            (col, i - 1)
+        end
+    elseif motion == 'b' || motion == 'B'
+        new_col = _word_back_bounds(line, col; big = motion == 'B')
+        (new_col, col - 1)
+    elseif motion == 'e' || motion == 'E'
+        is_word = motion == 'E' ? (c -> !isspace(c)) :
+                                  (c -> isletter(c) || isdigit(c) || c == '_')
+        i = col + 1
+        # If on whitespace, skip ahead to next word first.
+        while i <= n && isspace(line[i]); i += 1; end
+        while i <= n && is_word(line[i]); i += 1; end
+        (col, i - 1)
+    elseif motion == '\$'
+        (col, n)
+    elseif motion == '0'
+        (0, col - 1)
+    else
+        return
+    end
+    range_start = clamp(range_start, 0, n)
+    range_stop  = clamp(range_stop, range_start, n)
+    captured = range_start < range_stop ?
+        line[range_start + 1 : range_stop] : ""
+    if op == 'y'
+        # Yank only — leave the buffer alone, set Tachikoma's yank.
+        ed.yank_buffer = [collect(captured)]
+        ed.yank_is_linewise = false
+        return
+    end
+    # d / c — splice the slice out.
+    new_line = (range_start > 0 ? line[1:range_start] : "") *
+               (range_stop >= n ? "" : line[range_stop + 1 : end])
+    ed.yank_buffer = [collect(captured)]
+    ed.yank_is_linewise = false
+    TK.set_text!(ed, _set_one_line(ed, row, new_line))
+    ed.cursor_row = row
+    ed.cursor_col = range_start
+    if op == 'c'
+        ed.mode = :insert
+    end
 end
 
 # Number-nudge regex: optional sign, digits, optional fractional part.
