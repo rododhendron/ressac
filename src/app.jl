@@ -124,6 +124,13 @@ non-empty), and the focus toggle for keystroke routing.
     # Log scroll offset (lines from the bottom). 0 = bottom, increases
     # backwards into history. Bumped by wheel events over the log pane.
     log_scroll::Int                      = 0
+    # Ghost autocomplete — a faded suggestion that follows the cursor in
+    # insert mode. Tab accepts it (and bumps its usage count in the
+    # global ranking). Computed on every insert keystroke from the
+    # surrounding context.
+    ghost::String                        = ""
+    ghost_row::Int                       = 0
+    ghost_col::Int                       = 0   # 0-based; the col AT which the suggestion would be inserted
 end
 
 # Kitty CSI u reports numpad keys with their own :kp_<n> symbol instead
@@ -518,17 +525,30 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _push_app_log!(m, "[INFO] scope X-zoom ×$(round(m.scope_zoom_x; digits=2))"); return
         end
     end
-    # Tab autocomplete in :insert mode (word under cursor → registry /
-    # combinator / @dN macro). Intercept BEFORE the editor types a Tab
-    # character into the buffer. On any other key in :insert, reset the
-    # cycle state so the next Tab starts fresh.
+    # Tab autocomplete in :insert mode. Priority order:
+    #   1. If a ghost suggestion is visible, accept it.
+    #   2. Otherwise fall through to the existing word-cycle.
+    # On any non-Tab keystroke in insert mode we reset the cycle state
+    # and recompute the ghost from the new context.
     if is_press && ed.mode === :insert
         if evt.key === :tab
+            if !isempty(m.ghost) && _accept_ghost!(m)
+                _compute_ghost!(m)
+                return
+            end
             if _try_autocomplete!(m, ed)
+                m.ghost = ""
                 return
             end
         else
             _reset_completion!(m)
+            # Let the editor process the keystroke first, THEN recompute
+            # so the ghost reflects the post-keystroke buffer.
+            TK.handle_key!(ed, evt)
+            cmd = TK.pending_command!(ed)
+            isempty(cmd) || _handle_ex_command!(m, cmd)
+            _compute_ghost!(m)
+            return
         end
     end
     # Tab in :command (ex-command line, ":synth wob...") autocompletes
@@ -672,6 +692,212 @@ fresh autocomplete from the (presumably new) word under the cursor.
 function _reset_completion!(m::RessacApp)
     m.completion_idx = 0
     empty!(m.completion_candidates)
+end
+
+# ---------------------------------------------------------------------
+# Ghost autocomplete — Copilot-style faded suggestion at the cursor
+# ---------------------------------------------------------------------
+
+const _GHOST_USAGE_PATH = joinpath(homedir(), ".config", "ressac", "usage.toml")
+
+# In-memory mirror of the usage counts. Loaded lazily; persisted after
+# every accept. Keys are "kind:value" so we can rank within a category
+# (e.g. "combinator:gain" vs "sample:bd") without collisions.
+const _GHOST_USAGE = Ref{Dict{String,Int}}(Dict{String,Int}())
+const _GHOST_USAGE_LOADED = Ref{Bool}(false)
+
+function _load_ghost_usage!()
+    _GHOST_USAGE_LOADED[] && return
+    _GHOST_USAGE_LOADED[] = true
+    isfile(_GHOST_USAGE_PATH) || return
+    try
+        data = TOML.parsefile(_GHOST_USAGE_PATH)
+        if haskey(data, "counts") && data["counts"] isa AbstractDict
+            for (k, v) in data["counts"]
+                v isa Number && (_GHOST_USAGE[][String(k)] = Int(v))
+            end
+        end
+    catch
+    end
+end
+
+function _save_ghost_usage!()
+    dir = dirname(_GHOST_USAGE_PATH)
+    isdir(dir) || mkpath(dir)
+    try
+        open(_GHOST_USAGE_PATH, "w") do io
+            println(io, "# Ressac ghost-autocomplete usage counts.")
+            println(io, "# Higher counts → ranked first in suggestions.")
+            println(io, "[counts]")
+            for k in sort!(collect(keys(_GHOST_USAGE[])))
+                println(io, "\"$(k)\" = $(_GHOST_USAGE[][k])")
+            end
+        end
+    catch
+    end
+end
+
+_ghost_bump!(kind::String, value::String) = begin
+    key = "$(kind):$(value)"
+    _GHOST_USAGE[][key] = get(_GHOST_USAGE[], key, 0) + 1
+end
+
+_ghost_count(kind::String, value::String) =
+    get(_GHOST_USAGE[], "$(kind):$(value)", 0)
+
+# Static lists per category. Suggested in usage-weighted order at
+# completion time; first hit becomes the ghost.
+const _GHOST_COMBINATORS = String[
+    "gain", "lpf", "hpf", "pan", "n", "fast", "slow", "room", "delay",
+    "shape", "cutoff", "resonance", "octave", "set", "degree", "every",
+    "rev", "mask", "gate", "stack", "cat", "speed", "attack", "release",
+    "sustain", "hold", "legato",
+]
+
+const _GHOST_SET_PARAMS = String[
+    "gain", "freq", "rate", "cutoff", "q", "depth", "centre", "shape",
+    "attack", "decay", "sustain", "release", "pan", "speed",
+]
+
+"""
+    _ghost_context(line, col) -> (kind::Symbol, partial::String, candidates::Vector{String})
+
+Inspect the surrounding text to decide what category of completion
+to offer. Falls back to `:any` when nothing specific fits.
+"""
+function _ghost_context(line::AbstractString, col::Int)
+    # Take everything from the line start up to the cursor; the
+    # context regexes are anchored at the END so they match the latest
+    # incomplete construct.
+    prefix = col == 0 ? "" : line[1:min(end, col)]
+    if (m = match(r"\|>\s*(\w*)$", prefix)) !== nothing
+        return (:combinator, String(m.captures[1]), _GHOST_COMBINATORS)
+    elseif (m = match(r"set\(:(\w*)$", prefix)) !== nothing
+        return (:setparam, String(m.captures[1]), _GHOST_SET_PARAMS)
+    elseif (m = match(r"p\"([^\"]*)$", prefix)) !== nothing
+        # Inside p"…". Take the LAST whitespace-separated chunk as the
+        # partial sample/synth name being typed.
+        body = String(m.captures[1])
+        last_chunk = ""
+        if !isempty(body) && !isspace(body[end])
+            i = lastindex(body)
+            while i > firstindex(body) && !isspace(body[i])
+                i = prevind(body, i)
+            end
+            last_chunk = isspace(body[i]) ?
+                body[nextind(body, i):end] : body
+        end
+        cands = String[]
+        append!(cands, String.(keys(_SAMPLE_REGISTRY)))
+        append!(cands, String.(keys(_INSTRUMENT_REGISTRY)))
+        append!(cands, String.(keys(_SYNTH_REGISTRY)))
+        unique!(cands)
+        return (:sample, last_chunk, cands)
+    elseif (m = match(r"degree\((\w*)$", prefix)) !== nothing
+        return (:degree, String(m.captures[1]), ["0", "1", "2", "3", "4", "5", "6", "7"])
+    end
+    # Generic — current word fuzzy-matched against everything.
+    if (m = match(r"([@\w]+)$", prefix)) !== nothing
+        partial = String(m.captures[1])
+        cands = String[]
+        append!(cands, _GHOST_COMBINATORS)
+        append!(cands, String.(keys(_SAMPLE_REGISTRY)))
+        append!(cands, String.(keys(_SYNTH_REGISTRY)))
+        unique!(cands)
+        return (:any, partial, cands)
+    end
+    return (:none, "", String[])
+end
+
+"""
+    _compute_ghost!(m)
+
+Recompute the ghost suggestion based on the current cursor position
+in the active editor. Called on every keystroke in insert mode.
+"""
+function _compute_ghost!(m::RessacApp)
+    ed = _active_editor(m)
+    ed.mode === :insert || (m.ghost = ""; return)
+    1 <= ed.cursor_row <= length(ed.lines) || (m.ghost = ""; return)
+    line = String(ed.lines[ed.cursor_row])
+    col = ed.cursor_col
+    kind, partial, cands = _ghost_context(line, col)
+    if kind === :none || isempty(cands)
+        m.ghost = ""; return
+    end
+    # Filter by partial — must start with what's typed (prefix match
+    # feels more like Copilot than fuzzy here).
+    matching = [c for c in cands
+                if startswith(lowercase(c), lowercase(partial)) && c != partial]
+    if isempty(matching)
+        m.ghost = ""; return
+    end
+    # Rank by usage count desc, then by length, then alpha.
+    kind_key = String(kind)
+    sort!(matching, by = c -> (-_ghost_count(kind_key, c), length(c), c))
+    suggestion = matching[1]
+    completion = suggestion[length(partial) + 1 : end]
+    m.ghost = completion
+    m.ghost_row = ed.cursor_row
+    m.ghost_col = col
+end
+
+"""
+    _accept_ghost!(m)
+
+Splice the ghost text into the buffer at the cursor and bump the
+usage count for the (kind, value) pair so it ranks higher next
+time.
+"""
+function _accept_ghost!(m::RessacApp)
+    isempty(m.ghost) && return false
+    ed = _active_editor(m)
+    ed.cursor_row == m.ghost_row || (m.ghost = ""; return false)
+    line = String(ed.lines[m.ghost_row])
+    col = m.ghost_col
+    new_line = (col > 0 ? line[1:col] : "") * m.ghost *
+               (col >= lastindex(line) ? "" : line[col+1:end])
+    TK.set_text!(ed, _set_one_line(ed, m.ghost_row, new_line))
+    ed.cursor_row = m.ghost_row
+    ed.cursor_col = col + length(m.ghost)
+    # Bump usage. Recompute the full token (partial + accepted suffix)
+    # so the ranking key is the full identifier.
+    kind, partial, _ = _ghost_context(line, col)
+    if kind !== :none
+        full = partial * m.ghost
+        _ghost_bump!(String(kind), full)
+        _save_ghost_usage!()
+    end
+    m.ghost = ""
+    return true
+end
+
+"""
+    _render_ghost!(m, rect, buf)
+
+Draw the suggestion in dim style starting at the cursor cell. Each
+character of the ghost overwrites an empty cell to the RIGHT of the
+cursor — never replaces existing content.
+"""
+function _render_ghost!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
+    isempty(m.ghost) && return
+    ed = _active_editor(m)
+    ed.mode === :insert || return
+    ed.cursor_row == m.ghost_row || return
+    ed.cursor_col == m.ghost_col || return
+    has_block = ed.block !== nothing
+    inset_top = has_block ? 1 : 0
+    inset_left = has_block ? 1 : 0
+    gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0
+    screen_y = rect.y + inset_top + (m.ghost_row - 1 - ed.scroll_offset)
+    base_x = rect.x + inset_left + gw + (m.ghost_col - ed.h_scroll)
+    (screen_y < rect.y + inset_top || screen_y >= rect.y + rect.height) && return
+    for (i, ch) in enumerate(m.ghost)
+        x = base_x + i - 1
+        x < rect.x + inset_left + gw && continue
+        x >= rect.x + rect.width && break
+        TK.set_char!(buf, x, screen_y, ch, TK.tstyle(:text_dim))
+    end
 end
 
 # ---------------------------------------------------------------------
@@ -2427,6 +2653,15 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # rendered so we paint on top of the existing cells.
     if m.layout_patterns !== nothing
         _render_playhead!(m, m.layout_patterns, buf)
+    end
+
+    # Ghost autocomplete — faded suggestion at the cursor in the active
+    # editor pane. Lazy-loads usage stats on first render.
+    _load_ghost_usage!()
+    if m.focus === :synth && m.layout_synth !== nothing
+        _render_ghost!(m, m.layout_synth, buf)
+    elseif m.layout_patterns !== nothing
+        _render_ghost!(m, m.layout_patterns, buf)
     end
 
     # Live doc row — word under cursor → doc string
