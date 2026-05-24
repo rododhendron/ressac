@@ -60,6 +60,12 @@ non-empty), and the focus toggle for keystroke routing.
     snip_cursor::Int             = 1
     snip_query::String           = ""
     snip_search_mode::Bool       = false
+    # Wiki state (only meaningful when modal === :wiki). Pages re-read
+    # at every :wiki so editing a .md file in docs/wiki/ takes effect
+    # without restarting.
+    wiki_pages::Vector{_WikiPage} = _WikiPage[]
+    wiki_idx::Int                = 1
+    wiki_scroll::Int             = 0
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
@@ -1395,6 +1401,7 @@ const _EX_COMMAND_VERBS = String[
     "rec", "record", "export", "export-synth",
     "scratch", "sandbox", "e", "dsl", "dsl-guide", "synth-dsl", "safety",
     "tap", "piano", "piano-rec", "piano-record",
+    "wiki", "docs", "doc-wiki",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -1696,6 +1703,8 @@ _register_literal!(m -> (m.modal = :synth_guide; m.modal_scroll = 0),
                    "synth-guide")
 _register_literal!(m -> (m.modal = :dsl_guide; m.modal_scroll = 0),
                    "dsl", "dsl-guide", "synth-dsl")
+_register_literal!(m -> _open_wiki!(m),
+                   "wiki", "docs", "doc-wiki")
 _register_literal!(m -> _open_browser!(m),           "browse", "b")
 _register_literal!(m -> _open_synth_library!(m),     "synthlib", "synth-library", "lib")
 _register_literal!(m -> _open_snippets!(m),          "snip", "snippets", "snippet")
@@ -2477,6 +2486,9 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif m.modal === :snippets
         _handle_snippets_key!(m, evt)
         return
+    elseif m.modal === :wiki
+        _handle_wiki_key!(m, evt)
+        return
     end
     lines = _modal_lines(m)
     n = length(lines)
@@ -2984,6 +2996,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_sccode_modal!(m, f.area, buf)
     elseif m.modal === :snippets
         _render_snippets_modal!(m, f.area, buf)
+    elseif m.modal === :wiki
+        _render_wiki_modal!(m, f.area, buf)
     elseif m.modal !== :none
         _render_modal!(m, f.area, buf)
     end
@@ -3106,6 +3120,127 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
             _push_app_log!(m, "[ERROR] export: $(sprint(showerror, err))")
             m.recording = false
         end
+    end
+end
+
+# ---------------------------------------------------------------------
+# Wiki — in-app documentation browser
+# ---------------------------------------------------------------------
+
+"""
+    _open_wiki!(m)
+
+Open the wiki modal, reloading pages from `docs/wiki/*.md` so any
+edits since the last open take effect immediately.
+"""
+function _open_wiki!(m::RessacApp)
+    m.wiki_pages = _load_wiki_pages()
+    if isempty(m.wiki_pages)
+        _push_app_log!(m, "[WARN] :wiki — no pages found in docs/wiki/")
+        return
+    end
+    m.modal = :wiki
+    m.wiki_idx = clamp(m.wiki_idx, 1, length(m.wiki_pages))
+    m.wiki_scroll = 0
+end
+
+function _handle_wiki_key!(m::RessacApp, evt::TK.KeyEvent)
+    isempty(m.wiki_pages) && (m.modal = :none; return)
+    page = m.wiki_pages[m.wiki_idx]
+    if evt.key === :escape || evt.char == 'q'
+        m.modal = :none
+    elseif evt.char == 'j' || evt.key === :down
+        m.wiki_scroll = min(m.wiki_scroll + 1,
+                            max(0, length(page.lines) - 1))
+    elseif evt.char == 'k' || evt.key === :up
+        m.wiki_scroll = max(0, m.wiki_scroll - 1)
+    elseif evt.char == 'd'  # page down
+        m.wiki_scroll = min(m.wiki_scroll + 10,
+                            max(0, length(page.lines) - 1))
+    elseif evt.char == 'u'  # page up
+        m.wiki_scroll = max(0, m.wiki_scroll - 10)
+    elseif evt.char == 'g'
+        m.wiki_scroll = 0
+    elseif evt.char == 'G'
+        m.wiki_scroll = max(0, length(page.lines) - 1)
+    elseif evt.char == 'n' || evt.char == ']' || evt.key === :right
+        m.wiki_idx = mod1(m.wiki_idx + 1, length(m.wiki_pages))
+        m.wiki_scroll = 0
+    elseif evt.char == 'p' || evt.char == '[' || evt.key === :left
+        m.wiki_idx = mod1(m.wiki_idx - 1, length(m.wiki_pages))
+        m.wiki_scroll = 0
+    elseif evt.key === :char && isdigit(evt.char)
+        # Number key jumps to that page index (1-based)
+        n = parse(Int, string(evt.char))
+        1 <= n <= length(m.wiki_pages) && (m.wiki_idx = n; m.wiki_scroll = 0)
+    end
+end
+
+"""
+    _render_wiki_modal!(m, area, buf)
+
+Two-column layout: TOC on the left (~28 cols), content on the
+right. Title row + footer hint frame the modal.
+"""
+function _render_wiki_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    isempty(m.wiki_pages) && return
+    aw, ah = area.width, area.height
+    box_w = max(80, aw - 4)
+    box_h = max(20, ah - 4)
+    box_x = area.x + max(0, (aw - box_w) ÷ 2)
+    box_y = area.y + max(0, (ah - box_h) ÷ 2)
+    # Header / footer borders.
+    title_label = " Ressac wiki · " * m.wiki_pages[m.wiki_idx].title *
+                  "   ( j/k scroll · n/p page · g/G top/bottom · d/u page-jump · q close ) "
+    title_str = "┌" * first(title_label * "─" ^ box_w, box_w - 2) * "┐"
+    TK.set_string!(buf, box_x, box_y, first(title_str, box_w),
+                   TK.tstyle(:title, bold=true))
+    foot = "└" * "─" ^ (box_w - 2) * "┘"
+    TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
+                   TK.tstyle(:title, bold=true))
+    # Side walls.
+    for y in (box_y + 1):(box_y + box_h - 2)
+        TK.set_string!(buf, box_x, y, "│", TK.tstyle(:title))
+        TK.set_string!(buf, box_x + box_w - 1, y, "│", TK.tstyle(:title))
+    end
+    # Two-column split inside the box.
+    toc_w = max(20, box_w ÷ 4)
+    body_h = box_h - 2
+    body_y0 = box_y + 1
+    # ── TOC ─────────────────────────────────────────────────────────
+    for (i, p) in enumerate(m.wiki_pages)
+        i > body_h && break
+        is_cur = i == m.wiki_idx
+        prefix = is_cur ? "▶ " : "  "
+        label = "$(prefix)$(i). $(p.title)"
+        style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
+        TK.set_string!(buf, box_x + 2, body_y0 + i - 1,
+                       first(rpad(label, toc_w - 2), toc_w - 2),
+                       style)
+    end
+    # Vertical separator between TOC and content.
+    sep_x = box_x + toc_w
+    for y in body_y0:(body_y0 + body_h - 1)
+        TK.set_string!(buf, sep_x, y, "│", TK.tstyle(:border))
+    end
+    # ── Content ─────────────────────────────────────────────────────
+    content_x = sep_x + 2
+    content_w = box_w - toc_w - 4
+    page = m.wiki_pages[m.wiki_idx]
+    visible = page.lines[max(1, m.wiki_scroll + 1):end]
+    in_code = false
+    for (i, line) in enumerate(visible)
+        i > body_h && break
+        # Track fenced code blocks — ``` toggles in_code.
+        if startswith(strip(line), "```")
+            in_code = !in_code
+            TK.set_string!(buf, content_x, body_y0 + i - 1,
+                           first(rpad("┄" * "─" ^ (content_w - 1), content_w), content_w),
+                           TK.tstyle(:border))
+            continue
+        end
+        _render_markdown_line!(line, buf, content_x, body_y0 + i - 1,
+                               content_w; in_code = in_code)
     end
 end
 
