@@ -148,6 +148,33 @@ _current_synth_tab(m::RessacApp) = m.synth_tabs[m.synth_tab_idx]
 
 TK.should_quit(m::RessacApp) = m.quit
 
+"""
+    TK.update!(m::RessacApp, evt::TK.MouseEvent)
+
+Mouse handling — scroll-wheel-as-nudge is the prime case.
+
+  Wheel up    → +1 / +1.0  (or +10 / +0.1 with Shift)
+  Wheel down  → −1 / −1.0  (or −10 / −0.1 with Shift)
+
+Only when the cursor sits on a number. Outside that case the wheel
+is a no-op for now; we don't synthesise log scrolling because the
+log pane has its own infrastructure that I'd rather keep clean.
+"""
+function TK.update!(m::RessacApp, evt::TK.MouseEvent)
+    ed = _active_editor(m)
+    if evt.button === TK.mouse_scroll_up || evt.button === TK.mouse_scroll_down
+        if _has_number_under_cursor(ed)
+            sign = evt.button === TK.mouse_scroll_up ? 1 : -1
+            mag  = evt.shift ? 10 : 1
+            _nudge_number_under_cursor!(m, ed, sign * mag)
+        end
+        return
+    end
+    # Future: left-click in the editor area would move the cursor.
+    # That needs to track the editor's last-rendered Rect; deferring
+    # until the layout helper that returns those areas is centralised.
+end
+
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
@@ -235,7 +262,9 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             return
         elseif evt.char == 'K' && m.focus === :patterns
             _preview_word_under_cursor!(m); return
-        elseif evt.char == 'S' && _synth_pane_open(m)
+        elseif evt.char == 'S'
+            # Allow S anywhere — scope is useful even without a synth
+            # pane open (e.g. while a pattern is playing).
             _scope_cycle_key!(m); return
         elseif evt.char == 'm' && m.focus === :patterns
             _toggle_mute_current_line!(m); return
@@ -736,7 +765,10 @@ function _preview_word_under_cursor!(m::RessacApp)
 end
 
 function _scope_cycle_key!(m::RessacApp)
-    order = (:off, :amp, :wave, :spectrum)
+    # Use the shared cycle order so new scope types added in
+    # tui_scope.jl automatically show up under S without a separate
+    # edit here.
+    order = _SCOPE_CYCLE_ORDER
     i = findfirst(==(_APP_SCOPE_TYPE[]), order)
     i === nothing && (i = 1)
     next = order[(i % length(order)) + 1]
