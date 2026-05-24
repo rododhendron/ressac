@@ -201,11 +201,21 @@ that haven't yet been seen — this is the canonical defence against the
 because each successive lookahead window contains a clipped fragment of it.
 """
 function _step!(s::Scheduler, now::Float64)
+    # ── Snapshot phase (lock held only here) ──
+    # Pull the state we need to query into local variables, drain
+    # pending pattern swaps, advance last_end_cycles. The lock is then
+    # RELEASED before we run user pattern code (which can be slow:
+    # deep combinator chains, allocations, regex inside controls) and
+    # before we encode + ship OSC bundles. Without this split, every
+    # `set_pattern!` / `set_cps!` / `hush!` call from the UI thread
+    # would block until a full pattern query completed — eval on a
+    # complex chain stutters the audio.
+    local cps, t_start, start_cycles, end_cycles, patterns_snapshot
     lock(s.lock) do
-        end_cycles = (now + s.lookahead) * s.cps
+        cps = s.cps
+        t_start = s.t_start
+        end_cycles = (now + s.lookahead) * cps
         # Drain any pending pattern swaps whose apply_at_cycle has arrived.
-        # Two-pass to avoid mutating `s.pending` while iterating it (Julia's
-        # Dict iteration order is not guaranteed under concurrent mutation).
         to_install = Symbol[]
         for (slot, (_, at)) in pairs(s.pending)
             Float64(at) <= end_cycles && push!(to_install, slot)
@@ -215,25 +225,43 @@ function _step!(s::Scheduler, now::Float64)
             delete!(s.pending, slot)
         end
         start_cycles = s.last_end_cycles
-        end_cycles > start_cycles || return
-        n_start = floor(Int, start_cycles)
-        n_stop  = ceil(Int, end_cycles)
-        for (slot, pattern) in s.patterns
-            for n in n_start:(n_stop - 1)
-                events = pattern(Rational{Int64}(n), Rational{Int64}(n + 1))
-                for ev in events
-                    ev_start = Float64(ev.start)
-                    if start_cycles <= ev_start < end_cycles
-                        fire_time = s.t_start + ev_start / s.cps
-                        bundle = OSCBundle(fire_time, [event_to_osc(ev)])
-                        send_osc(s.osc, encode(bundle))
-                        Threads.atomic_add!(s.events_shipped, 1)
-                        s.last_fired_at[slot] = time()
-                    end
+        # Advance the cursor NOW so any concurrent _step! sees the new
+        # boundary; we'll skip the work outside the lock if start>=end.
+        if end_cycles > start_cycles
+            s.last_end_cycles = end_cycles
+            patterns_snapshot = collect(pairs(s.patterns))  # shallow copy
+        else
+            patterns_snapshot = Pair{Symbol,Pattern}[]
+        end
+    end
+    isempty(patterns_snapshot) && return
+    end_cycles > start_cycles || return
+
+    # ── Query + ship phase (no lock) ──
+    n_start = floor(Int, start_cycles)
+    n_stop  = ceil(Int, end_cycles)
+    fired_at_local = Pair{Symbol,Float64}[]
+    for (slot, pattern) in patterns_snapshot
+        for n in n_start:(n_stop - 1)
+            events = pattern(Rational{Int64}(n), Rational{Int64}(n + 1))
+            for ev in events
+                ev_start = Float64(ev.start)
+                if start_cycles <= ev_start < end_cycles
+                    fire_time = t_start + ev_start / cps
+                    bundle = OSCBundle(fire_time, [event_to_osc(ev)])
+                    send_osc(s.osc, encode(bundle))
+                    Threads.atomic_add!(s.events_shipped, 1)
+                    push!(fired_at_local, slot => time())
                 end
             end
         end
-        s.last_end_cycles = end_cycles
+    end
+    # Write back `last_fired_at` under lock — small, fast.
+    isempty(fired_at_local) && return
+    lock(s.lock) do
+        for (slot, t) in fired_at_local
+            s.last_fired_at[slot] = t
+        end
     end
 end
 
