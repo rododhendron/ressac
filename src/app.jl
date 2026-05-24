@@ -155,6 +155,8 @@ non-empty), and the focus toggle for keystroke routing.
     tap_events::Vector{Float64}          = Float64[]
     tap_sample::String                   = "bd"
     tap_steps::Int                       = 16
+    tap_bars::Int                        = 1            # play the same pattern N bars → average
+    tap_mode::Symbol                     = :pattern     # :pattern or :tempo (cps from taps)
     # Piano mode — letter keys map to semitones, hitting one fires the
     # current synth at that pitch. `piano_rec` toggles recording so
     # Enter commits the played notes as `@dN :synth |> n(p"...")`.
@@ -1435,7 +1437,8 @@ const _EX_COMMAND_VERBS = String[
     "snip", "snippets", "snippet",
     "rec", "record", "export", "export-synth",
     "scratch", "sandbox", "e", "dsl", "dsl-guide", "synth-dsl", "safety",
-    "tap", "piano", "piano-rec", "piano-record",
+    "tap", "tap-tempo", "taptempo", "bpm",
+    "piano", "piano-rec", "piano-record",
     "wiki", "docs", "doc-wiki",
 ]
 
@@ -1769,6 +1772,13 @@ _register_regex!(r"^tap\s+(\w+)\s+(\d+)$",
     (m, mt) -> _tap_start!(m;
         sample = String(mt.captures[1]),
         steps  = parse(Int, mt.captures[2])))
+_register_regex!(r"^tap\s+(\w+)\s+(\d+)\s+(\d+)$",
+    (m, mt) -> _tap_start!(m;
+        sample = String(mt.captures[1]),
+        steps  = parse(Int, mt.captures[2]),
+        bars   = parse(Int, mt.captures[3])))
+_register_literal!(m -> _tap_start!(m; mode = :tempo),
+                   "tap-tempo", "taptempo", "bpm")
 _register_literal!(m -> _piano_start!(m),            "piano")
 _register_literal!(m -> _piano_start!(m; record = true),
                    "piano-rec", "piano-record")
@@ -3718,12 +3728,25 @@ to `steps` and inserts the resulting `@dN p"..."` below the cursor,
 Esc cancels.
 """
 function _tap_start!(m::RessacApp; sample::AbstractString = "bd",
-                                    steps::Int = 16)
+                                    steps::Int = 16,
+                                    bars::Int = 1,
+                                    mode::Symbol = :pattern)
     m.tap_recording = true
     empty!(m.tap_events)
     m.tap_sample = String(sample)
     m.tap_steps  = steps
-    _push_app_log!(m, "[INFO] tap — Space ONLY on hits (no extra downbeat at end), Enter commit, Esc cancel · sample=$(sample), steps=$(steps)")
+    m.tap_bars   = max(1, bars)
+    m.tap_mode   = mode
+    if mode === :tempo
+        _push_app_log!(m,
+            "[INFO] tap-tempo — Space on each beat (≥2 taps), Enter to apply cps, Esc cancel · 4 taps = 1 bar")
+    elseif bars > 1
+        _push_app_log!(m,
+            "[INFO] tap — play the same pattern $(bars)× · Space on hits, Enter commit, Esc cancel · steps=$(steps)")
+    else
+        _push_app_log!(m,
+            "[INFO] tap — Space ONLY on hits (no extra downbeat at end), Enter commit, Esc cancel · sample=$(sample), steps=$(steps)")
+    end
 end
 
 function _tap_hit!(m::RessacApp)
@@ -3744,31 +3767,72 @@ function _tap_commit!(m::RessacApp)
     m.tap_recording = false
     n = length(m.tap_events)
     if n < 2
-        _push_app_log!(m, "[WARN] tap: need at least 2 hits to define a bar")
+        _push_app_log!(m, "[WARN] tap: need at least 2 hits")
         empty!(m.tap_events)
         return
     end
+    if m.tap_mode === :tempo
+        _tap_apply_tempo!(m); return
+    end
     first_t = m.tap_events[1]
     last_t  = m.tap_events[end]
-    # Crucial fix: the user taps N positions, and the LAST tap marks
-    # the start of the next bar (not the end of this one — they tap
-    # the downbeat). So the bar duration spans N inter-tap intervals,
-    # not N-1. Adding the average interval makes the last tap land
-    # inside its own step rather than getting clamped to the final
-    # position.
     avg_interval = (last_t - first_t) / (n - 1)
-    bar = (last_t - first_t) + avg_interval
+    # Bar duration: same extend-by-one-interval trick as single-bar,
+    # then divide by N_bars when the user is averaging across repeats.
+    total = (last_t - first_t) + avg_interval
+    bar = total / m.tap_bars
     N = m.tap_steps
-    cells = fill("~", N)
-    for t in m.tap_events
-        idx = clamp(floor(Int, (t - first_t) / bar * N) + 1, 1, N)
-        cells[idx] = m.tap_sample
+    if m.tap_bars == 1
+        cells = fill("~", N)
+        for t in m.tap_events
+            idx = clamp(floor(Int, (t - first_t) / bar * N) + 1, 1, N)
+            cells[idx] = m.tap_sample
+        end
+    else
+        # Multi-bar averaging: fold every tap into one bar's worth of
+        # steps, count votes, hits = steps where ≥ half the bars had
+        # a tap there. Cleans up small timing inconsistencies across
+        # repeated tries.
+        votes = zeros(Int, N)
+        for t in m.tap_events
+            phase = mod(t - first_t, bar) / bar
+            idx = clamp(floor(Int, phase * N) + 1, 1, N)
+            votes[idx] += 1
+        end
+        threshold = max(1, ceil(Int, m.tap_bars / 2))
+        cells = [v >= threshold ? m.tap_sample : "~" for v in votes]
     end
     slot = _next_free_d_slot(m.editor)
     line = "@d$(slot) p\"" * join(cells, " ") * "\""
     _insert_line_after_cursor!(m.editor, line)
     empty!(m.tap_events)
-    _push_app_log!(m, "[INFO] tap → $(line)")
+    _push_app_log!(m, "[INFO] tap → $(line)" *
+                   (m.tap_bars > 1 ? "   (averaged over $(m.tap_bars) bars)" : ""))
+end
+
+"""
+    _tap_apply_tempo!(m)
+
+Compute cps from the recorded taps and apply via `set_cps!`.
+Convention: 4 taps = 1 bar (cycle), so cps = 1 / (4 × avg_interval).
+With 3+ taps the average is more stable; 2 taps just take the
+single inter-tap interval.
+"""
+function _tap_apply_tempo!(m::RessacApp)
+    n = length(m.tap_events)
+    if n < 2
+        _push_app_log!(m, "[WARN] tap-tempo: need at least 2 taps")
+        empty!(m.tap_events)
+        return
+    end
+    avg_interval = (m.tap_events[end] - m.tap_events[1]) / (n - 1)
+    cps = 1.0 / (4.0 * avg_interval)   # 4 taps per cycle convention
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_app_log!(m, "[WARN] tap-tempo: no live session"); return)
+    set_cps!(sched, cps)
+    bpm = cps * 4 * 60
+    _push_app_log!(m, "[INFO] tap-tempo → cps=$(round(cps; digits=3))  (~$(round(Int, bpm)) BPM, $(n) taps)")
+    empty!(m.tap_events)
 end
 
 function _next_free_d_slot(ed::TK.CodeEditor)
@@ -4207,7 +4271,10 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         push!(parts, "● REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0'))")
     end
     if m.tap_recording
-        push!(parts, "● TAP $(length(m.tap_events)) hit$(length(m.tap_events) == 1 ? "" : "s")")
+        label = m.tap_mode === :tempo ? "● TAP-TEMPO" :
+                m.tap_bars > 1        ? "● TAP×$(m.tap_bars) bars" :
+                                        "● TAP"
+        push!(parts, "$label $(length(m.tap_events)) hit$(length(m.tap_events) == 1 ? "" : "s")")
     end
     if m.piano_active
         label = m.piano_rec ? "● PIANO REC" : "♪ PIANO"

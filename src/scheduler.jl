@@ -286,7 +286,19 @@ Change tempo. Must be positive.
 function set_cps!(s::Scheduler, cps::Real)
     cps > 0 || throw(ArgumentError("cps must be positive"))
     lock(s.lock) do
+        # Preserve the current cycle position across the tempo change.
+        # Without this rebase, `last_end_cycles` (expressed in cycles)
+        # stays at its old value while `_step!`'s `end_cycles = (now +
+        # lookahead) * new_cps` computes a smaller number when slowing
+        # down — `end_cycles > start_cycles` then becomes false and
+        # no events ship until time catches back up. After a few
+        # cps changes the scheduler can be stuck for minutes.
+        now = time()
+        current_cycles = max(0.0, (now - s.t_start) * s.cps)
         s.cps = Float64(cps)
+        # Rebase t_start so (now - t_start) * new_cps == current_cycles.
+        s.t_start = now - current_cycles / s.cps
+        s.last_end_cycles = current_cycles
     end
     return nothing
 end
