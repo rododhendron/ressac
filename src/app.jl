@@ -20,6 +20,12 @@ CodeEditor with its own buffer + cursor. The side panel is open when
 mutable struct SynthTab
     name::String
     editor::TK.CodeEditor
+    # `:dsl` (the default for new tabs) — buffer holds Julia DSL code;
+    # T evals the buffer as Julia and the @synth macro inside sends
+    # the compiled SC to SuperCollider. `:sc` — legacy raw SuperCollider
+    # SynthDef in the buffer; T ships the text verbatim.
+    mode::Symbol
+    SynthTab(name, editor; mode::Symbol=:dsl) = new(name, editor, mode)
 end
 
 """
@@ -1872,28 +1878,32 @@ function _synthlib_all_entries()
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || return entries
     for f in sort!(readdir(dir))
-        endswith(f, ".scd") || continue
-        name = String(splitext(f)[1])
+        name, ext = splitext(f)
+        mode = ext == ".jl"  ? :dsl :
+               ext == ".scd" ? :sc  : continue
         # Don't double-list a user file that shadows a built-in name —
         # the user's edits are what they want to revisit.
-        existing = findfirst(e -> e.name == name, entries)
+        existing = findfirst(e -> e.name == String(name), entries)
         path = joinpath(dir, f)
         src = try read(path, String) catch; "" end
         desc = _first_comment_line(src)
+        new_entry = _SynthLibEntry(String(name), "user", desc, src, mode)
         if existing !== nothing
-            entries[existing] = _SynthLibEntry(name, "user", desc, src)
+            entries[existing] = new_entry
         else
-            push!(entries, _SynthLibEntry(name, "user", desc, src))
+            push!(entries, new_entry)
         end
     end
     return entries
 end
 
 function _first_comment_line(src::AbstractString)
+    # Recognise both Julia-style `#` (DSL files) and SC-style `//`
+    # so user-saved entries either way get a sensible description.
     for line in split(src, '\n'; limit=20)
         s = strip(line)
-        startswith(s, "//") || continue
-        body = strip(replace(String(s), r"^//+\s*" => ""))
+        (startswith(s, "//") || startswith(s, "#")) || continue
+        body = strip(replace(String(s), r"^(//+|#+)\s*" => ""))
         isempty(body) && continue
         return first(body, 60)
     end
@@ -1929,10 +1939,19 @@ function _preview_synth_from_library!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     entry = entries[m.synthlib_cursor]
-    send_osc(sched.osc,
-             encode(OSCMessage("/ressac/evalAndPlay",
-                                Any[entry.name, entry.source])))
-    _push_app_log!(m, "[INFO] preview $(entry.name) (defaults)")
+    if entry.mode === :dsl
+        try
+            Core.eval(Main, Meta.parse(entry.source))
+            _push_app_log!(m, "[INFO] preview $(entry.name) (DSL)")
+        catch err
+            _push_app_log!(m, "[ERROR] preview DSL: $(sprint(showerror, err))")
+        end
+    else
+        send_osc(sched.osc,
+                 encode(OSCMessage("/ressac/evalAndPlay",
+                                    Any[entry.name, entry.source])))
+        _push_app_log!(m, "[INFO] preview $(entry.name) (SC)")
+    end
 end
 
 """
@@ -1956,23 +1975,27 @@ function _instantiate_synth_from_library!(m::RessacApp)
     name = entry.name
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
-    # If <name>.scd already exists, append -2, -3, ... so we never
-    # overwrite a synth the user has been working on.
-    target = joinpath(dir, "$name.scd")
+    # Disambiguate the destination filename (with the mode's extension)
+    # so an existing edit isn't clobbered.
+    ext = entry.mode === :dsl ? ".jl" : ".scd"
+    target = joinpath(dir, "$name$ext")
     n = 1
     while isfile(target)
         n += 1
-        target = joinpath(dir, "$name-$n.scd")
+        target = joinpath(dir, "$name-$n$ext")
     end
     final_name = n == 1 ? name : "$name-$n"
-    # The SynthDef declaration inside `source` is hard-coded to the
-    # original name; rewrite it so the file's name matches the
-    # SynthDef name (SC needs them to match for the load path).
-    src = replace(entry.source, "SynthDef(\\$(entry.name)" => "SynthDef(\\$(final_name)")
+    # Rewrite the in-source name to match the final filename. DSL uses
+    # `@synth :name`, SC uses `SynthDef(\name`.
+    src = if entry.mode === :dsl
+        _align_dsl_synth_name(entry.source, final_name)
+    else
+        replace(entry.source, "SynthDef(\\$(entry.name)" => "SynthDef(\\$(final_name)")
+    end
     write(target, src)
     m.modal = :none
     _open_synth_tab!(m, final_name)
-    _push_app_log!(m, "[INFO] synth library: instantiated $final_name from \"$(entry.name)\"")
+    _push_app_log!(m, "[INFO] synth library: instantiated $final_name from \"$(entry.name)\" [$( entry.mode )]")
 end
 
 function _browser_entries(m::RessacApp)
@@ -3799,8 +3822,20 @@ end
 # Synth pane management
 # ---------------------------------------------------------------------
 
-_app_synth_path(name::AbstractString) =
-    joinpath(pwd(), "plugins", "user-synths", String(name) * ".scd")
+_app_synth_path(name::AbstractString; mode::Symbol = :dsl) =
+    joinpath(pwd(), "plugins", "user-synths",
+             String(name) * (mode === :dsl ? ".jl" : ".scd"))
+
+"""
+    _STARTER_DSL(name)
+
+Default body for a fresh sandbox / unnamed synth tab in DSL mode.
+"""
+_STARTER_DSL(name) = """
+# T = test  ·  :w <name> = save as  ·  :dsl = DSL guide  ·  :snip = snippets
+
+@synth :$(name) (freq=220, sustain=0.5) sin_osc(:freq)
+"""
 
 """
     _open_sandbox_synth!(m)
@@ -3834,26 +3869,37 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     if existing !== nothing
         m.synth_tab_idx = existing
         m.focus = :synth
-        m.focus = :synth; _refresh_focus_flags!(m)   # ensure the right editor has focused=true
+        _refresh_focus_flags!(m)
         _push_app_log!(m, "[INFO] switched to tab '$name'")
         return
     end
-    path = _app_synth_path(name)
-    src = isfile(path) ? read(path, String) : join(_STARTER_SYNTHDEF(name), "\n")
+    # Mode detection: prefer existing `.jl` (DSL) on disk; fall back to
+    # `.scd` (raw SC); otherwise create a fresh DSL tab with the
+    # starter template — DSL is the primary authoring mode now.
+    dsl_path = _app_synth_path(name; mode = :dsl)
+    sc_path  = _app_synth_path(name; mode = :sc)
+    src, mode = if isfile(dsl_path)
+        (read(dsl_path, String), :dsl)
+    elseif isfile(sc_path)
+        (read(sc_path, String), :sc)
+    else
+        (_STARTER_DSL(name), :dsl)
+    end
+    ext = mode === :dsl ? ".jl" : ".scd"
     editor = TK.CodeEditor(;
         text  = src,
-        block = TK.Block(title = "synth: $name.scd",
+        block = TK.Block(title = "synth: $(name)$(ext) [$mode]",
                          border_style = TK.tstyle(:border),
                          title_style  = TK.tstyle(:title)),
         focused = true,
         tick    = m.tick,
         mode    = :normal,
     )
-    push!(m.synth_tabs, SynthTab(name, editor))
+    push!(m.synth_tabs, SynthTab(name, editor; mode = mode))
     m.synth_tab_idx = length(m.synth_tabs)
     m.focus = :synth
     _refresh_focus_flags!(m)
-    _push_app_log!(m, "[INFO] opened synth '$name' — T test, :w save, Tab swap, gt cycle, :close drop")
+    _push_app_log!(m, "[INFO] opened synth '$name' [$mode] — T test, :w save, Tab swap")
 end
 
 """
@@ -3940,23 +3986,27 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
     text = TK.text(tab.editor)
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
+    align = tab.mode === :dsl ? _align_dsl_synth_name : _align_synthdef_name
     if new_name === nothing
-        # Plain :w — overwrite the current tab's backing file. Auto-align
-        # the SynthDef name in case the user edited it inconsistently.
-        text = _align_synthdef_name(text, old_name)
+        # Plain :w — overwrite the current tab's backing file at the
+        # extension that matches its mode (.jl for DSL, .scd for SC).
+        text = align(text, old_name)
         TK.set_text!(tab.editor, text)
-        write(_app_synth_path(old_name), text)
-        register_synth!(SynthEntry(Symbol(old_name), "user-synths", Dict{String,Any}(
-            "description" => "live-edited synth", "tags" => ["user"])))
-        _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(old_name))")
+        write(_app_synth_path(old_name; mode = tab.mode), text)
+        register_synth!(SynthEntry(Symbol(old_name), "user-synths",
+            Dict{String,Any}("description" => "live-edited synth",
+                             "tags" => ["user", String(tab.mode)])))
+        _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(old_name; mode = tab.mode))")
     else
-        # :w newname — Save-As. Rewrite the SynthDef name to match.
+        # :w newname — Save-As. Same mode as the originating tab; the
+        # name token in the source gets rewritten to match.
         name = String(new_name)
-        new_text = _align_synthdef_name(text, name)
-        write(_app_synth_path(name), new_text)
-        register_synth!(SynthEntry(Symbol(name), "user-synths", Dict{String,Any}(
-            "description" => "live-edited synth", "tags" => ["user"])))
-        _push_app_log!(m, "[INFO] saved synth as → $(_app_synth_path(name))")
+        new_text = align(text, name)
+        write(_app_synth_path(name; mode = tab.mode), new_text)
+        register_synth!(SynthEntry(Symbol(name), "user-synths",
+            Dict{String,Any}("description" => "live-edited synth",
+                             "tags" => ["user", String(tab.mode)])))
+        _push_app_log!(m, "[INFO] saved synth as → $(_app_synth_path(name; mode = tab.mode))")
         _open_synth_tab!(m, name)
     end
 end
@@ -4004,15 +4054,41 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
     sched === nothing && return
     tab = _current_synth_tab(m)
     src = TK.text(tab.editor)
-    # Auto-rewrite the SynthDef name to match the tab name. Lets the
-    # user duplicate / rename / save-as without remembering to update
-    # the `\name` token by hand — the contract is "tab name ↔ SynthDef
-    # name", and we enforce it on every fire. Idempotent when they
-    # already match.
-    src = _align_synthdef_name(src, tab.name)
-    addr = raw ? "/ressac/evalAndPlay" : "/ressac/evalAndPlay"
-    send_osc(sched.osc, encode(OSCMessage(addr, Any[tab.name, src])))
-    _push_app_log!(m, "[INFO] T — test $(tab.name) (synth defaults active)")
+    if tab.mode === :dsl
+        # DSL mode: realign the @synth name to the tab name (same
+        # contract as SC mode's SynthDef name), then eval the buffer
+        # as Julia. The @synth macro inside calls play_synth which
+        # compiles to SC and ships to /ressac/evalAndPlay itself.
+        src = _align_dsl_synth_name(src, tab.name)
+        try
+            Core.eval(Main, Meta.parse(src))
+            _push_app_log!(m, "[INFO] T — test $(tab.name) (DSL → compiled SC)")
+        catch err
+            _push_app_log!(m, "[ERROR] DSL eval: $(sprint(showerror, err))")
+        end
+    else
+        # SC raw mode (legacy): ship the buffer verbatim.
+        src = _align_synthdef_name(src, tab.name)
+        send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay",
+                                              Any[tab.name, src])))
+        _push_app_log!(m, "[INFO] T — test $(tab.name) (raw SC)")
+    end
+end
+
+"""
+    _align_dsl_synth_name(src, target)
+
+Rewrite the FIRST `@synth :<old>` token in a DSL buffer to match
+`target`. Idempotent when they already match; no-op if no @synth
+declaration is found.
+"""
+function _align_dsl_synth_name(src::AbstractString, target::AbstractString)
+    mt = match(r"@synth\s+:(\w+)", src)
+    mt === nothing && return src
+    current = mt.captures[1]
+    current == target && return src
+    return replace(src, r"@synth\s+:(\w+)" =>
+                   SubstitutionString("@synth :$(target)"); count = 1)
 end
 
 """

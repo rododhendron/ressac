@@ -13,35 +13,53 @@ struct _SynthLibEntry
     name::String          # the SynthDef name (and filename stem)
     category::String
     description::String
-    source::String        # the .scd body (compiled SC, plus DSL recipe comment)
+    source::String        # body to write — DSL Julia for :dsl mode, raw SC for :sc mode
+    mode::Symbol          # :dsl or :sc — picks the file extension on save
 end
+_SynthLibEntry(name, category, description, source) =
+    _SynthLibEntry(name, category, description, source, :sc)
 
 """
-    _dsl_entry(name, category, description, dsl_text; params)
+    _dsl_entry(name, category, description, dsl_text; params, auto_env, auto_gain)
 
-Parse and evaluate `dsl_text` (a Julia expression that produces a
-SynthDSL.Sig) inside the SynthDSL module, compile to a SynthDef
-via `SynthDSL.build_synth`, and bundle the DSL source as a header
-comment so the user sees both forms when they open the entry.
+Produce a library entry whose body IS the DSL Julia source — opens
+directly as a `.jl` synth tab, T evals it, the @synth macro inside
+compiles and ships to SC. `dsl_text` is the body of the @synth call
+(e.g. `"sin_osc(:freq) |> rlpf(800, 0.3)"`).
 """
 function _dsl_entry(name::String, category::String, description::String,
                     dsl_text::String;
                     params::NamedTuple = NamedTuple(),
                     auto_env::Bool = true,
                     auto_gain::Bool = true)
+    # Validate the DSL recipe compiles at load time — catches typos
+    # in the library itself before the user clicks anything.
     sig = Core.eval(SynthDSL, Meta.parse(dsl_text))
-    sc  = SynthDSL.build_synth(Symbol(name), sig;
-                               params = params,
-                               auto_env = auto_env,
-                               auto_gain = auto_gain)
-    indented = "//   " * replace(strip(dsl_text), "\n" => "\n//   ")
+    SynthDSL.build_synth(Symbol(name), sig;
+                         params = params,
+                         auto_env = auto_env,
+                         auto_gain = auto_gain)
+    params_str = isempty(params) ? "" : " " * _format_params(params)
+    opts_str   = (auto_env && auto_gain) ? "" :
+        " (auto_env=$(auto_env), auto_gain=$(auto_gain),)"
+    indented = "  " * replace(strip(dsl_text), "\n" => "\n  ")
     body = """
-        // ─ DSL recipe (Julia / Ressac.SynthDSL) ────────────────
-        $indented
-        // ────────────────────────────────────────────────────────
+        # $(description)
+        # T = test  ·  :w <name> = save as  ·  :dsl = cookbook
 
-        $sc"""
-    _SynthLibEntry(name, category, description, body)
+        @synth :$(name)$(params_str)$(opts_str) begin
+        $(indented)
+        end
+        """
+    _SynthLibEntry(name, category, description, body, :dsl)
+end
+
+# Render a NamedTuple as the literal `(key=val, key=val,)` Julia
+# notation the @synth macro expects.
+function _format_params(params::NamedTuple)
+    isempty(params) && return ""
+    parts = ["$k=$v" for (k, v) in pairs(params)]
+    return "(" * join(parts, ", ") * (length(parts) == 1 ? "," : "") * ")"
 end
 
 const _SYNTH_LIBRARY = _SynthLibEntry[
