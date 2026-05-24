@@ -40,9 +40,9 @@ non-empty), and the focus toggle for keystroke routing.
     scheduler::Scheduler
     editor::TK.CodeEditor = TK.CodeEditor(;
         text     = "@d1 p\"bd hh sn hh\"",
-        block    = TK.Block(title = "patterns",
-                            border_style = TK.tstyle(:border),
-                            title_style  = TK.tstyle(:title)),
+        # No `block=` here — view() wraps the patterns pane in its own
+        # focus-aware Block (see _render_pane_block!) so adding one on
+        # the editor itself would draw nested borders.
         focused  = true,
         tick     = 0,
         mode     = :normal,
@@ -67,11 +67,19 @@ non-empty), and the focus toggle for keystroke routing.
     wiki_idx::Int                = 1
     wiki_scroll::Int             = 0
     # Vim-style `.` repeat. We capture the text typed during the last
-    # i/a/o-insert session and re-type it on `.` press. (More complex
-    # repeats — dd. cw. etc — are a follow-up.)
+    # i/a/o-insert session and re-type it on `.` press.
     vim_in_insert::Bool          = false
     vim_insert_buf::String       = ""
     vim_last_insert::String      = ""
+    # Normal-mode `.` repeat: track keystrokes whose combined effect
+    # changed the buffer (dd, x, p, J, ...) so `.` can replay them.
+    # `pending` accumulates keystrokes since the last buffer change;
+    # whenever the buffer changes while in :normal, pending becomes
+    # the new `last_normal`. `last_kind` picks which of last_insert /
+    # last_normal `.` should replay.
+    vim_pending_normal::Vector{TK.KeyEvent} = TK.KeyEvent[]
+    vim_last_normal::Vector{TK.KeyEvent}    = TK.KeyEvent[]
+    vim_last_kind::Symbol        = :none   # :insert, :normal, or :none
     # Visual-line mode. `V` enters; j/k/arrows extend selection;
     # d/y/c operate on the line range [min(anchor, cursor),
     # max(anchor, cursor)] then exit; Esc cancels without action.
@@ -657,9 +665,15 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             return
         end
     end
+    # Snapshot for normal-mode `.` recording — see _vim_post_normal!.
+    pre_text = ed.mode === :normal ? TK.text(ed) : ""
+    pre_mode = ed.mode
     TK.handle_key!(ed, evt)
     cmd = TK.pending_command!(ed)
     isempty(cmd) || _handle_ex_command!(m, cmd)
+    if is_press && pre_mode === :normal
+        _vim_post_normal!(m, ed, evt, pre_text)
+    end
 end
 
 # ---------------------------------------------------------------------
@@ -866,8 +880,19 @@ to offer. Falls back to `:any` when nothing specific fits.
 function _ghost_context(line::AbstractString, col::Int)
     # Take everything from the line start up to the cursor; the
     # context regexes are anchored at the END so they match the latest
-    # incomplete construct.
-    prefix = col == 0 ? "" : line[1:min(end, col)]
+    # incomplete construct. `col` is a character count, but `line` may
+    # contain multi-byte UTF-8 chars (¹ ▓ etc.), so slice by character
+    # rather than by byte to avoid StringIndexError.
+    prefix = if col <= 0
+        ""
+    else
+        buf = IOBuffer(); n = 0
+        for c in line
+            n >= col && break
+            print(buf, c); n += 1
+        end
+        String(take!(buf))
+    end
     if (m = match(r"\|>\s*(\w*)$", prefix)) !== nothing
         return (:combinator, String(m.captures[1]), _GHOST_COMBINATORS)
     elseif (m = match(r"set\(:(\w*)$", prefix)) !== nothing
@@ -1127,6 +1152,22 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
         haskey(sched.patterns, slot) || continue
         body = String(mt.captures[2])
         isempty(body) && continue
+        # Re-paint the slot prefix (`@dN`) in dim accent so the eye
+        # can spot active lines instantly even before the playhead
+        # token highlight kicks in. Inactive @dN lines (slot not in
+        # sched.patterns) skip this branch entirely.
+        slot_str_len = 2 + length(mt.captures[1])  # "@d" + digits
+        slot_start_col = mt.offsets[1] - 2         # capture[1] is the digits; back up to '@'
+        slot_screen_x_start = rect.x + inset_left + gw + slot_start_col - ed_h_scroll(m.editor)
+        for k in 0:(slot_str_len - 1)
+            sx = slot_screen_x_start + k
+            sx < rect.x + inset_left + gw && continue
+            sx >= rect.x + rect.width && break
+            line_col = slot_start_col + k + 1
+            line_col <= length(line_chars) || break
+            TK.set_char!(buf, sx, screen_row, line_chars[line_col],
+                         TK.tstyle(:warning, bold = true))
+        end
         # Find the body's column span inside the line. m.offsets gives
         # the byte offset of the start of capture #2; convert to a
         # display column (we assume ASCII for mininotation — bd / hh
@@ -1437,9 +1478,10 @@ const _EX_COMMAND_VERBS = String[
     "snip", "snippets", "snippet",
     "rec", "record", "export", "export-synth",
     "scratch", "sandbox", "e", "dsl", "dsl-guide", "synth-dsl", "safety",
-    "tap", "tap-tempo", "taptempo", "bpm",
+    "tap", "tap-tempo", "taptempo", "bpm", "tap-strict", "tap-bar",
     "piano", "piano-rec", "piano-record",
     "wiki", "docs", "doc-wiki",
+    "save", "load", "sessions", "ls-sessions",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -1456,6 +1498,8 @@ const _EX_COMMAND_ARG_KIND = Dict{String,Symbol}(
     "unmute"         => :slots,
     "solo"           => :slots,
     "scope"          => :scopes,
+    "load"           => :sessions,
+    "load-session"   => :sessions,
 )
 
 const _EX_COMMAND_ARG_LITERALS = Dict{String,Vector{String}}(
@@ -1530,6 +1574,10 @@ function _ex_arg_candidates(verb::AbstractString)
         return String.(keys(_SCALES))
     elseif kind === :slots
         return [string('d', i) for i in 1:16]   # :mute d3 etc.
+    elseif kind === :sessions
+        dir = joinpath(pwd(), "sessions")
+        isdir(dir) || return String[]
+        return [splitext(f)[1] for f in readdir(dir) if endswith(f, ".txt")]
     elseif kind === :all
         out = String[]
         append!(out, String.(keys(_SYNTH_REGISTRY)))
@@ -1722,6 +1770,13 @@ _register_regex!(r"^save-session\s+(\S+)$",
     (m, mt) -> _save_session_app!(m, mt.captures[1]))
 _register_regex!(r"^load-session\s+(\S+)$",
     (m, mt) -> _load_session_app!(m, mt.captures[1]))
+# Short aliases — :save <name> / :load <name> / :sessions list.
+_register_regex!(r"^save\s+(\S+)$",
+    (m, mt) -> _save_session_app!(m, mt.captures[1]))
+_register_regex!(r"^load\s+(\S+)$",
+    (m, mt) -> _load_session_app!(m, mt.captures[1]))
+_register_literal!(m -> _list_sessions_app!(m),
+                   "sessions", "ls-sessions")
 
 # ── Test ────────────────────────────────────────────────────────────
 _register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m),
@@ -1779,6 +1834,13 @@ _register_regex!(r"^tap\s+(\w+)\s+(\d+)\s+(\d+)$",
         bars   = parse(Int, mt.captures[3])))
 _register_literal!(m -> _tap_start!(m; mode = :tempo),
                    "tap-tempo", "taptempo", "bpm")
+# Legacy single-bar quantization for users who want the old behaviour.
+# `:tap` itself defaults to loop-detection now (handles repeats AND
+# falls back to single-bar when nothing repeats).
+_register_literal!(m -> _tap_start!(m; mode = :pattern),
+                   "tap-strict", "tap-bar")
+_register_regex!(r"^tap-strict\s+(\w+)$",
+    (m, mt) -> _tap_start!(m; sample = String(mt.captures[1]), mode = :pattern))
 _register_literal!(m -> _piano_start!(m),            "piano")
 _register_literal!(m -> _piano_start!(m; record = true),
                    "piano-rec", "piano-record")
@@ -2012,16 +2074,31 @@ end
 function _load_session_app!(m::RessacApp, name::AbstractString)
     path = joinpath(pwd(), "sessions", String(name) * ".txt")
     if !isfile(path)
-        _push_app_log!(m, "[ERROR] load-session: no file at $path")
+        _push_app_log!(m, "[ERROR] load: no file at $path — try :sessions to list")
         return
     end
     try
         TK.set_text!(m.editor, read(path, String))
         m.editor.cursor_row = 1; m.editor.cursor_col = 0
-        _push_app_log!(m, "[INFO] loaded session '$name'")
+        _push_app_log!(m, "[INFO] loaded session '$name' — press E to eval all blocks")
     catch err
         _push_app_log!(m, "[ERROR] load-session: $(sprint(showerror, err))")
     end
+end
+
+function _list_sessions_app!(m::RessacApp)
+    dir = joinpath(pwd(), "sessions")
+    if !isdir(dir)
+        _push_app_log!(m, "[INFO] no sessions dir yet — :save <name> creates it")
+        return
+    end
+    files = sort!([f for f in readdir(dir) if endswith(f, ".txt")])
+    if isempty(files)
+        _push_app_log!(m, "[INFO] (no saved sessions)")
+        return
+    end
+    names = join((splitext(f)[1] for f in files), ", ")
+    _push_app_log!(m, "[INFO] sessions: $names  (use :load <name>)")
 end
 
 function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
@@ -2298,28 +2375,25 @@ end
 
 function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     entries = _browser_entries(m)
-    aw, ah = area.width, area.height
-    box_w = max(60, min(aw - 4, 120))
-    box_h = max(12, min(ah - 4, length(entries) + 6))
-    box_x = area.x + max(0, (aw - box_w) ÷ 2)
-    box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    inner_w = box_w - 2
-    # Title row.
-    title_str = "┌ browse — j/k nav, K preview, Tab filter, Enter insert, Esc close " *
-                "─" ^ max(0, box_w - 60) * "┐"
-    TK.set_string!(buf, box_x, box_y, first(title_str, box_w),
-                   TK.tstyle(:title, bold=true))
-    # Header: filter + query
-    header = "│ filter: $(m.browser_filter)     query: $(m.browser_query)█" *
-             " " ^ max(0, inner_w - 30 - length(m.browser_query)) * "│"
-    TK.set_string!(buf, box_x, box_y + 1, first(header, box_w), TK.tstyle(:text))
-    # Separator
-    TK.set_string!(buf, box_x, box_y + 2, "│" * "─" ^ inner_w * "│",
-                   TK.tstyle(:text_dim))
-    # Body
-    body_y = box_y + 3
-    body_h = box_h - 4
-    visible = m.modal_scroll + 1 <= length(entries) ?
+    n = length(entries)
+    inner = _render_modal_block!(buf, area;
+        title = "BROWSE",
+        title_right = "$(n) match$(n == 1 ? "" : "es") · j/k · K preview · Tab filter · Enter insert · q",
+        w_max = 120,
+        h_target = max(12, min(area.height - 4, n + 6)))
+    inner.width < 20 && return
+    # First row: filter + query.
+    header = "filter: $(m.browser_filter)     query: $(m.browser_query)█"
+    TK.set_string!(buf, inner.x, inner.y,
+                   first(rpad(header, inner.width), inner.width),
+                   TK.tstyle(:text))
+    # Underline separator on row 2.
+    TK.set_string!(buf, inner.x, inner.y + 1,
+                   "─" ^ inner.width, TK.tstyle(:text_dim))
+    # Body fills rows 3..end.
+    body_y = inner.y + 2
+    body_h = inner.height - 2
+    visible = m.modal_scroll + 1 <= n ?
               entries[(m.modal_scroll + 1):min(end, m.modal_scroll + body_h)] :
               _BrowserEntry[]
     for i in 1:body_h
@@ -2332,19 +2406,14 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                           e.kind === :sample     ? "S" : "Y"
             line = "$(marker)[$kind_letter] $(rpad(String(e.name), 18))  $(e.summary)"
         end
-        padded = "│" * rpad(first(line, inner_w), inner_w) * "│"
         style = if i <= length(visible) && (m.modal_scroll + i) == m.browser_cursor
-            TK.tstyle(:accent, bold=true)
+            TK.tstyle(:accent, bold = true)
         else
             TK.tstyle(:text)
         end
-        TK.set_string!(buf, box_x, body_y + i - 1, padded, style)
+        TK.set_string!(buf, inner.x, body_y + i - 1,
+                       first(rpad(line, inner.width), inner.width), style)
     end
-    # Bottom border
-    bot = "└ $(length(entries)) match$(length(entries) == 1 ? "" : "es") " *
-          "─" ^ max(0, inner_w - 20) * "┘"
-    TK.set_string!(buf, box_x, box_y + box_h - 1, first(bot, box_w),
-                   TK.tstyle(:title, bold=true))
 end
 
 _is_typable_ascii(c::Char) = ncodeunits(c) == 1 && (isprint(c) && c != '\0')
@@ -2560,33 +2629,23 @@ to box width.
 function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     lines = _modal_lines(m)
     isempty(lines) && return
-    aw, ah = area.width, area.height
-    box_w = max(40, min(aw - 4, 100))
-    box_h = max(8, min(ah - 4, length(lines) + 4))
-    box_x = area.x + max(0, (aw - box_w) ÷ 2)
-    box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    inner_w = box_w - 2
-    inner_h = box_h - 2
-    # Title.
-    title = m.modal === :guide ? ":guide" :
-            m.modal === :synth_guide ? ":synth-guide" :
-            m.modal === :dsl_guide ? ":dsl-guide" : ""
-    title_str = "┌ $title — j/k scroll, q close" * "─" ^ max(0, box_w - length(title) - 30) * "┐"
-    TK.set_string!(buf, box_x, box_y, first(title_str, box_w),
-                   TK.tstyle(:title, bold=true))
-    # Body.
-    visible_end = min(length(lines), m.modal_scroll + inner_h)
+    title = m.modal === :guide       ? "GUIDE" :
+            m.modal === :synth_guide ? "SYNTH GUIDE" :
+            m.modal === :dsl_guide   ? "DSL GUIDE" : "INFO"
+    inner = _render_modal_block!(buf, area;
+        title = title,
+        title_right = "j/k scroll · q close",
+        w_max = 100,
+        h_target = min(length(lines) + 2, area.height - 4))
+    visible_end = min(length(lines), m.modal_scroll + inner.height)
     visible = m.modal_scroll + 1 <= length(lines) ?
               lines[(m.modal_scroll + 1):visible_end] :
               String[]
-    for i in 1:inner_h
+    for i in 1:inner.height
         line = i <= length(visible) ? visible[i] : ""
-        padded = "│" * rpad(first(line, inner_w), inner_w) * "│"
-        TK.set_string!(buf, box_x, box_y + i, padded, TK.tstyle(:text))
+        TK.set_string!(buf, inner.x, inner.y + i - 1,
+                       first(line, inner.width), TK.tstyle(:text))
     end
-    # Bottom border.
-    bot = "└" * "─" ^ inner_w * "┘"
-    TK.set_string!(buf, box_x, box_y + box_h - 1, bot, TK.tstyle(:title, bold=true))
 end
 
 function _scope_command!(m::RessacApp, type::Symbol)
@@ -2934,6 +2993,113 @@ function _app_render_corr(data, area::TK.Rect, buf::TK.Buffer)
                    first(label, w), TK.tstyle(:text_dim))
 end
 
+"""
+    _render_pane_block!(m, rect, buf; title, title_right="", focused=false)
+
+Draw a rounded-border `TK.Block` over `rect` with title chips on the
+top edge. Focused panes get a brighter accent border so the eye knows
+where keys land; unfocused panes use the dim `:border` style.
+
+The block consumes 1 row + 1 col of `rect` on each side; callers
+should pass `_inner_rect(rect)` to any content widget that follows.
+"""
+function _render_pane_block!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer;
+                             title::AbstractString,
+                             title_right::AbstractString = "",
+                             focused::Bool = false,
+                             title_right_accent::Bool = false)
+    border = focused ? TK.tstyle(:accent, bold = true) : TK.tstyle(:border)
+    ttl    = focused ? TK.tstyle(:accent, bold = true) : TK.tstyle(:title, bold = true)
+    # Right title can opt-in to accent (used for "live" indicators like
+    # the active @dN slot list — it's the most action-relevant info
+    # on screen and deserves to pop even on unfocused panes).
+    right_style = title_right_accent ?
+        TK.tstyle(:warning, bold = true) : TK.tstyle(:text_dim)
+    block = TK.Block(
+        title              = " " * String(title) * " ",
+        title_right        = isempty(title_right) ? "" : " " * String(title_right) * " ",
+        title_style        = ttl,
+        title_right_style  = right_style,
+        border_style       = border,
+        box                = TK.BOX_ROUNDED,
+        title_padding      = 0,
+    )
+    TK.render(block, rect, buf)
+end
+
+"""
+    _inner_rect(rect) -> TK.Rect
+
+Return the area inside a `TK.Block` border (1-cell inset on each side).
+Mirrors `TK.inner_area` without needing the Block instance.
+"""
+function _inner_rect(rect::TK.Rect)
+    TK.Rect(rect.x + 1, rect.y + 1,
+            max(0, rect.width - 2), max(0, rect.height - 2))
+end
+
+"""
+    _render_modal_block!(buf, area; title, title_right="", w_max=100, h_target=20) -> Rect
+
+Center a bordered modal inside `area`. Clears the inner rect first so
+the underlying editor / panes don't bleed through, then draws a
+`TK.Block` with rounded corners + accent border. Returns the inner
+`Rect` so the caller can pour content into it without computing
+offsets.
+
+The right-aligned title is the conventional spot for the help line
+("j/k scroll · q close" etc.) — keep it short so it never collides
+with the left title on narrow terminals.
+"""
+function _render_modal_block!(buf::TK.Buffer, area::TK.Rect;
+                              title::AbstractString,
+                              title_right::AbstractString = "",
+                              w_min::Int = 40, w_max::Int = 100,
+                              h_target::Int = 20)
+    aw, ah = area.width, area.height
+    box_w = clamp(w_max, w_min, max(w_min, aw - 4))
+    box_h = clamp(h_target, 8, max(8, ah - 4))
+    box_x = area.x + max(0, (aw - box_w) ÷ 2)
+    box_y = area.y + max(0, (ah - box_h) ÷ 2)
+    rect = TK.Rect(box_x, box_y, box_w, box_h)
+    inner = _inner_rect(rect)
+    # Clear inner first so any cells previously drawn by the editor /
+    # panes underneath get overwritten with blank text style. Without
+    # this the modal looks "transparent" on the body.
+    blank = " " ^ inner.width
+    bg_style = TK.tstyle(:text)
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, bg_style)
+    end
+    block = TK.Block(
+        title              = " " * String(title) * " ",
+        title_right        = isempty(title_right) ? "" :
+                             " " * String(title_right) * " ",
+        title_style        = TK.tstyle(:accent, bold = true),
+        title_right_style  = TK.tstyle(:text_dim),
+        border_style       = TK.tstyle(:accent),
+        box                = TK.BOX_ROUNDED,
+        title_padding      = 0,
+    )
+    TK.render(block, rect, buf)
+    return inner
+end
+
+"""
+    _active_slots_summary(m) -> String
+
+Compact list of slot ids currently scheduled, e.g. "@d1 @d2 @d4".
+Empty string when nothing is playing. Goes in the patterns block title
+so the user always sees what's live.
+"""
+function _active_slots_summary(m::RessacApp)
+    sched = m.scheduler
+    isempty(sched.patterns) && return ""
+    slots = sort!(collect(keys(sched.patterns));
+                  by = s -> try parse(Int, String(s)[2:end]) catch; 999 end)
+    join(("@" * String(s) for s in slots), " ")
+end
+
 function TK.view(m::RessacApp, f::TK.Frame)
     # Paused: skip the whole draw so the terminal's last frame stays put
     # and the user can shift-drag-select + copy without our next render
@@ -2950,10 +3116,14 @@ function TK.view(m::RessacApp, f::TK.Frame)
 
     scope_active = _APP_SCOPE_TYPE[] !== :off
     scope_height = scope_active ? 14 : 0
-    # Layout rows: status / editor (fill) / [scope] / livedoc / footer / logs
+    # Layout rows: status / editor (fill) / [scope] / livedoc / footer / logs.
+    # Each major pane (patterns, synth, scope, logs) gets wrapped in a
+    # TK.Block which consumes 2 rows / 2 cols of border, so the visible
+    # body is `inner_area(block, outer)`. Heights stay the same — borders
+    # eat into the fill, not into adjacent rows.
     constraints = scope_active ?
-        [TK.Fixed(1), TK.Fill(), TK.Fixed(scope_height), TK.Fixed(1), TK.Fixed(1), TK.Fixed(8)] :
-        [TK.Fixed(1), TK.Fill(), TK.Fixed(1), TK.Fixed(1), TK.Fixed(8)]
+        [TK.Fixed(1), TK.Fill(), TK.Fixed(scope_height), TK.Fixed(1), TK.Fixed(1), TK.Fixed(10)] :
+        [TK.Fixed(1), TK.Fill(), TK.Fixed(1), TK.Fixed(1), TK.Fixed(10)]
     rows = TK.split_layout(TK.Layout(TK.Vertical, constraints), f.area)
     length(rows) < 5 && return
     if scope_active
@@ -2971,41 +3141,75 @@ function TK.view(m::RessacApp, f::TK.Frame)
     _render_status_bar(m, status_area, buf)
 
     # Editor body — split horizontally when at least one synth tab open.
-    # Record each pane's screen rect so the mouse handler can route
-    # clicks / hovers to the right widget.
+    # Record each pane's INNER rect (post-border) so the mouse handler
+    # routes clicks / hovers to the editor area, not the border chars.
     m.layout_synth = nothing
     m.layout_synth_tabs = nothing
+    pat_focused = (m.focus === :patterns)
+    n_playing = length(m.scheduler.patterns)
+    pat_right = n_playing == 0 ? "" :
+                "● $(n_playing) playing  $(_active_slots_summary(m))"
     if !_synth_pane_open(m)
-        m.layout_patterns = body_area
-        TK.render(m.editor, body_area, buf)
+        _render_pane_block!(m, body_area, buf;
+            title = "PATTERNS",
+            title_right = pat_right,
+            focused = pat_focused,
+            title_right_accent = n_playing > 0)
+        inner = _inner_rect(body_area)
+        m.layout_patterns = inner
+        TK.render(m.editor, inner, buf)
     else
         cols = TK.split_layout(TK.Layout(TK.Horizontal, [TK.Fill(), TK.Fill()]), body_area)
         if length(cols) >= 2
-            m.layout_patterns = cols[1]
-            TK.render(m.editor, cols[1], buf)
+            _render_pane_block!(m, cols[1], buf;
+                title = "PATTERNS",
+                title_right = pat_right,
+                focused = pat_focused,
+                title_right_accent = n_playing > 0)
+            pat_inner = _inner_rect(cols[1])
+            m.layout_patterns = pat_inner
+            TK.render(m.editor, pat_inner, buf)
+
+            synth_focused = (m.focus === :synth)
+            tab = _current_synth_tab(m)
+            ext = tab.mode === :dsl ? ".jl" : ".scd"
+            synth_title = "SYNTH · $(tab.name)$ext [$(tab.mode)]"
+            synth_right = length(m.synth_tabs) > 1 ?
+                "$(m.synth_tab_idx)/$(length(m.synth_tabs))" : ""
+            _render_pane_block!(m, cols[2], buf;
+                title = synth_title,
+                title_right = synth_right,
+                focused = synth_focused)
+            synth_inner = _inner_rect(cols[2])
             if length(m.synth_tabs) > 1
                 synth_rows = TK.split_layout(
-                    TK.Layout(TK.Vertical, [TK.Fixed(1), TK.Fill()]), cols[2])
+                    TK.Layout(TK.Vertical, [TK.Fixed(1), TK.Fill()]), synth_inner)
                 if length(synth_rows) >= 2
                     bar = TK.TabBar([tab.name for tab in m.synth_tabs];
                                     active  = m.synth_tab_idx,
-                                    focused = (m.focus === :synth))
+                                    focused = synth_focused)
                     TK.render(bar, synth_rows[1], buf)
                     TK.render(_current_synth_tab(m).editor, synth_rows[2], buf)
                     m.layout_synth_tabs = synth_rows[1]
                     m.layout_synth = synth_rows[2]
                 end
             else
-                m.layout_synth = cols[2]
-                TK.render(_current_synth_tab(m).editor, cols[2], buf)
+                m.layout_synth = synth_inner
+                TK.render(_current_synth_tab(m).editor, synth_inner, buf)
             end
         end
     end
 
-    # Scope panel (if any)
+    # Scope panel (if any) — wrapped in its own block so the mode is
+    # visible in the title and zoom info on the right.
     m.layout_scope = scope_area
     if scope_area !== nothing
-        _render_app_scope(m, scope_area, buf)
+        scope_mode = String(_APP_SCOPE_TYPE[])
+        _render_pane_block!(m, scope_area, buf;
+            title = "SCOPE · $scope_mode",
+            title_right = scope_mode == "wave" ? "zoom ×$(round(m.scope_zoom_x; digits=1))" : "",
+            focused = false)
+        _render_app_scope(m, _inner_rect(scope_area), buf)
     end
 
     # Playhead — highlights the active token in every @dN p"..." line
@@ -3027,10 +3231,15 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # Live doc row — word under cursor → doc string
     _render_livedoc_row(m, livedoc_area, buf)
 
-    # Footer (key hints) + logs with per-level coloring.
+    # Footer (key hints) + logs with per-level coloring + bordered block.
     _render_footer(m, footer_area, buf)
-    m.layout_logs = logs_area
-    _render_logs(m, logs_area, buf)
+    log_right = "$(length(m.logs))" *
+                (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
+    _render_pane_block!(m, logs_area, buf;
+        title = "LOG", title_right = log_right, focused = false)
+    log_inner = _inner_rect(logs_area)
+    m.layout_logs = log_inner
+    _render_logs(m, log_inner, buf)
 
     # Modal overlay (after everything else so it sits on top).
     if m.modal === :browse
@@ -3280,6 +3489,46 @@ function _vim_record_keystroke!(m::RessacApp, ed::TK.CodeEditor,
         # Insert session ended — freeze it as the last-replay target.
         m.vim_last_insert = m.vim_insert_buf
         m.vim_in_insert = false
+        m.vim_last_kind  = :insert
+    end
+end
+
+"""
+    _vim_post_normal!(m, ed, evt, pre_text)
+
+Called AFTER Tachikoma has processed a keystroke that began in
+:normal mode. Detects whether that keystroke (or the sequence of
+recent keystrokes) modified the buffer — if so, captures the
+sequence as the new `.`-target.
+
+Two-key commands like `dd` work because the first `d` produces no
+buffer change (still pending), so we accumulate it; the second `d`
+triggers the change and we record both.
+"""
+function _vim_post_normal!(m::RessacApp, ed::TK.CodeEditor,
+                            evt::TK.KeyEvent, pre_text::String)
+    # The `.` key itself must never enter the recording — it's a
+    # meta-command, not part of any sequence.
+    evt.key === :char && evt.char == '.' && return
+    # Entering insert mode hands recording to _vim_record_keystroke!;
+    # discard whatever was pending in normal-mode buffer.
+    if ed.mode === :insert
+        empty!(m.vim_pending_normal); return
+    end
+    # Esc, arrows, scroll keys, etc — not part of an edit sequence
+    # but they shouldn't poison pending either, so just ignore.
+    if evt.key !== :char
+        return
+    end
+    push!(m.vim_pending_normal, evt)
+    # Cap pending length so a runaway sequence (typos in normal mode)
+    # doesn't grow forever.
+    length(m.vim_pending_normal) > 8 && popfirst!(m.vim_pending_normal)
+    post_text = TK.text(ed)
+    if post_text != pre_text
+        m.vim_last_normal = copy(m.vim_pending_normal)
+        m.vim_last_kind   = :normal
+        empty!(m.vim_pending_normal)
     end
 end
 
@@ -3292,20 +3541,31 @@ char-event handle_key! calls into the editor. The editor must be in
 the characters, then Esc back to normal.
 """
 function _vim_replay!(m::RessacApp, ed::TK.CodeEditor)
-    text = m.vim_last_insert
-    isempty(text) &&
-        (_push_app_log!(m, "[INFO] . — nothing to repeat (no prior insert)"); return)
-    # Switch the editor into insert mode by routing an 'i' through it.
-    TK.handle_key!(ed, TK.KeyEvent(:char, 'i', TK.key_press))
-    for c in text
-        if c == '\n'
-            TK.handle_key!(ed, TK.KeyEvent(:enter, '\0', TK.key_press))
-        else
-            TK.handle_key!(ed, TK.KeyEvent(:char, c, TK.key_press))
+    if m.vim_last_kind === :normal && !isempty(m.vim_last_normal)
+        for k in m.vim_last_normal
+            TK.handle_key!(ed, k)
         end
+        seq = join(string(k.char) for k in m.vim_last_normal)
+        _push_app_log!(m, "[INFO] . — repeated `$(seq)`")
+        return
     end
-    TK.handle_key!(ed, TK.KeyEvent(:escape, '\0', TK.key_press))
-    _push_app_log!(m, "[INFO] . — repeated last insert ($(length(text)) chars)")
+    if m.vim_last_kind === :insert
+        text = m.vim_last_insert
+        isempty(text) &&
+            (_push_app_log!(m, "[INFO] . — nothing to repeat"); return)
+        TK.handle_key!(ed, TK.KeyEvent(:char, 'i', TK.key_press))
+        for c in text
+            if c == '\n'
+                TK.handle_key!(ed, TK.KeyEvent(:enter, '\0', TK.key_press))
+            else
+                TK.handle_key!(ed, TK.KeyEvent(:char, c, TK.key_press))
+            end
+        end
+        TK.handle_key!(ed, TK.KeyEvent(:escape, '\0', TK.key_press))
+        _push_app_log!(m, "[INFO] . — repeated last insert ($(length(text)) chars)")
+        return
+    end
+    _push_app_log!(m, "[INFO] . — nothing to repeat")
 end
 
 # ---------------------------------------------------------------------
@@ -3369,62 +3629,46 @@ right. Title row + footer hint frame the modal.
 """
 function _render_wiki_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     isempty(m.wiki_pages) && return
-    aw, ah = area.width, area.height
-    box_w = max(80, aw - 4)
-    box_h = max(20, ah - 4)
-    box_x = area.x + max(0, (aw - box_w) ÷ 2)
-    box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    # Header / footer borders.
-    title_label = " Ressac wiki · " * m.wiki_pages[m.wiki_idx].title *
-                  "   ( j/k scroll · n/p page · g/G top/bottom · d/u page-jump · q close ) "
-    title_str = "┌" * first(title_label * "─" ^ box_w, box_w - 2) * "┐"
-    TK.set_string!(buf, box_x, box_y, first(title_str, box_w),
-                   TK.tstyle(:title, bold=true))
-    foot = "└" * "─" ^ (box_w - 2) * "┘"
-    TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
-                   TK.tstyle(:title, bold=true))
-    # Side walls.
-    for y in (box_y + 1):(box_y + box_h - 2)
-        TK.set_string!(buf, box_x, y, "│", TK.tstyle(:title))
-        TK.set_string!(buf, box_x + box_w - 1, y, "│", TK.tstyle(:title))
-    end
-    # Two-column split inside the box.
-    toc_w = max(20, box_w ÷ 4)
-    body_h = box_h - 2
-    body_y0 = box_y + 1
+    page = m.wiki_pages[m.wiki_idx]
+    inner = _render_modal_block!(buf, area;
+        title = "WIKI · $(page.title)",
+        title_right = "j/k scroll · n/p page · g/G top/bot · d/u jump · q close",
+        w_max = max(80, area.width - 4),
+        h_target = max(20, area.height - 4))
+    inner.width < 30 && return
+    # Two-column split inside the bordered area: TOC (left) + content (right).
+    toc_w = max(20, inner.width ÷ 4)
     # ── TOC ─────────────────────────────────────────────────────────
     for (i, p) in enumerate(m.wiki_pages)
-        i > body_h && break
+        i > inner.height && break
         is_cur = i == m.wiki_idx
         prefix = is_cur ? "▶ " : "  "
         label = "$(prefix)$(i). $(p.title)"
-        style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
-        TK.set_string!(buf, box_x + 2, body_y0 + i - 1,
+        style = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
+        TK.set_string!(buf, inner.x + 1, inner.y + i - 1,
                        first(rpad(label, toc_w - 2), toc_w - 2),
                        style)
     end
     # Vertical separator between TOC and content.
-    sep_x = box_x + toc_w
-    for y in body_y0:(body_y0 + body_h - 1)
+    sep_x = inner.x + toc_w
+    for y in inner.y:(inner.y + inner.height - 1)
         TK.set_string!(buf, sep_x, y, "│", TK.tstyle(:border))
     end
     # ── Content ─────────────────────────────────────────────────────
     content_x = sep_x + 2
-    content_w = box_w - toc_w - 4
-    page = m.wiki_pages[m.wiki_idx]
+    content_w = inner.width - toc_w - 2
     visible = page.lines[max(1, m.wiki_scroll + 1):end]
     in_code = false
     for (i, line) in enumerate(visible)
-        i > body_h && break
-        # Track fenced code blocks — ``` toggles in_code.
+        i > inner.height && break
         if startswith(strip(line), "```")
             in_code = !in_code
-            TK.set_string!(buf, content_x, body_y0 + i - 1,
+            TK.set_string!(buf, content_x, inner.y + i - 1,
                            first(rpad("┄" * "─" ^ (content_w - 1), content_w), content_w),
                            TK.tstyle(:border))
             continue
         end
-        _render_markdown_line!(line, buf, content_x, body_y0 + i - 1,
+        _render_markdown_line!(line, buf, content_x, inner.y + i - 1,
                                content_w; in_code = in_code)
     end
 end
@@ -3555,33 +3799,28 @@ end
 
 function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     snips = _snippets_visible(m)
-    aw, ah = area.width, area.height
-    box_w = max(60, min(aw - 4, 110))
-    box_h = max(12, ah - 4)
-    box_x = area.x + max(0, (aw - box_w) ÷ 2)
-    box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    ctx_label = _snip_context(m) === :synth ? "synth pane" : "patterns pane"
-    title = "┌ snippets ($ctx_label) — / search, j/k move, Space preview, Enter insert, q close "
-    title = title * "─" ^ max(0, box_w - length(title) - 1) * "┐"
-    TK.set_string!(buf, box_x, box_y, first(title, box_w),
-                   TK.tstyle(:title, bold=true))
-    # Search bar.
-    sb_prefix = m.snip_search_mode ? "  /" : "  ⌕ "
-    sb_text = sb_prefix * m.snip_query *
-              (m.snip_search_mode ? "▏" : "")
+    ctx_label = _snip_context(m) === :synth ? "synth" : "patterns"
+    inner = _render_modal_block!(buf, area;
+        title = "SNIPPETS · $ctx_label",
+        title_right = "/ search · j/k · Space preview · Enter insert · q close",
+        w_max = 110,
+        h_target = max(12, area.height - 4))
+    inner.width < 20 && return
+    # Search bar on first row of inner area.
+    sb_prefix = m.snip_search_mode ? "/" : "⌕ "
+    sb_text = sb_prefix * m.snip_query * (m.snip_search_mode ? "▏" : "")
     sb_style = m.snip_search_mode ?
-        TK.tstyle(:accent, bold=true) : TK.tstyle(:text_dim)
-    TK.set_string!(buf, box_x, box_y + 1,
-                   "│ " * rpad(first(sb_text, box_w - 4), box_w - 4) * " │",
-                   sb_style)
-    # Body.
-    body_h = box_h - 4
+        TK.tstyle(:accent, bold = true) : TK.tstyle(:text_dim)
+    TK.set_string!(buf, inner.x, inner.y,
+                   first(rpad(sb_text, inner.width), inner.width), sb_style)
+    # Body fills rows 2..(end-1), footer line on last row.
+    body_h = inner.height - 2
     n = length(snips)
     if n == 0
         msg = isempty(m.snip_query) ?
             "(no snippets for this context)" :
             "(no match for \"$(m.snip_query)\")"
-        TK.set_string!(buf, box_x + 2, box_y + 3, msg, TK.tstyle(:text_dim))
+        TK.set_string!(buf, inner.x + 1, inner.y + 1, msg, TK.tstyle(:text_dim))
     else
         start_i = max(1, m.snip_cursor - body_h ÷ 2)
         end_i = min(n, start_i + body_h - 1)
@@ -3592,19 +3831,17 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             is_cur = i == m.snip_cursor
             marker = is_cur ? "▶ " : "  "
             label = "$(marker)$(rpad(s.trigger, 18)) [$(rpad(s.category, 9))]  $(s.description)"
-            style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
-            line = "│ " * first(label, box_w - 4) * " │"
-            screen_y = box_y + 1 + slot
-            TK.set_string!(buf, box_x, screen_y, line, style)
+            style = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
+            screen_y = inner.y + slot
+            TK.set_string!(buf, inner.x, screen_y,
+                           first(rpad(label, inner.width), inner.width), style)
             push!(m.modal_rows, (screen_y, i))
         end
     end
-    pageline = "│ " * rpad("$(n) snippets shown · ctx = $(_snip_context(m))", box_w - 4) * " │"
-    TK.set_string!(buf, box_x, box_y + box_h - 2, first(pageline, box_w),
+    foot = "$(n) snippets shown · ctx = $(_snip_context(m))"
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                   first(rpad(foot, inner.width), inner.width),
                    TK.tstyle(:text_dim))
-    foot = "└" * "─" ^ (box_w - 2) * "┘"
-    TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
-                   TK.tstyle(:title, bold=true))
 end
 
 # ---------------------------------------------------------------------
@@ -3730,7 +3967,7 @@ Esc cancels.
 function _tap_start!(m::RessacApp; sample::AbstractString = "bd",
                                     steps::Int = 16,
                                     bars::Int = 1,
-                                    mode::Symbol = :pattern)
+                                    mode::Symbol = :loop)
     m.tap_recording = true
     empty!(m.tap_events)
     m.tap_sample = String(sample)
@@ -3740,6 +3977,9 @@ function _tap_start!(m::RessacApp; sample::AbstractString = "bd",
     if mode === :tempo
         _push_app_log!(m,
             "[INFO] tap-tempo — Space on each beat (≥2 taps), Enter to apply cps, Esc cancel · 4 taps = 1 bar")
+    elseif mode === :loop
+        _push_app_log!(m,
+            "[INFO] tap-loop — repeat the rhythm a few times · Space on hits, Enter commit, Esc cancel · sample=$(sample)")
     elseif bars > 1
         _push_app_log!(m,
             "[INFO] tap — play the same pattern $(bars)× · Space on hits, Enter commit, Esc cancel · steps=$(steps)")
@@ -3751,7 +3991,12 @@ end
 
 function _tap_hit!(m::RessacApp)
     push!(m.tap_events, time())
-    _push_app_log!(m, "[INFO] tap #$(length(m.tap_events))")
+    # Status bar already shows the live count; only log every 4 hits
+    # (and always the very first) to keep the log panel readable.
+    n = length(m.tap_events)
+    if n == 1 || n % 4 == 0
+        _push_app_log!(m, "[INFO] tap #$(n)")
+    end
 end
 
 """
@@ -3774,40 +4019,241 @@ function _tap_commit!(m::RessacApp)
     if m.tap_mode === :tempo
         _tap_apply_tempo!(m); return
     end
-    first_t = m.tap_events[1]
-    last_t  = m.tap_events[end]
+    if m.tap_mode === :loop
+        _tap_commit_auto!(m); return
+    end
+    if m.tap_bars > 1
+        _tap_commit_fixed_bars!(m); return
+    end
+    # Default single-bar: same extend-by-one-interval quantization as
+    # before, predictable and what most users expect.
+    first_t = m.tap_events[1]; last_t = m.tap_events[end]
     avg_interval = (last_t - first_t) / (n - 1)
-    # Bar duration: same extend-by-one-interval trick as single-bar,
-    # then divide by N_bars when the user is averaging across repeats.
+    bar = (last_t - first_t) + avg_interval
+    N = m.tap_steps
+    cells = fill("~", N)
+    for t in m.tap_events
+        idx = clamp(floor(Int, (t - first_t) / bar * N) + 1, 1, N)
+        cells[idx] = m.tap_sample
+    end
+    _tap_emit_line!(m, cells, "")
+end
+
+# ── Fixed-bar averaging (explicit `:tap sample steps bars`) ─────────
+function _tap_commit_fixed_bars!(m::RessacApp)
+    n = length(m.tap_events)
+    first_t = m.tap_events[1]; last_t = m.tap_events[end]
+    avg_interval = (last_t - first_t) / (n - 1)
     total = (last_t - first_t) + avg_interval
     bar = total / m.tap_bars
     N = m.tap_steps
-    if m.tap_bars == 1
-        cells = fill("~", N)
+    votes = zeros(Int, N)
+    for t in m.tap_events
+        phase = mod(t - first_t, bar) / bar
+        idx = clamp(floor(Int, phase * N) + 1, 1, N)
+        votes[idx] += 1
+    end
+    threshold = max(1, ceil(Int, m.tap_bars / 2))
+    cells = [v >= threshold ? m.tap_sample : "~" for v in votes]
+    _tap_emit_line!(m, cells, "(averaged over $(m.tap_bars) bars)")
+end
+
+# ── Dynamic period & confidence detection ───────────────────────────
+"""
+    _detect_tap_period(events) -> (period, n_bars, steps, confidence, cells)
+
+Estimate the loop period the user is tapping by scanning candidate
+periods (cumulative IOI sums) and scoring each by how tightly the
+folded tap positions cluster. The best-fit candidate becomes the
+bar; the step count is inferred from the smallest inter-tap
+interval relative to that bar. Confidence = max-bin / total taps,
+in [0, 1] — higher means tighter alignment.
+"""
+function _detect_tap_period(events::Vector{Float64};
+                            cps_hint::Union{Nothing,Real} = nothing)
+    n = length(events)
+    n < 4 && return nothing
+    first_t = events[1]
+    total = events[end] - first_t
+    iois = diff(events)
+    # Candidate periods = cumulative sums of the first k IOIs PLUS,
+    # if the user has a tempo running, multiples of the bar length.
+    # The latter handles the case where someone taps the rhythm in
+    # time with the existing scheduler — the bar boundary is rarely
+    # a tap onset so cumsum alone won't surface it.
+    candidates = Float64[]
+    s = 0.0
+    for ioi in iois
+        s += ioi
+        0.2 <= s <= total && length(candidates) < 30 && push!(candidates, s)
+    end
+    if cps_hint !== nothing && cps_hint > 0
+        bar = 1.0 / cps_hint
+        for mult in (0.5, 1.0, 2.0, 4.0)
+            p = bar * mult
+            0.2 <= p <= total && push!(candidates, p)
+        end
+    end
+    isempty(candidates) && return nothing
+    unique!(sort!(candidates))
+
+    best_period = total
+    best_score  = -Inf
+    n_bins = 32
+    for p in candidates
+        p <= 0.001 && continue
+        n_reps = total / p
+        bins = zeros(Int, n_bins)
+        for t in events
+            f = mod(t - first_t, p) / p
+            bins[clamp(floor(Int, f * n_bins) + 1, 1, n_bins)] += 1
+        end
+        # A "hot bin" needs ≥ 2/3 of the reps' worth of taps AND ≥ 2.
+        # The 2/3 (instead of 1/2) is crucial: it rejects sub-divisors
+        # of the true period. For a jersey tap (hits at 0, 3, 6 of 8),
+        # the candidate p = 3/8 of the bar looks "periodic" with bins
+        # at phases 0 and 1/4 — but each of those bins only has half
+        # the taps, since the rhythm doesn't actually repeat at p.
+        # 2/3 threshold makes that fail; only the true bar survives.
+        hot_threshold = max(2, ceil(Int, n_reps * 2 / 3))
+        hot_count  = count(b -> b >= hot_threshold, bins)
+        tight_taps = sum(b for b in bins if b >= hot_threshold; init = 0)
+
+        score = tight_taps / n
+        hot_count < 2 && (score *= 0.2)   # need ≥ 2 distinct hit positions
+        # Softer n_reps penalty — 1.5 to 1.8 is still "two-ish bars",
+        # which is the minimum useful loop and worth keeping in play.
+        if     n_reps < 1.3;  score *= 0.4
+        elseif n_reps < 1.8;  score *= 0.8
+        end
+        n_reps > 8.0 && (score *= 0.7)
+        # Slight bias toward integer rep counts.
+        frac = abs(n_reps - round(n_reps))
+        score *= (1.0 - 0.3 * frac)
+        # Bonus when the period sits at or near a bar boundary of the
+        # current tempo — strong signal the user was tapping in time.
+        if cps_hint !== nothing && cps_hint > 0
+            bar = 1.0 / cps_hint
+            ratio = p / bar
+            cps_frac = abs(ratio - round(ratio))
+            cps_frac < 0.1 && (score *= 1.3)
+        end
+
+        if score > best_score
+            best_score = score; best_period = p
+        end
+    end
+
+    # If no candidate looks like a real loop, defer to single-bar
+    # quantization — the caller knows what to do.
+    n_reps_best = total / best_period
+    (best_score < 0.5 || n_reps_best < 1.5) && return nothing
+
+    n_bars = max(1, round(Int, n_reps_best))
+
+    # Step inference: smallest "musical" S where the folded tap
+    # positions snap CLEANLY to integer step indices. Cleanly = avg
+    # fractional-step error < 0.06. We also require the grid to be
+    # at least as fine as the smallest inter-tap interval, else we
+    # collapse two hits onto one step.
+    musical_steps = (3, 4, 6, 8, 12, 16, 24, 32)
+    min_ioi = minimum(iois)
+    min_S = max(3, ceil(Int, best_period / max(min_ioi, 0.01)))
+    # Pick the smallest S with the LOWEST average snap error. Iterating
+    # from smallest upward and tracking the minimum lets equal-err
+    # candidates be broken by "smaller is better" (more compact output).
+    steps = 16
+    best_err = Inf
+    for S in musical_steps
+        S < min_S && continue
+        err = 0.0
+        for t in events
+            f = mod(t - first_t, best_period) / best_period * S
+            err += abs(f - round(f))
+        end
+        avg = err / n
+        # Strict improvement: 0.01 epsilon so float noise doesn't make
+        # a finer S "tie" with a coarser one that's actually perfect.
+        if avg + 0.01 < best_err
+            steps = S
+            best_err = avg
+        end
+    end
+
+    votes = zeros(Int, steps)
+    for t in events
+        f = mod(t - first_t, best_period) / best_period
+        idx = clamp(floor(Int, f * steps) + 1, 1, steps)
+        votes[idx] += 1
+    end
+    threshold = max(1, ceil(Int, n_bars / 2))
+    cells_idx = findall(v -> v >= threshold, votes)
+    return (period = best_period, n_bars = n_bars, steps = steps,
+            confidence = clamp(best_score, 0.0, 1.0),
+            n_hits = length(cells_idx),
+            votes = votes,
+            threshold = threshold)
+end
+
+function _tap_commit_auto!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    cps_hint = sched === nothing ? nothing : sched.cps
+    analysis = _detect_tap_period(m.tap_events; cps_hint = cps_hint)
+    # In both branches we want to: pick a cps from the tap timing,
+    # apply it immediately, insert the cps! line, then insert + eval
+    # the pattern. The branches only differ in how the cells/period
+    # are computed.
+    bar_dur, cells, suffix = if analysis === nothing
+        # No repetition detected — quantize the single pass over
+        # m.tap_steps divisions. Use total + avg as the bar so the
+        # last tap gets its own step.
+        n = length(m.tap_events)
+        first_t = m.tap_events[1]; last_t = m.tap_events[end]
+        avg = (last_t - first_t) / (n - 1)
+        bar = (last_t - first_t) + avg
+        N = m.tap_steps
+        cs = fill("~", N)
         for t in m.tap_events
             idx = clamp(floor(Int, (t - first_t) / bar * N) + 1, 1, N)
-            cells[idx] = m.tap_sample
+            cs[idx] = m.tap_sample
         end
+        (bar, cs, "(no loop detected — single-bar fit)")
     else
-        # Multi-bar averaging: fold every tap into one bar's worth of
-        # steps, count votes, hits = steps where ≥ half the bars had
-        # a tap there. Cleans up small timing inconsistencies across
-        # repeated tries.
-        votes = zeros(Int, N)
-        for t in m.tap_events
-            phase = mod(t - first_t, bar) / bar
-            idx = clamp(floor(Int, phase * N) + 1, 1, N)
-            votes[idx] += 1
+        cs = [v >= analysis.threshold ? m.tap_sample : "~" for v in analysis.votes]
+        pct = round(Int, analysis.confidence * 100)
+        rating = analysis.confidence > 0.75 ? "high" :
+                 analysis.confidence > 0.55 ? "ok"   : "low — try more reps"
+        target_cps = round(1.0 / analysis.period; digits = 3)
+        suf = "(period=$(round(analysis.period; digits=2))s · " *
+              "$(analysis.n_bars) bar$(analysis.n_bars == 1 ? "" : "s") · " *
+              "$(analysis.steps) steps · cps=$(target_cps) · " *
+              "confidence $(pct)% [$rating])"
+        # Density warning — likely a stream rather than a rhythm.
+        density = analysis.n_hits / analysis.steps
+        if density > 0.85
+            _push_app_log!(m,
+                "[WARN] tap result is $(round(Int, density*100))% filled — " *
+                "looks like a steady stream. Tap only the accents, or use :tap-strict for raw quantization.")
         end
-        threshold = max(1, ceil(Int, m.tap_bars / 2))
-        cells = [v >= threshold ? m.tap_sample : "~" for v in votes]
+        (analysis.period, cs, suf)
     end
+    target_cps = round(1.0 / bar_dur; digits = 3)
+    # Always emit + apply. If the new cps equals the current, set_cps!
+    # is a cheap no-op and the user still sees the value reflected.
+    _insert_line_after_cursor!(m.editor, "cps!($(target_cps))")
+    sched !== nothing && set_cps!(sched, target_cps)
+    slot = _tap_emit_line!(m, cells, suffix)
+    # Eval the inserted @dN block — the user shouldn't have to press e.
+    _eval_pattern_blocks!(m, Symbol[Symbol("d", slot)])
+end
+
+function _tap_emit_line!(m::RessacApp, cells, suffix)
     slot = _next_free_d_slot(m.editor)
     line = "@d$(slot) p\"" * join(cells, " ") * "\""
     _insert_line_after_cursor!(m.editor, line)
     empty!(m.tap_events)
-    _push_app_log!(m, "[INFO] tap → $(line)" *
-                   (m.tap_bars > 1 ? "   (averaged over $(m.tap_bars) bars)" : ""))
+    _push_app_log!(m, "[INFO] tap → $(line)   $(suffix)")
+    return slot
 end
 
 """
@@ -4163,41 +4609,32 @@ function _load_sccode!(m::RessacApp)
 end
 
 function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    aw, ah = area.width, area.height
-    box_w = max(60, min(aw - 4, 120))
-    box_h = max(10, ah - 4)
-    box_x = area.x + max(0, (aw - box_w) ÷ 2)
-    box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    title = "┌ sccode.org — / search, j/k move, Space play, Enter import, n/p page, q close "
-    title = title * "─" ^ max(0, box_w - length(title) - 1) * "┐"
-    TK.set_string!(buf, box_x, box_y, first(title, box_w),
-                   TK.tstyle(:title, bold=true))
+    inner = _render_modal_block!(buf, area;
+        title = "SCCODE.ORG",
+        title_right = "/ search · j/k · Space play · Enter import · n/p page · q close",
+        w_max = 120,
+        h_target = max(10, area.height - 4))
+    inner.width < 20 && return
     if m.sccode_loading
-        TK.set_string!(buf, box_x + 2, box_y + 1,
-                       "  fetching…", TK.tstyle(:warning))
-        foot = "└" * "─" ^ (box_w - 2) * "┘"
-        TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
-                       TK.tstyle(:title, bold=true))
+        TK.set_string!(buf, inner.x + 1, inner.y, "fetching…", TK.tstyle(:warning))
         return
     end
-    # Search bar row right under the title.
-    sb_prefix = m.sccode_search_mode ? "  /" : "  ⌕ "
-    sb_text = sb_prefix * m.sccode_query *
-              (m.sccode_search_mode ? "▏" : "")
+    # Search bar (row 1).
+    sb_prefix = m.sccode_search_mode ? "/" : "⌕ "
+    sb_text = sb_prefix * m.sccode_query * (m.sccode_search_mode ? "▏" : "")
     sb_style = m.sccode_search_mode ?
-        TK.tstyle(:accent, bold=true) : TK.tstyle(:text_dim)
-    TK.set_string!(buf, box_x, box_y + 1,
-                   "│ " * rpad(first(sb_text, box_w - 4), box_w - 4) * " │",
-                   sb_style)
-    # Filtered list.
+        TK.tstyle(:accent, bold = true) : TK.tstyle(:text_dim)
+    TK.set_string!(buf, inner.x, inner.y,
+                   first(rpad(sb_text, inner.width), inner.width), sb_style)
+    # List rows 2..(end-1); footer on last row.
     filtered = _sccode_filtered(m)
-    body_h = box_h - 4   # title + search + page-footer + bottom border
+    body_h = inner.height - 2
     n = length(filtered)
     if n == 0
         msg = isempty(m.sccode_query) ?
             "(no entries — try `n` for next page)" :
             "(no match for \"$(m.sccode_query)\")"
-        TK.set_string!(buf, box_x + 2, box_y + 3, msg, TK.tstyle(:text_dim))
+        TK.set_string!(buf, inner.x + 1, inner.y + 1, msg, TK.tstyle(:text_dim))
     else
         start_i = max(1, m.sccode_cursor - body_h ÷ 2)
         end_i = min(n, start_i + body_h - 1)
@@ -4208,22 +4645,19 @@ function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             is_cur = i == m.sccode_cursor
             marker = is_cur ? "▶ " : "  "
             label = "$(marker)#$(rpad(e.id, 8)) $(e.title)"
-            style = is_cur ? TK.tstyle(:accent, bold=true) : TK.tstyle(:text)
-            line = "│ " * first(label, box_w - 4) * " │"
-            screen_y = box_y + 1 + slot
-            TK.set_string!(buf, box_x, screen_y, line, style)
+            style = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
+            screen_y = inner.y + slot
+            TK.set_string!(buf, inner.x, screen_y,
+                           first(rpad(label, inner.width), inner.width), style)
             push!(m.modal_rows, (screen_y, i))
         end
     end
-    # Page indicator near the bottom.
+    # Page indicator (last row).
     pageinfo = "page $(m.sccode_page) · $(n) shown of $(length(m.sccode_entries))"
     isempty(m.sccode_tag) || (pageinfo *= " · tag=$(m.sccode_tag)")
-    pageline = "│ " * rpad(pageinfo, box_w - 4) * " │"
-    TK.set_string!(buf, box_x, box_y + box_h - 2, first(pageline, box_w),
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                   first(rpad(pageinfo, inner.width), inner.width),
                    TK.tstyle(:text_dim))
-    foot = "└" * "─" ^ (box_w - 2) * "┘"
-    TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
-                   TK.tstyle(:title, bold=true))
 end
 
 """
@@ -4241,60 +4675,115 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     raw_phase = sched.t_start > 0 ?
                 ((time() - sched.t_start) * sched.cps) % 1.0 : 0.0
     cycle_phase = isnan(raw_phase) ? 0.0 : clamp(raw_phase, 0.0, 0.999)
-    bar_w = 10
-    filled = clamp(floor(Int, cycle_phase * bar_w), 0, bar_w)
-    bar = "█" ^ filled * "░" ^ (bar_w - filled)
 
-    cps_str = "♪ $(round(sched.cps; digits=2)) cps"
-    cycle_str = "◐ $bar"
-    ev_str = "✧ $(sched.events_shipped[])"
-    synth_str = if _synth_pane_open(m)
-        s = "♬ $(_current_synth_tab(m).name)"
-        length(m.synth_tabs) > 1 ?
-            s * " [$(m.synth_tab_idx)/$(length(m.synth_tabs))]" : s
-    else
-        ""
-    end
+    # Smooth gradient cycle bar — sub-cell precision via BARS_H glyphs.
+    # Full cells use █, the partial cell uses a fractional bar glyph,
+    # remaining cells use ░ (very dim). Reads as a clean sweep instead
+    # of a chunky "filled/empty" toggle.
+    bar_w = 12
+    pos = cycle_phase * bar_w
+    full = floor(Int, pos)
+    frac = pos - full
+    partial = frac == 0 ? "" : string(TK.BARS_H[clamp(ceil(Int, frac * 8), 1, 8)])
+    rest = bar_w - full - (isempty(partial) ? 0 : 1)
+    cycle_bar = "█" ^ full * partial * "░" ^ max(0, rest)
+
     ed = _active_editor(m)
-    badge = "  ⟪ $(uppercase(String(ed.mode))) @ $(m.focus) ⟫"
+    badge = "⟪ $(uppercase(String(ed.mode))) @ $(m.focus) ⟫"
 
-    # Compose left segment with bullet separators.
-    parts = String[]
-    push!(parts, "▓ ressac")
-    push!(parts, cps_str)
-    push!(parts, cycle_str)
-    push!(parts, ev_str)
-    isempty(synth_str) || push!(parts, synth_str)
+    # Sections — each is a tuple of (text, style). They get joined with
+    # ` │ ` separators rendered in :text_dim so the eye groups them.
+    sections = Vector{Vector{Tuple{String,TK.Style}}}()
+
+    # Logo section
+    push!(sections, [("▓ RESSAC", TK.tstyle(:accent, bold = true))])
+
+    # Tempo / cycle / events section
+    tempo_section = Tuple{String,TK.Style}[
+        ("♪ $(round(sched.cps; digits = 2)) cps", TK.tstyle(:title, bold = true)),
+        ("  ", TK.tstyle(:text)),
+        ("◐ ", TK.tstyle(:text_dim)),
+        (cycle_bar, TK.tstyle(:accent)),
+        ("  ", TK.tstyle(:text)),
+        ("✧ $(sched.events_shipped[])", TK.tstyle(:title)),
+    ]
+    push!(sections, tempo_section)
+
+    # Synth section (only if a synth pane is open)
+    if _synth_pane_open(m)
+        synth_label = "♬ $(_current_synth_tab(m).name)" *
+                      (length(m.synth_tabs) > 1 ?
+                       " [$(m.synth_tab_idx)/$(length(m.synth_tabs))]" : "")
+        push!(sections, [(synth_label, TK.tstyle(:title, bold = true))])
+    end
+
+    # Live-state section (rec / tap / piano / visual) — each gets a
+    # priority colour so it pops against the normal title style.
+    state_parts = Tuple{String,TK.Style}[]
     if m.recording
         secs = floor(Int, time() - m.recording_start_ts)
         mins, s = divrem(secs, 60)
-        push!(parts, "● REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0'))")
+        push!(state_parts,
+            ("● REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0'))",
+             TK.tstyle(:error, bold = true)))
     end
     if m.tap_recording
         label = m.tap_mode === :tempo ? "● TAP-TEMPO" :
+                m.tap_mode === :loop  ? "● TAP-LOOP" :
                 m.tap_bars > 1        ? "● TAP×$(m.tap_bars) bars" :
                                         "● TAP"
-        push!(parts, "$label $(length(m.tap_events)) hit$(length(m.tap_events) == 1 ? "" : "s")")
+        n = length(m.tap_events)
+        push!(state_parts,
+            ("$label $(n) hit$(n == 1 ? "" : "s")",
+             TK.tstyle(:warning, bold = true)))
     end
     if m.piano_active
         label = m.piano_rec ? "● PIANO REC" : "♪ PIANO"
-        push!(parts, "$label oct=$(m.piano_octave) [$(length(m.piano_events))]")
+        push!(state_parts,
+            ("$label oct=$(m.piano_octave) [$(length(m.piano_events))]",
+             TK.tstyle(:warning, bold = true)))
     end
     if m.visual_active
         r1 = min(m.visual_anchor_row, m.editor.cursor_row)
         r2 = max(m.visual_anchor_row, m.editor.cursor_row)
-        push!(parts, "▌ VISUAL LINE $(r1)-$(r2) ($(r2 - r1 + 1) line$(r2 == r1 ? "" : "s"))")
+        n = r2 - r1 + 1
+        push!(state_parts,
+            ("▌ VISUAL $r1-$r2 ($n line$(n == 1 ? "" : "s"))",
+             TK.tstyle(:accent, bold = true)))
     end
-    left = join(parts, "  •  ")
+    isempty(state_parts) || push!(sections, state_parts)
 
-    # Layout: left + right pad + badge. Truncate left if too tight.
-    available = area.width - length(badge)
-    left_trimmed = first(left, max(available, 0))
-    pad = max(0, available - length(left_trimmed))
-    full = left_trimmed * " " ^ pad * badge
-    TK.set_string!(buf, area.x, area.y,
-                   first(full, area.width),
-                   TK.tstyle(:title, bold=true))
+    # ── Render —— left to right ────────────────────────────────────
+    # Compute total length first, truncate sections that don't fit
+    # rather than overflow into the right badge.
+    sep = " │ "
+    sep_style = TK.tstyle(:text_dim)
+    available = area.width - textwidth(badge) - 1  # 1 col for right pad
+    x = area.x
+    for (i, sec) in enumerate(sections)
+        if i > 1
+            x + textwidth(sep) > area.x + available && break
+            TK.set_string!(buf, x, area.y, sep, sep_style)
+            x += textwidth(sep)
+        end
+        for (txt, sty) in sec
+            x + textwidth(txt) > area.x + available && (txt = first(txt,
+                max(0, area.x + available - x)))
+            isempty(txt) && break
+            TK.set_string!(buf, x, area.y, txt, sty)
+            x += textwidth(txt)
+        end
+    end
+    # Right badge — fill the gap with the dim border char so the status
+    # row looks intentional rather than empty.
+    fill_x = x
+    badge_x = area.x + area.width - textwidth(badge)
+    if badge_x > fill_x
+        TK.set_string!(buf, fill_x, area.y,
+            " " ^ (badge_x - fill_x), TK.tstyle(:text_dim))
+    end
+    TK.set_string!(buf, max(area.x, badge_x), area.y,
+        first(badge, area.width), TK.tstyle(:accent, bold = true))
 end
 
 """
@@ -4307,19 +4796,44 @@ on the mode first.
 function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     ed = _active_editor(m)
     mode_label = uppercase(String(ed.mode))
-    hint = if !_synth_pane_open(m)
-        "e eval • i insert • Esc normal • :synth <name> • :lib library • :theme • :q"
+    # Each hint is (key, action) so the key can be drawn in :accent and
+    # the rest in :text_dim — eye lands on the actionable char.
+    hints = if !_synth_pane_open(m)
+        [("e", "eval"), ("i", "insert"), ("Esc", "normal"),
+         (":synth", "<name>"), (":lib", "library"),
+         (":tap", "loop"), (":wiki", "docs"), (":q", "quit")]
     elseif length(m.synth_tabs) > 1
-        "e eval • T test (hold=accel) • Tab swap • gt/gT cycle • :w save • :close • :back"
+        [("e", "eval"), ("T", "test"), ("Tab", "swap"),
+         ("gt/gT", "cycle"), (":w", "save"), (":close", ""), (":back", "")]
     else
-        "e eval • T test (hold=accel) • Tab swap • :w save • :back close • :q"
+        [("e", "eval"), ("T", "test"), ("Tab", "swap"),
+         (":w", "save"), (":back", "close"), (":q", "quit")]
     end
-    badge = "[$mode_label]"
-    TK.set_string!(buf, area.x, area.y, badge,
-                   TK.tstyle(:accent, bold=true))
-    TK.set_string!(buf, area.x + length(badge) + 1, area.y,
-                   first(hint, max(0, area.width - length(badge) - 1)),
-                   TK.tstyle(:text_dim))
+    x = area.x
+    # Mode chip
+    chip = " $mode_label "
+    TK.set_string!(buf, x, area.y, chip, TK.tstyle(:accent, bold = true))
+    x += textwidth(chip) + 1
+    sep_style = TK.tstyle(:text_dim)
+    key_style = TK.tstyle(:title, bold = true)
+    txt_style = TK.tstyle(:text_dim)
+    for (i, (k, t)) in enumerate(hints)
+        # Stop early if we'd overflow the row.
+        chunk_w = textwidth(k) + (isempty(t) ? 0 : 1 + textwidth(t))
+        if x + chunk_w + (i == length(hints) ? 0 : 3) > area.x + area.width
+            break
+        end
+        if i > 1
+            TK.set_string!(buf, x, area.y, " · ", sep_style)
+            x += 3
+        end
+        TK.set_string!(buf, x, area.y, k, key_style)
+        x += textwidth(k)
+        if !isempty(t)
+            TK.set_string!(buf, x, area.y, " " * t, txt_style)
+            x += 1 + textwidth(t)
+        end
+    end
 end
 
 """
@@ -4340,23 +4854,35 @@ function _render_logs(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     tail = first_idx <= last_idx ? m.logs[first_idx:last_idx] : String[]
     for (i, line) in enumerate(tail)
         i > area.height && break
-        style = if startswith(line, "[ERROR]")
-            TK.tstyle(:error)
+        # Severity → (stripe colour, text colour). The stripe is a
+        # single ▎ glyph that paints a thin coloured edge on the left
+        # so the eye can scan ERROR / WARN at a glance without parsing
+        # the prefix tag. INFO and bare lines get a dim stripe to keep
+        # the visual rhythm consistent.
+        stripe_style, text_style, body = if startswith(line, "[ERROR]")
+            (TK.tstyle(:error, bold = true), TK.tstyle(:error),
+             SubString(line, 8))
         elseif startswith(line, "[WARN]")
-            TK.tstyle(:warning)
+            (TK.tstyle(:warning, bold = true), TK.tstyle(:warning),
+             SubString(line, 7))
         elseif startswith(line, "[KEY]")
-            TK.tstyle(:accent, dim=true)
+            (TK.tstyle(:accent, dim = true), TK.tstyle(:accent, dim = true),
+             SubString(line, 6))
         elseif startswith(line, "[INFO]")
-            TK.tstyle(:text)
+            (TK.tstyle(:text_dim), TK.tstyle(:text),
+             SubString(line, 7))
         else
-            TK.tstyle(:text_dim)
+            (TK.tstyle(:text_dim), TK.tstyle(:text_dim), SubString(line, 1))
         end
-        TK.set_string!(buf, area.x, area.y + i - 1,
-                       first(line, area.width), style)
+        y = area.y + i - 1
+        TK.set_string!(buf, area.x, y, "▎", stripe_style)
+        # Pad one column after the stripe for legibility.
+        TK.set_string!(buf, area.x + 2, y,
+                       first(strip(body), max(0, area.width - 2)), text_style)
     end
     # Tiny scroll indicator in the last column when not at the bottom.
     m.log_scroll > 0 && TK.set_string!(buf,
-        area.x + area.width - 1, area.y, "↑", TK.tstyle(:warning, bold=true))
+        area.x + area.width - 1, area.y, "↑", TK.tstyle(:warning, bold = true))
 end
 
 """
@@ -4368,33 +4894,28 @@ so the user can see what Enter will instantiate.
 """
 function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     entries = _synthlib_all_entries()
-    aw, ah = area.width, area.height
-    box_w = max(60, min(aw - 4, 100))
-    box_h = max(10, min(ah - 4, length(entries) + 6))
-    box_x = area.x + max(0, (aw - box_w) ÷ 2)
-    box_y = area.y + max(0, (ah - box_h) ÷ 2)
-    suffix_w = max(0, box_w - 56)
-    title = "┌ synth library — j/k move, Space preview, Enter open, q close " * "─" ^ suffix_w * "┐"
-    TK.set_string!(buf, box_x, box_y, first(title, box_w),
-                   TK.tstyle(:title, bold=true))
+    n = length(entries)
+    inner = _render_modal_block!(buf, area;
+        title = "SYNTH LIBRARY",
+        title_right = "$n synths · j/k · Space preview · Enter open · q close",
+        w_max = 100,
+        h_target = max(10, min(area.height - 4, n + 4)))
+    inner.width < 20 && return
     empty!(m.modal_rows)
     for (i, entry) in enumerate(entries)
-        i + 1 >= box_h - 1 && break
+        i > inner.height && break
         is_cur = i == m.synthlib_cursor
         marker = is_cur ? "▶ " : "  "
         tag = entry.category == "user" ? "[user]  ★" : "[$(rpad(entry.category, 5))]"
         text = "$marker$(rpad(entry.name, 14)) $tag  $(entry.description)"
         base_style = entry.category == "user" ?
             TK.tstyle(:success) : TK.tstyle(:text)
-        style = is_cur ? TK.tstyle(:accent, bold=true) : base_style
-        line = "│ " * first(text, box_w - 4) * " │"
-        screen_y = box_y + i
-        TK.set_string!(buf, box_x, screen_y, line, style)
+        style = is_cur ? TK.tstyle(:accent, bold = true) : base_style
+        screen_y = inner.y + i - 1
+        TK.set_string!(buf, inner.x, screen_y,
+                       first(rpad(text, inner.width), inner.width), style)
         push!(m.modal_rows, (screen_y, i))
     end
-    foot = "└" * "─" ^ (box_w - 2) * "┘"
-    TK.set_string!(buf, box_x, box_y + box_h - 1, foot,
-                   TK.tstyle(:title, bold=true))
 end
 
 function _push_app_log!(m::RessacApp, line::AbstractString)
@@ -4617,9 +5138,8 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     ext = mode === :dsl ? ".jl" : ".scd"
     editor = TK.CodeEditor(;
         text  = src,
-        block = TK.Block(title = "synth: $(name)$(ext) [$mode]",
-                         border_style = TK.tstyle(:border),
-                         title_style  = TK.tstyle(:title)),
+        # No `block=` — the outer SYNTH pane wrapper provides the border
+        # and shows name/ext/mode in its title_right (see view()).
         focused = true,
         tick    = m.tick,
         mode    = :normal,

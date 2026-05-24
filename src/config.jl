@@ -8,7 +8,9 @@ using TOML
     # ── UI ───────────────────────────────────────────────────────────
     theme::Symbol           = :kokaku   # any Tachikoma theme name OR a
                                         # Ressac custom (:cyberpunk, :solarpunk).
-    fps::Int                = 60        # render rate ceiling
+    fps::Int                = 120       # render rate ceiling — higher fps
+                                        # → lower input latency → tighter
+                                        # :tap acquisition (~8ms vs ~16ms).
     # ── T (test synth) held-key behaviour ────────────────────────────
     t_hold_initial_ms::Int  = 250       # first repeat fires after this
     t_hold_min_ms::Int      = 60        # interval can decay no lower than this
