@@ -265,15 +265,23 @@ buffer's bounds.
 """
 function _screen_to_editor_pos(ed::TK.CodeEditor, rect::TK.Rect, x::Int, y::Int)
     _in_rect(rect, x, y) || return nothing
-    # The editor's title takes the first row of `rect`; content begins
-    # one row down. Vertical scroll lives in `scroll_offset` (0-based,
-    # "lines hidden above the visible window").
-    body_y0 = rect.y + 1
-    visual_row = y - body_y0
-    visual_row < 0 && return nothing
+    # CodeEditor render layout:
+    #   `rect` is the full pane; if a block is set it draws a border
+    #   1 row / 1 col deep on each side. Inside that, an optional
+    #   gutter (line numbers + a `│` separator) takes the leftmost
+    #   `gw` cols. The code area is what remains; vertical scroll is
+    #   `scroll_offset` (0-based lines hidden above), horizontal is
+    #   `h_scroll` (0-based cols hidden to the left).
+    has_block = ed.block !== nothing
+    inset_top = has_block ? 1 : 0
+    inset_left = has_block ? 1 : 0
+    gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0
+    visual_row = y - (rect.y + inset_top)
+    visual_col = x - (rect.x + inset_left + gw)
+    (visual_row < 0 || visual_col < 0) && return nothing
     row = ed.scroll_offset + visual_row + 1
     1 <= row <= length(ed.lines) || return nothing
-    col = clamp(x - rect.x - 1, 0, length(ed.lines[row]))
+    col = clamp(ed.h_scroll + visual_col, 0, length(ed.lines[row]))
     return (row, col)
 end
 
