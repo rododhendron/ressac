@@ -1333,7 +1333,7 @@ const _EX_COMMAND_VERBS = String[
     "panic", "hush", "stop", "sccode-tag", "sctag",
     "snip", "snippets", "snippet",
     "rec", "record", "export", "export-synth",
-    "scratch", "sandbox", "e",
+    "scratch", "sandbox", "e", "dsl", "dsl-guide", "synth-dsl", "safety",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -1613,6 +1613,8 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _open_browser!(m)
     elseif cmd in ("synthlib", "synth-library", "lib")
         _open_synth_library!(m)
+    elseif cmd in ("dsl", "dsl-guide", "synth-dsl")
+        m.modal = :dsl_guide; m.modal_scroll = 0
     elseif cmd in ("snip", "snippets", "snippet")
         _open_snippets!(m)
     elseif cmd in ("sccode", "sc")
@@ -1623,6 +1625,15 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _open_sccode!(m; tag = mt.captures[1])
     elseif cmd in ("panic",)
         _panic!(m)
+    elseif (mt = match(r"^safety\s+(on|off)$", cmd)) !== nothing
+        on = mt.captures[1] == "on"
+        sched = _LIVE_SCHEDULER[]
+        if sched !== nothing
+            send_osc(sched.osc, encode(OSCMessage("/ressac/safety", Any[Int32(on ? 1 : 0)])))
+        end
+        _push_app_log!(m, "[INFO] safety $(on ? "ON" : "OFF") — master limiter + DC block + 20Hz HPF")
+    elseif cmd == "safety"
+        _push_app_log!(m, "[INFO] :safety on|off — toggle master limiter + DC block + 20Hz HPF (default ON)")
     elseif cmd in ("hush", "stop", "silence")
         _hush!(m)
     elseif cmd in ("rec", "record")
@@ -2178,7 +2189,111 @@ end
 _modal_lines(m::RessacApp) =
     m.modal === :guide       ? _GUIDE_LINES :
     m.modal === :synth_guide ? _SYNTH_GUIDE_LINES :
+    m.modal === :dsl_guide   ? _DSL_GUIDE_LINES :
     String[]
+
+const _DSL_GUIDE_LINES = String[
+    "── Synth DSL — Julia → SuperCollider ── (j/k scroll, q close)",
+    "",
+    "Bring it in: `using Ressac.SynthDSL`",
+    "",
+    "▓ MINIMAL — three tokens, full SynthDef:",
+    "",
+    "    @synth :bare saw(:freq)",
+    "",
+    "Auto-fills freq=220, sustain=0.5, gain=0.5, an Env.linen envelope",
+    "(doneAction:2 so it self-frees), multiply by :gain, and DirtPan",
+    "routing to SuperDirt.",
+    "",
+    "▓ EXPLICIT PARAMS:",
+    "",
+    "    @synth :acid (freq=80, cutoff=2000, q=0.3) saw(:freq) |>",
+    "        rlpf(:cutoff, :q) |> tanh_drive(1.5)",
+    "",
+    "    @synth :wob (freq=80) saw(:freq) |>",
+    "        rlpf(lfo(6; low=300, high=2000), 0.25)",
+    "",
+    "▓ DRONE (no auto-free):",
+    "",
+    "    @synth :pad (freq=110, sustain=999) (auto_env=false,)",
+    "        saw(:freq) |> low_pass(800) |> stereo_pan(0)",
+    "",
+    "▓ ENVELOPES — multiplied into the chain:",
+    "",
+    "    saw(:freq) |> env_perc(0.005, :sustain)        # snappy",
+    "    saw(:freq) |> env_linen(0.01, :sustain, 0.2)   # held",
+    "    saw(:freq) |> env_adsr(0.01, 0.1, 0.6, 0.3)    # gated (needs :gate)",
+    "    sin_osc(:freq) |> env_sine(:sustain)           # bell curve",
+    "    saw(:freq) |> env_pairs([0.1, 0.4, 0.5], [0, 1, 0.3, 0]; curve=:exp)",
+    "",
+    "▓ FILTERS:",
+    "    low_pass(2000)               high_pass(200)",
+    "    band_pass(1000, 0.4)         band_reject(800, 0.4)",
+    "    rlpf(1500, 0.3)              rhpf(800, 0.3)        # resonant",
+    "    moog_ff(1200, 2)             leak_dc()",
+    "    b_low_pass(2000)             b_peak_eq(1000, 0.7, 6)",
+    "",
+    "▓ MODULATORS — return Sig, not curried:",
+    "    lfo(6; low=300, high=2000)   # sin lfo mapped to range",
+    "    lfo_saw / lfo_tri / lfo_pulse",
+    "    line(start, stop, dur)       x_line(...)         # one-shot ramps",
+    "    lag_kr(input, lag_time)      # smooths an input over time",
+    "",
+    "▓ DELAYS / REVERB:",
+    "    delay_n(0.25) / delay_l / delay_c",
+    "    comb_l(0.05, 1.5)            # delay + feedback",
+    "    free_verb(0.6, 0.8, 0.5)     # mix, room, damp",
+    "    g_verb(roomsize=30, revtime=4)",
+    "",
+    "▓ NOISE:",
+    "    white() / pink() / brown() / gray()",
+    "    dust(60)                     # random impulses",
+    "    crackle(1.95)                # chaos generator",
+    "",
+    "▓ SHAPING:",
+    "    tanh_drive(1.5)              # soft saturation",
+    "    soft_clip() / cubic() / clip(-0.8, 0.8) / fold() / wrap()",
+    "    decimator(11025, 8)          # bit-crush",
+    "",
+    "▓ ARITHMETIC — Sig supports + - * / and pipes:",
+    "    sin_osc(:freq) + 0.3 * white()    # carrier + bit of hiss",
+    "    saw(:freq) * lfo(2)               # ring-mod",
+    "",
+    "▓ STEREO:",
+    "    stereo_pan(lfo(0.5))           # auto-pan",
+    "    stereo_balance(other_sig, 0)   # crossfade",
+    "    splay(0.8)                     # widen a multichannel input",
+    "",
+    "▓ PATTERNS — use the registered synth:",
+    "",
+    "    @d1 :acid |> n(p\"0 3 5 7 3 5 0 7\")",
+    "",
+    "▓ COOKBOOK — copy-paste-tweak:",
+    "",
+    "  # Kick:",
+    "    @synth :kick (sustain=0.4) sin_osc(line(80, 40, 0.05)) |> env_perc(0.001, :sustain)",
+    "",
+    "  # FM bell:",
+    "    @synth :fmbell (freq=440, sustain=1.5) sin_osc(:freq + sin_osc(:freq*1.41) *",
+    "        line(800, 50, 0.5)) |> env_perc(0, :sustain)",
+    "",
+    "  # Acid bass with env on cutoff:",
+    "    @synth :acid (freq=60, sustain=0.3) saw(:freq) |>",
+    "        rlpf(line(3000, 500, :sustain), 0.18) |> tanh_drive(2)",
+    "",
+    "  # Plucked string (Karplus-ish):",
+    "    @synth :pluck (freq=220) comb_l(line(1/220, 1/220, 0.001), 0.7) *",
+    "        white() |> env_perc(0.001, 0.001)",
+    "",
+    "  # Pad with chorus + reverb:",
+    "    @synth :pad (freq=220, sustain=4) (auto_env=false,)",
+    "        saw(:freq) + saw(:freq * 1.007) + saw(:freq * 0.993) |>",
+    "        low_pass(2000) |> free_verb(0.5, 0.9, 0.5)",
+    "",
+    "▓ INSPECT WITHOUT PLAYING:",
+    "    synth_source(:name, sig; params=...)   # returns the SC string",
+    "",
+]
 
 function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     if m.modal === :browse
@@ -2228,7 +2343,8 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     inner_h = box_h - 2
     # Title.
     title = m.modal === :guide ? ":guide" :
-            m.modal === :synth_guide ? ":synth-guide" : ""
+            m.modal === :synth_guide ? ":synth-guide" :
+            m.modal === :dsl_guide ? ":dsl-guide" : ""
     title_str = "┌ $title — j/k scroll, q close" * "─" ^ max(0, box_w - length(title) - 30) * "┐"
     TK.set_string!(buf, box_x, box_y, first(title_str, box_w),
                    TK.tstyle(:title, bold=true))

@@ -51,6 +51,50 @@ s.waitForBoot({
     };
     ~dirt.start(57120, 0 ! 12);
 
+    // ── Master safety chain ──
+    // Tree of "intercept master out, run it through:
+    //   1. LeakDC.ar  — strip DC offset (a stuck-low oscillator can
+    //      destroy speakers and isn't audible anyway)
+    //   2. HPF.ar(20) — same idea, kills sub-rumble below human range
+    //   3. Limiter.ar(0.95, 0.01) — true-peak safe ceiling (~-0.45dBFS)
+    //      with a 10ms lookahead window. Stops runaway feedback or
+    //      stacked oscillators from blasting eardrums.
+    //   4. A short 80ms Line.kr fade-in on every boot so even if the
+    //      patterns kick in instantly, the first frame ramps up
+    //      smoothly instead of producing a thump.
+    // Controlled by ~ressacSafetyOn — set false to bypass.
+    ~ressacSafetyOn = true;
+    if(~ressacSafetyOn) {
+        ~ressacSafetyGroup = Group.after(s);
+        ~ressacSafetyBoot = Synth.tail(~ressacSafetyGroup, \ressacSafetyBoot);
+        SynthDef(\ressacSafetyChain, { |in = 0, out = 0|
+            var sig, fade;
+            sig = In.ar(in, 2);
+            sig = LeakDC.ar(sig);
+            sig = HPF.ar(sig, 20);
+            sig = Limiter.ar(sig, 0.95, 0.01);
+            fade = EnvGen.kr(Env([0, 1], [0.08]));
+            ReplaceOut.ar(out, sig * fade);
+        }).add;
+        s.sync;
+        ~ressacSafetyChainSynth = Synth.tail(~ressacSafetyGroup, \ressacSafetyChain);
+        "[ressac] safety chain engaged — Limiter @ -0.45dBFS · DC blocker · 20Hz HPF · 80ms fade-in".postln;
+    };
+
+    // Toggle from Ressac via :safety on / off.
+    OSCdef(\ressacSafety, { |msg|
+        var on = msg[1].asInteger > 0;
+        if(on and: { ~ressacSafetyChainSynth.isNil or: { ~ressacSafetyChainSynth.isPlaying.not } }) {
+            ~ressacSafetyChainSynth = Synth.tail(~ressacSafetyGroup, \ressacSafetyChain);
+            "[ressac] safety ON".postln;
+        };
+        if(on.not and: { ~ressacSafetyChainSynth.notNil }) {
+            ~ressacSafetyChainSynth.free;
+            ~ressacSafetyChainSynth = nil;
+            "[ressac] safety OFF".postln;
+        };
+    }, '/ressac/safety');
+
     // OSCdefs added for Ressac plugin handlers.
     OSCdef(\ressacLoadSampleFolder, { |msg|
         var path = msg[1].asString;
