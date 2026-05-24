@@ -1,0 +1,3 @@
+# @d1 p"bd hh sn hh"
+
+@d2 "mywob" |> gate(p"1 0 0 1")

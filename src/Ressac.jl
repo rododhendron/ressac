@@ -37,6 +37,7 @@ include("snippets.jl")
 include("config.jl")
 include("themes.jl")
 include("sccode.jl")
+include("synth_dsl.jl")
 include("app.jl")
 include("plugin_handlers.jl")
 
