@@ -3723,7 +3723,7 @@ function _tap_start!(m::RessacApp; sample::AbstractString = "bd",
     empty!(m.tap_events)
     m.tap_sample = String(sample)
     m.tap_steps  = steps
-    _push_app_log!(m, "[INFO] tap — Space for hit (≥2), Enter commit, Esc cancel · sample=$(sample), steps=$(steps)")
+    _push_app_log!(m, "[INFO] tap — Space ONLY on hits (no extra downbeat at end), Enter commit, Esc cancel · sample=$(sample), steps=$(steps)")
 end
 
 function _tap_hit!(m::RessacApp)
@@ -3750,11 +3750,18 @@ function _tap_commit!(m::RessacApp)
     end
     first_t = m.tap_events[1]
     last_t  = m.tap_events[end]
-    bar = max(last_t - first_t, 1e-6)
+    # Crucial fix: the user taps N positions, and the LAST tap marks
+    # the start of the next bar (not the end of this one — they tap
+    # the downbeat). So the bar duration spans N inter-tap intervals,
+    # not N-1. Adding the average interval makes the last tap land
+    # inside its own step rather than getting clamped to the final
+    # position.
+    avg_interval = (last_t - first_t) / (n - 1)
+    bar = (last_t - first_t) + avg_interval
     N = m.tap_steps
     cells = fill("~", N)
     for t in m.tap_events
-        idx = clamp(round(Int, (t - first_t) / bar * (N - 1)) + 1, 1, N)
+        idx = clamp(floor(Int, (t - first_t) / bar * N) + 1, 1, N)
         cells[idx] = m.tap_sample
     end
     slot = _next_free_d_slot(m.editor)
