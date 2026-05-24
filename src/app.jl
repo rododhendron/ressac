@@ -108,6 +108,12 @@ non-empty), and the focus toggle for keystroke routing.
     # FLASH_DURATION_S window, fading toward the end.
     eval_flash_rows::Vector{Int} = Int[]
     eval_flash_ts::Float64       = 0.0
+    # Playhead parse cache: per-row (line_hash, parsed-NamedTuple-or-nothing).
+    # Skips the regex + body split when a line hasn't changed between
+    # frames — at 120 fps with 40 visible lines that's ~5000 alloc/sec
+    # of garbage we don't produce. Pruned each render to the visible
+    # window so it stays bounded.
+    playhead_cache::Dict{Int,Tuple{UInt64,Any}} = Dict{Int,Tuple{UInt64,Any}}()
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
@@ -1246,63 +1252,82 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     body_h = rect.height - inset_top - inset_bot
     first_row = m.editor.scroll_offset + 1
     last_row  = min(length(m.editor.lines), first_row + body_h - 1)
+    # Prune cache entries outside the visible window so it stays bounded
+    # to ~rect.height rows even if the user scrolls a large buffer.
+    for k in keys(m.playhead_cache)
+        (k < first_row || k > last_row) && delete!(m.playhead_cache, k)
+    end
     for i in first_row:last_row
         screen_row = rect.y + inset_top + (i - 1 - m.editor.scroll_offset)
         line_chars = m.editor.lines[i]
-        line = String(line_chars)
-        mt = match(_PLAYHEAD_LINE_RX, line)
-        mt === nothing && continue
-        slot = Symbol("d", mt.captures[1])
-        haskey(sched.patterns, slot) || continue
-        body = String(mt.captures[2])
-        isempty(body) && continue
-        # Re-paint the slot prefix (`@dN`) in dim accent so the eye
-        # can spot active lines instantly even before the playhead
-        # token highlight kicks in. Inactive @dN lines (slot not in
+        # Cache key = hash(line content). Cheap to compute and avoids
+        # the regex + body split when the line hasn't changed between
+        # frames. nothing-valued cache entries are kept so we don't
+        # re-parse lines that don't match the regex.
+        line_hash = hash(line_chars)
+        cached = get(m.playhead_cache, i, nothing)
+        parsed = if cached !== nothing && cached[1] == line_hash
+            cached[2]
+        else
+            p = _playhead_parse(line_chars)
+            m.playhead_cache[i] = (line_hash, p)
+            p
+        end
+        parsed === nothing && continue
+        haskey(sched.patterns, parsed.slot) || continue
+        # Re-paint the slot prefix (`@dN`) in :warning bold so the eye
+        # can spot active lines instantly even before the playhead token
+        # highlight kicks in. Inactive @dN lines (slot not in
         # sched.patterns) skip this branch entirely.
-        slot_str_len = 2 + length(mt.captures[1])  # "@d" + digits
-        slot_start_col = mt.offsets[1] - 2         # capture[1] is the digits; back up to '@'
-        slot_screen_x_start = rect.x + inset_left + gw + slot_start_col - ed_h_scroll(m.editor)
-        for k in 0:(slot_str_len - 1)
+        slot_screen_x_start = rect.x + inset_left + gw +
+                              parsed.slot_start_col - ed_h_scroll(m.editor)
+        for k in 0:(parsed.slot_str_len - 1)
             sx = slot_screen_x_start + k
             sx < rect.x + inset_left + gw && continue
             sx >= rect.x + rect.width && break
-            line_col = slot_start_col + k + 1
+            line_col = parsed.slot_start_col + k + 1
             line_col <= length(line_chars) || break
             TK.set_char!(buf, sx, screen_row, line_chars[line_col],
                          TK.tstyle(:warning, bold = true))
         end
-        # Find the body's column span inside the line. m.offsets gives
-        # the byte offset of the start of capture #2; convert to a
-        # display column (we assume ASCII for mininotation — bd / hh
-        # etc — which is fine in practice).
-        body_offset = mt.offsets[2]
-        body_start_col = body_offset - 1   # 0-based column of first char inside the quotes
-        body_len = length(body)
-        # Top-level token split by whitespace, ignoring whitespace
-        # inside [...] / <...> / (...). Simple state machine.
-        tokens = _split_minino_top(body)
-        isempty(tokens) && continue
-        n = length(tokens)
+        # Active token highlight.
+        n = length(parsed.tokens)
         active = clamp(floor(Int, phase * n) + 1, 1, n)
-        tok_start_in_body, tok_stop_in_body = tokens[active]
-        # Convert body-relative positions to screen x.
-        screen_x_start = rect.x + inset_left + gw + body_start_col + tok_start_in_body - ed_h_scroll(m.editor)
-        screen_x_stop  = rect.x + inset_left + gw + body_start_col + tok_stop_in_body  - ed_h_scroll(m.editor)
-        # Clip to pane rect.
+        tok_start_in_body, tok_stop_in_body = parsed.tokens[active]
         for body_col in tok_start_in_body:tok_stop_in_body
-            screen_x = rect.x + inset_left + gw + body_start_col +
+            screen_x = rect.x + inset_left + gw + parsed.body_start_col +
                        body_col - ed_h_scroll(m.editor)
             screen_x < rect.x + inset_left + gw && continue
             screen_x >= rect.x + rect.width && break
-            # Pull the source char from the buffer line so the underlay
-            # text shows through with the new style.
-            buf_col = body_start_col + body_col + 1   # 1-based char index in line
+            buf_col = parsed.body_start_col + body_col + 1
             ch = buf_col <= length(line_chars) ? line_chars[buf_col] : ' '
             TK.set_char!(buf, screen_x, screen_row, ch,
-                         TK.tstyle(:accent, bold=true))
+                         TK.tstyle(:accent, bold = true))
         end
     end
+end
+
+"""
+    _playhead_parse(line_chars) -> Union{Nothing, NamedTuple}
+
+Run the @dN regex + body token-split once per (changed) line. The
+result is cached in `m.playhead_cache` keyed on the line hash so
+unchanged rows skip this work. Returning `nothing` when no @dN
+match keeps the cache shape consistent for both match and no-match.
+"""
+function _playhead_parse(line_chars::Vector{Char})
+    line = String(line_chars)
+    mt = match(_PLAYHEAD_LINE_RX, line)
+    mt === nothing && return nothing
+    body = String(mt.captures[2])
+    isempty(body) && return nothing
+    tokens = _split_minino_top(body)
+    isempty(tokens) && return nothing
+    return (slot           = Symbol("d", mt.captures[1]),
+            slot_str_len   = 2 + length(mt.captures[1]),
+            slot_start_col = mt.offsets[1] - 2,
+            body_start_col = mt.offsets[2] - 1,
+            tokens         = tokens)
 end
 
 ed_h_scroll(ed::TK.CodeEditor) = ed.h_scroll
