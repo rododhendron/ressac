@@ -115,6 +115,165 @@ const _SNIPPETS = _Snippet[
         @d4 :darkpad |> n(p"<0 0 -2 -4>") |> gain(0.4)
         """),
 
+    # ── Patterns: genre-specific rhythm templates ───────────────────
+    _Snippet("jersey", :patterns, "genre",
+        "Jersey club — bed-creak bounce, 5-on-the-floor kick, triplet hats.", raw"""
+        :cps 0.58
+        @d1 p"bd ~ ~ bd bd ~ ~ bd"
+        @d2 p"~ ~ cp ~ ~ ~ cp ~"
+        @d3 p"[hh hh hh]*4" |> gain(0.35)
+        """),
+
+    _Snippet("footwork", :patterns, "genre",
+        "Footwork — 160 BPM, fast hihats, sparse kicks, syncopated claps.", raw"""
+        :cps 0.66
+        @d1 p"bd ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~"
+        @d2 p"~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
+        @d3 p"hh*16" |> gain(0.4)
+        @d4 p"~ ~ sn*3 ~ ~ ~ sn ~ ~ sn*2 ~ ~ ~ ~" |> gain(0.5)
+        """),
+
+    _Snippet("garage", :patterns, "genre",
+        "UK garage / 2-step — broken kick, off-beat hats, swung snare.", raw"""
+        :cps 0.55
+        @d1 p"bd ~ ~ bd ~ ~ bd ~"
+        @d2 p"~ ~ cp ~ ~ ~ ~ cp"
+        @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
+        """),
+
+    _Snippet("trap", :patterns, "genre",
+        "Trap — rolling hi-hats with triplet bursts + 808 kick.", raw"""
+        :cps 0.45
+        @d1 p"bd ~ ~ ~ ~ ~ bd ~"
+        @d2 p"~ ~ cp ~ ~ ~ cp ~"
+        @d3 p"hh hh [hh hh hh] hh hh [hh hh hh] hh hh" |> gain(0.4)
+        @d4 :subdrop |> n(p"0 ~ ~ 0 ~ ~ 5 ~") |> gain(0.6)
+        """),
+
+    _Snippet("dnb", :patterns, "genre",
+        "Drum & bass — amen-inspired chop + sub on the 1.", raw"""
+        :cps 0.46
+        @d1 p"bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~"
+        @d2 p"hh*16" |> gain(0.4)
+        @d3 :subdrop |> n(p"0 ~ ~ ~ 0 ~ 5 ~") |> gain(0.7)
+        """),
+
+    _Snippet("techno", :patterns, "genre",
+        "Minimal techno — 4-on-the-floor kick, clap on the 2 and 4, percs.", raw"""
+        :cps 0.5
+        @d1 p"bd bd bd bd"
+        @d2 p"~ cp ~ cp"
+        @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.35)
+        @d4 p"~ ~ ~ ~ ~ ~ ~ oh"  |> gain(0.4)
+        """),
+
+    _Snippet("house", :patterns, "genre",
+        "Deep house — 4-on-the-floor, off-beat hats, syncopated snare.", raw"""
+        :cps 0.5
+        @d1 p"bd bd bd bd"
+        @d2 p"~ cp ~ cp"
+        @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
+        @d4 p"~ ~ ~ ~ ~ ~ oh ~" |> gain(0.5)
+        """),
+
+    _Snippet("breakcore", :patterns, "genre",
+        "Breakcore — chopped fast break, ghost notes, kick chaos.", raw"""
+        :cps 0.66
+        @d1 p"bd*2 ~ [bd*4] ~ bd ~ [bd*3] ~"
+        @d2 p"~ ~ sn ~ ~ sn ~ [sn*2]"
+        @d3 p"hh*32" |> gain(0.3)
+        """),
+
+    _Snippet("drill", :patterns, "genre",
+        "UK drill — sliding 808, triplet hat bursts, sparse snare.", raw"""
+        :cps 0.48
+        @d1 p"bd ~ ~ bd ~ ~ bd ~"
+        @d2 p"~ ~ cp ~ ~ ~ cp ~"
+        @d3 p"hh hh [hh*3] hh [hh*3] hh hh hh" |> gain(0.4)
+        @d4 :subdrop |> n(p"0 ~ -2 ~ -5 ~ ~ ~") |> gain(0.7)
+        """),
+
+    _Snippet("dembow", :patterns, "genre",
+        "Reggaeton dembow — classic boom-ch-boom-chick pattern.", raw"""
+        :cps 0.5
+        @d1 p"bd ~ ~ cp bd cp ~ cp"
+        @d2 p"hh*8" |> gain(0.4)
+        """),
+
+    _Snippet("boombap", :patterns, "genre",
+        "Boom-bap hip-hop — heavy kick on 1+3, snare on 2+4, swung hats.", raw"""
+        :cps 0.42
+        @d1 p"bd ~ ~ ~ bd ~ bd ~"
+        @d2 p"~ ~ sn ~ ~ ~ sn ~"
+        @d3 p"hh ~ hh ~ hh ~ hh ~" |> gain(0.4)
+        """),
+
+    _Snippet("lofi_hiphop", :patterns, "genre",
+        "Lofi hip-hop — slower boom-bap with mellow ghost notes.", raw"""
+        :cps 0.38
+        @d1 :lofikick |> n(p"0 ~ ~ ~ 0 ~ 0 ~") |> gain(0.7)
+        @d2 p"~ ~ sn ~ ~ ~ sn ~"
+        @d3 :lofihat |> n(p"0*16") |> gain(0.3)
+        @d4 :chordstab |> n(p"<0 5 -2 3>") |> gain(0.45)
+        """),
+
+    _Snippet("phonk", :patterns, "genre",
+        "Phonk — cowbell, triplet hi-hats, deep 808 slides.", raw"""
+        :cps 0.46
+        @d1 p"bd ~ ~ bd ~ bd ~ ~"
+        @d2 p"~ cp ~ ~ ~ cp ~ ~"
+        @d3 p"[hh hh hh]*4" |> gain(0.35)
+        @d4 p"cb ~ ~ cb ~ ~ cb ~" |> gain(0.5)
+        @d5 :subdrop |> n(p"0 ~ ~ 0 -3 ~ ~ ~") |> gain(0.7)
+        """),
+
+    _Snippet("witch_house", :patterns, "genre",
+        "Witch house — slow, sparse, eerie pads + slowed kicks.", raw"""
+        :cps 0.28
+        @d1 p"bd ~ ~ ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~"
+        @d2 p"~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
+        @d3 :ghostpad |> n(p"<0 -3 -5 -7>") |> gain(0.4)
+        """),
+
+    _Snippet("bossanova", :patterns, "genre",
+        "Bossa nova clave — partido alto-ish pattern.", raw"""
+        :cps 0.5
+        @d1 p"bd ~ ~ bd ~ ~ bd ~"
+        @d2 p"~ ~ cp ~ cp ~ ~ cp"
+        @d3 p"hh hh ~ hh hh hh ~ hh" |> gain(0.35)
+        """),
+
+    # ── Pattern helpers ─────────────────────────────────────────────
+    _Snippet("euclidean_layers", :patterns, "rhythm",
+        "Three Euclidean rhythms layered — endless polyrhythmic groove.", raw"""
+        @d1 p"bd(3,8)"
+        @d2 p"sn(5,16)" |> gain(0.6)
+        @d3 p"hh(7,16)" |> gain(0.4)
+        """),
+
+    _Snippet("polyrhythm_3_4", :patterns, "rhythm",
+        "3-against-4 polyrhythm — classic tension groove.", raw"""
+        @d1 p"bd*3"
+        @d2 p"hh*4" |> gain(0.4)
+        """),
+
+    _Snippet("polyrhythm_5_4", :patterns, "rhythm",
+        "5-against-4 — angular and unsettling.", raw"""
+        @d1 p"bd*5"
+        @d2 p"sn*4" |> gain(0.5)
+        """),
+
+    _Snippet("call_response", :patterns, "rhythm",
+        "Call-and-response — alternate between two motifs each cycle.", raw"""
+        @d1 p"<[bd hh sn hh] [bd*2 ~ sn ~]>"
+        """),
+
+    _Snippet("ghost_notes", :patterns, "rhythm",
+        "Heavy kicks with ghost notes between — accent variation.", raw"""
+        @d1 p"bd*2 [~ bd] sn [~ bd] bd*2 sn ~"
+        @d2 p"hh*16" |> gain(0.25)
+        """),
+
     # ── Synth pane: SynthDef skeletons ──────────────────────────────
     _Snippet("synth_skeleton", :synth, "skeleton",
         "Minimal SynthDef boilerplate ready to fill in.", raw"""
