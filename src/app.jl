@@ -66,6 +66,12 @@ non-empty), and the focus toggle for keystroke routing.
     wiki_pages::Vector{_WikiPage} = _WikiPage[]
     wiki_idx::Int                = 1
     wiki_scroll::Int             = 0
+    # Vim-style `.` repeat. We capture the text typed during the last
+    # i/a/o-insert session and re-type it on `.` press. (More complex
+    # repeats — dd. cw. etc — are a follow-up.)
+    vim_in_insert::Bool          = false
+    vim_insert_buf::String       = ""
+    vim_last_insert::String      = ""
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
@@ -478,6 +484,14 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     end
     ed = _active_editor(m)
     is_press = evt.action === TK.key_press
+    # Vim `.` repeat — replay the text typed during the last insert
+    # session at the current cursor. Intercept BEFORE Tachikoma so the
+    # editor doesn't swallow it as a "join lines" or no-op.
+    if is_press && ed.mode === :normal && evt.char == '.'
+        _vim_replay!(m, ed); return
+    end
+    # Track insert-session text so `.` has something to replay.
+    _vim_record_keystroke!(m, ed, evt, is_press)
     # Tab in :normal swaps focus between patterns and the active synth tab.
     if is_press && evt.key === :tab && ed.mode === :normal && _synth_pane_open(m)
         _swap_focus!(m)
@@ -3121,6 +3135,67 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
             m.recording = false
         end
     end
+end
+
+# ---------------------------------------------------------------------
+# Vim `.` repeat — minimal: replay last insert-mode session
+# ---------------------------------------------------------------------
+
+"""
+    _vim_record_keystroke!(m, ed, evt, is_press)
+
+Track whether we just entered insert mode (i / a / o / O / I / A)
+or left it (Esc), and accumulate the typed characters in between.
+On the next `.` press, `_vim_replay!` re-types those characters.
+"""
+function _vim_record_keystroke!(m::RessacApp, ed::TK.CodeEditor,
+                                evt::TK.KeyEvent, is_press::Bool)
+    is_press || return
+    if !m.vim_in_insert && ed.mode === :normal &&
+       evt.key === :char && evt.char in ('i', 'a', 'o', 'O', 'I', 'A')
+        # We're about to enter insert via this key (Tachikoma will
+        # process it just after we return). Start a fresh buffer.
+        m.vim_in_insert = true
+        m.vim_insert_buf = ""
+        return
+    end
+    if m.vim_in_insert && ed.mode === :insert
+        if evt.key === :char && evt.char != '\0'
+            m.vim_insert_buf *= string(evt.char)
+        elseif evt.key === :enter
+            m.vim_insert_buf *= "\n"
+        end
+    end
+    if m.vim_in_insert && evt.key === :escape
+        # Insert session ended — freeze it as the last-replay target.
+        m.vim_last_insert = m.vim_insert_buf
+        m.vim_in_insert = false
+    end
+end
+
+"""
+    _vim_replay!(m, ed)
+
+Replay `vim_last_insert` at the current cursor by synthesising
+char-event handle_key! calls into the editor. The editor must be in
+:normal mode when `.` is pressed; we enter insert (via 'i'), type
+the characters, then Esc back to normal.
+"""
+function _vim_replay!(m::RessacApp, ed::TK.CodeEditor)
+    text = m.vim_last_insert
+    isempty(text) &&
+        (_push_app_log!(m, "[INFO] . — nothing to repeat (no prior insert)"); return)
+    # Switch the editor into insert mode by routing an 'i' through it.
+    TK.handle_key!(ed, TK.KeyEvent(:char, 'i', TK.key_press))
+    for c in text
+        if c == '\n'
+            TK.handle_key!(ed, TK.KeyEvent(:enter, '\0', TK.key_press))
+        else
+            TK.handle_key!(ed, TK.KeyEvent(:char, c, TK.key_press))
+        end
+    end
+    TK.handle_key!(ed, TK.KeyEvent(:escape, '\0', TK.key_press))
+    _push_app_log!(m, "[INFO] . — repeated last insert ($(length(text)) chars)")
 end
 
 # ---------------------------------------------------------------------
