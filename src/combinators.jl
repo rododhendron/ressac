@@ -234,3 +234,9 @@ function gate(name::Symbol, p::Pattern{Symbol})
         out
     end)
 end
+
+# Pipe-friendly curried form: `:bd |> gate(p"1 0 1 0")` reads as
+# "take :bd, gate it with that mask". Julia's pipe rewrite makes it
+# `gate(p"…")(:bd)`, so `gate(p)` has to return a Symbol → Pattern
+# function. Same body as the binary call.
+gate(p::Pattern{Symbol}) = (name::Symbol) -> gate(name, p)

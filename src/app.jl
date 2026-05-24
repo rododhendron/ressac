@@ -3579,13 +3579,24 @@ Eval the line at the currently-focused editor's cursor.
 function _eval_current_line!(m::RessacApp)
     ce = _active_editor(m)
     txt = TK.text(ce)
-    lines = split(txt, '\n'; keepempty=true)
+    lines = collect(split(txt, '\n'; keepempty=true))
     row = ce.cursor_row
     1 <= row <= length(lines) || return
-    line = lines[row]
-    isempty(strip(line)) && return
+    isempty(strip(lines[row])) && return
+    # Gather the logical block — the cursor row plus any contiguous
+    # continuation lines that start with `|>` so the snippet DSL
+    # (`:snf2` → newline + `|> fast(2)`) evaluates as one expression.
+    start_row = row
+    while start_row > 1 && startswith(lstrip(lines[start_row]), "|>")
+        start_row -= 1
+    end
+    end_row = row
+    while end_row < length(lines) && startswith(lstrip(lines[end_row + 1]), "|>")
+        end_row += 1
+    end
+    block = join(lines[start_row:end_row], " ")
     try
-        ex = Meta.parse(line)
+        ex = Meta.parse(block)
         result = Core.eval(Main, ex)
         rstr = sprint(io -> show(IOContext(io, :limit=>true, :displaysize=>(1, 60)), result))
         _push_app_log!(m, "[INFO] eval ⇒ $rstr")
