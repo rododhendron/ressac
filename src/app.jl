@@ -954,9 +954,11 @@ function _apply_pattern_shortcut!(m::RessacApp, nl_before::Bool,
     row = clamp(ed.cursor_row, 1, length(lines))
     line = String(lines[row])
     if nl_before
-        # Snippet lands on a NEW line under the current one. Same
-        # indentation as the source line so it visually chains.
-        indent = " " ^ (length(line) - length(lstrip(line)))
+        # Snippet lands on a NEW line under the current one. Source
+        # indent + 4 extra spaces visually marks it as a continuation
+        # of the pipeline started above.
+        base_indent = length(line) - length(lstrip(line))
+        indent = " " ^ (base_indent + 4)
         insert!(lines, row + 1, indent * lstrip(snippet))
         ed.cursor_row = row + 1
         ed.cursor_col = length(lines[row + 1])
@@ -965,9 +967,14 @@ function _apply_pattern_shortcut!(m::RessacApp, nl_before::Bool,
         ed.cursor_col = length(lines[row])
     end
     if nl_after
-        insert!(lines, ed.cursor_row + 1, "")
+        # Same indentation as the line we just wrote, so the next
+        # snippet the user adds chains visually too.
+        base_indent = ed.cursor_row <= length(lines) ?
+            length(lines[ed.cursor_row]) - length(lstrip(lines[ed.cursor_row])) : 0
+        next_indent = " " ^ (nl_before ? base_indent : base_indent + 4)
+        insert!(lines, ed.cursor_row + 1, next_indent)
         ed.cursor_row += 1
-        ed.cursor_col = 0
+        ed.cursor_col = length(next_indent)
     end
     TK.set_text!(ed, join(lines, '\n'))
     _push_app_log!(m, "[INFO] shortcut → $(strip(snippet))")
@@ -1326,7 +1333,7 @@ const _EX_COMMAND_VERBS = String[
     "panic", "hush", "stop", "sccode-tag", "sctag",
     "snip", "snippets", "snippet",
     "rec", "record", "export", "export-synth",
-    "scratch", "sandbox",
+    "scratch", "sandbox", "e",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -1620,6 +1627,17 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _hush!(m)
     elseif cmd in ("rec", "record")
         _toggle_recording!(m)
+    elseif cmd == "e" || (occursin('e', cmd) && all(c -> c == 'e' || isdigit(c), cmd))
+        # :e evaluates the entire buffer (one slot eval per @dN, last
+        # non-muted definition wins). :e1e5e15 restricts to d1/d5/d15.
+        # Listed-but-missing slots are silently skipped.
+        if cmd == "e"
+            _eval_pattern_blocks!(m, :all)
+        else
+            ids = filter(!isempty, split(cmd, 'e'; keepempty=false))
+            _eval_pattern_blocks!(m,
+                Symbol[Symbol("d", n) for n in ids])
+        end
     elseif (mt = match(_SHORTCUT_RX, cmd)) !== nothing
         # Compact pattern shortcut DSL — :sg0.9 → append " |> gain(0.9)",
         # :sng0.9 → newline first, :sg0.9N → newline after.
@@ -3572,9 +3590,65 @@ function _copy_logs_to_clipboard!(m::RessacApp)
 end
 
 """
+    _eval_pattern_blocks!(m, target)
+
+Walk the patterns buffer collecting `@dN ... [|> ... ]*` blocks,
+ignoring lines whose `@dN` is preceded by `#` (muted). When the
+same slot is defined multiple times the LATEST non-muted block
+wins. Then eval each block whose slot is in `target` (or all of
+them when `target === :all`). Logs a one-line summary.
+"""
+function _eval_pattern_blocks!(m::RessacApp, target)
+    txt = TK.text(m.editor)
+    lines = collect(split(txt, '\n'; keepempty=true))
+    blocks = Dict{Symbol,String}()
+    i = 1
+    head_rx = r"^\s*(#+\s*)?@d(\d+)\b"
+    while i <= length(lines)
+        line = lines[i]
+        mt = match(head_rx, line)
+        if mt === nothing
+            i += 1
+            continue
+        end
+        # Capture the whole block: this line + continuation lines.
+        j = i + 1
+        while j <= length(lines) && startswith(lstrip(lines[j]), "|>")
+            j += 1
+        end
+        if mt.captures[1] === nothing
+            slot = Symbol("d", mt.captures[2])
+            blocks[slot] = join(lines[i:j-1], " ")
+        end
+        i = j
+    end
+    targets = target === :all ?
+        sort!(collect(keys(blocks)); by=s -> parse(Int, String(s)[2:end])) :
+        target
+    ok = 0; err = 0
+    for slot in targets
+        src = get(blocks, slot, nothing)
+        src === nothing && continue
+        try
+            ex = Meta.parse(src)
+            Core.eval(Main, ex)
+            ok += 1
+        catch e
+            err += 1
+            _push_app_log!(m, "[ERROR] eval $slot: $(sprint(showerror, e))")
+        end
+    end
+    suffix = err > 0 ? " ($err failed)" : ""
+    _push_app_log!(m, "[INFO] :e — ran $ok block$(ok == 1 ? "" : "s")$suffix")
+end
+
+"""
     _eval_current_line!(m)
 
-Eval the line at the currently-focused editor's cursor.
+Eval the line at the currently-focused editor's cursor. Continuation
+lines starting with `|>` (immediately above OR below) get joined into
+one logical block so the snippet DSL (`:snf2` → newline + `|> fast(2)`)
+evaluates as a single expression.
 """
 function _eval_current_line!(m::RessacApp)
     ce = _active_editor(m)
