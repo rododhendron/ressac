@@ -1622,192 +1622,268 @@ end
 Parse a Tachikoma-side command (string after `:`) and run the
 corresponding Ressac action. Unknown commands log a warning.
 """
-function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
-    if cmd in ("q", "quit", "q!", "qa", "qa!")
-        m.quit = true
-    elseif (mt = match(r"^synth\s+(\w+)$", cmd)) !== nothing
-        _open_synth_tab!(m, mt.captures[1])
-    elseif cmd in ("synth", "scratch", "sandbox")
-        # No name → spawn a fresh sandbox tab. The starter template
-        # loads with a randomised :sketch_<id> name; rename happens on
-        # `:w <real_name>` (which uses the existing save-as path).
-        _open_sandbox_synth!(m)
-    elseif cmd == "back"
-        _close_synth_pane!(m)
-    elseif cmd == "close"
-        _close_active_synth_tab!(m)
-    elseif cmd == "tabs"
-        _list_synth_tabs!(m)
-    elseif cmd in ("tabnext", "tabn")
-        _cycle_synth_tab!(m; dir=+1)
-    elseif cmd in ("tabprev", "tabp")
-        _cycle_synth_tab!(m; dir=-1)
-    elseif cmd in ("w", "save-synth")
-        # `:w` in synth pane saves the synth; in patterns pane saves
-        # the buffer as the default session (./sessions/_last.txt).
-        if m.focus === :synth && _synth_pane_open(m)
-            _save_current_synth!(m)
-        else
-            _save_session_app!(m, "_last")
-        end
-    elseif (mt = match(r"^w\s+(\S+)$", cmd)) !== nothing
-        # `:w <name>` — in synth pane = save-as. In patterns pane = save
-        # this buffer as ./sessions/<name>.txt.
-        if m.focus === :synth && _synth_pane_open(m)
-            _save_current_synth!(m; new_name = mt.captures[1])
-        else
-            _save_session_app!(m, mt.captures[1])
-        end
-    elseif cmd in ("test", "t")
-        _synth_pane_open(m) && _test_current_synth!(m)
-    elseif cmd == "test-raw"
-        _synth_pane_open(m) && _test_current_synth!(m; raw=true)
-    elseif (mt = match(r"^scope\s+(\w+)$", cmd)) !== nothing
-        _scope_command!(m, Symbol(mt.captures[1]))
-    elseif cmd == "scope"
-        _scope_command!(m, :off)
-    elseif cmd in ("guide", "help", "?")
-        m.modal = :guide; m.modal_scroll = 0
-    elseif cmd == "synth-guide"
-        m.modal = :synth_guide; m.modal_scroll = 0
-    elseif cmd in ("browse", "b")
-        _open_browser!(m)
-    elseif cmd in ("synthlib", "synth-library", "lib")
-        _open_synth_library!(m)
-    elseif cmd in ("dsl", "dsl-guide", "synth-dsl")
-        m.modal = :dsl_guide; m.modal_scroll = 0
-    elseif cmd in ("snip", "snippets", "snippet")
-        _open_snippets!(m)
-    elseif cmd in ("sccode", "sc")
-        _open_sccode!(m)
-    elseif (mt = match(r"^(?:sccode|sc)\s+(\S+)$", cmd)) !== nothing
-        _direct_load_sccode!(m, mt.captures[1])
-    elseif (mt = match(r"^(?:sccode-tag|sctag)\s+(\S+)$", cmd)) !== nothing
-        _open_sccode!(m; tag = mt.captures[1])
-    elseif cmd in ("panic",)
-        _panic!(m)
-    elseif (mt = match(r"^safety\s+(on|off)$", cmd)) !== nothing
-        on = mt.captures[1] == "on"
-        sched = _LIVE_SCHEDULER[]
-        if sched !== nothing
-            send_osc(sched.osc, encode(OSCMessage("/ressac/safety", Any[Int32(on ? 1 : 0)])))
-        end
-        _push_app_log!(m, "[INFO] safety $(on ? "ON" : "OFF") — master limiter + DC block + 10Hz HPF")
-    elseif cmd == "safety"
-        _push_app_log!(m, "[INFO] :safety on|off — toggle master limiter + DC block + 10Hz HPF (default ON)")
-    elseif cmd in ("hush", "stop", "silence")
-        _hush!(m)
-    elseif cmd in ("rec", "record")
-        _toggle_recording!(m)
-    elseif cmd == "tap"
-        _tap_start!(m)
-    elseif (mt = match(r"^tap\s+(\w+)$", cmd)) !== nothing
-        _tap_start!(m; sample = String(mt.captures[1]))
-    elseif (mt = match(r"^tap\s+(\w+)\s+(\d+)$", cmd)) !== nothing
-        _tap_start!(m; sample = String(mt.captures[1]),
-                       steps  = parse(Int, mt.captures[2]))
-    elseif cmd == "piano"
-        _piano_start!(m)
-    elseif (mt = match(r"^piano\s+(\w+)$", cmd)) !== nothing
-        _piano_start!(m; synth = String(mt.captures[1]))
-    elseif cmd in ("piano-rec", "piano-record")
-        _piano_start!(m; record = true)
-    elseif (mt = match(r"^piano-rec\s+(\w+)$", cmd)) !== nothing
-        _piano_start!(m; synth = String(mt.captures[1]), record = true)
-    elseif cmd == "e" || (occursin('e', cmd) && all(c -> c == 'e' || isdigit(c), cmd))
-        # :e evaluates the entire buffer (one slot eval per @dN, last
-        # non-muted definition wins). :e1e5e15 restricts to d1/d5/d15.
-        # Listed-but-missing slots are silently skipped.
+# ─────────────────────────────────────────────────────────────────────
+# Ex-command dispatch tables
+# ─────────────────────────────────────────────────────────────────────
+#
+# Each command is registered in one of three layers, checked in order:
+#
+#   _LITERAL_DISPATCH (Dict, O(1) lookup) — exact-match verbs like
+#       `:q`, `:panic`. Multiple aliases register the same action.
+#   _REGEX_DISPATCH (Vector, linear scan) — verbs with captures, like
+#       `:synth foo`, `:cps 0.5`. Lambdas receive (m, regex_match).
+#   _SPECIAL_DISPATCH (Vector, linear scan, predicate fn) — for the
+#       few cases that don't fit a single regex (currently just `:e`
+#       and the `:e1e5...` family).
+#
+# Adding a command = one line in the right table. The order regex
+# entries are inserted matters only when two patterns could overlap;
+# in practice they don't.
+
+const _LITERAL_DISPATCH = Dict{String, Function}()
+const _REGEX_DISPATCH   = Tuple{Regex,Function}[]
+const _SPECIAL_DISPATCH = Tuple{Function,Function}[]
+
+_register_literal!(action, aliases::String...) =
+    (for a in aliases; _LITERAL_DISPATCH[a] = action; end)
+_register_regex!(rx::Regex, action) =
+    push!(_REGEX_DISPATCH, (rx, action))
+_register_special!(pred, action) =
+    push!(_SPECIAL_DISPATCH, (pred, action))
+
+# ── Lifecycle ────────────────────────────────────────────────────────
+# Bodies wrapped in `m -> fn(m)` instead of bare `fn` so the function
+# names resolve at CALL time, not at registration time — most helpers
+# are defined later in the same file.
+_register_literal!(m -> (m.quit = true),         "q", "quit", "q!", "qa", "qa!")
+_register_literal!(m -> _panic!(m),              "panic")
+_register_literal!(m -> _hush!(m),               "hush", "stop", "silence")
+
+# ── Synth tabs ───────────────────────────────────────────────────────
+_register_literal!(m -> _open_sandbox_synth!(m),     "synth", "scratch", "sandbox")
+_register_literal!(m -> _close_synth_pane!(m),       "back")
+_register_literal!(m -> _close_active_synth_tab!(m), "close")
+_register_literal!(m -> _list_synth_tabs!(m),        "tabs")
+_register_literal!(m -> _cycle_synth_tab!(m; dir=+1),  "tabnext", "tabn")
+_register_literal!(m -> _cycle_synth_tab!(m; dir=-1),  "tabprev", "tabp")
+_register_regex!(r"^synth\s+(\w+)$",
+    (m, mt) -> _open_synth_tab!(m, mt.captures[1]))
+
+# ── Save / sessions — context-sensitive on focus ─────────────────────
+_register_literal!(m -> _save_or_session(m),     "w", "save-synth")
+_register_regex!(r"^w\s+(\S+)$",
+    (m, mt) -> _save_or_session_named(m, mt))
+_register_regex!(r"^save-session\s+(\S+)$",
+    (m, mt) -> _save_session_app!(m, mt.captures[1]))
+_register_regex!(r"^load-session\s+(\S+)$",
+    (m, mt) -> _load_session_app!(m, mt.captures[1]))
+
+# ── Test ────────────────────────────────────────────────────────────
+_register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m),
+                   "test", "t")
+_register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m; raw=true),
+                   "test-raw")
+
+# ── Scope ───────────────────────────────────────────────────────────
+_register_literal!(m -> _scope_command!(m, :off),    "scope")
+_register_regex!(r"^scope\s+(\w+)$",
+    (m, mt) -> _scope_command!(m, Symbol(mt.captures[1])))
+
+# ── Modals (browse / lib / sccode / snip / guides) ───────────────────
+_register_literal!(m -> (m.modal = :guide; m.modal_scroll = 0),
+                   "guide", "help", "?")
+_register_literal!(m -> (m.modal = :synth_guide; m.modal_scroll = 0),
+                   "synth-guide")
+_register_literal!(m -> (m.modal = :dsl_guide; m.modal_scroll = 0),
+                   "dsl", "dsl-guide", "synth-dsl")
+_register_literal!(m -> _open_browser!(m),           "browse", "b")
+_register_literal!(m -> _open_synth_library!(m),     "synthlib", "synth-library", "lib")
+_register_literal!(m -> _open_snippets!(m),          "snip", "snippets", "snippet")
+_register_literal!(m -> _open_sccode!(m),            "sccode", "sc")
+_register_regex!(r"^(?:sccode|sc)\s+(\S+)$",
+    (m, mt) -> _direct_load_sccode!(m, mt.captures[1]))
+_register_regex!(r"^(?:sccode-tag|sctag)\s+(\S+)$",
+    (m, mt) -> _open_sccode!(m; tag = mt.captures[1]))
+
+# ── Recording / export ──────────────────────────────────────────────
+_register_literal!(m -> _toggle_recording!(m),       "rec", "record")
+_register_literal!(m -> _export_current_synth!(m),   "export", "export-synth")
+_register_regex!(r"^export(?:-synth)?\s+(\S+)$",
+    (m, mt) -> _export_current_synth!(m; duration = parse(Float64, mt.captures[1])))
+_register_regex!(r"^rec(?:ord)?\s+start\s+(\S+)$",
+    (m, mt) -> _start_recording!(m, mt.captures[1]))
+_register_regex!(r"^rec(?:ord)?\s+start$",
+    (m, _) -> _start_recording!(m))
+_register_regex!(r"^rec(?:ord)?\s+stop$",
+    (m, _) -> _stop_recording!(m))
+
+# ── Tap / piano ─────────────────────────────────────────────────────
+_register_literal!(m -> _tap_start!(m),              "tap")
+_register_regex!(r"^tap\s+(\w+)$",
+    (m, mt) -> _tap_start!(m; sample = String(mt.captures[1])))
+_register_regex!(r"^tap\s+(\w+)\s+(\d+)$",
+    (m, mt) -> _tap_start!(m;
+        sample = String(mt.captures[1]),
+        steps  = parse(Int, mt.captures[2])))
+_register_literal!(m -> _piano_start!(m),            "piano")
+_register_literal!(m -> _piano_start!(m; record = true),
+                   "piano-rec", "piano-record")
+_register_regex!(r"^piano\s+(\w+)$",
+    (m, mt) -> _piano_start!(m; synth = String(mt.captures[1])))
+_register_regex!(r"^piano-rec\s+(\w+)$",
+    (m, mt) -> _piano_start!(m; synth = String(mt.captures[1]), record = true))
+
+# ── Theme / config / safety ─────────────────────────────────────────
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] themes: " * join(_available_themes(), ", ")),
+    "theme")
+_register_regex!(r"^theme\s+(\w+)$",
+    (m, mt) -> _theme_switch(m, mt))
+_register_literal!(m -> _reload_config_action(m),    "reload-config", "reload-cfg")
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] :safety on|off — toggle master limiter + DC block + 10Hz HPF (default ON)"),
+    "safety")
+_register_regex!(r"^safety\s+(on|off)$",
+    (m, mt) -> _safety_toggle(m, mt))
+
+# ── Misc / utilities ────────────────────────────────────────────────
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] :doc <name> — try gain/release/cutoff/cps/gate/…"),
+    "doc")
+_register_regex!(r"^doc\s+(\w+)$",
+    (m, mt) -> _doc_command!(m, mt.captures[1]))
+_register_literal!(m -> _keydebug_toggle(m),         "keydebug")
+_register_literal!(m -> (m.paused = true;
+        _push_app_log!(m, "[INFO] paused — shift-drag to select & copy, any key resumes")),
+    "pause", "freeze")
+_register_literal!(m -> _copy_logs_to_clipboard!(m), "copylogs", "yanklogs")
+
+# ── Starter / scale / cps ───────────────────────────────────────────
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] :starter <genre> — " * join(sort!(collect(keys(_STARTER_PACKS))), ", ")),
+    "starter")
+_register_regex!(r"^starter\s+(\w+)$",
+    (m, mt) -> _starter_command!(m, mt.captures[1]))
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] current scale: $(_CURRENT_SCALE[])"),
+    "scale")
+_register_regex!(r"^scale\s+(\w+)$",
+    (m, mt) -> _scale_set(m, mt))
+_register_regex!(r"^cps\s+(\S+)$",
+    (m, mt) -> _cps_set(m, mt))
+
+# ── Mute / solo ─────────────────────────────────────────────────────
+_register_regex!(r"^mute\s+(d\d+)$",
+    (m, mt) -> _mute_pattern_slot!(m, Symbol(mt.captures[1])))
+_register_regex!(r"^unmute\s+(d\d+)$",
+    (m, mt) -> _unmute_pattern_slot!(m, Symbol(mt.captures[1])))
+_register_literal!(m -> _unmute_all_patterns!(m),    "unmute", "unsolo")
+_register_regex!(r"^solo\s+(d\d+)$",
+    (m, mt) -> _solo_pattern_slot!(m, Symbol(mt.captures[1])))
+
+# ── Pattern shortcut DSL (:sg0.9 etc) — matched by _SHORTCUT_RX ──────
+_register_regex!(_SHORTCUT_RX,
+    (m, mt) -> _apply_pattern_shortcut!(m,
+        mt.captures[1] == "n",
+        String(mt.captures[2]),
+        strip(String(mt.captures[3])),
+        mt.captures[4] == "N"))
+
+# ── Eval combinators (:e / :e1e5e6) ──────────────────────────────────
+_register_special!(
+    cmd -> cmd == "e" || (occursin('e', cmd) &&
+                          all(c -> c == 'e' || isdigit(c), cmd)),
+    (m, cmd) -> begin
         if cmd == "e"
             _eval_pattern_blocks!(m, :all)
         else
             ids = filter(!isempty, split(cmd, 'e'; keepempty=false))
-            _eval_pattern_blocks!(m,
-                Symbol[Symbol("d", n) for n in ids])
+            _eval_pattern_blocks!(m, Symbol[Symbol("d", n) for n in ids])
         end
-    elseif (mt = match(_SHORTCUT_RX, cmd)) !== nothing
-        # Compact pattern shortcut DSL — :sg0.9 → append " |> gain(0.9)",
-        # :sng0.9 → newline first, :sg0.9N → newline after.
-        _apply_pattern_shortcut!(m,
-            mt.captures[1] == "n",
-            String(mt.captures[2]),
-            strip(String(mt.captures[3])),
-            mt.captures[4] == "N")
-    elseif (mt = match(r"^export(?:-synth)?\s+(\S+)$", cmd)) !== nothing
-        _export_current_synth!(m; duration = parse(Float64, mt.captures[1]))
-    elseif cmd in ("export", "export-synth")
-        _export_current_synth!(m)
-    elseif (mt = match(r"^rec(?:ord)?\s+start\s+(\S+)$", cmd)) !== nothing
-        _start_recording!(m, mt.captures[1])
-    elseif (mt = match(r"^rec(?:ord)?\s+start$", cmd)) !== nothing
-        _start_recording!(m)
-    elseif (mt = match(r"^rec(?:ord)?\s+stop$", cmd)) !== nothing
-        _stop_recording!(m)
-    elseif (mt = match(r"^theme\s+(\w+)$", cmd)) !== nothing
-        name = Symbol(mt.captures[1])
-        if _apply_theme!(name)
-            _push_app_log!(m, "[INFO] theme → $name")
-        else
-            _push_app_log!(m, "[ERROR] theme '$name' not found — try: " *
-                           join(_available_themes()[1:min(end,8)], ", ") * ", …")
-        end
-    elseif cmd == "theme"
-        _push_app_log!(m, "[INFO] themes: " * join(_available_themes(), ", "))
-    elseif cmd in ("reload-config", "reload-cfg")
-        cfg = _load_ressac_config!()
-        _apply_theme!(cfg.theme)
-        _push_app_log!(m, "[INFO] config reloaded — theme=$(cfg.theme), t_init=$(cfg.t_hold_initial_ms)ms accel=$(cfg.t_hold_accel)")
-    elseif (mt = match(r"^doc\s+(\w+)$", cmd)) !== nothing
-        _doc_command!(m, mt.captures[1])
-    elseif cmd == "doc"
-        _push_app_log!(m, "[INFO] :doc <name> — try gain/release/cutoff/cps/gate/…")
-    elseif cmd == "keydebug"
-        m.keydebug = !m.keydebug
-        _push_app_log!(m, "[INFO] keydebug $(m.keydebug ? "ON" : "OFF") — every keypress will be logged")
-    elseif cmd in ("pause", "freeze")
-        m.paused = true
-        _push_app_log!(m, "[INFO] paused — shift-drag to select & copy, any key resumes")
-    elseif cmd in ("copylogs", "yanklogs")
-        _copy_logs_to_clipboard!(m)
-    elseif (mt = match(r"^starter\s+(\w+)$", cmd)) !== nothing
-        _starter_command!(m, mt.captures[1])
-    elseif cmd == "starter"
-        _push_app_log!(m, "[INFO] :starter <genre> — " *
-                         join(sort!(collect(keys(_STARTER_PACKS))), ", "))
-    elseif (mt = match(r"^scale\s+(\w+)$", cmd)) !== nothing
-        name = Symbol(mt.captures[1])
-        if haskey(_SCALES, name)
-            _CURRENT_SCALE[] = name
-            _push_app_log!(m, "[INFO] scale set to :$name (use degree(x))")
-        else
-            _push_app_log!(m, "[WARN] :scale — unknown '$name'")
-        end
-    elseif cmd == "scale"
-        _push_app_log!(m, "[INFO] current scale: $(_CURRENT_SCALE[])")
-    elseif (mt = match(r"^cps\s+(\S+)$", cmd)) !== nothing
-        try
-            set_cps!(m.scheduler, parse(Float64, mt.captures[1]))
-            _push_app_log!(m, "[INFO] cps = $(mt.captures[1])")
-        catch err
-            _push_app_log!(m, "[ERROR] cps: $(sprint(showerror, err))")
-        end
-    elseif (mt = match(r"^mute\s+(d\d+)$", cmd)) !== nothing
-        _mute_pattern_slot!(m, Symbol(mt.captures[1]))
-    elseif (mt = match(r"^unmute\s+(d\d+)$", cmd)) !== nothing
-        _unmute_pattern_slot!(m, Symbol(mt.captures[1]))
-    elseif cmd == "unmute"
-        _unmute_all_patterns!(m)
-    elseif (mt = match(r"^solo\s+(d\d+)$", cmd)) !== nothing
-        _solo_pattern_slot!(m, Symbol(mt.captures[1]))
-    elseif cmd == "unsolo"
-        _unmute_all_patterns!(m)
-    elseif (mt = match(r"^save-session\s+(\S+)$", cmd)) !== nothing
-        _save_session_app!(m, mt.captures[1])
-    elseif (mt = match(r"^load-session\s+(\S+)$", cmd)) !== nothing
-        _load_session_app!(m, mt.captures[1])
+    end)
+
+# Small named helpers — kept out of the inline lambdas above so they
+# stay readable + greppable. Each takes (m, mt::RegexMatch).
+function _save_or_session(m::RessacApp)
+    if m.focus === :synth && _synth_pane_open(m)
+        _save_current_synth!(m)
     else
-        _push_app_log!(m, "[WARN] unknown command: :$cmd")
+        _save_session_app!(m, "_last")
     end
+end
+function _save_or_session_named(m::RessacApp, mt::RegexMatch)
+    if m.focus === :synth && _synth_pane_open(m)
+        _save_current_synth!(m; new_name = mt.captures[1])
+    else
+        _save_session_app!(m, mt.captures[1])
+    end
+end
+function _theme_switch(m::RessacApp, mt::RegexMatch)
+    name = Symbol(mt.captures[1])
+    if _apply_theme!(name)
+        _push_app_log!(m, "[INFO] theme → $name")
+    else
+        _push_app_log!(m, "[ERROR] theme '$name' not found — try: " *
+                       join(_available_themes()[1:min(end,8)], ", ") * ", …")
+    end
+end
+function _reload_config_action(m::RessacApp)
+    cfg = _load_ressac_config!()
+    _apply_theme!(cfg.theme)
+    _push_app_log!(m, "[INFO] config reloaded — theme=$(cfg.theme), t_init=$(cfg.t_hold_initial_ms)ms accel=$(cfg.t_hold_accel)")
+end
+function _safety_toggle(m::RessacApp, mt::RegexMatch)
+    on = mt.captures[1] == "on"
+    sched = _LIVE_SCHEDULER[]
+    if sched !== nothing
+        send_osc(sched.osc, encode(OSCMessage("/ressac/safety", Any[Int32(on ? 1 : 0)])))
+    end
+    _push_app_log!(m, "[INFO] safety $(on ? "ON" : "OFF") — master limiter + DC block + 10Hz HPF")
+end
+function _keydebug_toggle(m::RessacApp)
+    m.keydebug = !m.keydebug
+    _push_app_log!(m, "[INFO] keydebug $(m.keydebug ? "ON" : "OFF") — every keypress will be logged")
+end
+function _scale_set(m::RessacApp, mt::RegexMatch)
+    name = Symbol(mt.captures[1])
+    if haskey(_SCALES, name)
+        _CURRENT_SCALE[] = name
+        _push_app_log!(m, "[INFO] scale set to :$name (use degree(x))")
+    else
+        _push_app_log!(m, "[WARN] :scale — unknown '$name'")
+    end
+end
+function _cps_set(m::RessacApp, mt::RegexMatch)
+    try
+        set_cps!(m.scheduler, parse(Float64, mt.captures[1]))
+        _push_app_log!(m, "[INFO] cps = $(mt.captures[1])")
+    catch err
+        _push_app_log!(m, "[ERROR] cps: $(sprint(showerror, err))")
+    end
+end
+
+"""
+    _handle_ex_command!(m, cmd)
+
+Dispatch an ex-command (without the leading `:`). Layered: literal
+lookup first, then regex scan, then the special-predicate scan, then
+unknown fallback.
+"""
+function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
+    s = String(cmd)
+    # 1. Literal exact-match (O(1))
+    h = get(_LITERAL_DISPATCH, s, nothing)
+    h !== nothing && (h(m); return)
+    # 2. Regex patterns with captures
+    for (rx, fn) in _REGEX_DISPATCH
+        mt = match(rx, s)
+        mt !== nothing && (fn(m, mt); return)
+    end
+    # 3. Predicate-based specials (irregular grammars)
+    for (pred, fn) in _SPECIAL_DISPATCH
+        pred(s) && (fn(m, s); return)
+    end
+    _push_app_log!(m, "[WARN] unknown command: :$s")
 end
 
 """
