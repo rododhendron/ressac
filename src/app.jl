@@ -675,6 +675,191 @@ function _reset_completion!(m::RessacApp)
 end
 
 # ---------------------------------------------------------------------
+# Pattern shortcut DSL — `:s<verb><args>[N]` and `:sn<verb><args>[N]`
+# ---------------------------------------------------------------------
+#
+# Compact ex-commands to append common combinators to the current line
+# without leaving normal mode for long. Each call expands to
+# " |> verb(args)" appended to the cursor's line. A leading `n`
+# (`:sn…`) inserts a newline BEFORE the snippet so the appended call
+# lands on its own line under the pattern; a trailing `N` (`:s…N`)
+# adds a newline AFTER, leaving the cursor on a fresh line for the
+# next thought.
+
+const _SHORTCUT_VERBS = Dict{String,String}(
+    "g"  => "gain",      "l" => "lpf",       "h"  => "hpf",
+    "p"  => "pan",       "f" => "fast",      "w"  => "slow",
+    "r"  => "room",      "d" => "delay",     "s"  => "shape",
+    "t"  => "gate",      "o" => "octave",    "c"  => "cutoff",
+    "q"  => "resonance", "rv" => "rev",      "sp" => "speed",
+)
+
+# Sorted so longer verbs match first (gt/rv/sp before single chars).
+const _SHORTCUT_RX = let
+    verbs = sort(collect(keys(_SHORTCUT_VERBS)); by=length, rev=true)
+    Regex("^s(n?)(" * join(verbs, "|") * ")([0-9.\\s\\-]*)(N?)\$")
+end
+
+"""
+    _apply_pattern_shortcut!(m, nl_before, verb, args, nl_after)
+
+Translate a shortcut into ` |> <fn>(<args>)` and splice it into the
+buffer at the cursor's row. The `t` verb interprets its args as a
+bitstring (e.g. "010110") and expands to `gate(p"0 1 0 1 1 0")`.
+"""
+function _apply_pattern_shortcut!(m::RessacApp, nl_before::Bool,
+                                  verb::String, args::AbstractString,
+                                  nl_after::Bool)
+    ed = _active_editor(m)
+    full_verb = _SHORTCUT_VERBS[verb]
+    snippet = if verb == "t"
+        bits = filter(c -> c == '0' || c == '1', args)
+        spaced = join(string.(collect(bits)), " ")
+        isempty(spaced) ?
+            " |> gate(p\"\")" :
+            " |> gate(p\"$(spaced)\")"
+    elseif isempty(args)
+        " |> $(full_verb)()"
+    else
+        " |> $(full_verb)($(args))"
+    end
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty=true))
+    row = clamp(ed.cursor_row, 1, length(lines))
+    line = String(lines[row])
+    if nl_before
+        # Snippet lands on a NEW line under the current one. Same
+        # indentation as the source line so it visually chains.
+        indent = " " ^ (length(line) - length(lstrip(line)))
+        insert!(lines, row + 1, indent * lstrip(snippet))
+        ed.cursor_row = row + 1
+        ed.cursor_col = length(lines[row + 1])
+    else
+        lines[row] = line * snippet
+        ed.cursor_col = length(lines[row])
+    end
+    if nl_after
+        insert!(lines, ed.cursor_row + 1, "")
+        ed.cursor_row += 1
+        ed.cursor_col = 0
+    end
+    TK.set_text!(ed, join(lines, '\n'))
+    _push_app_log!(m, "[INFO] shortcut → $(strip(snippet))")
+end
+
+# ---------------------------------------------------------------------
+# Playhead — highlights the active token in active patterns
+# ---------------------------------------------------------------------
+
+# Match @dN at the start of a line, followed by a p"…" block somewhere
+# after it. We capture the slot number and the byte offsets of the p"
+# string contents (between the quotes) so we know which character to
+# highlight when the phase lands inside.
+const _PLAYHEAD_LINE_RX = r"@d(\d+).*?\bp\"([^\"]*)\""
+
+"""
+    _render_playhead!(m, rect, buf)
+
+For every visible line in the patterns editor that maps to a slot
+currently shipping events, overlay a highlight on the mininotation
+token that's playing right now. Equal-time subdivision at top
+level — `p"bd hh sn hh"` splits into 4 equal slots, the active
+one gets the accent background.
+
+Bracketed / Euclidean / `<…>` constructs are treated as one
+top-level token; precise highlighting inside them is a follow-up.
+"""
+function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
+    sched = m.scheduler
+    sched.t_start > 0 || return
+    isempty(sched.patterns) && return
+    phase = ((time() - sched.t_start) * sched.cps) % 1.0
+    phase = clamp(phase, 0.0, 0.9999)
+    has_block = m.editor.block !== nothing
+    inset_top = has_block ? 1 : 0
+    inset_left = has_block ? 1 : 0
+    gw = m.editor.show_line_numbers ? ndigits(max(length(m.editor.lines), 1)) + 1 : 0
+    for (i, line_chars) in enumerate(m.editor.lines)
+        # Map buffer row → screen row through scroll_offset.
+        screen_row = rect.y + inset_top + (i - 1 - m.editor.scroll_offset)
+        screen_row < rect.y + inset_top && continue
+        screen_row >= rect.y + rect.height && break
+        line = String(line_chars)
+        mt = match(_PLAYHEAD_LINE_RX, line)
+        mt === nothing && continue
+        slot = Symbol("d", mt.captures[1])
+        haskey(sched.patterns, slot) || continue
+        body = String(mt.captures[2])
+        isempty(body) && continue
+        # Find the body's column span inside the line. m.offsets gives
+        # the byte offset of the start of capture #2; convert to a
+        # display column (we assume ASCII for mininotation — bd / hh
+        # etc — which is fine in practice).
+        body_offset = mt.offsets[2]
+        body_start_col = body_offset - 1   # 0-based column of first char inside the quotes
+        body_len = length(body)
+        # Top-level token split by whitespace, ignoring whitespace
+        # inside [...] / <...> / (...). Simple state machine.
+        tokens = _split_minino_top(body)
+        isempty(tokens) && continue
+        n = length(tokens)
+        active = clamp(floor(Int, phase * n) + 1, 1, n)
+        tok_start_in_body, tok_stop_in_body = tokens[active]
+        # Convert body-relative positions to screen x.
+        screen_x_start = rect.x + inset_left + gw + body_start_col + tok_start_in_body - ed_h_scroll(m.editor)
+        screen_x_stop  = rect.x + inset_left + gw + body_start_col + tok_stop_in_body  - ed_h_scroll(m.editor)
+        # Clip to pane rect.
+        for body_col in tok_start_in_body:tok_stop_in_body
+            screen_x = rect.x + inset_left + gw + body_start_col +
+                       body_col - ed_h_scroll(m.editor)
+            screen_x < rect.x + inset_left + gw && continue
+            screen_x >= rect.x + rect.width && break
+            # Pull the source char from the buffer line so the underlay
+            # text shows through with the new style.
+            buf_col = body_start_col + body_col + 1   # 1-based char index in line
+            ch = buf_col <= length(line_chars) ? line_chars[buf_col] : ' '
+            TK.set_char!(buf, screen_x, screen_row, ch,
+                         TK.tstyle(:accent, bold=true))
+        end
+    end
+end
+
+ed_h_scroll(ed::TK.CodeEditor) = ed.h_scroll
+
+"""
+    _split_minino_top(body) -> Vector{Tuple{Int,Int}}
+
+Split `body` (the inside of a `p"…"` string) into top-level
+whitespace-separated tokens. Returns a vector of (start, stop)
+columns relative to `body` (0-based, inclusive). Tokens inside
+[…] / <…> / (…) are treated as a single unit.
+"""
+function _split_minino_top(body::AbstractString)
+    out = Tuple{Int,Int}[]
+    n = length(body)
+    depth = 0
+    tok_start = -1
+    for (i, c) in enumerate(body)
+        col = i - 1
+        if c == '[' || c == '<' || c == '('
+            depth += 1
+            tok_start == -1 && (tok_start = col)
+        elseif c == ']' || c == '>' || c == ')'
+            depth = max(0, depth - 1)
+        elseif isspace(c) && depth == 0
+            if tok_start >= 0
+                push!(out, (tok_start, col - 1))
+                tok_start = -1
+            end
+        else
+            tok_start == -1 && (tok_start = col)
+        end
+    end
+    tok_start >= 0 && push!(out, (tok_start, n - 1))
+    return out
+end
+
+# ---------------------------------------------------------------------
 # Vim word motions + operator combos (cw / dw / yw / c$ / d0 / …)
 # ---------------------------------------------------------------------
 
@@ -1209,6 +1394,14 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         _hush!(m)
     elseif cmd in ("rec", "record")
         _toggle_recording!(m)
+    elseif (mt = match(_SHORTCUT_RX, cmd)) !== nothing
+        # Compact pattern shortcut DSL — :sg0.9 → append " |> gain(0.9)",
+        # :sng0.9 → newline first, :sg0.9N → newline after.
+        _apply_pattern_shortcut!(m,
+            mt.captures[1] == "n",
+            String(mt.captures[2]),
+            strip(String(mt.captures[3])),
+            mt.captures[4] == "N")
     elseif (mt = match(r"^export(?:-synth)?\s+(\S+)$", cmd)) !== nothing
         _export_current_synth!(m; duration = parse(Float64, mt.captures[1]))
     elseif cmd in ("export", "export-synth")
@@ -2227,6 +2420,13 @@ function TK.view(m::RessacApp, f::TK.Frame)
     m.layout_scope = scope_area
     if scope_area !== nothing
         _render_app_scope(m, scope_area, buf)
+    end
+
+    # Playhead — highlights the active token in every @dN p"..." line
+    # that's currently shipping events. Overlays AFTER the editor
+    # rendered so we paint on top of the existing cells.
+    if m.layout_patterns !== nothing
+        _render_playhead!(m, m.layout_patterns, buf)
     end
 
     # Live doc row — word under cursor → doc string
