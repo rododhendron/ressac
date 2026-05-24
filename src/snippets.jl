@@ -93,14 +93,14 @@ const _SNIPPETS = _Snippet[
     # ── Patterns: full track skeletons ──────────────────────────────
     _Snippet("track_dnb", :patterns, "track",
         "Drum & bass skeleton — fast break + sub on 1.", raw"""
-        :cps 0.46
+        cps!(0.46)
         @d1 p"bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~"
         @d2 p"hh*16" |> gain(0.4)
         @d3 :subdrop |> n(p"0 ~ ~ ~ 0 ~ 5 ~") |> gain(0.7)
         """),
     _Snippet("track_house", :patterns, "track",
         "Four-on-the-floor house template.", raw"""
-        :cps 0.5
+        cps!(0.5)
         @d1 p"bd bd bd bd"
         @d2 p"~ cp ~ cp"
         @d3 p"hh*16" |> gain(0.35)
@@ -108,7 +108,7 @@ const _SNIPPETS = _Snippet[
         """),
     _Snippet("track_dark", :patterns, "track",
         "Darksynth template — slow tempo, gated bass, pad.", raw"""
-        :cps 0.42
+        cps!(0.42)
         @d1 :kickbrut |> n(p"0 ~ ~ 0 ~ ~ ~ 0") |> gain(0.8)
         @d2 :snareclap |> n(p"~ ~ 0 ~ ~ ~ 0 ~") |> gain(0.7)
         @d3 :gatedbass |> n(p"0 ~ 0 ~ 5 ~ 7 ~") |> gain(0.6)
@@ -118,7 +118,7 @@ const _SNIPPETS = _Snippet[
     # ── Patterns: genre-specific rhythm templates ───────────────────
     _Snippet("jersey", :patterns, "genre",
         "Jersey club — bed-creak bounce, 5-on-the-floor kick, triplet hats.", raw"""
-        :cps 0.58
+        cps!(0.58)
         @d1 p"bd ~ ~ bd bd ~ ~ bd"
         @d2 p"~ ~ cp ~ ~ ~ cp ~"
         @d3 p"[hh hh hh]*4" |> gain(0.35)
@@ -126,7 +126,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("footwork", :patterns, "genre",
         "Footwork — 160 BPM, fast hihats, sparse kicks, syncopated claps.", raw"""
-        :cps 0.66
+        cps!(0.66)
         @d1 p"bd ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~"
         @d2 p"~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
         @d3 p"hh*16" |> gain(0.4)
@@ -135,7 +135,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("garage", :patterns, "genre",
         "UK garage / 2-step — broken kick, off-beat hats, swung snare.", raw"""
-        :cps 0.55
+        cps!(0.55)
         @d1 p"bd ~ ~ bd ~ ~ bd ~"
         @d2 p"~ ~ cp ~ ~ ~ ~ cp"
         @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
@@ -143,7 +143,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("trap", :patterns, "genre",
         "Trap — rolling hi-hats with triplet bursts + 808 kick.", raw"""
-        :cps 0.45
+        cps!(0.45)
         @d1 p"bd ~ ~ ~ ~ ~ bd ~"
         @d2 p"~ ~ cp ~ ~ ~ cp ~"
         @d3 p"hh hh [hh hh hh] hh hh [hh hh hh] hh hh" |> gain(0.4)
@@ -152,7 +152,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("dnb", :patterns, "genre",
         "Drum & bass — amen-inspired chop + sub on the 1.", raw"""
-        :cps 0.46
+        cps!(0.46)
         @d1 p"bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~"
         @d2 p"hh*16" |> gain(0.4)
         @d3 :subdrop |> n(p"0 ~ ~ ~ 0 ~ 5 ~") |> gain(0.7)
@@ -160,7 +160,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("techno", :patterns, "genre",
         "Minimal techno — 4-on-the-floor kick, clap on the 2 and 4, percs.", raw"""
-        :cps 0.5
+        cps!(0.5)
         @d1 p"bd bd bd bd"
         @d2 p"~ cp ~ cp"
         @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.35)
@@ -169,7 +169,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("house", :patterns, "genre",
         "Deep house — 4-on-the-floor, off-beat hats, syncopated snare.", raw"""
-        :cps 0.5
+        cps!(0.5)
         @d1 p"bd bd bd bd"
         @d2 p"~ cp ~ cp"
         @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
@@ -178,7 +178,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("breakcore", :patterns, "genre",
         "Breakcore — chopped fast break, ghost notes, kick chaos.", raw"""
-        :cps 0.66
+        cps!(0.66)
         @d1 p"bd*2 ~ [bd*4] ~ bd ~ [bd*3] ~"
         @d2 p"~ ~ sn ~ ~ sn ~ [sn*2]"
         @d3 p"hh*32" |> gain(0.3)
@@ -186,7 +186,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("drill", :patterns, "genre",
         "UK drill — sliding 808, triplet hat bursts, sparse snare.", raw"""
-        :cps 0.48
+        cps!(0.48)
         @d1 p"bd ~ ~ bd ~ ~ bd ~"
         @d2 p"~ ~ cp ~ ~ ~ cp ~"
         @d3 p"hh hh [hh*3] hh [hh*3] hh hh hh" |> gain(0.4)
@@ -195,14 +195,14 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("dembow", :patterns, "genre",
         "Reggaeton dembow — classic boom-ch-boom-chick pattern.", raw"""
-        :cps 0.5
+        cps!(0.5)
         @d1 p"bd ~ ~ cp bd cp ~ cp"
         @d2 p"hh*8" |> gain(0.4)
         """),
 
     _Snippet("boombap", :patterns, "genre",
         "Boom-bap hip-hop — heavy kick on 1+3, snare on 2+4, swung hats.", raw"""
-        :cps 0.42
+        cps!(0.42)
         @d1 p"bd ~ ~ ~ bd ~ bd ~"
         @d2 p"~ ~ sn ~ ~ ~ sn ~"
         @d3 p"hh ~ hh ~ hh ~ hh ~" |> gain(0.4)
@@ -210,7 +210,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("lofi_hiphop", :patterns, "genre",
         "Lofi hip-hop — slower boom-bap with mellow ghost notes.", raw"""
-        :cps 0.38
+        cps!(0.38)
         @d1 :lofikick |> n(p"0 ~ ~ ~ 0 ~ 0 ~") |> gain(0.7)
         @d2 p"~ ~ sn ~ ~ ~ sn ~"
         @d3 :lofihat |> n(p"0*16") |> gain(0.3)
@@ -219,7 +219,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("phonk", :patterns, "genre",
         "Phonk — cowbell, triplet hi-hats, deep 808 slides.", raw"""
-        :cps 0.46
+        cps!(0.46)
         @d1 p"bd ~ ~ bd ~ bd ~ ~"
         @d2 p"~ cp ~ ~ ~ cp ~ ~"
         @d3 p"[hh hh hh]*4" |> gain(0.35)
@@ -229,7 +229,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("witch_house", :patterns, "genre",
         "Witch house — slow, sparse, eerie pads + slowed kicks.", raw"""
-        :cps 0.28
+        cps!(0.28)
         @d1 p"bd ~ ~ ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~"
         @d2 p"~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
         @d3 :ghostpad |> n(p"<0 -3 -5 -7>") |> gain(0.4)
@@ -237,7 +237,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("bossanova", :patterns, "genre",
         "Bossa nova clave — partido alto-ish pattern.", raw"""
-        :cps 0.5
+        cps!(0.5)
         @d1 p"bd ~ ~ bd ~ ~ bd ~"
         @d2 p"~ ~ cp ~ cp ~ ~ cp"
         @d3 p"hh hh ~ hh hh hh ~ hh" |> gain(0.35)
