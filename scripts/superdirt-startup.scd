@@ -55,7 +55,11 @@ s.waitForBoot({
     // Tree of "intercept master out, run it through:
     //   1. LeakDC.ar  — strip DC offset (a stuck-low oscillator can
     //      destroy speakers and isn't audible anyway)
-    //   2. HPF.ar(20) — same idea, kills sub-rumble below human range
+    //   2. HPF.ar(10) — kills infrasonic rumble. 10 Hz is well below
+    //      human hearing but leaves room for deep sub kicks / drones
+    //      that have content in the 15-25 Hz range. The Limiter
+    //      already caps peak amplitude, so DC + true infrasonic is
+    //      enough protection here.
     //   3. Limiter.ar(0.95, 0.01) — true-peak safe ceiling (~-0.45dBFS)
     //      with a 10ms lookahead window. Stops runaway feedback or
     //      stacked oscillators from blasting eardrums.
@@ -71,14 +75,14 @@ s.waitForBoot({
             var sig, fade;
             sig = In.ar(in, 2);
             sig = LeakDC.ar(sig);
-            sig = HPF.ar(sig, 20);
+            sig = HPF.ar(sig, 10);
             sig = Limiter.ar(sig, 0.95, 0.01);
             fade = EnvGen.kr(Env([0, 1], [0.08]));
             ReplaceOut.ar(out, sig * fade);
         }).add;
         s.sync;
         ~ressacSafetyChainSynth = Synth.tail(~ressacSafetyGroup, \ressacSafetyChain);
-        "[ressac] safety chain engaged — Limiter @ -0.45dBFS · DC blocker · 20Hz HPF · 80ms fade-in".postln;
+        "[ressac] safety chain engaged — Limiter @ -0.45dBFS · DC blocker · 10Hz HPF · 80ms fade-in".postln;
     };
 
     // Toggle from Ressac via :safety on / off.

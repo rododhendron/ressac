@@ -1631,9 +1631,9 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         if sched !== nothing
             send_osc(sched.osc, encode(OSCMessage("/ressac/safety", Any[Int32(on ? 1 : 0)])))
         end
-        _push_app_log!(m, "[INFO] safety $(on ? "ON" : "OFF") — master limiter + DC block + 20Hz HPF")
+        _push_app_log!(m, "[INFO] safety $(on ? "ON" : "OFF") — master limiter + DC block + 10Hz HPF")
     elseif cmd == "safety"
-        _push_app_log!(m, "[INFO] :safety on|off — toggle master limiter + DC block + 20Hz HPF (default ON)")
+        _push_app_log!(m, "[INFO] :safety on|off — toggle master limiter + DC block + 10Hz HPF (default ON)")
     elseif cmd in ("hush", "stop", "silence")
         _hush!(m)
     elseif cmd in ("rec", "record")

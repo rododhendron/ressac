@@ -797,7 +797,7 @@ const _GUIDE_LINES = String[
     "  :theme <name>        — switch theme",
     "  :reload-config       — reload ./ressac.toml",
     "  :hush / :panic       — stop everything (soft / nuclear)",
-    "  :safety on|off       — master limiter + DC block + 20Hz HPF",
+    "  :safety on|off       — master limiter + DC block + 10Hz HPF",
     "  :dsl                 — synth DSL guide & cookbook",
     "  :pause               — freeze render to copy text",
     "  :keydebug            — log every keypress",
