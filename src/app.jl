@@ -1080,8 +1080,10 @@ function _accept_ghost!(m::RessacApp)
     ed.cursor_row == m.ghost_row || (m.ghost = ""; return false)
     line = String(ed.lines[m.ghost_row])
     col = m.ghost_col
-    new_line = (col > 0 ? line[1:col] : "") * m.ghost *
-               (col >= lastindex(line) ? "" : line[col+1:end])
+    # Char-indexed split (UTF-8 safe). line[1:col] would byte-slice
+    # and crash on multi-byte chars like ¹ ° ▓ when col is a char count.
+    before, after = _char_split(line, col)
+    new_line = before * m.ghost * after
     TK.set_text!(ed, _set_one_line(ed, m.ghost_row, new_line))
     ed.cursor_row = m.ghost_row
     ed.cursor_col = col + length(m.ghost)
@@ -1433,8 +1435,9 @@ body — callers can re-find their token afterwards if needed.
 """
 function _pat_replace_body!(m::RessacApp, ed::TK.CodeEditor, info, new_body::AbstractString)
     line = String(ed.lines[info.row])
-    before = line[1:info.body_start_col]
-    after  = line[info.body_start_col + length(info.body) + 1 : end]
+    # body_start_col / body length are char counts, never byte indices.
+    before, rest    = _char_split(line, info.body_start_col)
+    _, after        = _char_split(rest, length(info.body))
     new_line = before * String(new_body) * after
     txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty = true))
@@ -1993,6 +1996,28 @@ function _set_one_line(ed::TK.CodeEditor, row::Int, new_line::AbstractString)
     1 <= row <= length(lines) || return txt
     lines[row] = String(new_line)
     return join(lines, '\n')
+end
+
+"""
+    _char_split(line, col) -> (prefix, suffix)
+
+Split `line` at character position `col` (0-based, char count not
+byte count). Safe with multi-byte UTF-8 — never indexes by byte.
+The cursor model used by Tachikoma's CodeEditor is char-based, so
+any string mutation derived from cursor positions must split here
+rather than via `line[1:col]`.
+"""
+function _char_split(line::AbstractString, col::Int)
+    col <= 0 && return ("", String(line))
+    pre = IOBuffer(); n = 0; byte_idx = firstindex(line)
+    for c in line
+        n >= col && break
+        print(pre, c); n += 1
+        byte_idx = nextind(line, byte_idx)
+    end
+    suf = byte_idx > ncodeunits(line) ? "" :
+          String(SubString(line, byte_idx))
+    return (String(take!(pre)), suf)
 end
 
 # Ex-command verbs (`:foo`). Kept here, not derived from the dispatch
