@@ -1106,13 +1106,18 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     phase = clamp(phase, 0.0, 0.9999)
     has_block = m.editor.block !== nothing
     inset_top = has_block ? 1 : 0
+    inset_bot = has_block ? 1 : 0   # the block has a bottom border too
     inset_left = has_block ? 1 : 0
     gw = m.editor.show_line_numbers ? ndigits(max(length(m.editor.lines), 1)) + 1 : 0
-    for (i, line_chars) in enumerate(m.editor.lines)
-        # Map buffer row → screen row through scroll_offset.
+    # Iterate only the visible window — bounded by scroll_offset above
+    # and rect.height-borders below. Avoids both the "highlight bleeds
+    # onto the bottom border" jump and the O(n) scan over hidden lines.
+    body_h = rect.height - inset_top - inset_bot
+    first_row = m.editor.scroll_offset + 1
+    last_row  = min(length(m.editor.lines), first_row + body_h - 1)
+    for i in first_row:last_row
         screen_row = rect.y + inset_top + (i - 1 - m.editor.scroll_offset)
-        screen_row < rect.y + inset_top && continue
-        screen_row >= rect.y + rect.height && break
+        line_chars = m.editor.lines[i]
         line = String(line_chars)
         mt = match(_PLAYHEAD_LINE_RX, line)
         mt === nothing && continue
