@@ -32,12 +32,12 @@ include("tui_docs.jl")
 include("tui_synthedit.jl")
 include("tui_livedoc.jl")
 include("tui_scope.jl")
+include("synth_dsl.jl")        # DSL first — synth_library uses it
 include("synth_library.jl")
 include("snippets.jl")
 include("config.jl")
 include("themes.jl")
 include("sccode.jl")
-include("synth_dsl.jl")
 include("app.jl")
 include("plugin_handlers.jl")
 
@@ -413,6 +413,23 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         TUI.render(TUI.view(mr), area, bufx)
     catch
         # Best-effort: precompile failures here only cost first-call latency.
+    end
+
+    # ── Synth DSL precompile ────────────────────────────────────────
+    # Build a representative SynthDef so the DSL's Sig + operator +
+    # build_synth paths are JIT-cached before the user hits T on a
+    # DSL-flavoured library entry.
+    try
+        sig = SynthDSL.saw(:freq) |>
+              SynthDSL.rlpf(SynthDSL.lfo(6; low = 300, high = 2000), 0.25) |>
+              SynthDSL.tanh_drive(1.5) |>
+              SynthDSL.env_linen(0.01, :sustain, 0.1)
+        SynthDSL.build_synth(:_pc_dsl, sig;
+                             params = (freq = 220, sustain = 0.5))
+        # Symbol arithmetic and Sig × Symbol mixed forms.
+        SynthDSL.build_synth(:_pc_arith,
+            SynthDSL.sin_osc(:freq * 2 + :freq) * 0.5)
+    catch
     end
 
     # ── Exhaustive Tachikoma RessacApp paths ───────────────────────

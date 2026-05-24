@@ -300,6 +300,32 @@ Base.:/(a::Sig, b::Sig)    = Sig("($(a.code) / $(b.code))")
 amp(x)    = (s::Sig) -> s * x
 offset(x) = (s::Sig) -> s + x
 
+# Symbol arithmetic — so `:freq * 2` reads naturally inside a DSL
+# expression. These didn't have methods before (Julia's Symbol doesn't
+# define arithmetic), so this is purely additive — no surprise on
+# existing call sites. Returns a Sig containing the literal SC code
+# `freq * 2`, ready to be consumed by further DSL functions.
+Base.:*(a::Symbol, b::Real)   = Sig("($a * $b)")
+Base.:*(a::Real, b::Symbol)   = Sig("($a * $b)")
+Base.:*(a::Symbol, b::Symbol) = Sig("($a * $b)")
+Base.:+(a::Symbol, b::Real)   = Sig("($a + $b)")
+Base.:+(a::Real, b::Symbol)   = Sig("($a + $b)")
+Base.:+(a::Symbol, b::Symbol) = Sig("($a + $b)")
+Base.:-(a::Symbol, b::Real)   = Sig("($a - $b)")
+Base.:-(a::Real, b::Symbol)   = Sig("($a - $b)")
+Base.:-(a::Symbol, b::Symbol) = Sig("($a - $b)")
+Base.:/(a::Symbol, b::Real)   = Sig("($a / $b)")
+Base.:/(a::Real, b::Symbol)   = Sig("($a / $b)")
+Base.:/(a::Symbol, b::Symbol) = Sig("($a / $b)")
+
+# Sig×Symbol pairs for the operators that weren't already defined
+# above (only -, / are new; *, + were defined in the main arithmetic
+# block).
+Base.:-(a::Sig, b::Symbol) = Sig("($(a.code) - $b)")
+Base.:-(a::Symbol, b::Sig) = Sig("($a - $(b.code))")
+Base.:/(a::Sig, b::Symbol) = Sig("($(a.code) / $b)")
+Base.:/(a::Symbol, b::Sig) = Sig("($a / $(b.code))")
+
 # ════════════════════════════════════════════════════════════════════
 # SynthDef builder with smart defaults
 # ════════════════════════════════════════════════════════════════════
