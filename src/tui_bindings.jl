@@ -747,7 +747,7 @@ const _GUIDE_LINES = String[
     "  e                — eval current line (patterns pane only)",
     "  m                — mute / unmute @dN slot under cursor",
     "  K                — preview sample/synth under cursor",
-    "  T  /  Space      — test the synth (synth pane only)",
+    "  t  /  T  /  Space — test the synth (synth pane only)",
     "                     hold to repeat-fire (accelerates up to ~17 Hz)",
     "  S                — cycle scope: off → amp → wave → spectrum",
     "  !                — PANIC (kill all)   ·   ,   — hush (soft stop)",

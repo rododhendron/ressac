@@ -456,7 +456,8 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # gate. Each fire multiplies the interval by config.t_hold_accel
     # (clamped to t_hold_min_ms).
     if ed.mode === :normal && evt.action === TK.key_repeat &&
-       (evt.char == 'T' || evt.char == ' ') && _synth_pane_open(m)
+       (evt.char == 'T' || evt.char == 't' || evt.char == ' ') &&
+       _synth_pane_open(m)
         _fire_t_with_accel!(m; held=true)
         return
     end
@@ -489,10 +490,11 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             # code which Julia can't parse, so leave `e` for the editor's
             # vim "end of word" motion there.
             _eval_current_line!(m); return
-        elseif (evt.char == 'T' || evt.char == ' ') && _synth_pane_open(m)
-            # Space and T both fire the test — Space is right there
-            # under the thumb, faster than reaching for a capital T
-            # when iterating on a sound.
+        elseif (evt.char == 'T' || evt.char == 't' || evt.char == ' ') &&
+               _synth_pane_open(m)
+            # t / T / Space all fire the test. Vim's `t` (till motion)
+            # isn't useful in the synth pane, and giving up the shift
+            # keypress is worth it for the iteration speed.
             _fire_t_with_accel!(m)
             return
         elseif evt.char == 'K' && m.focus === :patterns
