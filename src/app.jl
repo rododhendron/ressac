@@ -72,6 +72,11 @@ non-empty), and the focus toggle for keystroke routing.
     vim_in_insert::Bool          = false
     vim_insert_buf::String       = ""
     vim_last_insert::String      = ""
+    # Visual-line mode. `V` enters; j/k/arrows extend selection;
+    # d/y/c operate on the line range [min(anchor, cursor),
+    # max(anchor, cursor)] then exit; Esc cancels without action.
+    visual_active::Bool          = false
+    visual_anchor_row::Int       = 1
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
@@ -489,6 +494,17 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # editor doesn't swallow it as a "join lines" or no-op.
     if is_press && ed.mode === :normal && evt.char == '.'
         _vim_replay!(m, ed); return
+    end
+    # Visual-line mode dispatch — handles selection + operators.
+    if m.visual_active && is_press
+        _visual_handle!(m, ed, evt) && return
+    end
+    # `V` (capital) enters visual-line mode.
+    if is_press && ed.mode === :normal && evt.char == 'V' && !m.visual_active
+        m.visual_active = true
+        m.visual_anchor_row = ed.cursor_row
+        _push_app_log!(m, "[INFO] V — visual line · j/k extend · d/y/c act · Esc cancel")
+        return
     end
     # Track insert-session text so `.` has something to replay.
     _vim_record_keystroke!(m, ed, evt, is_press)
@@ -3138,6 +3154,85 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
 end
 
 # ---------------------------------------------------------------------
+# Vim visual-line mode (V)
+# ---------------------------------------------------------------------
+
+"""
+    _visual_handle!(m, ed, evt) -> Bool
+
+Dispatch keys while in visual-line mode. Returns true if the event
+was consumed; false to let the rest of `update!` handle it (e.g. a
+key we don't know about — Tachikoma will own it).
+
+  • j / k / arrows → extend the selection
+  • d              → delete the selected lines (yank first)
+  • y              → yank lines, return to normal
+  • c              → delete + enter insert
+  • Esc            → exit without action
+"""
+function _visual_handle!(m::RessacApp, ed::TK.CodeEditor, evt::TK.KeyEvent)
+    if evt.key === :escape
+        m.visual_active = false
+        _push_app_log!(m, "[INFO] V cancelled")
+        return true
+    end
+    if evt.char == 'j' || evt.key === :down
+        ed.cursor_row = min(ed.cursor_row + 1, length(ed.lines))
+        return true
+    end
+    if evt.char == 'k' || evt.key === :up
+        ed.cursor_row = max(1, ed.cursor_row - 1)
+        return true
+    end
+    if evt.char == 'd' || evt.char == 'y' || evt.char == 'c'
+        _visual_apply!(m, ed, evt.char)
+        return true
+    end
+    # Unknown key while in visual mode — exit and let it fall through.
+    m.visual_active = false
+    return false
+end
+
+"""
+    _visual_apply!(m, ed, op)
+
+Run an operator (`'d'` / `'y'` / `'c'`) on the line range
+between visual_anchor_row and cursor_row, then exit visual mode.
+"""
+function _visual_apply!(m::RessacApp, ed::TK.CodeEditor, op::Char)
+    r1 = min(m.visual_anchor_row, ed.cursor_row)
+    r2 = max(m.visual_anchor_row, ed.cursor_row)
+    txt = TK.text(ed)
+    lines = collect(split(txt, '\n'; keepempty=true))
+    r1 = clamp(r1, 1, length(lines))
+    r2 = clamp(r2, 1, length(lines))
+    selected = lines[r1:r2]
+    if op == 'y'
+        # Just yank into Tachikoma's yank buffer (linewise).
+        ed.yank_buffer = [collect(line) for line in selected]
+        ed.yank_is_linewise = true
+        _push_app_log!(m, "[INFO] V — yanked $(length(selected)) line(s)")
+    elseif op == 'd' || op == 'c'
+        ed.yank_buffer = [collect(line) for line in selected]
+        ed.yank_is_linewise = true
+        deleteat!(lines, r1:r2)
+        # Empty buffer → keep at least one blank line.
+        isempty(lines) && push!(lines, "")
+        TK.set_text!(ed, join(lines, '\n'))
+        ed.cursor_row = clamp(r1, 1, length(ed.lines))
+        ed.cursor_col = 0
+        if op == 'c'
+            # Insert a blank line at the deletion site, enter insert.
+            insert!(ed.lines, ed.cursor_row, Char[])
+            ed.cursor_col = 0
+            ed.mode = :insert
+        end
+        _push_app_log!(m, "[INFO] V — $(op == 'c' ? "changed" : "deleted") $(length(selected)) line(s)")
+    end
+    m.visual_active = false
+end
+
+# ---------------------------------------------------------------------
 # Vim `.` repeat — minimal: replay last insert-mode session
 # ---------------------------------------------------------------------
 
@@ -4105,6 +4200,11 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     if m.piano_active
         label = m.piano_rec ? "● PIANO REC" : "♪ PIANO"
         push!(parts, "$label oct=$(m.piano_octave) [$(length(m.piano_events))]")
+    end
+    if m.visual_active
+        r1 = min(m.visual_anchor_row, m.editor.cursor_row)
+        r2 = max(m.visual_anchor_row, m.editor.cursor_row)
+        push!(parts, "▌ VISUAL LINE $(r1)-$(r2) ($(r2 - r1 + 1) line$(r2 == r1 ? "" : "s"))")
     end
     left = join(parts, "  •  ")
 
