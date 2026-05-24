@@ -750,7 +750,7 @@ const _GUIDE_LINES = String[
     "  T  /  Space      — test the synth (synth pane only)",
     "                     hold to repeat-fire (accelerates up to ~17 Hz)",
     "  S                — cycle scope: off → amp → wave → spectrum",
-    "  .                — PANIC — stop everything",
+    "  !                — PANIC (kill all)   ·   ,   — hush (soft stop)",
     "  Tab              — swap focus between patterns / synth pane",
     "  gt / gT          — next / previous synth tab",
     "",

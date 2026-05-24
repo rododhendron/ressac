@@ -463,11 +463,10 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _scope_cycle_key!(m); return
         elseif evt.char == 'm' && m.focus === :patterns
             _toggle_mute_current_line!(m); return
-        elseif evt.char == '.'
+        elseif evt.char == '!'
             # Single-key panic: stops all patterns + frees all SC nodes.
-            # Bound to `.` because it's adjacent on every layout and
-            # doesn't conflict with vim repeat (which we don't use
-            # since the editor handles motions itself).
+            # Bound to `!` so the vim `.` repeat-last-action keystroke
+            # passes through to the editor unchanged.
             _panic!(m); return
         elseif evt.char == ','
             # Soft hush — pulls patterns from the scheduler but lets
