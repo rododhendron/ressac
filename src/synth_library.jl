@@ -351,4 +351,38 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
             env_perc(0.001, :sustain)) +
            (white() |> band_pass(800, 0.6) |> env_perc(0, 0.004) |> amp(0.3))""";
         params = (freq = 110, sustain = 0.25)),
+
+    # ═══════════════════════════════════════════════════════════════
+    # Classic synthesis techniques — textbook references
+    # Algorithms cited below are foundational and predate any specific
+    # SC implementation; the DSL renderings here are common idioms
+    # documented in the SuperCollider help system (LGPL/MIT-equivalent)
+    # and in "Designing Sound" (Andy Farnell, MIT Press, 2010 —
+    # algorithms only, not copied code).
+    # ═══════════════════════════════════════════════════════════════
+    _dsl_entry("karplus", "classic",
+        "Karplus-Strong pluck (Karplus & Strong 1983) — exciter + comb resonator.",
+        """white() |> env_perc(0, 0.005) |>
+           comb_n(1.0 / :freq, :sustain, 0.05)""";
+        params = (freq = 220, sustain = 1.2)),
+
+    _dsl_entry("fm_bell", "classic",
+        "FM bell (Chowning 1973) — modulator at ratio 1.4 = inharmonic spectrum.",
+        """sin_osc(:freq + sin_osc(:freq * 1.4) * :freq * 3) |>
+           env_perc(0.001, :sustain; curve = -4)""";
+        params = (freq = 660, sustain = 2.0)),
+
+    _dsl_entry("formant_pad", "classic",
+        "Vowel-formant pad ('ah' vowel) — saw stack through three formant BPFs.",
+        """(saw(:freq) |> band_pass(700, 0.05)) |>
+           offset(saw(:freq) |> band_pass(1220, 0.07)) |>
+           offset(saw(:freq) |> band_pass(2600, 0.10)) |>
+           env_perc(:attack, :sustain)""";
+        params = (freq = 110, attack = 0.5, sustain = 2.0)),
+
+    _dsl_entry("noise_pad", "classic",
+        "Filtered noise pad — pink noise + slow LFO-swept bandpass.",
+        """pink() |> band_pass(lfo(0.15; low = 300, high = 1800), 0.12) |>
+           env_perc(:attack, :sustain)""";
+        params = (attack = 1.0, sustain = 3.0)),
 ]

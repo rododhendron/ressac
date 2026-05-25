@@ -296,4 +296,40 @@ const _STARTER_PACKS = Dict{String,Vector{String}}(
         "@d4 :supersaw |> n(p\"<-12 -8 -5 -10>\") |> release(0.4) |> gain(1.3) |> lpf(p\"<400 2000 800>\") |> shape(0.5)",
         "@d5 p\"~ ~ ~ ~ cp ~ ~ ~\" |> gain(0.9) |> shape(0.4)",
     ],
+
+    # ── Curated additions — common genre idioms documented in the
+    #    TidalCycles tutorial (tidalcycles.org/docs, CC-BY-SA 4.0,
+    #    Alex McLean et al.) and the AlgoRave community resources.
+    #    Adapted to Ressac's combinator surface.
+    "dub-techno" => [
+        "# Dub techno — Basic Channel / Maurizio idiom",
+        "# (long-decay delays + offset chord stab + minimal kick)",
+        "cps!(0.5)",
+        "",
+        "@d1 p\"bd bd bd bd\" |> gain(1.0)",
+        "@d2 p\"~ ~ cp ~\" |> gain(0.5) |> room(0.6)",
+        "@d3 :supersaw |> n(p\"<-12 -10 -7>\") |> release(0.4) |> gain(0.45) |> lpf(900) |> delay(0.7) |> delaytime(0.5) |> delayfeedback(0.7) |> room(0.6)",
+        "@d4 p\"hh ~ ~ ~ hh ~ ~ ~\" |> gain(0.3) |> hpf(6000)",
+    ],
+    "breakbeat" => [
+        "# Breakbeat — classic 'Amen' chop idiom",
+        "# (commonly taught in the Tidal tutorial as the breaks starter)",
+        "cps!(0.56)",
+        "",
+        "@d1 p\"amencutup*4\" |> n(p\"<0 1 2 3 4 5>\") |> gain(1.2)",
+        "@d2 gate(:super808, p\"1 0 0 0 0 0 0 0\") |> n(-12) |> release(0.4) |> gain(1.3)",
+        "@d3 p\"~ ~ cp ~\" |> gain(0.7) |> room(0.3)",
+        "@d4 :superreese |> n(p\"<-15 -12 -10>\") |> release(0.7) |> gain(0.8) |> lpf(p\"<600 1500>\")",
+    ],
+    "2step" => [
+        "# UK 2-step garage — the syncopated kick + swung snare idiom",
+        "# (Wookie/MJ Cole/Todd Edwards era, mid-90s UK)",
+        "cps!(0.55)",
+        "",
+        "@d1 p\"bd ~ ~ bd ~ ~ bd ~\" |> gain(1.2)",
+        "@d2 p\"~ ~ cp ~ ~ ~ ~ cp\" |> gain(0.8) |> room(0.3)",
+        "@d3 p\"~ hh ~ hh ~ hh ~ hh\" |> gain(0.4) |> hpf(5000)",
+        "@d4 :superpiano*2 |> n(p\"0 5 7 12\") |> release(0.3) |> gain(0.5) |> room(0.4)",
+        "@d5 :superreese |> n(p\"<-12 -10 -7 -10>\") |> release(0.4) |> gain(0.7) |> lpf(800)",
+    ],
 )

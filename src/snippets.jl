@@ -588,6 +588,46 @@ const _SNIPPETS = _Snippet[
         "Layer multiple oscs with `+`. Useful for thickening.", raw"""
         (sin_osc(:freq) + saw(:freq * 1.005) + pulse(:freq * 0.5, 0.4))
         """),
+
+    # ─── Curated Tidal idioms ───────────────────────────────────────
+    # The moves below are documented as canonical Tidal patterns in
+    # the official tutorial (https://tidalcycles.org/docs/, CC-BY-SA
+    # 4.0, Alex McLean et al.). Since Ressac's combinator surface
+    # mirrors Tidal's, the recipes transfer verbatim. Each snippet is
+    # the standard demonstration of one combinator.
+
+    _Snippet("jux_rev", :patterns, "tidal",
+        "[Tidal idiom] jux(rev) — stereo: original on L, reversed on R.", raw"""
+        @d1 p"bd hh sn hh" |> jux(rev)
+        """),
+    _Snippet("every3_fast2", :patterns, "tidal",
+        "[Tidal idiom] every(3, fast(2)) — speed bump on every 3rd cycle.", raw"""
+        @d1 p"bd ~ sn ~" |> every(3, fast(2))
+        """),
+    _Snippet("off_arp", :patterns, "tidal",
+        "[Tidal idiom] off — overlay a time-shifted copy for arpeggio feel.", raw"""
+        @d1 :supersaw |> n(p"0 5 7 12") |> off(1//8, fast(2))
+        """),
+    _Snippet("sometimes_warp", :patterns, "tidal",
+        "[Tidal idiom] sometimes(rev) — 50% of cycles get reversed. Surprise.", raw"""
+        @d1 p"bd hh sn hh" |> sometimes(rev)
+        """),
+    _Snippet("chunk_evolve", :patterns, "tidal",
+        "[Tidal idiom] chunk(4, fast(2)) — one quarter per cycle gets sped up.", raw"""
+        @d1 p"bd hh sn hh" |> chunk(4, fast(2))
+        """),
+    _Snippet("palindrome_loop", :patterns, "tidal",
+        "[Tidal idiom] palindrome — 4-step phrase → 8-step there-and-back.", raw"""
+        @d1 p"bd hh sn cp" |> palindrome
+        """),
+    _Snippet("degrade_thin", :patterns, "tidal",
+        "[Tidal idiom] degradeBy(0.3) — drop 30% of events (seeded). Sparser feel.", raw"""
+        @d1 p"hh*16" |> degradeBy(0.3)
+        """),
+    _Snippet("iter_rotate", :patterns, "tidal",
+        "[Tidal idiom] iter(4) — rotate phrase by 1/4 each cycle. Evolving phase.", raw"""
+        @d1 p"bd hh sn hh" |> iter(4)
+        """),
 ]
 
 """
