@@ -23,4 +23,5 @@ using Ressac
     include("test_controls.jl")
     include("test_tui_hints.jl")
     include("test_tui_overlay.jl")
+    include("test_tap_detection.jl")
 end
