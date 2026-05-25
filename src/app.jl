@@ -29,6 +29,26 @@ mutable struct SynthTab
 end
 
 """
+    _STARTER_BUFFER
+
+Buffer text shown on first `live()` if no session is loaded. Doubles
+as the minimal-but-runnable demo: 4-on-the-floor kick + closed hat +
+clap on beat 3 + sub bass. The leading comments orient a first-time
+user — they cover the four keys needed to actually play this back
+(Esc, then E, then `m` to mute, then `:q` to quit), and point to
+`:tutorial` for the interactive guide.
+"""
+const _STARTER_BUFFER = """
+# Welcome to Ressac — press Esc, then E to play these patterns.
+# Use m on a @dN line to mute · :tutorial for the 5-min tour · :q to quit.
+
+cps!(0.5)
+@d1 p"bd bd bd bd"
+@d2 p"~ ~ cp ~"
+@d3 p"hh hh hh hh" |> gain(0.4)
+"""
+
+"""
     RessacApp
 
 Top-level Tachikoma model. Holds the live scheduler, a patterns
@@ -39,7 +59,7 @@ non-empty), and the focus toggle for keystroke routing.
 @kwdef mutable struct RessacApp <: TK.Model
     scheduler::Scheduler
     editor::TK.CodeEditor = TK.CodeEditor(;
-        text     = "@d1 p\"bd hh sn hh\"",
+        text     = _STARTER_BUFFER,
         # No `block=` here — view() wraps the patterns pane in its own
         # focus-aware Block (see _render_pane_block!) so adding one on
         # the editor itself would draw nested borders.
@@ -693,6 +713,11 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _scope_cycle_key!(m); return
         elseif evt.char == 'm' && m.focus === :patterns
             _toggle_mute_current_line!(m); return
+        elseif evt.char == '?' && m.focus === :patterns
+            # Quick help — opens the guide modal without going through
+            # `:?`. Matches the footer hint shown in normal-mode.
+            m.modal = :guide; m.modal_scroll = 0
+            return
         elseif evt.char == '!'
             # Single-key panic: stops all patterns + frees all SC nodes.
             # Bound to `!` so the vim `.` repeat-last-action keystroke
@@ -2065,6 +2090,7 @@ const _EX_COMMAND_VERBS = String[
     "piano", "piano-rec", "piano-record",
     "wiki", "docs", "doc-wiki",
     "save", "load", "sessions", "ls-sessions",
+    "tutorial", "tour", "start",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -2418,6 +2444,8 @@ _register_regex!(r"^scope\s+(\w+)$",
 # ── Modals (browse / lib / sccode / snip / guides) ───────────────────
 _register_literal!(m -> (m.modal = :guide; m.modal_scroll = 0),
                    "guide", "help", "?")
+_register_literal!(m -> (m.modal = :tutorial; m.modal_scroll = 0),
+                   "tutorial", "tour", "start")
 _register_literal!(m -> (m.modal = :synth_guide; m.modal_scroll = 0),
                    "synth-guide")
 _register_literal!(m -> (m.modal = :dsl_guide; m.modal_scroll = 0),
@@ -3130,7 +3158,67 @@ _modal_lines(m::RessacApp) =
     m.modal === :guide       ? _GUIDE_LINES :
     m.modal === :synth_guide ? _SYNTH_GUIDE_LINES :
     m.modal === :dsl_guide   ? _DSL_GUIDE_LINES :
+    m.modal === :tutorial    ? _TUTORIAL_LINES :
     String[]
+
+"""
+    _TUTORIAL_LINES
+
+The 5-minute onboarding tour for users coming from GUI DAWs. Each
+"card" is a group of lines separated by a blank header; users scroll
+with j/k. Designed to be readable end-to-end in under 5 minutes
+without prior knowledge of vim or live-coding.
+"""
+const _TUTORIAL_LINES = String[
+    "── 5-minute tour: from zero to first beat ──",
+    "(j/k or ↑/↓ to scroll · q to close · :wiki for the full docs)",
+    "",
+    "▓ CARD 1 — Two modes, like vim",
+    "  NORMAL mode (you start here) — keys are commands",
+    "  INSERT mode — keys type letters into the buffer",
+    "",
+    "    i      enter INSERT (start typing)",
+    "    Esc    back to NORMAL (commands again)",
+    "",
+    "  The mode shows in the bottom-left corner: [NORMAL] / [INSERT].",
+    "",
+    "▓ CARD 2 — Make a sound",
+    "  In NORMAL mode, press:",
+    "",
+    "    E      eval ALL @dN blocks in the buffer (you'll hear them)",
+    "    e      eval just the line under the cursor",
+    "",
+    "  Lines you eval flash green for a moment. The playhead",
+    "  (orange-ish bar) shows which note plays right now.",
+    "",
+    "▓ CARD 3 — Stop / mute / panic",
+    "",
+    "    m      mute the @dN slot under the cursor (toggles)",
+    "    :hush  soft stop (sounds fade out naturally)",
+    "    ,      same as :hush, one keystroke",
+    "    !      PANIC: kill every running sound immediately",
+    "",
+    "▓ CARD 4 — Discover sounds & snippets",
+    "",
+    "    Space b   browse all available sounds (Tab cycles types)",
+    "    :snip     browse multi-line snippet templates",
+    "    Space d   templated pattern line: @d_ p\"_\" (Tab between fields)",
+    "    Space g   templated gain pipe: |> gain(_)",
+    "    :starter house|trap|lofi|ambient   load a genre starter",
+    "",
+    "▓ CARD 5 — Where to go next",
+    "",
+    "    :guide      the full keybinding cheat-sheet",
+    "    :wiki       deeper docs (mini-notation, DSL, scope, themes)",
+    "    :doc gain   description + usage examples for any param",
+    "    :tap        tap a rhythm, Ressac writes the @dN line",
+    "    :synth wob  open a synth-design tab on the right",
+    "",
+    "When you're ready to start fresh: select all (V then G), d to delete,",
+    "i to insert, type your own patterns. Use Esc + e to hear them.",
+    "",
+    "Press q to close this tour. Run :tutorial any time to come back.",
+]
 
 const _DSL_GUIDE_LINES = String[
     "── Synth DSL — Julia → SuperCollider ── (j/k scroll, q close)",
@@ -3279,7 +3367,8 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     isempty(lines) && return
     title = m.modal === :guide       ? "GUIDE" :
             m.modal === :synth_guide ? "SYNTH GUIDE" :
-            m.modal === :dsl_guide   ? "DSL GUIDE" : "INFO"
+            m.modal === :dsl_guide   ? "DSL GUIDE" :
+            m.modal === :tutorial    ? "TUTORIAL · 5-minute tour" : "INFO"
     inner = _render_modal_block!(buf, area;
         title = title,
         title_right = "j/k scroll · q close",
@@ -5689,9 +5778,9 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         [("Tab", "next"), ("S-Tab", "prev"), ("Esc", "exit"),
          ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "filling")]
     elseif ed.mode === :normal && m.focus === :patterns
-        [("Space", "snippet"), ("e", "eval"), ("E", "eval-all"),
-         ("i", "insert"), ("dd.", "repeat"),
-         (":tap", "loop"), (":snip", "browse"), (":q", "quit")]
+        [("?", "help"), ("Space", "snippet"), ("e", "eval"),
+         ("E", "eval-all"), ("i", "insert"), ("dd.", "repeat"),
+         (":tap", "loop"), (":tutorial", "tour"), (":q", "quit")]
     elseif !_synth_pane_open(m)
         [("e", "eval"), ("i", "insert"), ("Esc", "normal"),
          (":synth", "<name>"), (":lib", "library"),
