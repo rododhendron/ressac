@@ -1,5 +1,8 @@
 # Ressac
 
+[![CI](https://github.com/rododhendron/ressac/actions/workflows/CI.yml/badge.svg)](https://github.com/rododhendron/ressac/actions/workflows/CI.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **A Julia-based live-coding environment for SuperCollider / SuperDirt.**
 Terminal UI · TidalCycles-style mini-notation · synth design in a Julia
 DSL that compiles to SC · 629 tests, 0 known regressions.
