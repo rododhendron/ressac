@@ -34,9 +34,23 @@ diag:
 live:
     julia --project=. -t auto scripts/live.jl
 
-# Boot scsynth + SuperDirt on UDP 57120 (call inside `nix develop`)
+# Boot scsynth + SuperDirt on UDP 57120.
+# Works both inside `nix develop` (uses start-superdirt from PATH) and
+# outside (falls back to `nix run .#start-superdirt`). Non-Nix users
+# should run scripts/superdirt-startup.scd in their own sclang.
 audio:
-    start-superdirt
+    #!/usr/bin/env bash
+    if command -v start-superdirt >/dev/null 2>&1; then
+        exec start-superdirt
+    elif command -v nix >/dev/null 2>&1 && [ -f flake.nix ]; then
+        echo "[just audio] start-superdirt not on PATH — using 'nix run .#start-superdirt'"
+        exec nix run .#start-superdirt
+    else
+        echo "[just audio] No Nix available. Either:" >&2
+        echo "  1. nix develop  (then 'just audio')" >&2
+        echo "  2. sclang scripts/superdirt-startup.scd  (your own SC install)" >&2
+        exit 127
+    fi
 
 # Resolve + install Julia dependencies from Project.toml / Manifest.toml
 instantiate:
