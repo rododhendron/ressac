@@ -4,9 +4,21 @@ set shell := ["bash", "-c"]
 default:
     @just --list
 
-# Run the full test suite (130+ tests)
+# Run the full test suite (944+ tests)
 test:
     julia --project=. -e 'using Pkg; Pkg.test()'
+
+# Run tests with line coverage tracking, then summarise per file.
+# Drops .cov files next to every src/*.jl. Cleans stale ones first so the
+# report doesn't double-count old + new runs.
+coverage:
+    find src -name "*.cov" -delete
+    julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
+    julia --project=. scripts/coverage.jl
+
+# Remove the .cov files left by `just coverage`.
+coverage-clean:
+    find src -name "*.cov" -delete
 
 # Open a Julia REPL with the project activated.
 # `-t auto` so the scheduler thread (Threads.@spawn) actually runs in
