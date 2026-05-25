@@ -359,6 +359,16 @@ struct SynthEntry
     metadata::Dict{String,Any}
 end
 
+# True while a .jl synth file is being `Base.include`d at plugin
+# load time. Read by `play_synth` (in SynthDSL) to know whether to
+# ship `/dirt/evalSC` (just install the SynthDef on SC, no play)
+# vs `/ressac/evalAndPlay` (install AND fire a one-shot Synth, the
+# behaviour wanted for the `T`/`:test` interactive flow). Without
+# this flag, plugin-loading the .jl files made SC play each synth
+# once at session start — surprise "claquement" before the user
+# touched any key.
+const _INSTALLING_SYNTH = Ref{Bool}(false)
+
 const _INSTRUMENT_REGISTRY = Dict{Symbol,InstrumentEntry}()
 const _SYNTH_REGISTRY      = Dict{Symbol,SynthEntry}()
 # Alias → SC SynthDef name. A SynthDef is named after its source

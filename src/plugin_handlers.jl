@@ -314,10 +314,18 @@ function _load_synth_file!(sched, plugin_name, path)
             )))
         end
     elseif ext == ".jl"
+        # Flag the install path so `play_synth` (called by the @synth
+        # macro inside the file) ships install-only OSC instead of the
+        # play-and-fire one. Otherwise every boot would play each
+        # user .jl synth once — audible "claquement" before the user
+        # touched anything.
+        _INSTALLING_SYNTH[] = true
         try
             Base.include(SynthDSL, path)
         catch err
             @error "plugin '$plugin_name' [synthdefs]: .jl eval failed for '$path': $(sprint(showerror, err))"
+        finally
+            _INSTALLING_SYNTH[] = false
         end
     end
 end

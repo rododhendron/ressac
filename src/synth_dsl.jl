@@ -25,7 +25,8 @@
 
 module SynthDSL
 
-import ..Ressac: _LIVE_SCHEDULER, send_osc, encode, OSCMessage,
+import ..Ressac: _LIVE_SCHEDULER, _INSTALLING_SYNTH,
+                 send_osc, encode, OSCMessage,
                  register_synth!, register_synth_alias!, SynthEntry
 
 # Re-export the whole UGen surface so `using Ressac.SynthDSL` brings
@@ -498,9 +499,18 @@ function play_synth(sc_name::Symbol, sig::Sig;
     src = build_synth(sc_name, sig; kwargs...)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return src
-    send_osc(sched.osc,
-             encode(OSCMessage("/ressac/evalAndPlay",
-                                Any[String(sc_name), src])))
+    # When _INSTALLING_SYNTH is true (set by the plugin loader during
+    # Base.include of a .jl synth file), ship the install-only OSC.
+    # Otherwise we're in the interactive `T` / `:test` path and want
+    # SC to both register the SynthDef AND fire it once. Without this
+    # split, plugin-loaded synths played a one-shot every session boot.
+    if _INSTALLING_SYNTH[]
+        send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[src])))
+    else
+        send_osc(sched.osc,
+                 encode(OSCMessage("/ressac/evalAndPlay",
+                                    Any[String(sc_name), src])))
+    end
     register_synth!(SynthEntry(sc_name, "user-dsl",
                                Dict{String,Any}("description" => "DSL-defined",
                                                 "tags" => ["dsl"])))

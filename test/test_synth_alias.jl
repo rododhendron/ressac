@@ -154,6 +154,62 @@
         end
     end
 
+    @testset "@synth via Base.include — SILENT install (no audible fire)" begin
+        # Regression: previously every .jl plugin-loaded a SynthDef AND
+        # fired a one-shot `Synth(name)` via /ressac/evalAndPlay — so
+        # every session boot played one sound per user .jl synth.
+        # `_INSTALLING_SYNTH` flips the path to /dirt/evalSC (install
+        # only, no play). This test asserts the right address is shipped.
+        mock = MockOSCClient()
+        Ressac._LIVE_SCHEDULER[] = Ressac.Scheduler(mock; cps=0.5)
+        empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        try
+            mktempdir() do d
+                path = joinpath(d, "silent_test.jl")
+                write(path, "@synth saw(:freq) |> rlpf(800, 0.3)")
+                # Manually flip the flag like _load_synth_file! does.
+                Ressac._INSTALLING_SYNTH[] = true
+                try
+                    Base.include(Ressac.SynthDSL, path)
+                finally
+                    Ressac._INSTALLING_SYNTH[] = false
+                end
+                # Exactly one OSC msg shipped — /dirt/evalSC, NOT
+                # /ressac/evalAndPlay (which would have played the synth).
+                @test length(mock.sent) == 1
+                msg = Ressac.decode_message(mock.sent[1])
+                @test msg.address == "/dirt/evalSC"
+                @test occursin("SynthDef", msg.args[1])
+                @test occursin("silent_test", msg.args[1])
+                # And the synth IS registered for pattern use.
+                @test Ressac.synth_info(:silent_test) !== nothing
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        end
+    end
+
+    @testset "@synth interactive (REPL / no install flag) — uses play path" begin
+        # Counterpart of the silent-install test: confirm that without
+        # the flag, @synth still ships /ressac/evalAndPlay (the path
+        # that fires `Synth(name)` on SC — the `T`/`:test` behaviour).
+        mock = MockOSCClient()
+        Ressac._LIVE_SCHEDULER[] = Ressac.Scheduler(mock; cps=0.5)
+        empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        try
+            Ressac._INSTALLING_SYNTH[] = false   # explicit default
+            Core.eval(Ressac.SynthDSL,
+                      Meta.parse("@synth :replfoo sin_osc(:freq)"))
+            @test length(mock.sent) == 1
+            msg = Ressac.decode_message(mock.sent[1])
+            @test msg.address == "/ressac/evalAndPlay"
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        end
+    end
+
     @testset "@synth at REPL (no file) — alias required" begin
         # In a REPL / Meta.parse context, __source__.file isn't a
         # real path, so the alias-less form must error cleanly
