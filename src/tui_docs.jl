@@ -332,4 +332,40 @@ const _STARTER_PACKS = Dict{String,Vector{String}}(
         "@d4 :superpiano*2 |> n(p\"0 5 7 12\") |> release(0.3) |> gain(0.5) |> room(0.4)",
         "@d5 :superreese |> n(p\"<-12 -10 -7 -10>\") |> release(0.4) |> gain(0.7) |> lpf(800)",
     ],
+
+    # ── Round B — three more starters documented as canonical
+    #    genre templates in the AlgoRave + Tidal community.
+    "juke" => [
+        "# Juke / 160bpm Chicago ghetto-house — fast hats, tight kicks",
+        "# (RP Boo / DJ Rashad lineage, AlgoRave repertoire).",
+        "cps!(0.66)",
+        "",
+        "@d1 p\"bd ~ bd ~ ~ ~ bd ~ ~ ~ bd ~ ~ ~ ~ ~\" |> gain(1.3)",
+        "@d2 p\"~ ~ ~ ~ cp ~ ~ ~ ~ cp ~ ~ ~ ~ cp ~\" |> gain(0.7) |> room(0.2)",
+        "@d3 p\"hh*16\" |> gain(0.35) |> hpf(6000)",
+        "@d4 p\"~ ~ vox ~ ~ ~ vox ~\" |> speed(p\"<1 0.85 1.2 1>\") |> gain(0.5)",
+        "@d5 :supersaw |> n(p\"-5 -7 -10 ?\") |> release(0.2) |> gain(0.5)",
+    ],
+    "liquid-dnb" => [
+        "# Liquid drum & bass — smooth pad, rolling break, sub on 1+3",
+        "# (LTJ Bukem / Calibre lineage — 174 BPM half-time feel)",
+        "cps!(0.72)",
+        "",
+        "@d1 p\"bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~\" |> gain(1.2)",
+        "@d2 p\"hh*16\" |> gain(0.3) |> hpf(5500) |> degradeBy(0.1)",
+        "@d3 :subdrop |> n(p\"0 ~ ~ ~ 0 ~ 5 ~\") |> release(1.2) |> gain(0.8)",
+        "@d4 :softpad |> n(p\"<0 5 7 3>\") |> release(2.0) |> attack(0.3) |> gain(0.35) |> room(0.6)",
+        "@d5 p\"~ ~ ~ cp ~ ~ ~ ~\" |> gain(0.6) |> room(0.5)",
+    ],
+    "vaporwave" => [
+        "# Vaporwave — slow, lush, A E S T H E T I C",
+        "# (chopped samples + soft pad + tape wobble idiom)",
+        "cps!(0.26)",
+        "",
+        "@d1 p\"bd ~ ~ bd ~ ~ ~ ~\" |> gain(1.1) |> lpf(2000)",
+        "@d2 p\"~ ~ cp ~ ~ ~ ~ ~\" |> gain(0.6) |> room(0.5)",
+        "@d3 :softpad |> n(p\"<0 -3 -5 -7>\") |> release(3.0) |> attack(0.8) |> gain(0.45) |> room(0.85) |> delay(0.3)",
+        "@d4 :superpiano |> n(p\"<7 5 3 0>*2\") |> release(1.5) |> gain(0.4) |> room(0.6) |> crush(8)",
+        "@d5 :subdrop |> n(p\"-12 ~ ~ -12\") |> release(1.5) |> gain(0.6) |> lpf(150)",
+    ],
 )

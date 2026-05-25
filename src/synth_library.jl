@@ -385,4 +385,35 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
         """pink() |> band_pass(lfo(0.15; low = 300, high = 1800), 0.12) |>
            env_perc(:attack, :sustain)""";
         params = (attack = 1.0, sustain = 3.0)),
+
+    # ── Round B classics — also algorithmic foundations from the
+    # SuperCollider help system + standard DSP textbooks.
+    _dsl_entry("reese", "classic",
+        "Reese bass (Reese 1992) — two detuned saws, the classic jungle/dnb bottom.",
+        """(saw(:freq) + saw(:freq * 1.007)) |> rlpf(:cutoff, 0.4) |>
+           env_perc(:attack, :sustain)""";
+        params = (freq = 55, cutoff = 800, attack = 0.005, sustain = 1.5)),
+
+    _dsl_entry("pwm_pad", "classic",
+        "PWM pad — pulse-width modulation gives a thick, breathing texture.",
+        """var_saw(:freq, lfo(0.3; low = 0.1, high = 0.9)) |>
+           rlpf(1500, 0.5) |>
+           env_perc(:attack, :sustain)""";
+        params = (freq = 220, attack = 0.5, sustain = 2.5)),
+
+    _dsl_entry("ringmod", "classic",
+        "Ring-modulated metallic tone (Bode 1967) — carrier × non-harmonic modulator.",
+        """(sin_osc(:freq) * sin_osc(:freq * 1.7)) |>
+           env_perc(0.001, :sustain; curve = -4)""";
+        params = (freq = 440, sustain = 0.5)),
+
+    _dsl_entry("supersaw_lead", "classic",
+        "Detuned-supersaw lead — 7 saws spread ±1.5%, the trance idiom.",
+        """(saw(:freq * 0.985) + saw(:freq * 0.99) + saw(:freq * 0.995) +
+            saw(:freq) +
+            saw(:freq * 1.005) + saw(:freq * 1.01) + saw(:freq * 1.015)) |>
+           amp(0.14) |>
+           rlpf(:cutoff, 0.3) |>
+           env_perc(:attack, :sustain)""";
+        params = (freq = 220, cutoff = 4000, attack = 0.01, sustain = 0.6)),
 ]

@@ -628,6 +628,35 @@ const _SNIPPETS = _Snippet[
         "[Tidal idiom] iter(4) — rotate phrase by 1/4 each cycle. Evolving phase.", raw"""
         @d1 "bd hh sn hh" |> iter(4)
         """),
+
+    # ─── Round B — more Tidal idioms ────────────────────────────────
+    # Continued from the canonical TidalCycles tutorial
+    # (https://tidalcycles.org/docs/, CC-BY-SA 4.0, Alex McLean et al).
+
+    _Snippet("juxBy_split", :patterns, "tidal",
+        "[Tidal idiom] juxBy(0.3, rev) — partial stereo widening (30%).", raw"""
+        @d1 "bd hh sn hh" |> juxBy(0.3, rev)
+        """),
+    _Snippet("every_other", :patterns, "tidal",
+        "[Tidal idiom] every(2, fast(2)) — double-time every other cycle.", raw"""
+        @d1 :acid303 |> n("0 3 5 7") |> every(2, fast(2))
+        """),
+    _Snippet("often_thin", :patterns, "tidal",
+        "[Tidal idiom] often(degradeBy 0.4) — 75% of cycles drop 40% of hits.", raw"""
+        @d1 "hh*16" |> often(degradeBy(0.4)) |> gain(0.4)
+        """),
+    _Snippet("rarely_warp", :patterns, "tidal",
+        "[Tidal idiom] rarely(rev) — 25% chance per cycle for surprise.", raw"""
+        @d1 "bd hh sn hh" |> rarely(rev)
+        """),
+    _Snippet("stack_layers", :patterns, "tidal",
+        "[Tidal idiom] stack of 3 patterns — kick + offbeat hat + ghost snare.", raw"""
+        @d1 stack("bd ~ bd ~", "~ hh ~ hh", "~ ~ ~ sn") |> gain(0.7)
+        """),
+    _Snippet("cat_seq", :patterns, "tidal",
+        "[Tidal idiom] cat — sequence of patterns, one per cycle.", raw"""
+        @d1 cat(["bd*4", "bd ~ bd ~", "bd*3"]) |> gain(0.9)
+        """),
 ]
 
 """
