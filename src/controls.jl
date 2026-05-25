@@ -72,7 +72,8 @@ If `val` is itself a `Pattern`, see the `set(::Symbol, ::Pattern)`
 method.
 """
 function set(key::Symbol, val)
-    return function (p::Pattern)
+    return function (p)
+        p = _as_pattern(p)
         lifted = _lift_to_control(p)
         Pattern{ControlMap}((s::Rational, e::Rational) -> begin
             inner = lifted(s, e)
@@ -97,8 +98,13 @@ dropped (the value pattern gates the input).
 
 This matches TidalCycles' `#` operator semantics.
 """
+# Bare-string val: parse as mini-notation, then route to the
+# Pattern overload. Lets users write `set(:cutoff, "<400 800>")`.
+set(key::Symbol, s::AbstractString) = set(key, parse_minino(String(s)))
+
 function set(key::Symbol, pat::Pattern)
-    return function (p::Pattern)
+    return function (p)
+        p = _as_pattern(p)
         lifted = _lift_to_control(p)
         Pattern{ControlMap}((s::Rational, e::Rational) -> begin
             evs_in  = lifted(s, e)
@@ -133,13 +139,18 @@ directly (no composition with a synthetic identity — first-write is
 just a write).
 """
 function _control_op(key::Symbol, op, val)
+    # Auto-parse a string `val` as mini-notation so users can write
+    # `set(:cutoff, "<400 800 1600>")` instead of
+    # `set(:cutoff, p"<400 800 1600>")`. Single-token strings like
+    # `"1000"` round-trip through `_resolve_value` to numeric.
+    val = val isa AbstractString ? parse_minino(String(val)) : val
     resolved_scalar = _resolve_value(val)
     return function (p)
-        # Auto-lift a bare Symbol so users can write
-        # `:bd |> n(p"0 3 5")` instead of the more verbose
-        # `pure(:bd) |> n(p"0 3 5")`. Matches the way the existing
-        # snippet library uses `@d1 :acid303 |> n(...)`.
-        p = p isa Symbol ? pure(p) : p
+        # Auto-lift any of (Pattern | Symbol | AbstractString) so
+        # users can drop the `p"…"` prefix:
+        #   @d1 "bd hh sn hh" |> gain(0.5)
+        #   :bd |> n("0 3 5 7")
+        p = _as_pattern(p)
         p isa Pattern || throw(MethodError(_control_op, (key, op, val, p)))
         lifted = _lift_to_control(p)
         if val isa Pattern

@@ -208,4 +208,34 @@ using Ressac
         @test evs[1].value[:gain] === 0.5
         @test evs[2].value[:gain] === 1.0
     end
+
+    # ── Drop-the-`p` ergonomics for controls ─────────────────────
+    # The `val` arg of every _control_op-backed helper accepts a
+    # bare AbstractString and parses it as mini-notation.
+    # (Compare per-field rather than via Event ==; Julia's default
+    # struct == falls back to === for Dict-typed fields, so two
+    # separately-built ControlMap events are never ==.)
+    @testset "gain accepts bare-string val" begin
+        evs = query("bd hh" |> Ressac.gain("0.5 1.0"), 0, 1)
+        @test length(evs) == 2
+        @test evs[1].value[:gain] == 0.5
+        @test evs[2].value[:gain] == 1.0
+    end
+
+    @testset "n accepts bare-string val" begin
+        evs = query("bd bd bd bd" |> Ressac.n("0 3 5 7"), 0, 1)
+        @test [ev.value[:n] for ev in evs] == [0, 3, 5, 7]
+    end
+
+    @testset "single-token string val round-trips to numeric" begin
+        evs = ("bd" |> Ressac.gain("0.5"))(0//1, 1//1)
+        @test evs[1].value[:gain] === 0.5
+    end
+
+    @testset "set accepts bare-string val" begin
+        evs = query("bd" |> Ressac.set(:cutoff, "<400 1600>"), 0, 2)
+        @test length(evs) == 2
+        @test evs[1].value[:cutoff] == 400
+        @test evs[2].value[:cutoff] == 1600
+    end
 end

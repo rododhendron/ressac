@@ -37,6 +37,24 @@ silence(::Type{T}) where {T} =
     Pattern{T}((_s::Rational, _e::Rational) -> Event{T}[])
 
 """
+    _as_pattern(p) -> Pattern
+
+Promote any of the three forms the user might type into a Pattern:
+
+  * `AbstractString` → `parse_minino(s)`. Lets users write
+    `@d1 "bd hh sn hh" |> gain(0.5)` without the `p"…"` prefix.
+  * `Symbol`        → `pure(s)`. Already-supported shortcut for
+    bare-name patterns like `@d1 :bd |> n(p"0 3 5")`.
+  * `Pattern`       → identity.
+
+Used by every combinator's curried form (`gain(x)`, `jux(f)`,
+`every(n, f)`, …) so the lifts stay consistent.
+"""
+_as_pattern(p::Pattern) = p
+_as_pattern(p::Symbol)  = pure(p)
+_as_pattern(p::AbstractString) = parse_minino(String(p))
+
+"""
     fast(n, p) -> Pattern{T}
 
 Compress time by factor `n`: events that occupied one cycle in `p` now occupy
@@ -59,7 +77,7 @@ end
 Curried form: `fast(n)(p) == fast(n, p)`. Lets `p |> fast(n)` thread the
 pattern as the right-hand arg under Julia's native `|>`.
 """
-fast(n::Real) = x -> fast(n, x isa Symbol ? pure(x) : x)
+fast(n::Real) = x -> fast(n, _as_pattern(x))
 
 """
     slow(n, p) -> Pattern{T}
@@ -76,7 +94,7 @@ end
 
 Curried form: `slow(n)(p) == slow(n, p)`.
 """
-slow(n::Real) = x -> slow(n, x isa Symbol ? pure(x) : x)
+slow(n::Real) = x -> slow(n, _as_pattern(x))
 
 """
     density(n, p)
@@ -147,7 +165,7 @@ end
 
 Curried form: `every(n, f)(p) == every(n, f, p)`.
 """
-every(n::Int, f) = x -> every(n, f, x isa Symbol ? pure(x) : x)
+every(n::Int, f) = x -> every(n, f, _as_pattern(x))
 
 """
     stack(ps::Pattern{T}...) -> Pattern{T}
@@ -241,6 +259,11 @@ end
 # function. Same body as the binary call.
 gate(p::Pattern{Symbol}) = (name::Symbol) -> gate(name, p)
 
+# Accept a bare string mask: `gate(:s, "1 0 1 0")` is the same as
+# `gate(:s, p"1 0 1 0")`. Lets users drop the `p"…"` prefix.
+gate(name::Symbol, s::AbstractString) = gate(name, parse_minino(String(s)))
+gate(s::AbstractString) = gate(parse_minino(String(s)))
+
 # ---------------------------------------------------------------------------
 # Tidal-style transforms — stereo, probability, time-shift
 # ---------------------------------------------------------------------------
@@ -270,7 +293,7 @@ Forces the pattern through ControlMap (a bare Pattern{Symbol} is
 lifted into ControlPattern via `pan(0)`).
 """
 function jux(f, p)
-    p_pat = p isa Symbol ? pure(p) : p
+    p_pat = _as_pattern(p)
     return stack(p_pat |> pan(0.0), f(p_pat) |> pan(1.0))
 end
 jux(f) = p -> jux(f, p)
@@ -282,7 +305,7 @@ jux(f) = p -> jux(f, p)
 collapses both copies to center.
 """
 function juxBy(amount::Real, f, p)
-    p_pat = p isa Symbol ? pure(p) : p
+    p_pat = _as_pattern(p)
     d = 0.5 * float(amount)
     return stack(p_pat |> pan(0.5 - d), f(p_pat) |> pan(0.5 + d))
 end
@@ -303,7 +326,7 @@ function off(t::Real, f, p::Pattern{T}) where {T}
     end)
     return stack(p, shifted)
 end
-off(t::Real, f) = p -> off(t, f, p isa Symbol ? pure(p) : p)
+off(t::Real, f) = p -> off(t, f, _as_pattern(p))
 
 """
     degradeBy(prob, p) -> Pattern{T}
@@ -319,14 +342,14 @@ function degradeBy(prob::Real, p::Pattern{T}) where {T}
          (hash(ev.start) % UInt32(1_000_000)) / 1_000_000.0 >= pr]
     end)
 end
-degradeBy(prob::Real) = p -> degradeBy(prob, p isa Symbol ? pure(p) : p)
+degradeBy(prob::Real) = p -> degradeBy(prob, _as_pattern(p))
 
 """
     degrade(p) -> Pattern{T}
 
 Shortcut for `degradeBy(0.5, p)`. Drops half the events at random.
 """
-degrade(p) = degradeBy(0.5, p isa Symbol ? pure(p) : p)
+degrade(p) = degradeBy(0.5, _as_pattern(p))
 
 """
     sometimesBy(prob, f, p) -> Pattern{T}
@@ -354,18 +377,18 @@ function sometimesBy(prob::Real, f, p::Pattern{T}) where {T}
         out
     end)
 end
-sometimesBy(prob::Real, f) = p -> sometimesBy(prob, f, p isa Symbol ? pure(p) : p)
+sometimesBy(prob::Real, f) = p -> sometimesBy(prob, f, _as_pattern(p))
 
 """
     sometimes(f, p) — `sometimesBy(0.5, …)`
     often(f, p)     — `sometimesBy(0.75, …)`
     rarely(f, p)    — `sometimesBy(0.25, …)`
 """
-sometimes(f, p) = sometimesBy(0.5, f, p isa Symbol ? pure(p) : p)
+sometimes(f, p) = sometimesBy(0.5, f, _as_pattern(p))
 sometimes(f)    = p -> sometimes(f, p)
-often(f, p)     = sometimesBy(0.75, f, p isa Symbol ? pure(p) : p)
+often(f, p)     = sometimesBy(0.75, f, _as_pattern(p))
 often(f)        = p -> often(f, p)
-rarely(f, p)    = sometimesBy(0.25, f, p isa Symbol ? pure(p) : p)
+rarely(f, p)    = sometimesBy(0.25, f, _as_pattern(p))
 rarely(f)       = p -> rarely(f, p)
 
 """
@@ -408,7 +431,7 @@ function iter(n::Int, p::Pattern{T}) where {T}
         out
     end)
 end
-iter(n::Int) = p -> iter(n, p isa Symbol ? pure(p) : p)
+iter(n::Int) = p -> iter(n, _as_pattern(p))
 
 """
     chunk(n, f, p) -> Pattern{T}
@@ -445,4 +468,4 @@ function chunk(n::Int, f, p::Pattern{T}) where {T}
         out
     end)
 end
-chunk(n::Int, f) = p -> chunk(n, f, p isa Symbol ? pure(p) : p)
+chunk(n::Int, f) = p -> chunk(n, f, _as_pattern(p))

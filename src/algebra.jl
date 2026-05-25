@@ -96,4 +96,4 @@ end
 
 Curried form: `mask(q)(p) == mask(p, q)`.
 """
-mask(q::Pattern{Bool}) = x -> mask(x isa Symbol ? pure(x) : x, q)
+mask(q::Pattern{Bool}) = x -> mask(_as_pattern(x), q)

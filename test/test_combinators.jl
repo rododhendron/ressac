@@ -131,4 +131,38 @@ using Ressac
         @test query(pure(:bd) |> stack(pure(:sn)), 0, 1) ==
               query(stack(pure(:bd), pure(:sn)), 0, 1)
     end
+
+    # ── Drop-the-`p` ergonomics ─────────────────────────────────────
+    # Every curried combinator accepts AbstractString as its pattern
+    # arg and auto-parses via mini-notation, so users can write
+    # `@d1 "bd hh sn hh" |> gain(0.5)` without the `p"…"` prefix.
+    @testset "_as_pattern — three-way promotion" begin
+        ref = parse_minino("bd hh sn hh")
+        @test query(Ressac._as_pattern("bd hh sn hh"), 0, 1) == query(ref, 0, 1)
+        @test query(Ressac._as_pattern(:bd),           0, 1) == query(pure(:bd), 0, 1)
+        @test Ressac._as_pattern(ref) === ref          # identity on Pattern
+    end
+
+    @testset "curried combinators accept bare strings" begin
+        # One assert per combinator that gained string acceptance —
+        # equivalence with the canonical `p"…"` form.
+        @test query("bd hh sn hh" |> fast(2), 0, 1) ==
+              query(p"bd hh sn hh" |> fast(2), 0, 1)
+        @test query("bd hh sn hh" |> slow(2), 0, 2) ==
+              query(p"bd hh sn hh" |> slow(2), 0, 2)
+        @test query("bd hh sn hh" |> every(2, rev), 0, 2) ==
+              query(p"bd hh sn hh" |> every(2, rev), 0, 2)
+        @test query("bd hh sn hh" |> off(1//8, fast(2)), 0, 1) ==
+              query(p"bd hh sn hh" |> off(1//8, fast(2)), 0, 1)
+        @test query("bd hh sn hh" |> iter(2), 0, 2) ==
+              query(p"bd hh sn hh" |> iter(2), 0, 2)
+    end
+
+    @testset "gate accepts a bare-string mask" begin
+        @test query(gate(:bd, "1 0 1 0"), 0, 1) ==
+              query(gate(:bd, p"1 0 1 0"), 0, 1)
+        # Curried form too: `:bd |> gate("1 0 1 0")`.
+        @test query(:bd |> gate("1 0 1 0"), 0, 1) ==
+              query(gate(:bd, p"1 0 1 0"), 0, 1)
+    end
 end
