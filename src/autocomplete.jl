@@ -45,29 +45,63 @@ const _APP_AUTOCOMPLETE_CANDIDATES = String[
 ]
 
 """
+    _start_completion_session!(m, candidates, splice; label) -> Bool
+
+Open a Tab-cycle session. Stashes `candidates` + `splice` on the
+model, sets idx=1, and immediately invokes `splice(1)` so the
+first candidate is written into the active buffer. Returns true
+iff candidates is non-empty (consumes Tab).
+
+`splice` is `(i::Int) -> Nothing` — a closure that knows where to
+write `candidates[i]`. The closure captures whatever state it
+needs (cursor row, range, command-buffer ref, …) so the model
+holds no buffer-specific completion fields.
+
+`label` (e.g. "insert", "ex:verb", "ex:starter") prefixes the
+picker title so the user knows which surface is being completed.
+"""
+function _start_completion_session!(m::RessacApp, candidates::Vector{String},
+                                    splice; label::AbstractString = "")
+    isempty(candidates) && return false
+    m.completion_candidates = candidates
+    m.completion_idx = 1
+    m.completion_splice = splice
+    m.completion_label = String(label)
+    splice(1)
+    return true
+end
+
+"""
+    _advance_completion_session!(m) -> Bool
+
+Move to the next candidate in the active session (wraps). Calls
+the stored splice with the new index. Returns true if a session
+was active (Tab consumed), false otherwise.
+"""
+function _advance_completion_session!(m::RessacApp)
+    _completion_picker_active(m) || return false
+    m.completion_splice === nothing && return false
+    m.completion_idx = m.completion_idx % length(m.completion_candidates) + 1
+    m.completion_splice(m.completion_idx)
+    return true
+end
+
+"""
     _try_autocomplete!(m, ed) -> Bool
 
-Look at the word under the cursor and replace it with the first
-candidate that fuzzy-matches. Returns true if anything was inserted
-(consuming the Tab keypress); false otherwise so the editor handles
-Tab normally.
-
-Candidate sources: combinators + ~40 OSC params + 64 @dN macros +
-every registered sample / instrument / synth name.
+Tab in `:insert` mode. Looks at the word under the cursor, fuzzy-
+ranks candidates from `_APP_AUTOCOMPLETE_CANDIDATES` + every
+registered sample / instrument / synth name, opens a cycle session
+that splices the chosen string back into the editor row. Returns
+true iff Tab was consumed.
 """
 function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
-    # Tab pressed again with an active cycle: just advance to the next
-    # candidate, swap it into the previously-replaced range.
-    if m.completion_idx > 0 && m.completion_row == ed.cursor_row &&
-       !isempty(m.completion_candidates)
-        m.completion_idx = m.completion_idx % length(m.completion_candidates) + 1
-        repl = m.completion_candidates[m.completion_idx]
-        _splice_completion!(m, ed, repl)
-        # No log line — the completion picker (rendered in place of
-        # the log pane while a cycle is active) shows the full list.
-        return true
+    # Active cycle from the same editor row → advance.
+    if _completion_picker_active(m) && m.completion_label == "insert"
+        return _advance_completion_session!(m)
     end
-    # Fresh autocomplete: collect candidates, replace with the best.
+    _reset_completion!(m)
+    # Locate the word boundary under the cursor.
     1 <= ed.cursor_row <= length(ed.lines) || return false
     chars = ed.lines[ed.cursor_row]
     col = ed.cursor_col
@@ -80,64 +114,53 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     end
     start_col == end_col && return false
     partial = String(chars[(start_col + 1):end_col])
+    # Fuzzy-rank against the global candidate pool, top 12.
     candidates = copy(_APP_AUTOCOMPLETE_CANDIDATES)
     append!(candidates, String.(keys(_SAMPLE_REGISTRY)))
     append!(candidates, String.(keys(_INSTRUMENT_REGISTRY)))
     append!(candidates, String.(keys(_SYNTH_REGISTRY)))
     unique!(candidates)
-    scored = Tuple{Int,Int,String}[]
-    for cand in candidates
-        score = _fuzzy_score(partial, cand)
-        score === nothing && continue
-        push!(scored, (score, length(cand), cand))
-    end
-    isempty(scored) && return false
-    sort!(scored, by = t -> (t[1], t[2], t[3]))
-    # Cap the cycle list so we don't loop through hundreds of fuzzy
-    # matches when the partial is a single letter.
-    top = first(scored, 12)
-    m.completion_candidates = String[t[3] for t in top]
-    m.completion_idx = 1
-    m.completion_row = ed.cursor_row
-    m.completion_range = (start_col, end_col)
-    _splice_completion!(m, ed, m.completion_candidates[1])
-    # No log line — the completion picker swaps in for the log pane
-    # while a cycle is active, showing the full candidate list with
-    # the current selection highlighted. Resets to log on next non-Tab.
-    return true
+    ranked = _fuzzy_rank(partial, candidates)
+    isempty(ranked) && return false
+    top = first(ranked, 12)
+    row = ed.cursor_row
+    splice = _make_editor_splicer(m, ed, row, start_col)
+    return _start_completion_session!(m, top, splice; label = "insert")
 end
 
 """
-    _splice_completion!(m, ed, replacement)
+    _make_editor_splicer(m, ed, row, start_col) -> Function
 
-Replace `completion_range` on `completion_row` with `replacement` and
-reposition the cursor right after it. Updates the stored range so the
-next Tab cycle replaces this exact span (whose end column shifted).
+Return `(i::Int) -> Nothing` that replaces the word starting at
+`(row, start_col)` in `ed`'s buffer with `m.completion_candidates[i]`,
+moves the cursor right after the replacement, and keeps the word-
+boundary tracking correct across consecutive Tabs (each new
+replacement may have a different length).
 """
-function _splice_completion!(m::RessacApp, ed::TK.CodeEditor, replacement::AbstractString)
-    row = m.completion_row
-    start_col, _ = m.completion_range
-    txt = TK.text(ed)
-    lines = collect(split(txt, '\n'; keepempty=true))
-    1 <= row <= length(lines) || return
-    line = String(lines[row])
-    # We need the CURRENT end_col: the end of the previous replacement
-    # since the stored end might be stale after a swap. Walk from
-    # start_col to find the first non-word boundary.
-    chars = collect(line)
-    is_word = c -> isletter(c) || isdigit(c) || c == '_' || c == '@'
-    end_col = start_col
-    while end_col < length(chars) && is_word(chars[end_col + 1])
-        end_col += 1
+function _make_editor_splicer(m::RessacApp, ed::TK.CodeEditor,
+                              row::Int, start_col::Int)
+    return function (i::Int)
+        i in eachindex(m.completion_candidates) || return
+        replacement = m.completion_candidates[i]
+        txt = TK.text(ed)
+        lines = collect(split(txt, '\n'; keepempty=true))
+        1 <= row <= length(lines) || return
+        line = String(lines[row])
+        chars = collect(line)
+        is_word = c -> isletter(c) || isdigit(c) || c == '_' || c == '@'
+        end_col = start_col
+        while end_col < length(chars) && is_word(chars[end_col + 1])
+            end_col += 1
+        end
+        new_line = (start_col > 0 ? String(chars[1:start_col]) : "") *
+                   replacement *
+                   (end_col >= length(chars) ? "" : String(chars[(end_col + 1):end]))
+        lines[row] = new_line
+        TK.set_text!(ed, join(lines, '\n'))
+        ed.cursor_row = row
+        ed.cursor_col = start_col + length(replacement)
+        return
     end
-    new_line = (start_col > 0 ? String(chars[1:start_col]) : "") *
-               replacement *
-               (end_col >= length(chars) ? "" : String(chars[(end_col + 1):end]))
-    lines[row] = new_line
-    TK.set_text!(ed, join(lines, '\n'))
-    ed.cursor_row = row
-    ed.cursor_col = start_col + length(replacement)
-    m.completion_range = (start_col, start_col + length(replacement))
 end
 
 """
@@ -185,12 +208,14 @@ end
     _reset_completion!(m)
 
 Clear the Tab-cycle state. Called from update! after handling any key
-event in :insert mode that is not Tab — so the next Tab restarts a
-fresh autocomplete from the (presumably new) word under the cursor.
+event in :insert / :command mode that is not Tab — so the next Tab
+restarts a fresh autocomplete session.
 """
 function _reset_completion!(m::RessacApp)
     m.completion_idx = 0
     empty!(m.completion_candidates)
+    m.completion_splice = nothing
+    m.completion_label  = ""
 end
 
 # ---------------------------------------------------------------------
@@ -443,57 +468,84 @@ const _EX_COMMAND_ARG_LITERALS = Dict{String,Vector{String}}(
 )
 
 """
-    _try_ex_autocomplete!(ed) -> Bool
+    _try_ex_autocomplete!(m, ed) -> Bool
 
 Tab inside the ex-command line. Splits `command_buffer` on the first
-space: no space → autocomplete the verb; with space → autocomplete the
-argument against the verb-specific candidate set. Returns true if the
-buffer was rewritten (and the Tab consumed).
+space:
+  * no space → cycle over ex-command verbs
+  * with space → cycle over the verb-specific argument set
+
+Opens a `_start_completion_session!` so the picker UI (LOG pane
+swap) lights up just like the :insert path, and subsequent Tab
+presses cycle. Returns true iff Tab was consumed.
 """
-function _try_ex_autocomplete!(ed::TK.CodeEditor)
+function _try_ex_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
+    # Active cycle on the same ex-command session → advance.
+    if _completion_picker_active(m) && startswith(m.completion_label, "ex:")
+        return _advance_completion_session!(m)
+    end
+    _reset_completion!(m)
     buf = String(ed.command_buffer)
     isempty(buf) && return false
     sp = findfirst(' ', buf)
     if sp === nothing
-        # Autocomplete the verb itself.
+        # Verb completion.
         partial = buf
-        scored = Tuple{Int,Int,String}[]
-        for verb in _all_ex_verbs()
-            sc = _fuzzy_score(partial, verb)
-            sc === nothing && continue
-            push!(scored, (sc, length(verb), verb))
-        end
-        isempty(scored) && return false
-        sort!(scored, by = t -> (t[1], t[2], t[3]))
-        replacement = scored[1][3]
-        empty!(ed.command_buffer)
-        append!(ed.command_buffer, collect(replacement))
-        return true
+        ranked = _fuzzy_rank(partial, _all_ex_verbs())
+        isempty(ranked) && return false
+        top = first(ranked, 12)
+        splice = _make_ex_verb_splicer(m, ed)
+        return _start_completion_session!(m, top, splice; label = "ex:verb")
     else
+        # Argument completion for a known verb.
         verb = buf[1:sp-1]
         rest = buf[sp+1:end]
-        # Last token in `rest` is the partial to complete; earlier tokens
-        # are kept verbatim. `_doc` etc. take just one arg, but being
-        # token-aware here is the right shape for multi-arg verbs later.
-        toks = split(rest, ' '; keepempty=true)
-        partial = isempty(toks) ? "" : String(toks[end])
+        toks = String.(split(rest, ' '; keepempty=true))
+        partial = isempty(toks) ? "" : toks[end]
         candidates = _ex_arg_candidates(verb)
         isempty(candidates) && return false
-        scored = Tuple{Int,Int,String}[]
-        for cand in candidates
-            sc = _fuzzy_score(partial, cand)
-            sc === nothing && continue
-            push!(scored, (sc, length(cand), cand))
-        end
-        isempty(scored) && return false
-        sort!(scored, by = t -> (t[1], t[2], t[3]))
-        replacement = scored[1][3]
-        toks[end] = replacement
-        new_rest = join(toks, ' ')
-        new_buf = verb * " " * new_rest
+        ranked = _fuzzy_rank(partial, candidates)
+        isempty(ranked) && return false
+        top = first(ranked, 12)
+        splice = _make_ex_arg_splicer(m, ed, verb, toks)
+        return _start_completion_session!(m, top, splice; label = "ex:$verb")
+    end
+end
+
+"""
+    _make_ex_verb_splicer(m, ed) -> Function
+
+Splice for ex-command VERB completion. The whole `command_buffer`
+gets replaced with the chosen verb (verbs have no space, so the
+whole buffer IS the partial).
+"""
+function _make_ex_verb_splicer(m::RessacApp, ed::TK.CodeEditor)
+    return function (i::Int)
+        i in eachindex(m.completion_candidates) || return
+        empty!(ed.command_buffer)
+        append!(ed.command_buffer, collect(m.completion_candidates[i]))
+        return
+    end
+end
+
+"""
+    _make_ex_arg_splicer(m, ed, verb, toks) -> Function
+
+Splice for ex-command ARGUMENT completion. The verb + the leading
+tokens stay verbatim; only the LAST token (the partial) is
+replaced with the chosen candidate. `toks` is the original split
+of the rest, captured at session start.
+"""
+function _make_ex_arg_splicer(m::RessacApp, ed::TK.CodeEditor,
+                              verb::AbstractString, toks::Vector{String})
+    head = String(verb) * " " *
+           (length(toks) > 1 ? join(toks[1:end-1], ' ') * " " : "")
+    return function (i::Int)
+        i in eachindex(m.completion_candidates) || return
+        new_buf = head * m.completion_candidates[i]
         empty!(ed.command_buffer)
         append!(ed.command_buffer, collect(new_buf))
-        return true
+        return
     end
 end
 

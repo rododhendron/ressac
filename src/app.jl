@@ -164,15 +164,18 @@ non-empty), and the focus toggle for keystroke routing.
     # scope is :wave and the user is in normal mode.
     scope_zoom::Float64          = 1.0       # Y / amplitude
     scope_zoom_x::Float64        = 1.0       # X / time
-    # Tab-cycle autocomplete state. completion_idx 0 = no active cycle.
-    # On first Tab: gather fuzzy-ranked candidates, replace word with [1].
-    # On subsequent Tab presses (with no other intervening key): advance
-    # to the next candidate, replace again. Any non-Tab key in insert
-    # mode clears the cycle so the next Tab restarts from scratch.
+    # Tab-cycle autocomplete state. Shared between :insert Tab (word
+    # under cursor) and :command Tab (ex-command verb / arg). On the
+    # first Tab, the entry point gathers candidates + builds a
+    # `completion_splice` closure that knows how to write the chosen
+    # string back into the appropriate buffer. Subsequent Tabs just
+    # cycle through `completion_candidates` and re-invoke the splice.
+    # Any non-Tab key clears via `_reset_completion!` so the next
+    # Tab starts fresh.
     completion_candidates::Vector{String} = String[]
     completion_idx::Int          = 0
-    completion_row::Int          = 0
-    completion_range::Tuple{Int,Int} = (0, 0)   # (start_col, end_col) 0-based
+    completion_splice::Union{Function,Nothing} = nothing
+    completion_label::String     = ""           # picker title prefix
     # :keydebug toggles a verbose-input mode that pushes every KeyEvent
     # received from the terminal to the log pane. Lets the user see the
     # exact symbol + char + action for any keystroke when diagnosing
@@ -802,9 +805,14 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # the command verb itself OR the argument (synth/sample/instrument
     # name) when one already has been typed.
     if is_press && evt.key === :tab && ed.mode === :command
-        if _try_ex_autocomplete!(ed)
+        if _try_ex_autocomplete!(m, ed)
             return
         end
+    end
+    # Any non-Tab key in :command clears the completion cycle (so the
+    # splice closure's captured tokens don't go stale).
+    if is_press && ed.mode === :command && evt.key !== :tab
+        _reset_completion!(m)
     end
     # Snapshot for normal-mode `.` recording — see _vim_post_normal!.
     pre_text = ed.mode === :normal ? TK.text(ed) : ""
