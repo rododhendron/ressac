@@ -156,11 +156,7 @@ function event_to_osc(ev::Event{ControlMap})
     if sc_target !== nothing && _is_user_synth(sc_target)
         args = Any[String(sc_target)]
         delete!(final, :s)
-        for k in sort!(collect(keys(final)))
-            v_conv = _osc_value(final[k])
-            v_conv === missing && continue
-            push!(args, String(k)); push!(args, v_conv)
-        end
+        _push_kv_args!(args, final)
         return OSCMessage("/ressac/play", args)
     end
 
@@ -170,12 +166,33 @@ function event_to_osc(ev::Event{ControlMap})
         s_conv !== missing && (push!(args, "s"); push!(args, s_conv))
         delete!(final, :s)
     end
-    for k in sort!(collect(keys(final)))
-        v_conv = _osc_value(final[k])
+    _push_kv_args!(args, final)
+    return OSCMessage("/dirt/play", args)
+end
+
+"""
+    _push_kv_args!(args, dict)
+
+Push `(String(k), _osc_value(v))` into `args` for each entry of
+`dict`, in alphabetical key order so the serialisation is stable
+(SuperDirt parses by key name, but a deterministic order keeps
+logs + tests legible). Values that `_osc_value` rejects (returns
+`missing`) are dropped silently — they were already `@warn`'d at
+conversion time.
+
+Used by both `/ressac/play` and `/dirt/play` branches of
+`event_to_osc(::Event{ControlMap})` to serialise the param tail.
+The `:s` key is handled separately by the caller (it leads the
+arg list and uses different framing per branch) and should be
+removed from `dict` before calling.
+"""
+function _push_kv_args!(args::Vector{Any}, dict::AbstractDict{Symbol,<:Any})
+    for k in sort!(collect(keys(dict)))
+        v_conv = _osc_value(dict[k])
         v_conv === missing && continue
         push!(args, String(k)); push!(args, v_conv)
     end
-    return OSCMessage("/dirt/play", args)
+    return args
 end
 
 """

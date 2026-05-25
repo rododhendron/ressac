@@ -9,6 +9,33 @@ end
 MockOSCClient() = MockOSCClient(Vector{UInt8}[])
 Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
 
+"""
+    _with_test_scheduler(f; cps=0.5)
+
+Run `f(mock, sched)` with a fresh `MockOSCClient` + `Scheduler`
+installed as the live session, and restore `_LIVE_SCHEDULER[]` to
+`nothing` in a `finally` block (even if `f` throws). Replaces the
+mock/sched/try/finally boilerplate that was repeated 15+ times
+across test_plugin_handlers.jl and test_live_api.jl.
+
+```julia
+_with_test_scheduler() do mock, sched
+    Ressac._handle_synthdefs(...)
+    @test length(mock.sent) == 1
+end
+```
+"""
+function _with_test_scheduler(f; cps::Real = 0.5)
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps = cps)
+    Ressac._LIVE_SCHEDULER[] = sched
+    try
+        f(mock, sched)
+    finally
+        Ressac._LIVE_SCHEDULER[] = nothing
+    end
+end
+
 @testset "scheduler" begin
     @testset "_step! sends one bundle per event in the new window" begin
         mock = MockOSCClient()

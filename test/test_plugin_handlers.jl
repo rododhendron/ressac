@@ -19,10 +19,7 @@ using Ressac
     end
 
     @testset "[samples] handler sends /dirt/loadSampleFolder per root" begin
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withsamples"))
             h = Ressac.get_section_handler(:samples)
             @test h !== nothing
@@ -34,23 +31,16 @@ using Ressac
             sent_path = msg.args[1]
             @test isabspath(sent_path)
             @test endswith(sent_path, "/withsamples/samples")
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
 
     @testset "[samples] missing root logs error" begin
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             h = Ressac.get_section_handler(:samples)
             @test_logs (:error, r"not found|no such") match_mode=:any begin
                 h("/tmp", Dict("roots" => ["./does-not-exist"]), "ghost")
             end
             @test isempty(mock.sent)
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
 
@@ -63,10 +53,7 @@ using Ressac
     end
 
     @testset "[synthdefs] handler sends /dirt/evalSC with file content" begin
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withsynth"))
             h = Ressac.get_section_handler(:synthdefs)
             @test h !== nothing
@@ -77,16 +64,11 @@ using Ressac
             @test length(msg.args) == 1
             @test occursin("SynthDef", msg.args[1])
             @test occursin("bassline", msg.args[1])
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
 
     @testset "[synthdefs] missing file logs error" begin
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             h = Ressac.get_section_handler(:synthdefs)
             @test_logs (:error, r"not found|no such") match_mode=:any begin
                 h("/tmp", Dict("files" => ["./nope.scd"]), "ghost")
@@ -96,8 +78,6 @@ using Ressac
             # or stray .jl files live in /tmp and Core.eval them. The
             # guard is `isfile(plugin_dir/plugin.toml)`.
             @test isempty(mock.sent)
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
 
@@ -118,10 +98,7 @@ using Ressac
 
     @testset "[samples.bank] populates registry — file entry" begin
         empty!(Ressac._SAMPLE_REGISTRY)
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withbanks"))
             h = Ressac.get_section_handler(:samples)
             h(m.dir, m.sections["samples"], m.name)
@@ -133,18 +110,13 @@ using Ressac
             @test endswith(ent.variants[1], "/curated/kicks/heavy_v3.wav")
             @test ent.metadata["bpm"] == 120
             @test ent.metadata["tags"] == ["heavy", "subby"]
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
-            empty!(Ressac._SAMPLE_REGISTRY)
         end
+        empty!(Ressac._SAMPLE_REGISTRY)
     end
 
     @testset "[samples.bank] populates registry — directory entry, sorted variants" begin
         empty!(Ressac._SAMPLE_REGISTRY)
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withbanks"))
             h = Ressac.get_section_handler(:samples)
             h(m.dir, m.sections["samples"], m.name)
@@ -154,18 +126,13 @@ using Ressac
             @test length(ent.variants) == 2
             @test basename.(ent.variants) == ["s1.wav", "s2.wav"]
             @test ent.metadata["tags"] == ["acoustic"]
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
-            empty!(Ressac._SAMPLE_REGISTRY)
         end
+        empty!(Ressac._SAMPLE_REGISTRY)
     end
 
     @testset "[samples.bank] sends /dirt/registerSample per bank entry" begin
         empty!(Ressac._SAMPLE_REGISTRY)
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withbanks"))
             h = Ressac.get_section_handler(:samples)
             h(m.dir, m.sections["samples"], m.name)
@@ -177,10 +144,8 @@ using Ressac
             kicky = only(filter(m -> m.args[1] == "kicky", register_msgs))
             @test endswith(kicky.args[2], "/curated/kicks/heavy_v3.wav")
             @test isabspath(kicky.args[2])
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
-            empty!(Ressac._SAMPLE_REGISTRY)
         end
+        empty!(Ressac._SAMPLE_REGISTRY)
     end
 
     @testset "_osc_value type conversions" begin
@@ -262,20 +227,15 @@ using Ressac
 
     @testset "[samples].roots still sends /dirt/loadSampleFolder (back-compat)" begin
         empty!(Ressac._SAMPLE_REGISTRY)
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withsamples"))
             h = Ressac.get_section_handler(:samples)
             h(m.dir, m.sections["samples"], m.name)
 
             addrs = [Ressac.decode_message(b).address for b in mock.sent]
             @test "/dirt/loadSampleFolder" in addrs
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
-            empty!(Ressac._SAMPLE_REGISTRY)
         end
+        empty!(Ressac._SAMPLE_REGISTRY)
     end
 
     # ── Orphan auto-discovery for [synthdefs] ──────────────────────
@@ -310,10 +270,7 @@ using Ressac
     end
 
     @testset "[synthdefs] orphan auto-discovery requires plugin.toml" begin
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             h = Ressac.get_section_handler(:synthdefs)
             mktempdir() do d
                 # Real-looking SCD file in a dir WITHOUT plugin.toml.
@@ -323,16 +280,11 @@ using Ressac
                 h(d, Dict("files" => String[]), "ghostly")
                 @test isempty(mock.sent)
             end
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
 
     @testset "[synthdefs] orphan auto-discovery picks up unmanifested .scd" begin
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
-        try
+        _with_test_scheduler() do mock, sched
             h = Ressac.get_section_handler(:synthdefs)
             mktempdir() do d
                 touch(joinpath(d, "plugin.toml"))  # satisfies the guard
@@ -346,17 +298,12 @@ using Ressac
                 addrs = [Ressac.decode_message(b).address for b in mock.sent]
                 @test all(==("/dirt/evalSC"), addrs)
             end
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
         end
     end
 
     @testset "[synthdefs] orphan auto-discovery registers SynthEntry" begin
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        Ressac._LIVE_SCHEDULER[] = sched
         empty!(Ressac._SYNTH_REGISTRY)
-        try
+        _with_test_scheduler() do mock, sched
             h = Ressac.get_section_handler(:synthdefs)
             mktempdir() do d
                 touch(joinpath(d, "plugin.toml"))
@@ -368,10 +315,8 @@ using Ressac
                 @test Ressac.synth_info(:auto) !== nothing
                 @test Ressac._is_user_synth(:auto)
             end
-        finally
-            Ressac._LIVE_SCHEDULER[] = nothing
-            empty!(Ressac._SYNTH_REGISTRY)
         end
+        empty!(Ressac._SYNTH_REGISTRY)
     end
 
     @testset "_is_user_synth accepts user-synths AND user-dsl plugins" begin
