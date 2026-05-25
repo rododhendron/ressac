@@ -49,6 +49,8 @@ export delay_n, delay_l, delay_c
 export comb_n, comb_l, comb_c
 export allpass_n, allpass_l, allpass_c
 export free_verb, g_verb, decay, decay2
+export chorus, flanger, phaser
+export grain_buf, warp1
 # Spatial
 export stereo_pan, stereo_pan_lin, stereo_balance, stereo_rotate, splay, mix_sigs
 # Distortion / shaping
@@ -189,6 +191,74 @@ g_verb(roomsize=10, revtime=3, damping=0.5, inbw=0.5, spread=15, drylevel=1, ear
     (s::Sig) -> Sig("GVerb.ar($(sc_arg(s)), $(sc_arg(roomsize)), $(sc_arg(revtime)), $(sc_arg(damping)), $(sc_arg(inbw)), $(sc_arg(spread)), $(sc_arg(drylevel)), $(sc_arg(earlyref)), $(sc_arg(taillevel)))")
 decay(time=1)           = (s::Sig) -> Sig("Decay.ar($(sc_arg(s)), $(sc_arg(time)))")
 decay2(attack=0.01, release=1) = (s::Sig) -> Sig("Decay2.ar($(sc_arg(s)), $(sc_arg(attack)), $(sc_arg(release)))")
+
+# ── Modulated delay effects ──────────────────────────────────────
+# chorus  : sum of input + LFO-modulated short delay copy (~10ms)
+# flanger : short comb with feedback, LFO-swept (gives the "jet" tone)
+# phaser  : 4-stage allpass with LFO sweep (subtle phase wobble)
+
+"""
+    chorus(rate=0.5, depth=0.002, mix=0.5)
+
+Pipe-friendly chorus. `rate` Hz LFO sweeps the delay time around
+~10ms ±depth. `mix` (0..1) is the wet/dry blend.
+"""
+chorus(rate=0.5, depth=0.002, mix=0.5) = (s::Sig) -> Sig(
+    "(($(sc_arg(s)) * (1 - $(sc_arg(mix)))) + " *
+    "DelayL.ar($(sc_arg(s)), 0.05, 0.01 + " *
+    "SinOsc.kr($(sc_arg(rate))).range(0, $(sc_arg(depth)))) * $(sc_arg(mix)))")
+
+"""
+    flanger(rate=0.2, depth=0.005, feedback=0.3)
+
+Short comb filter with LFO-swept delay around ~5ms. Higher
+`feedback` (0..0.95) gives the metallic flange resonance.
+"""
+flanger(rate=0.2, depth=0.005, feedback=0.3) = (s::Sig) -> Sig(
+    "CombC.ar($(sc_arg(s)), 0.05, 0.005 + " *
+    "SinOsc.kr($(sc_arg(rate))).range(0, $(sc_arg(depth))), $(sc_arg(feedback)))")
+
+"""
+    phaser(rate=0.3, depth=800)
+
+4-stage all-pass cascade with the same LFO-swept centre frequency.
+A classic 70s phaser sound. `depth` is the swing of the centre
+frequency around 800 Hz.
+"""
+phaser(rate=0.3, depth=800) = (s::Sig) -> Sig(
+    "(0..3).inject($(sc_arg(s)), { |sig, i| " *
+    "AllpassC.ar(sig, 0.005, " *
+    "(SinOsc.kr($(sc_arg(rate)) * (1 + i*0.1)).range(200, 200 + $(sc_arg(depth))) * 1).reciprocal, " *
+    "0)})")
+
+# ── Granular ─────────────────────────────────────────────────────
+# These take a buffer reference (use grain_buf to allocate, or
+# pass a registered SuperDirt sample). Keep the surface minimal —
+# users can stack them for more elaborate granular if they want.
+
+"""
+    grain_buf(buf, dur=0.05, rate=1, pos=0.5, interp=4, pan=0, max_grains=512)
+
+GrainBuf wrapper — granular reading from a buffer. `pos` 0..1 of
+buffer; `dur` per-grain duration; `rate` pitch scaling.
+"""
+grain_buf(buf, dur=0.05, rate=1, pos=0.5, interp=4, pan=0, max_grains=512) = Sig(
+    "GrainBuf.ar(2, Impulse.kr(1/$(sc_arg(dur))), $(sc_arg(dur)), " *
+    "$(sc_arg(buf)), $(sc_arg(rate)), $(sc_arg(pos)), $(sc_arg(interp)), " *
+    "$(sc_arg(pan)), -1, $(sc_arg(max_grains)))")
+
+"""
+    warp1(buf, pointer=0.5, freq_scale=1, window_size=0.1, env_buf=-1,
+          overlaps=4, rand_ramp=0.1, interp=4)
+
+Time-stretching granular pitch-shift via Warp1. Independent control
+of pointer (playback position) and freq_scale (pitch).
+"""
+warp1(buf, pointer=0.5, freq_scale=1, window_size=0.1, env_buf=-1,
+      overlaps=4, rand_ramp=0.1, interp=4) = Sig(
+    "Warp1.ar(2, $(sc_arg(buf)), $(sc_arg(pointer)), $(sc_arg(freq_scale)), " *
+    "$(sc_arg(window_size)), $(sc_arg(env_buf)), $(sc_arg(overlaps)), " *
+    "$(sc_arg(rand_ramp)), $(sc_arg(interp)))")
 
 # ════════════════════════════════════════════════════════════════════
 # Spatial
