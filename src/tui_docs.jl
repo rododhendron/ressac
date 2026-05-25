@@ -246,4 +246,54 @@ const _STARTER_PACKS = Dict{String,Vector{String}}(
         "@d3 p\"hh*4\" |> gain(0.3) |> hpf(2500) |> lpf(6000)",
         "@d4 p\"superhammond*2\" |> n(p\"0 -5 -8 -3\") |> release(1.5) |> gain(0.5) |> lpf(1800) |> room(0.5) |> crush(7)",
     ],
+
+    # ── EDM expansion: cover the most-streamed subgenres that weren't
+    # represented in the original 5 packs. Each pack still aims for
+    # 5-7 lines — a starting point with kick + perc + bass + something
+    # melodic, not a finished arrangement.
+    "dubstep" => [
+        "cps!(0.34)",   # ~140 BPM half-time feel",
+        "",
+        "@d1 gate(:super808, p\"1 0 0 0 0 0 0 0\") |> n(-12) |> release(0.6) |> gain(1.6)",
+        "@d2 gate(:supersnare, p\"0 0 0 0 1 0 0 0\") |> gain(1.0) |> room(0.25) |> shape(0.2)",
+        "@d3 p\"hh*8\" |> gain(0.25) |> hpf(5500) |> degradeBy(0.2)",
+        "@d4 p\"superreese*2\" |> n(p\"<-12 -10 -8 -10>\") |> release(0.5) |> gain(1.4) |> lpf(p\"<400 1600 800 2400>\") |> shape(0.4)",
+        "@d5 p\"~ ~ cp ~ ~ ~ cp ~\" |> gain(0.6) |> room(0.4)",
+    ],
+    "amapiano" => [
+        "cps!(0.46)",   # ~112 BPM",
+        "",
+        "@d1 gate(:super808, p\"1 0 0 0 1 0 0 0\") |> n(-12) |> release(0.5) |> gain(1.4)",
+        "@d2 p\"~ ~ cp ~ ~ ~ cp ~\" |> gain(0.7) |> room(0.3)",
+        "@d3 p\"hh*16\" |> gain(0.3) |> hpf(4500) |> degradeBy(0.15)",
+        "@d4 p\"superpiano*4\" |> n(p\"0 -3 5 7\") |> release(0.6) |> gain(0.55) |> room(0.4) |> degradeBy(0.3)",
+        "@d5 :superreese |> n(p\"<-12 -10 -7 -5>\") |> release(0.8) |> gain(1.0) |> lpf(900) |> pump(8, 0.5)",
+    ],
+    "jungle" => [
+        "cps!(0.7)",    # ~168 BPM",
+        "",
+        "@d1 p\"amen*2\" |> gain(1.2) |> speed(1.1) |> shape(0.2)",
+        "@d2 gate(:super808, p\"1 0 0 0 0 0 1 0\") |> n(-12) |> release(0.5) |> gain(1.4)",
+        "@d3 p\"~ ~ cp ~\" |> gain(0.6) |> room(0.4) |> shape(0.3)",
+        "@d4 :superreese |> n(p\"-24 -19 -17 -12\") |> release(1.5) |> gain(1.0) |> lpf(p\"<500 1500>\")",
+        "@d5 p\"hh*16\" |> gain(0.2) |> hpf(7000) |> degradeBy(0.3)",
+    ],
+    "idm" => [
+        "cps!(0.55)",
+        "",
+        "@d1 p\"bd(3,8,<0 1 2>)\" |> gain(1.2)",
+        "@d2 p\"cp(5,16,<2 4>)\" |> gain(0.7) |> room(0.3)",
+        "@d3 p\"hh(11,16)\" |> gain(0.3) |> hpf(6000) |> degradeBy(0.4) |> pan(p\"<0 0.7 0.3 -0.5>\")",
+        "@d4 :supersaw |> n(p\"0 7 5 ? 12 ?\") |> release(0.3) |> gain(0.6) |> lpf(p\"<300 1800 600>\") |> shape(0.3)",
+        "@d5 p\"glitch ~ ~ glitch\" |> gain(0.5) |> sometimes(rev) |> crush(6)",
+    ],
+    "hardcore" => [
+        "cps!(0.85)",   # 200+ BPM",
+        "",
+        "@d1 p\"k909*4\" |> gain(1.6) |> shape(0.6)",
+        "@d2 gate(:supersnare, p\"0 0 1 0\") |> gain(1.2) |> room(0.2) |> shape(0.4)",
+        "@d3 p\"hh*16\" |> gain(0.4) |> hpf(8000)",
+        "@d4 :supersaw |> n(p\"<-12 -8 -5 -10>\") |> release(0.4) |> gain(1.3) |> lpf(p\"<400 2000 800>\") |> shape(0.5)",
+        "@d5 p\"~ ~ ~ ~ cp ~ ~ ~\" |> gain(0.9) |> shape(0.4)",
+    ],
 )
