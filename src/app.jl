@@ -1203,12 +1203,80 @@ const _LITERAL_DISPATCH = Dict{String, Function}()
 const _REGEX_DISPATCH   = Tuple{Regex,Function}[]
 const _SPECIAL_DISPATCH = Tuple{Function,Function}[]
 
+# Verbs (autocomplete candidates) populated automatically by the
+# `_register_*!` helpers. Single source of truth — the autocomplete
+# in autocomplete.jl unions `keys(_LITERAL_DISPATCH)` with these,
+# so adding a new command via `_register_regex!` or `_register_special!`
+# makes it Tab-completable without touching another file.
+const _REGEX_VERBS   = Set{String}()
+const _SPECIAL_VERBS = Set{String}()
+
+"""
+    _extract_regex_verbs(rx::Regex) -> Vector{String}
+
+Parse a dispatcher regex source and return the leading literal verbs
+that the user would type. Handles three shapes:
+
+  * `^foo\\s+...`           → ["foo"]
+  * `^(?:foo|bar)\\s+...`   → ["foo", "bar"]   (alternation)
+  * `^foo(?:bar)?\\s+...`   → ["foo", "foobar"] (optional suffix)
+
+Falls back to `[]` for regexes whose leading shape isn't a simple verb
+(currently only `_SHORTCUT_RX`, which is inline DSL syntax, not a
+discoverable ex-command). Anything that *is* a verb gets surfaced in
+autocomplete automatically — no list to maintain in sync.
+"""
+function _extract_regex_verbs(rx::Regex)
+    src = rx.pattern
+    startswith(src, "^") || return String[]
+    s = SubString(src, 2)
+    # Shape A: ^(?:alt1|alt2)... — pure alternation (no nested `?`).
+    m = match(r"^\(\?:([^()]+)\)\\s", s)
+    if m !== nothing && occursin('|', m.captures[1]) && !occursin('?', m.captures[1])
+        return [String(strip(w)) for w in split(m.captures[1], '|') if !isempty(strip(w))]
+    end
+    # Shape B: ^prefix(?:suffix)?... — prefix + optional suffix
+    m = match(r"^([A-Za-z0-9_\-]+)\(\?:([A-Za-z0-9_\-]+)\)\?", s)
+    if m !== nothing
+        return [String(m.captures[1]), String(m.captures[1] * m.captures[2])]
+    end
+    # Shape C: ^literal-word followed by \s or $ — plain verb.
+    m = match(r"^([A-Za-z0-9_\-]+)(?:\\s|\$)", s)
+    m !== nothing && return [String(m.captures[1])]
+    return String[]
+end
+
 _register_literal!(action, aliases::String...) =
     (for a in aliases; _LITERAL_DISPATCH[a] = action; end)
-_register_regex!(rx::Regex, action) =
+
+function _register_regex!(rx::Regex, action)
     push!(_REGEX_DISPATCH, (rx, action))
-_register_special!(pred, action) =
+    for v in _extract_regex_verbs(rx)
+        push!(_REGEX_VERBS, v)
+    end
+end
+
+function _register_special!(pred, action; verbs::Vector{String} = String[])
     push!(_SPECIAL_DISPATCH, (pred, action))
+    for v in verbs
+        push!(_SPECIAL_VERBS, v)
+    end
+end
+
+"""
+    _all_ex_verbs() -> Vector{String}
+
+Every command verb the user can type after `:`. Union of:
+  * `keys(_LITERAL_DISPATCH)` — exact-match verbs (e.g. `panic`, `q`)
+  * `_REGEX_VERBS`            — extracted from each regex registration
+  * `_SPECIAL_VERBS`          — explicit list from `_register_special!`
+
+Sorted for stable ordering. Used by autocomplete.jl to keep the
+Tab-completion candidate set in sync with the dispatch tables.
+"""
+_all_ex_verbs() = sort!(collect(union(keys(_LITERAL_DISPATCH),
+                                       _REGEX_VERBS,
+                                       _SPECIAL_VERBS)))
 
 # ── Lifecycle ────────────────────────────────────────────────────────
 # Bodies wrapped in `m -> fn(m)` instead of bare `fn` so the function
@@ -1392,7 +1460,8 @@ _register_special!(
             ids = filter(!isempty, split(cmd, 'e'; keepempty=false))
             _eval_pattern_blocks!(m, Symbol[Symbol("d", n) for n in ids])
         end
-    end)
+    end;
+    verbs = ["e"])
 
 # Small named helpers — kept out of the inline lambdas above so they
 # stay readable + greppable. Each takes (m, mt::RegexMatch).

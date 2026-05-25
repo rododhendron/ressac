@@ -372,28 +372,12 @@ function _render_ghost!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
 end
 # Ex-command verbs (`:foo`). Kept here, not derived from the dispatch
 # table, because the dispatch lives inside _handle_ex_command! as a chain
-# of `match()` calls; centralising the list keeps autocomplete and the
-# real handler in step manually — when adding a verb, add it here too.
-const _EX_COMMAND_VERBS = String[
-    "q", "quit", "synth", "back", "close", "w", "write", "test", "test-raw",
-    "tabs", "tabnext", "tabprev", "tabprevious", "scope", "guide",
-    "synth-guide", "browse", "doc", "starter", "scale", "cps",
-    "mute", "unmute", "solo", "save-session", "load-session",
-    "save-synth", "save-synth-as", "reload", "keydebug", "pause", "freeze",
-    "copylogs", "yanklogs", "synthlib", "synth-library", "lib",
-    "theme", "reload-config", "reload-cfg", "sccode", "sc",
-    "panic", "hush", "stop", "sccode-tag", "sctag",
-    "snip", "snippets", "snippet",
-    "rec", "record", "export", "export-synth",
-    "scratch", "sandbox", "e", "dsl", "dsl-guide", "synth-dsl", "safety",
-    "tap", "tap-tempo", "taptempo", "bpm", "tap-strict", "tap-bar",
-    "piano", "piano-rec", "piano-record",
-    "wiki", "docs", "doc-wiki",
-    "save", "load", "sessions", "ls-sessions",
-    "tutorial", "tour", "start",
-    "import",
-    "mixer", "mix",
-]
+# Verbs are derived from the dispatch tables in app.jl via
+# `_all_ex_verbs()` (single source of truth). Adding a new
+# `_register_literal!` / `_register_regex!` / `_register_special!`
+# automatically surfaces it in Tab-completion. No list to maintain
+# here — if you find yourself adding entries below, fix the
+# extraction in `_extract_regex_verbs` instead.
 
 # Verbs that take a name argument autocompleted against the synth / sample
 # / instrument registries (so `:synth wo<Tab>` finds wob1, `:doc gai<Tab>`
@@ -433,7 +417,7 @@ function _try_ex_autocomplete!(ed::TK.CodeEditor)
         # Autocomplete the verb itself.
         partial = buf
         scored = Tuple{Int,Int,String}[]
-        for verb in _EX_COMMAND_VERBS
+        for verb in _all_ex_verbs()
             sc = _fuzzy_score(partial, verb)
             sc === nothing && continue
             push!(scored, (sc, length(verb), verb))

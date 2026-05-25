@@ -131,6 +131,65 @@
         end
     end
 
+    # ── app.jl — ex-command verb derivation ──
+    @testset "_all_ex_verbs covers every dispatcher" begin
+        # The autocomplete used to be a hand-maintained list that drifted
+        # away from the dispatch tables every time someone added a verb.
+        # `_all_ex_verbs()` derives the candidate set from the three
+        # dispatch tables directly, so the set can't drift. These checks
+        # catch the case where the EXTRACTOR itself breaks (e.g. someone
+        # changes a regex shape it doesn't recognise).
+        v = Set(Ressac._all_ex_verbs())
+
+        # Literals — anything in _LITERAL_DISPATCH must appear.
+        for k in keys(Ressac._LITERAL_DISPATCH)
+            @test k in v
+        end
+
+        # Regex-derived verbs — pin down a representative sample so a
+        # regression in the extractor is caught immediately.
+        for verb in ["tap", "starter", "synth", "scope", "import",
+                     "save", "load", "save-session", "load-session",
+                     "tap-strict", "piano", "piano-rec",
+                     "scale", "cps", "doc", "theme", "safety",
+                     "mute", "unmute", "solo",
+                     # Alternation: ^(?:sccode|sc)\s+...
+                     "sccode", "sc",
+                     "sccode-tag", "sctag",
+                     # Optional suffix: ^export(?:-synth)?\s+...
+                     "export", "export-synth",
+                     # Optional suffix: ^rec(?:ord)?\s+start
+                     "rec", "record"]
+            @test verb in v
+        end
+
+        # Special dispatch — only `:e` for now.
+        @test "e" in v
+    end
+
+    @testset "_extract_regex_verbs — direct shape coverage" begin
+        # Plain verb.
+        @test Ressac._extract_regex_verbs(r"^scope\s+(\w+)$") == ["scope"]
+
+        # Alternation.
+        verbs = Ressac._extract_regex_verbs(r"^(?:sccode|sc)\s+(\S+)$")
+        @test sort(verbs) == ["sc", "sccode"]
+
+        # Optional suffix.
+        verbs = Ressac._extract_regex_verbs(r"^export(?:-synth)?\s+(\S+)$")
+        @test sort(verbs) == ["export", "export-synth"]
+
+        # Hyphenated verb (e.g. tap-strict).
+        @test Ressac._extract_regex_verbs(r"^tap-strict\s+(\w+)$") == ["tap-strict"]
+
+        # Whole-line literal (no \s after — verb matches up to $).
+        # Currently no such regex exists but the extractor should handle it.
+        @test Ressac._extract_regex_verbs(r"^foo$") == ["foo"]
+
+        # Pattern that doesn't start with ^ — return empty.
+        @test Ressac._extract_regex_verbs(r"foo\s+bar") == String[]
+    end
+
     @testset "_LEADER_SNIPPETS — every trigger has a label" begin
         # The footer reads from _LEADER_LABELS — every key in
         # _LEADER_SNIPPETS / _LEADER_ACTIONS must have one or the
