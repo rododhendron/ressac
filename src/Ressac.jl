@@ -48,6 +48,9 @@ include("plugin_handlers.jl")
 export Event, Pattern, query
 export pure, silence, fast, slow, density, rev, every, gate
 export mask
+export jux, juxBy, off, degrade, degradeBy
+export sometimes, sometimesBy, often, rarely
+export palindrome, iter, chunk
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
 export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, schedule_pattern!
