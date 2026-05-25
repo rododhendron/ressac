@@ -292,4 +292,63 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
         params = (sustain = 1.0,),
         auto_env = false,
         auto_gain = false),
+
+    # ═══════════════════════════════════════════════════════════════
+    # 909 drum kit — the canonical electronic drum set, ported as
+    # DSL recipes so the user has nameable, editable building blocks.
+    # All 8 entries use the `tr909` category so they cluster in the
+    # synth-library picker. SuperDirt already ships 909 SAMPLES under
+    # /dirt/*909*; these are synthesised versions you can tweak live.
+    # ═══════════════════════════════════════════════════════════════
+    _dsl_entry("k909", "tr909",
+        "909-style kick — sine pitch drop + click attack + saturation.",
+        """(sin_osc(line(180, :freq, 0.04)) |> tanh_drive(1.2) |>
+            env_perc(0.001, :sustain)) +
+           (white() |> high_pass(1500) |> env_perc(0, 0.003) |> amp(0.4))""";
+        params = (freq = 50, sustain = 0.35)),
+
+    _dsl_entry("s909", "tr909",
+        "909-style snare — tone body + noise burst + sharp transient.",
+        """(sin_osc(:freq) |> env_perc(0, 0.03) |> amp(0.6)) +
+           (white() |> band_pass(2500, 0.4) |> env_perc(0.001, :sustain) |> amp(0.9))""";
+        params = (freq = 230, sustain = 0.13)),
+
+    _dsl_entry("hh909", "tr909",
+        "909 closed hat — square-rich noise through tight HPF.",
+        """((white() |> high_pass(7000)) + (pulse(8000, 0.5) |> amp(0.3))) |>
+           env_perc(0.001, :sustain)""";
+        params = (sustain = 0.04,)),
+
+    _dsl_entry("oh909", "tr909",
+        "909 open hat — longer release with metallic sheen.",
+        """((white() |> high_pass(6000)) + (pulse(8500, 0.5) |> amp(0.25))) |>
+           env_perc(0.002, :sustain; curve = -3)""";
+        params = (sustain = 0.35,)),
+
+    _dsl_entry("cp909", "tr909",
+        "909 clap — multi-burst bandpassed noise stack.",
+        """white() |> band_pass(1500, 0.45) |>
+           env_pairs([0, 0.005, 0.01, 0.015, 0.05, :sustain],
+                     [0,    1,   0.5,    1,    1,     0])""";
+        params = (sustain = 0.18,)),
+
+    _dsl_entry("rim909", "tr909",
+        "909 rimshot — bright tonal click with tiny ring.",
+        """(pulse(1700, 0.3) + pulse(2300, 0.3)) |> high_pass(1200) |>
+           env_perc(0.001, :sustain)""";
+        params = (sustain = 0.05,)),
+
+    _dsl_entry("ride909", "tr909",
+        "909-flavoured ride — high pulses summed and bandpassed.",
+        """((pulse(4000, 0.5) + pulse(5300, 0.5) + pulse(7200, 0.5)) |>
+            high_pass(3500)) |>
+           env_perc(0.002, :sustain; curve = -2)""";
+        params = (sustain = 0.6,)),
+
+    _dsl_entry("tom909", "tr909",
+        "909 tom — pitched sine with noise transient.",
+        """(sin_osc(line(:freq * 2, :freq, 0.08)) |>
+            env_perc(0.001, :sustain)) +
+           (white() |> band_pass(800, 0.6) |> env_perc(0, 0.004) |> amp(0.3))""";
+        params = (freq = 110, sustain = 0.25)),
 ]
