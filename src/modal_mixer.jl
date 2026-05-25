@@ -44,14 +44,50 @@ function _handle_mixer_key!(m::RessacApp, evt::TK.KeyEvent)
         _unmute_all_patterns!(m)
     elseif evt.char == '!' || evt.char == '.'
         _panic!(m)
+    elseif (evt.char == '+' || evt.char == '-') && 1 <= m.mixer_cursor <= n
+        _mixer_nudge_gain!(m, slots[m.mixer_cursor], evt.char == '+' ? 0.1 : -0.1)
+    elseif (evt.char == '*' || evt.char == '/') && 1 <= m.mixer_cursor <= n
+        _mixer_nudge_gain!(m, slots[m.mixer_cursor], evt.char == '*' ? 0.5 : -0.5)
     end
+end
+
+"""
+    _mixer_nudge_gain!(m, slot, delta)
+
+Adjust the gain of `slot`'s @dN line in the patterns buffer by
+`delta`, then re-eval. Finds an existing `|> gain(N)` in the line
+and bumps N (clamped to [0, 5]); if absent, appends a fresh
+`|> gain(1.0 + delta)` to the end. The mixer keeps the audio in
+sync because the re-eval calls `set_pattern!` on the scheduler.
+"""
+function _mixer_nudge_gain!(m::RessacApp, slot::Symbol, delta::Real)
+    txt = TK.text(m.editor)
+    lines = collect(split(txt, '\n'; keepempty = true))
+    slot_id = String(slot)
+    row = findfirst(line -> occursin(Regex("^\\s*@$(slot_id)\\b"), String(line)), lines)
+    row === nothing && return _push_app_log!(m, "[WARN] mixer +/-: no @$(slot_id) line in buffer")
+    line = String(lines[row])
+    # Find an existing |> gain(N) — capture the numeric literal.
+    mt = match(r"\|>\s*gain\(([0-9.+\-]+)\)", line)
+    new_line = if mt === nothing
+        # No gain in the chain — append one with neutral 1.0 + delta.
+        rstrip(line) * " |> gain($(round(1.0 + float(delta); digits = 2)))"
+    else
+        cur = parse(Float64, mt.captures[1])
+        new_v = clamp(cur + float(delta), 0.0, 5.0)
+        replace(line, mt.match => "|> gain($(round(new_v; digits = 2)))"; count = 1)
+    end
+    lines[row] = new_line
+    TK.set_text!(m.editor, join(lines, '\n'))
+    # Re-eval just that slot so the audio reflects the change.
+    _eval_pattern_blocks!(m, [slot])
 end
 
 function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     slots = _mixer_slots(m)
     inner = _render_modal_block!(buf, area;
         title = "MIXER",
-        title_right = "j/k · m mute · s solo · u unmute-all · ! panic · q close",
+        title_right = "j/k · +/- gain ±0.1 · */ gain ±0.5 · m mute · s solo · u unmute-all · ! panic · q close",
         w_max = 90,
         h_target = max(8, min(area.height - 4, length(slots) + 5)))
     inner.width < 20 && return
