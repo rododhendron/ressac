@@ -5544,40 +5544,60 @@ function _open_sccode!(m::RessacApp; tag::AbstractString = "")
 end
 
 """
-    _direct_load_sccode!(m, ref)
+    _sccode_import!(m, id; title="") -> Union{Nothing, String}
 
-`ref` is either a bare id ("1-5iP") or a full sccode.org URL. Fetches
-the source and opens it as a synth tab via the same code path as the
-browser's Enter — no modal flow, single command, one keypress to play.
+Single source of truth for "fetch sccode/<id>, write a unique .scd
+under `plugins/user-synths/`, register it, open it in a tab". Used
+by `:sccode <id|url>`, by Enter on a row in the picker modal, and by
+`_direct_load_sccode!` for URL-paste flows.
+
+Returns the final filename (suffixed `-2`, `-3`, … if needed to
+avoid clobbering an existing file), or `nothing` on failure.
 """
-function _direct_load_sccode!(m::RessacApp, ref::AbstractString)
-    id = ref
-    mt = match(r"sccode\.org/([0-9][\w-]*)", String(ref))
-    mt !== nothing && (id = String(mt.captures[1]))
+function _sccode_import!(m::RessacApp, id::AbstractString; title::AbstractString = "")
+    id = String(id)
     src = try
         _sccode_fetch_source(id)
     catch err
         _push_app_log!(m, "[ERROR] sccode fetch $(id): $(sprint(showerror, err))")
-        return
+        return nothing
     end
-    name = _sccode_extract_synthdef_name(src)
-    name === nothing && (name = "sccode_" * replace(String(id), "-" => "_"))
+    base = _sccode_extract_synthdef_name(src)
+    base === nothing && (base = "sccode_" * replace(id, "-" => "_"))
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
-    target = joinpath(dir, "$(name).scd")
-    final_name = name
+    # Pick a non-clobbering filename — appends -2 / -3 / … until free.
+    final_name = base
+    target = joinpath(dir, "$(final_name).scd")
     n = 1
     while isfile(target)
         n += 1
-        final_name = "$name-$n"
+        final_name = "$base-$n"
         target = joinpath(dir, "$(final_name).scd")
     end
-    write(target, "// Imported from sccode.org/$(id)\n//\n" * src)
+    header = isempty(title) ?
+        "// Imported from sccode.org/$(id)\n//\n" :
+        "// Imported from sccode.org/$(id) — \"$(title)\"\n//\n"
+    write(target, header * src)
     register_synth!(SynthEntry(Symbol(final_name), "user-synths",
                                Dict{String,Any}("description" => "imported from sccode",
                                                 "tags" => ["sccode"])))
     _open_synth_tab!(m, final_name)
     _push_app_log!(m, "[INFO] sccode/$(id) → plugins/user-synths/$(final_name).scd")
+    return final_name
+end
+
+"""
+    _direct_load_sccode!(m, ref)
+
+`ref` is either a bare id ("1-5iP") or a full sccode.org URL. Thin
+wrapper around `_sccode_import!` that strips a leading URL prefix.
+"""
+function _direct_load_sccode!(m::RessacApp, ref::AbstractString)
+    id = ref
+    mt = match(r"sccode\.org/([0-9][\w-]*)", String(ref))
+    mt !== nothing && (id = String(mt.captures[1]))
+    _sccode_import!(m, id)
 end
 
 """
@@ -5666,32 +5686,8 @@ function _preview_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
 end
 
 function _load_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
-    src = try
-        _sccode_fetch_source(entry.id)
-    catch err
-        _push_app_log!(m, "[ERROR] sccode fetch $(entry.id): $(sprint(showerror, err))")
-        return
-    end
-    base = _sccode_extract_synthdef_name(src)
-    base === nothing && (base = "sccode_" * replace(entry.id, "-" => "_"))
-    dir = joinpath(pwd(), "plugins", "user-synths")
-    isdir(dir) || mkpath(dir)
-    target = joinpath(dir, "$(base).scd")
-    final_name = base
-    n = 1
-    while isfile(target)
-        n += 1
-        final_name = "$base-$n"
-        target = joinpath(dir, "$(final_name).scd")
-    end
-    header = "// Imported from sccode.org/$(entry.id) — \"$(entry.title)\"\n//\n"
-    write(target, header * src)
-    register_synth!(SynthEntry(Symbol(final_name), "user-synths",
-                               Dict{String,Any}("description" => "imported from sccode",
-                                                "tags" => ["sccode"])))
+    _sccode_import!(m, entry.id; title = entry.title) === nothing && return
     m.modal = :none
-    _open_synth_tab!(m, final_name)
-    _push_app_log!(m, "[INFO] sccode/$(entry.id) → plugins/user-synths/$(final_name).scd")
 end
 
 function _sccode_paginate!(m::RessacApp, delta::Int)
@@ -5749,35 +5745,7 @@ name can be extracted, falls back to the snippet id.
 """
 function _load_sccode!(m::RessacApp)
     1 <= m.sccode_cursor <= length(m.sccode_entries) || return
-    entry = m.sccode_entries[m.sccode_cursor]
-    src = try
-        _sccode_fetch_source(entry.id)
-    catch err
-        _push_app_log!(m, "[ERROR] sccode fetch $(entry.id): $(sprint(showerror, err))")
-        return
-    end
-    base = _sccode_extract_synthdef_name(src)
-    base === nothing && (base = "sccode_" * replace(entry.id, "-" => "_"))
-    dir = joinpath(pwd(), "plugins", "user-synths")
-    isdir(dir) || mkpath(dir)
-    target = joinpath(dir, "$(base).scd")
-    final_name = base
-    n = 1
-    while isfile(target)
-        n += 1
-        final_name = "$base-$n"
-        target = joinpath(dir, "$(final_name).scd")
-    end
-    # Prepend a header comment so the user knows where this came from
-    # (and can revisit the original page later).
-    header = "// Imported from sccode.org/$(entry.id) — \"$(entry.title)\"\n//\n"
-    write(target, header * src)
-    register_synth!(SynthEntry(Symbol(final_name), "user-synths",
-                               Dict{String,Any}("description" => "imported from sccode",
-                                                "tags" => ["sccode"])))
-    m.modal = :none
-    _open_synth_tab!(m, final_name)
-    _push_app_log!(m, "[INFO] sccode/$(entry.id) → plugins/user-synths/$(final_name).scd")
+    _load_sccode_by_entry!(m, m.sccode_entries[m.sccode_cursor])
 end
 
 function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
