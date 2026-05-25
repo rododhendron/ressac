@@ -181,13 +181,29 @@ register_section_handler!(:samples, _handle_samples)
 """
     _handle_synthdefs(plugin_dir, section_data, plugin_name)
 
-Process `[synthdefs]`: `files = ["./synth.scd", ...]`. For each file,
-read its content and send via `/dirt/evalSC` OSC message with the SCD
-source as a `String` arg. SuperDirt-side OSCdef calls
-`interpret(source)`.
+Load every SynthDef this plugin owns. Two sources:
 
-Errors: missing file → logged at `@error`; absent session → logged
-and abort.
+  1. **Manifested** — `[synthdefs] files = ["./synth.scd", ...]`.
+     Listed paths are honoured in declaration order.
+
+  2. **Orphan auto-discovery** — any `.scd` / `.jl` file in
+     `plugin_dir` that wasn't named in `files`. This is what makes
+     `:lib → instantiate` and `:save-synth` work robustly: the
+     manifest can be incomplete (or absent) and the user's synths
+     still load on next boot. The single source of truth becomes
+     "what's on disk", not "what the manifest remembered to track".
+
+For each file:
+  * `.scd` → ship the source via `/dirt/evalSC` (SC interprets it)
+            and register a `SynthEntry(plugin = "user-synths")` so
+            `_is_user_synth` recognises pattern events targeting it.
+  * `.jl`  → `Core.eval` it into the Ressac module. These are DSL
+            files written with `@synth :name …`; the macro itself
+            ships the SynthDef + registers as `"user-dsl"`.
+
+Errors: missing manifested file → `@error`, continue; absent session
+→ `@error`, abort. Eval / read failures on orphans are logged but
+don't stop other files from loading.
 """
 function _handle_synthdefs(plugin_dir, data, plugin_name)
     sched = _LIVE_SCHEDULER[]
@@ -198,17 +214,103 @@ function _handle_synthdefs(plugin_dir, data, plugin_name)
     files = get(data, "files", String[])
     files isa AbstractVector ||
         throw(ArgumentError("plugin '$plugin_name' [synthdefs] files must be an array"))
+
+    loaded_abs = Set{String}()
     for f in files
         path = isabspath(f) ? f : joinpath(plugin_dir, f)
         if !isfile(path)
             @error "plugin '$plugin_name' [synthdefs]: no such file '$path'"
             continue
         end
-        src = read(path, String)
-        msg = OSCMessage("/dirt/evalSC", Any[src])
-        send_osc(sched.osc, encode(msg))
+        _load_synth_file!(sched, plugin_name, path)
+        push!(loaded_abs, abspath(path))
     end
+
+    # Orphan auto-discovery: glob the plugin dir for any .scd / .jl
+    # we haven't already processed. Guarded by two checks:
+    #   1. `plugin_dir` must contain a plugin.toml — defends against
+    #      callers passing synthetic paths like /tmp (the synthdefs
+    #      handler tests do this), which would otherwise glob the
+    #      caller's whole tmp dir and eval arbitrary files.
+    #   2. Each candidate file must pass `_looks_like_synth_source`
+    #      (header sniff for SynthDef / @synth) — defends against
+    #      a real plugin dir containing stray .jl files that happen
+    #      to live alongside actual synthdefs.
+    # Quiet success: only log when something is loaded.
+    isdir(plugin_dir) || return nothing
+    isfile(joinpath(plugin_dir, "plugin.toml")) || return nothing
+    orphans = String[]
+    for f in sort(readdir(plugin_dir))
+        ext = splitext(f)[2]
+        ext in (".scd", ".jl") || continue
+        path = abspath(joinpath(plugin_dir, f))
+        path in loaded_abs && continue
+        _looks_like_synth_source(path) || continue
+        push!(orphans, path)
+    end
+    isempty(orphans) && return nothing
+    for path in orphans
+        _load_synth_file!(sched, plugin_name, path)
+    end
+    @info "plugin '$plugin_name': auto-loaded $(length(orphans)) orphan synth file(s) not in manifest"
     return nothing
+end
+
+"""
+    _looks_like_synth_source(path) -> Bool
+
+Quick header sniff to decide whether a file is plausibly a synth
+definition. `.scd` must contain `SynthDef(`; `.jl` must contain
+`@synth`. Cheaper than a full parse and good enough to skip random
+text / config files that happen to share an extension with synth
+sources. Read failure → false (we don't auto-load what we can't see).
+"""
+function _looks_like_synth_source(path::AbstractString)
+    ext = splitext(path)[2]
+    needle = ext == ".scd" ? "SynthDef(" :
+             ext == ".jl"  ? "@synth"    : return false
+    src = try
+        read(path, String)
+    catch
+        return false
+    end
+    return occursin(needle, src)
+end
+
+"""
+    _load_synth_file!(sched, plugin_name, path)
+
+Load one SynthDef source file. Dispatches on extension: `.scd` ships
+to SuperCollider and registers a `"user-synths"` SynthEntry; `.jl`
+runs through `Core.eval` (the `@synth` macro inside does the rest).
+"""
+function _load_synth_file!(sched, plugin_name, path)
+    ext = splitext(path)[2]
+    name = Symbol(splitext(basename(path))[1])
+    src = try
+        read(path, String)
+    catch err
+        @error "plugin '$plugin_name' [synthdefs]: read failed for '$path': $(sprint(showerror, err))"
+        return
+    end
+    if ext == ".scd"
+        send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[src])))
+        register_synth!(SynthEntry(name, plugin_name, Dict{String,Any}(
+            "description" => "loaded from $(basename(path))",
+            "tags"        => ["user"],
+        )))
+    elseif ext == ".jl"
+        # DSL file. The @synth macro inside both ships the SynthDef
+        # and registers it as plugin "user-dsl" — both of which
+        # _is_user_synth accepts.
+        # Eval inside Ressac so `@synth` (a Ressac-exported macro)
+        # resolves without the file needing to `using Ressac`.
+        try
+            Core.eval(@__MODULE__, Meta.parseall(src))
+        catch err
+            @error "plugin '$plugin_name' [synthdefs]: .jl eval failed for '$path': $(sprint(showerror, err))"
+        end
+    end
 end
 
 register_section_handler!(:synthdefs, _handle_synthdefs)

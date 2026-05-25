@@ -171,15 +171,21 @@ end
 """
     _is_user_synth(name::Symbol) -> Bool
 
-True if `name` is registered as a synth from the user-synths plugin
-(authored live via :synth + :save-synth). Used by `event_to_osc` to
-decide between /ressac/play (defaults-honouring) and /dirt/play
-(SuperDirt-controlled).
+True if `name` is registered as a user-authored synth. Used by
+`event_to_osc` to decide between /ressac/play (defaults-honouring)
+and /dirt/play (SuperDirt-controlled). Two plugins qualify:
+
+  * `"user-synths"` — saved via :save-synth (typically a .scd SynthDef)
+  * `"user-dsl"`    — defined via the `@synth` macro at the REPL or
+                      autoloaded from a `.jl` file in plugins/user-synths/
+
+Both produce SynthDefs the user owns and expects to play with their
+own parameter defaults, not SuperDirt's auto-injected values.
 """
 function _is_user_synth(name::Symbol)
     entry = synth_info(name)
     entry === nothing && return false
-    return entry.plugin == "user-synths"
+    return entry.plugin == "user-synths" || entry.plugin == "user-dsl"
 end
 
 event_to_osc(ev::Event) = throw(ArgumentError(

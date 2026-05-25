@@ -91,6 +91,10 @@ using Ressac
             @test_logs (:error, r"not found|no such") match_mode=:any begin
                 h("/tmp", Dict("files" => ["./nope.scd"]), "ghost")
             end
+            # Critically: /tmp has no plugin.toml, so orphan auto-discovery
+            # must NOT scan it. Otherwise we'd glob whoever's test fixtures
+            # or stray .jl files live in /tmp and Core.eval them. The
+            # guard is `isfile(plugin_dir/plugin.toml)`.
             @test isempty(mock.sent)
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
@@ -271,6 +275,117 @@ using Ressac
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
             empty!(Ressac._SAMPLE_REGISTRY)
+        end
+    end
+
+    # ── Orphan auto-discovery for [synthdefs] ──────────────────────
+    # When a plugin's user has saved a synth file (.scd or .jl) but
+    # didn't update the manifest, `_handle_synthdefs` should glob the
+    # plugin dir and load it anyway. Required guards:
+    #   1. Skip if plugin_dir has no plugin.toml (defends synthetic
+    #      test paths like /tmp from being globbed + Core.eval'd).
+    #   2. Skip files that don't sniff as synth source.
+
+    @testset "_looks_like_synth_source — header sniff" begin
+        mktempdir() do d
+            ok_scd   = joinpath(d, "ok.scd")
+            ok_jl    = joinpath(d, "ok.jl")
+            bad_scd  = joinpath(d, "bad.scd")
+            bad_jl   = joinpath(d, "bad.jl")
+            wrong    = joinpath(d, "ok.txt")
+            write(ok_scd,  "SynthDef(\\foo, { ... }).add;")
+            write(ok_jl,   "@synth :bar saw(:freq)")
+            write(bad_scd, "// just a comment")
+            write(bad_jl,  "println(\"hi\")")
+            write(wrong,   "SynthDef(\\foo, ...)")  # wrong ext
+
+            @test Ressac._looks_like_synth_source(ok_scd)
+            @test Ressac._looks_like_synth_source(ok_jl)
+            @test !Ressac._looks_like_synth_source(bad_scd)
+            @test !Ressac._looks_like_synth_source(bad_jl)
+            @test !Ressac._looks_like_synth_source(wrong)
+            # Unreadable / missing path → false (no crash).
+            @test !Ressac._looks_like_synth_source(joinpath(d, "nope.scd"))
+        end
+    end
+
+    @testset "[synthdefs] orphan auto-discovery requires plugin.toml" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            h = Ressac.get_section_handler(:synthdefs)
+            mktempdir() do d
+                # Real-looking SCD file in a dir WITHOUT plugin.toml.
+                # The guard must skip orphan discovery so this file
+                # is not loaded.
+                write(joinpath(d, "stray.scd"), "SynthDef(\\stray, ...).add;")
+                h(d, Dict("files" => String[]), "ghostly")
+                @test isempty(mock.sent)
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "[synthdefs] orphan auto-discovery picks up unmanifested .scd" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            h = Ressac.get_section_handler(:synthdefs)
+            mktempdir() do d
+                touch(joinpath(d, "plugin.toml"))  # satisfies the guard
+                write(joinpath(d, "claimed.scd"),  "SynthDef(\\claimed, {Out.ar(0, Silent.ar)}).add;")
+                write(joinpath(d, "orphan.scd"),   "SynthDef(\\orphan, {Out.ar(0, Silent.ar)}).add;")
+                write(joinpath(d, "ignore_me.scd"),"// not a synthdef, no header")
+                h(d, Dict("files" => ["./claimed.scd"]), "myplug")
+                # Both real SCDs ship via /dirt/evalSC (manifested + orphan).
+                # The non-sniffing file is skipped.
+                @test length(mock.sent) == 2
+                addrs = [Ressac.decode_message(b).address for b in mock.sent]
+                @test all(==("/dirt/evalSC"), addrs)
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "[synthdefs] orphan auto-discovery registers SynthEntry" begin
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        empty!(Ressac._SYNTH_REGISTRY)
+        try
+            h = Ressac.get_section_handler(:synthdefs)
+            mktempdir() do d
+                touch(joinpath(d, "plugin.toml"))
+                write(joinpath(d, "auto.scd"), "SynthDef(\\auto, {Out.ar(0, Silent.ar)}).add;")
+                h(d, Dict("files" => String[]), "user-synths")
+                # The orphan must have registered, so _is_user_synth
+                # accepts it — otherwise pattern fires route to /dirt/play
+                # and SuperDirt rejects with "instrument not found".
+                @test Ressac.synth_info(:auto) !== nothing
+                @test Ressac._is_user_synth(:auto)
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SYNTH_REGISTRY)
+        end
+    end
+
+    @testset "_is_user_synth accepts user-synths AND user-dsl plugins" begin
+        empty!(Ressac._SYNTH_REGISTRY)
+        try
+            Ressac.register_synth!(Ressac.SynthEntry(:from_scd, "user-synths", Dict{String,Any}()))
+            Ressac.register_synth!(Ressac.SynthEntry(:from_jl,  "user-dsl",    Dict{String,Any}()))
+            Ressac.register_synth!(Ressac.SynthEntry(:from_other, "superdirt-synths", Dict{String,Any}()))
+            @test Ressac._is_user_synth(:from_scd)
+            @test Ressac._is_user_synth(:from_jl)
+            @test !Ressac._is_user_synth(:from_other)
+            @test !Ressac._is_user_synth(:not_registered)
+        finally
+            empty!(Ressac._SYNTH_REGISTRY)
         end
     end
 end
