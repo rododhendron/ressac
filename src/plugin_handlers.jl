@@ -280,33 +280,42 @@ end
 """
     _load_synth_file!(sched, plugin_name, path)
 
-Load one SynthDef source file. Dispatches on extension: `.scd` ships
-to SuperCollider and registers a `"user-synths"` SynthEntry; `.jl`
-runs through `Core.eval` (the `@synth` macro inside does the rest).
+Load one SynthDef source file. Dispatches on extension:
+
+  * `.scd` — ship the source via `/dirt/evalSC`. Only registers a
+    fallback SynthEntry if the metadata layer (`[synths.<name>]`
+    block in the plugin manifest) didn't already register one;
+    otherwise the manifest's richer metadata wins (and same-plugin
+    re-register would otherwise emit a spurious shadow warning).
+  * `.jl` — DSL source. Loaded with `Base.include` into the
+    `SynthDSL` submodule so `@synth`, `saw`, `pulse`, etc. resolve
+    natively. `Base.include` also threads `__source__.file = path`
+    so the macro can derive the SC name from the filename when
+    no explicit alias is given.
 """
 function _load_synth_file!(sched, plugin_name, path)
     ext = splitext(path)[2]
     name = Symbol(splitext(basename(path))[1])
-    src = try
-        read(path, String)
-    catch err
-        @error "plugin '$plugin_name' [synthdefs]: read failed for '$path': $(sprint(showerror, err))"
-        return
-    end
     if ext == ".scd"
+        src = try
+            read(path, String)
+        catch err
+            @error "plugin '$plugin_name' [synthdefs]: read failed for '$path': $(sprint(showerror, err))"
+            return
+        end
         send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[src])))
-        register_synth!(SynthEntry(name, plugin_name, Dict{String,Any}(
-            "description" => "loaded from $(basename(path))",
-            "tags"        => ["user"],
-        )))
+        # Only register if no SynthEntry already exists. The
+        # `[synths.<name>]` block in plugin.toml is the authoritative
+        # metadata source — don't shadow it with our minimal entry.
+        if synth_info(name) === nothing
+            register_synth!(SynthEntry(name, plugin_name, Dict{String,Any}(
+                "description" => "loaded from $(basename(path))",
+                "tags"        => ["user"],
+            )))
+        end
     elseif ext == ".jl"
-        # DSL file. The @synth macro inside both ships the SynthDef
-        # and registers it as plugin "user-dsl" — both of which
-        # _is_user_synth accepts.
-        # Eval inside Ressac so `@synth` (a Ressac-exported macro)
-        # resolves without the file needing to `using Ressac`.
         try
-            Core.eval(@__MODULE__, Meta.parseall(src))
+            Base.include(SynthDSL, path)
         catch err
             @error "plugin '$plugin_name' [synthdefs]: .jl eval failed for '$path': $(sprint(showerror, err))"
         end

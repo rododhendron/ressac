@@ -361,6 +361,12 @@ end
 
 const _INSTRUMENT_REGISTRY = Dict{Symbol,InstrumentEntry}()
 const _SYNTH_REGISTRY      = Dict{Symbol,SynthEntry}()
+# Alias → SC SynthDef name. A SynthDef is named after its source
+# file (e.g. plugins/user-synths/wob1.jl → SynthDef \wob1), and the
+# user can give it a short alias via `@synth :wob …`. Pattern lookup
+# `p"wob"` resolves via this table before shipping `s = wob1` to SC.
+# Built and mutated by `register_synth_alias!` — collision-checked.
+const _SYNTH_ALIASES       = Dict{Symbol,Symbol}()
 
 """
     register_instrument!(entry::InstrumentEntry)
@@ -396,6 +402,63 @@ end
 
 instrument_info(name::Symbol) = get(_INSTRUMENT_REGISTRY, name, nothing)
 synth_info(name::Symbol)      = get(_SYNTH_REGISTRY,      name, nothing)
+
+"""
+    register_synth_alias!(alias::Symbol, sc_name::Symbol) -> Bool
+
+Bind `alias` to a SynthDef named `sc_name`. Refuses if `alias`
+already points elsewhere — returns `false` and leaves the existing
+mapping intact (call `unregister_synth_alias!` first). A no-op when
+the alias already points to the same `sc_name`, or when alias and
+sc_name are identical (no aliasing needed).
+"""
+function register_synth_alias!(alias::Symbol, sc_name::Symbol)
+    alias === sc_name && return true   # no aliasing needed — identity
+    existing = get(_SYNTH_ALIASES, alias, nothing)
+    if existing === nothing
+        _SYNTH_ALIASES[alias] = sc_name
+        return true
+    elseif existing === sc_name
+        return true                     # idempotent re-registration
+    else
+        @error "alias '$alias' already points to '$existing'; refusing to rebind to '$sc_name'. Run `:alias-rm $alias` first."
+        return false
+    end
+end
+
+"""
+    unregister_synth_alias!(alias::Symbol) -> Bool
+
+Drop `alias` from the registry. Returns whether the alias existed.
+"""
+function unregister_synth_alias!(alias::Symbol)
+    haskey(_SYNTH_ALIASES, alias) || return false
+    delete!(_SYNTH_ALIASES, alias)
+    return true
+end
+
+"""
+    resolve_synth_name(name::Symbol) -> Symbol
+
+Resolve a user-typed name to the SC SynthDef name to ship. If
+`name` is an alias, returns the underlying `sc_name`. Otherwise
+returns `name` unchanged — so calls flow through unmodified for
+names that aren't aliased.
+"""
+resolve_synth_name(name::Symbol) = get(_SYNTH_ALIASES, name, name)
+
+"""
+    synth_alias_for(sc_name::Symbol) -> Union{Symbol, Nothing}
+
+Reverse lookup: the (first) alias bound to `sc_name`, or `nothing`
+if no alias points to it. Used for display in `:lib`.
+"""
+function synth_alias_for(sc_name::Symbol)
+    for (alias, target) in _SYNTH_ALIASES
+        target === sc_name && return alias
+    end
+    return nothing
+end
 
 """
     list_instruments(pattern::Regex = r"") -> Vector{InstrumentEntry}
