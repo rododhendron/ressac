@@ -175,6 +175,41 @@
         end
     end
 
+    # ── modal_mixer.jl — VU bar helpers ──
+    @testset "_amp_to_bar — perceptual scaling" begin
+        # Silence → 0.
+        @test Ressac._amp_to_bar(0.0) == 0.0
+        # Typical SuperDirt hit amp around 0.1 should land roughly
+        # mid-bar (the whole point of the sqrt-soft-knee curve).
+        @test 0.3 < Ressac._amp_to_bar(0.1) < 0.6
+        # Loud peak ≥ 0.5 saturates the bar.
+        @test Ressac._amp_to_bar(0.5) ≈ 1.0
+        @test Ressac._amp_to_bar(0.9) == 1.0
+        # Clipping → also 1.0.
+        @test Ressac._amp_to_bar(1.5) == 1.0
+        # Monotonic: louder input → larger bar.
+        @test Ressac._amp_to_bar(0.05) < Ressac._amp_to_bar(0.1) < Ressac._amp_to_bar(0.3)
+    end
+
+    @testset "peak hold — rises instantly, decays after window" begin
+        # Reset the orbit state for orbit 0.
+        Ressac._APP_ORBIT_RMS[]     .= 0
+        Ressac._APP_ORBIT_PEAK[]    .= 0
+        Ressac._APP_ORBIT_RMS_TS[]  .= 0
+        Ressac._APP_ORBIT_PEAK_TS[] .= 0
+        # Inject /ressac/rms 0 0.3 → peak should mirror the level.
+        Ressac._handle_orbit_rms!(Any[Int32(0), Int32(0), Int32(0), 0.3f0])
+        @test Ressac._orbit_rms(:d1)  ≈ 0.3f0
+        @test Ressac._orbit_peak(:d1) ≈ 0.3f0
+        # Now a quieter level — peak should HOLD (still 0.3).
+        Ressac._handle_orbit_rms!(Any[Int32(0), Int32(0), Int32(0), 0.1f0])
+        @test Ressac._orbit_rms(:d1)  ≈ 0.1f0
+        @test Ressac._orbit_peak(:d1) ≈ 0.3f0
+        # A louder level overrides the peak.
+        Ressac._handle_orbit_rms!(Any[Int32(0), Int32(0), Int32(0), 0.7f0])
+        @test Ressac._orbit_peak(:d1) ≈ 0.7f0
+    end
+
     # ── app.jl — _open_modal! ──
     @testset "_open_modal! sets modal + resets cursor + scroll" begin
         mock = MockOSCClient()

@@ -23,6 +23,12 @@ const _APP_SCOPE_TS    = Ref{Float64}(0.0)
 # (mapped from @d1..@d12). Indexed 1..12 (orbit 0 → slot [1]).
 const _APP_ORBIT_RMS    = Ref{Vector{Float32}}(zeros(Float32, 12))
 const _APP_ORBIT_RMS_TS = Ref{Vector{Float64}}(zeros(Float64, 12))
+# Per-orbit peak hold — slowest-decay envelope of the RMS. Visual
+# memory of the loudest recent moment (classic VU "peak" indicator).
+# Peak rises instantly to a new max, then decays over `_PEAK_HOLD_SEC`.
+const _APP_ORBIT_PEAK    = Ref{Vector{Float32}}(zeros(Float32, 12))
+const _APP_ORBIT_PEAK_TS = Ref{Vector{Float64}}(zeros(Float64, 12))
+const _PEAK_HOLD_SEC     = 1.5
 
 # LiveModel scope dispatch / listener / packet decoder removed in
 # phase-3 cleanup. The new path lives below: `_app_scope_set!`,
@@ -195,8 +201,18 @@ function _handle_orbit_rms!(args::Vector)
             orbit_raw isa Number  ? Int(round(orbit_raw)) : return
     (0 <= orbit < 12) || return
     amp = amp_raw isa Number ? Float32(amp_raw) : return
+    now = time()
     _APP_ORBIT_RMS[][orbit + 1]    = amp
-    _APP_ORBIT_RMS_TS[][orbit + 1] = time()
+    _APP_ORBIT_RMS_TS[][orbit + 1] = now
+    # Peak hold: rise instantly on a new max, decay only after
+    # _PEAK_HOLD_SEC of silence below the current peak. Lets the eye
+    # catch a transient that would otherwise be a one-frame flash.
+    current_peak = _APP_ORBIT_PEAK[][orbit + 1]
+    peak_ts      = _APP_ORBIT_PEAK_TS[][orbit + 1]
+    if amp > current_peak || (now - peak_ts) > _PEAK_HOLD_SEC
+        _APP_ORBIT_PEAK[][orbit + 1]    = amp
+        _APP_ORBIT_PEAK_TS[][orbit + 1] = now
+    end
 end
 
 """
@@ -215,4 +231,20 @@ function _orbit_rms(slot::Symbol)
     ts = _APP_ORBIT_RMS_TS[][orbit + 1]
     (time() - ts > 1.5) && return 0.0f0
     return _APP_ORBIT_RMS[][orbit + 1]
+end
+
+"""
+    _orbit_peak(slot::Symbol) -> Float32
+
+Peak-hold reading for `slot`. Same staleness rules as `_orbit_rms`
+but the freshness window is `_PEAK_HOLD_SEC` — the peak indicator
+naturally fades away if the slot stops producing audio.
+"""
+function _orbit_peak(slot::Symbol)
+    orbit = _orbit_for_slot(slot)
+    orbit === nothing && return 0.0f0
+    (0 <= orbit < 12) || return 0.0f0
+    ts = _APP_ORBIT_PEAK_TS[][orbit + 1]
+    (time() - ts > _PEAK_HOLD_SEC) && return 0.0f0
+    return _APP_ORBIT_PEAK[][orbit + 1]
 end

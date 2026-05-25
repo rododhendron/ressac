@@ -117,21 +117,20 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         row_y >= inner.y + inner.height && break
         is_cur = i == m.mixer_cursor
         muted  = haskey(_APP_MUTED_PATTERNS, slot)
-        # Level bar — prefer real SC RMS feed (per-orbit Amplitude.kr
-        # tap), fall back to event-fire decay if SC isn't sending.
-        rms = Float64(_orbit_rms(slot))
-        if rms > 0
-            # Compress to [0,1] with a soft knee — typical SuperDirt
-            # event amps land in 0.05..0.4, so √-scale gives visible
-            # motion across the full bar without clipping.
-            intensity = clamp(sqrt(min(rms, 1.0) / 0.5), 0.0, 1.0)
+        # Level + peak — prefer real SC RMS, fall back to event-fire
+        # decay if SC isn't sending. Both intensities run through the
+        # same perceptual scaling so the peak indicator lines up with
+        # the bar even when amplitudes are tiny.
+        rms  = Float64(_orbit_rms(slot))
+        peak = Float64(_orbit_peak(slot))
+        intensity_rms, intensity_peak = if rms > 0
+            (_amp_to_bar(rms), _amp_to_bar(peak))
         else
             last_ts = get(m.scheduler.last_fired_at, slot, 0.0)
             age = now - last_ts
-            intensity = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
+            fb = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
+            (fb, fb)   # no peak distinct from level in fallback mode
         end
-        filled = clamp(floor(Int, intensity * bar_w), 0, bar_w)
-        bar = "█" ^ filled * "░" ^ (bar_w - filled)
         state = muted ? "MUTED" : "PLAY "
         # Gain estimate: query the pattern at cycle 0, peek the first
         # event's :gain key. Falls back to 1.0 / "?" if not a ControlMap.
@@ -155,18 +154,23 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             end
         end
         marker = is_cur ? "▶ " : "  "
-        bar_style = muted ? TK.tstyle(:text_dim) :
-                    intensity > 0 ? TK.tstyle(:accent, bold = true) :
-                                    TK.tstyle(:text_dim)
         state_style = muted ? TK.tstyle(:warning) : TK.tstyle(:success)
-        # Render piece by piece so we can colour the bar separately.
+        # Header row labels + slot id.
         TK.set_string!(buf, inner.x, row_y, marker,
                        is_cur ? TK.tstyle(:accent, bold = true) :
                                 TK.tstyle(:text))
         TK.set_string!(buf, inner.x + 2, row_y, rpad("@" * String(slot), 6),
                        is_cur ? TK.tstyle(:accent, bold = true) :
                                 TK.tstyle(:title))
-        TK.set_string!(buf, inner.x + 8, row_y, bar, bar_style)
+        # Three-zone VU bar with peak marker. Pure helper does all the
+        # colour + cell-painting in one place.
+        _render_vu_bar!(buf, inner.x + 8, row_y, bar_w,
+                       intensity_rms, intensity_peak; muted = muted)
+        # Clip indicator (red `!`) after the bar when peak ≥ 0.95.
+        clip_x = inner.x + 8 + bar_w
+        clip_glyph = (intensity_peak >= 0.95 && !muted) ? "!" : " "
+        TK.set_string!(buf, clip_x, row_y, clip_glyph,
+                       TK.tstyle(:error, bold = true))
         TK.set_string!(buf, inner.x + 8 + bar_w + 2, row_y, state, state_style)
         TK.set_string!(buf, inner.x + 8 + bar_w + 8, row_y, gain_str,
                        TK.tstyle(:text))
@@ -184,4 +188,62 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         first(rpad("$(length(slots)) slot$(length(slots) == 1 ? "" : "s") · $(feed_note)",
                    inner.width), inner.width),
         TK.tstyle(:text_dim))
+end
+
+"""
+    _amp_to_bar(amp) -> Float64
+
+Perceptual amplitude → bar-fill ratio in `[0, 1]`. Typical SuperDirt
+event amps land in 0.05..0.4 (the RMS of an in-progress voice), so a
+linear mapping would barely move the bar — we use a soft sqrt curve
+that gives visible motion across the useful range while still
+distinguishing a quiet hit from a loud one. Anything ≥ 1.0 saturates.
+"""
+_amp_to_bar(amp::Real) = clamp(sqrt(min(Float64(amp), 1.0) / 0.5), 0.0, 1.0)
+
+"""
+    _render_vu_bar!(buf, x, y, w, level, peak; muted=false)
+
+Three-zone VU bar with a peak-hold marker. `level` and `peak` are
+both in `[0, 1]` (post-perceptual scaling via `_amp_to_bar`). The
+fill is split into green (≤70%), yellow (70-90%), red (>90%) zones.
+The peak position is overlaid as a `▏` glyph in red if it's in the
+hot zone, yellow otherwise.
+
+Muted slots render the whole bar dim (no zones) and skip the peak
+indicator — the user already knows there's no audio.
+"""
+function _render_vu_bar!(buf, x::Int, y::Int, w::Int,
+                         level::Real, peak::Real; muted::Bool = false)
+    w <= 0 && return
+    filled = clamp(floor(Int, level * w), 0, w)
+    if muted
+        bar = "█" ^ filled * "░" ^ (w - filled)
+        TK.set_string!(buf, x, y, bar, TK.tstyle(:text_dim))
+        return
+    end
+    # Zone boundaries on the bar's cell scale.
+    yellow_start = max(1, floor(Int, 0.70 * w))
+    red_start    = max(1, floor(Int, 0.90 * w))
+    for i in 1:w
+        ch = i <= filled ? "█" : "░"
+        sty = if i <= filled
+            i >= red_start    ? TK.tstyle(:error,   bold = true) :
+            i >= yellow_start ? TK.tstyle(:warning, bold = true) :
+                                TK.tstyle(:success, bold = true)
+        else
+            TK.tstyle(:text_dim)
+        end
+        TK.set_string!(buf, x + i - 1, y, ch, sty)
+    end
+    # Peak indicator: a tall vertical bar at the peak position,
+    # overlaying whichever cell it lands on. Yellow in the headroom
+    # zone, red once it's in the danger zone.
+    peak_pos = clamp(floor(Int, peak * w), 0, w)
+    if peak_pos > 0
+        peak_sty = peak_pos >= red_start ?
+            TK.tstyle(:error,   bold = true) :
+            TK.tstyle(:warning, bold = true)
+        TK.set_string!(buf, x + peak_pos - 1, y, "▏", peak_sty)
+    end
 end
