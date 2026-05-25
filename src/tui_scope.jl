@@ -182,6 +182,19 @@ function _app_scope_listener_loop()
             catch
                 continue
             end
+            addr = String(msg.address)
+            # External-trigger paths: /ressac/trigger fires a sample,
+            # /ressac/set tweaks live state (cps, etc.). Useful for
+            # MIDI controllers, hardware sequencers, TouchOSC layouts —
+            # anything that can send OSC.
+            if addr == "/ressac/trigger"
+                _handle_external_trigger!(msg.args)
+                continue
+            elseif addr == "/ressac/set"
+                _handle_external_set!(msg.args)
+                continue
+            end
+            # Otherwise: scope data frame.
             floats = Float32[]
             skipped = 0
             for v in msg.args
@@ -201,7 +214,7 @@ function _app_scope_listener_loop()
                 # frame regardless of current scope type — the renderer
                 # only reads it when type == :spectrogram, and the cost
                 # of keeping ~60 small Vector{Float32} alive is trivial.
-                if endswith(String(msg.address), "/spectrogram")
+                if endswith(addr, "/spectrogram")
                     hist = _APP_SPECTROGRAM_HISTORY[]
                     push!(hist, copy(floats))
                     while length(hist) > 60
@@ -329,5 +342,53 @@ function _render_spectrum(data, x, y, w, h, buf, style)
             ch = r <= bar_h ? "█" : " "
             TUI.set(buf, col, row_y, ch, style)
         end
+    end
+end
+
+# ---------------------------------------------------------------------
+# External OSC trigger / set — shared with the scope listener socket.
+# Lets MIDI controllers, hardware sequencers, TouchOSC layouts, or
+# any OSC-speaking tool drive Ressac without a Julia MIDI dep.
+# Wire-up doc: docs/wiki/13-external-midi.md
+# ---------------------------------------------------------------------
+
+"""
+    _handle_external_trigger!(args)
+
+`/ressac/trigger s:<name> [key value ...]` — forward to SuperDirt
+as a one-shot `/dirt/play`. Args after the name are passed through
+unchanged so the sender can include `freq`, `gain`, `n`, `cut`, etc.
+"""
+function _handle_external_trigger!(args::Vector)
+    isempty(args) && return
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    # First arg is the sample/synth name.
+    name = args[1] isa AbstractString ? String(args[1]) :
+           args[1] isa Symbol ? String(args[1]) : return
+    out = Any["s", name]
+    # Pass through the rest verbatim. SuperDirt's /dirt/play accepts
+    # alternating key/value pairs; we trust the caller to obey that.
+    append!(out, args[2:end])
+    send_osc(sched.osc, encode(OSCMessage("/dirt/play", out)))
+end
+
+"""
+    _handle_external_set!(args)
+
+`/ressac/set s:<key> v:<value>` — mutate a global. Supported keys:
+  "cps"  → set_cps!(value)
+others are logged but ignored. The bridge is intentionally narrow:
+arbitrary state mutation from outside would be hard to debug.
+"""
+function _handle_external_set!(args::Vector)
+    length(args) >= 2 || return
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && return
+    key = args[1] isa AbstractString ? String(args[1]) :
+          args[1] isa Symbol ? String(args[1]) : return
+    val = args[2]
+    if key == "cps" && val isa Number
+        set_cps!(sched, Float64(val))
     end
 end

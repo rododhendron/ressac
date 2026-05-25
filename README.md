@@ -142,6 +142,7 @@ or as Markdown in [docs/wiki/](docs/wiki/):
 - [10-architecture](docs/wiki/10-architecture.md) — internals
 - [11-tidal-migration](docs/wiki/11-tidal-migration.md) — for Tidal users
 - [12-troubleshooting](docs/wiki/12-troubleshooting.md) — when things break
+- [13-external-midi](docs/wiki/13-external-midi.md) — MIDI + OSC control from anything
 
 ## Development
 
