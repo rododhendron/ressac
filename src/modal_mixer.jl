@@ -1,0 +1,134 @@
+# Mixer modal — read-only-ish per-slot activity + mute/solo control.
+# Lacks true RMS metering (no per-slot SC tap), so the "level" bar is
+# derived from `sched.last_fired_at[slot]` decaying over ~600 ms.
+# Extracted from app.jl as part of the maintainability sprint.
+
+function _open_mixer!(m::RessacApp)
+    m.modal = :mixer
+    m.mixer_cursor = 1
+end
+
+"""
+    _mixer_slots(m) -> Vector{Symbol}
+
+All slots Ressac currently tracks: active patterns plus muted ones
+(so the user can unmute from the mixer). Sorted by slot number.
+"""
+function _mixer_slots(m::RessacApp)
+    slots = Set{Symbol}()
+    union!(slots, keys(m.scheduler.patterns))
+    union!(slots, keys(_APP_MUTED_PATTERNS))
+    return sort!(collect(slots);
+                 by = s -> try parse(Int, String(s)[2:end]) catch; 999 end)
+end
+
+function _handle_mixer_key!(m::RessacApp, evt::TK.KeyEvent)
+    slots = _mixer_slots(m)
+    n = length(slots)
+    if evt.key === :escape || evt.char == 'q'
+        m.modal = :none; return
+    elseif evt.char == 'j' || evt.key === :down
+        m.mixer_cursor = min(m.mixer_cursor + 1, max(n, 1))
+    elseif evt.char == 'k' || evt.key === :up
+        m.mixer_cursor = max(m.mixer_cursor - 1, 1)
+    elseif evt.char == 'm' && 1 <= m.mixer_cursor <= n
+        slot = slots[m.mixer_cursor]
+        if haskey(_APP_MUTED_PATTERNS, slot)
+            _unmute_pattern_slot!(m, slot)
+        else
+            _mute_pattern_slot!(m, slot)
+        end
+    elseif evt.char == 's' && 1 <= m.mixer_cursor <= n
+        _solo_pattern_slot!(m, slots[m.mixer_cursor])
+    elseif evt.char == 'u'
+        _unmute_all_patterns!(m)
+    elseif evt.char == '!' || evt.char == '.'
+        _panic!(m)
+    end
+end
+
+function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    slots = _mixer_slots(m)
+    inner = _render_modal_block!(buf, area;
+        title = "MIXER",
+        title_right = "j/k · m mute · s solo · u unmute-all · ! panic · q close",
+        w_max = 90,
+        h_target = max(8, min(area.height - 4, length(slots) + 5)))
+    inner.width < 20 && return
+    if isempty(slots)
+        TK.set_string!(buf, inner.x + 1, inner.y,
+            "(no active patterns — eval some @dN blocks first)",
+            TK.tstyle(:text_dim))
+        return
+    end
+    # Header row.
+    TK.set_string!(buf, inner.x, inner.y,
+        first(rpad("  SLOT  ACTIVITY            STATE   GAIN  SOURCE",
+                   inner.width), inner.width),
+        TK.tstyle(:text_dim))
+    # Underline.
+    TK.set_string!(buf, inner.x, inner.y + 1,
+                   "─" ^ inner.width, TK.tstyle(:text_dim))
+    now = time()
+    bar_w = 18
+    for (i, slot) in enumerate(slots)
+        row_y = inner.y + 2 + (i - 1)
+        row_y >= inner.y + inner.height && break
+        is_cur = i == m.mixer_cursor
+        muted  = haskey(_APP_MUTED_PATTERNS, slot)
+        # Activity bar: decay from last_fired_at over 0.6 s.
+        last_ts = get(m.scheduler.last_fired_at, slot, 0.0)
+        age = now - last_ts
+        intensity = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
+        filled = clamp(floor(Int, intensity * bar_w), 0, bar_w)
+        bar = "█" ^ filled * "░" ^ (bar_w - filled)
+        state = muted ? "MUTED" : "PLAY "
+        # Gain estimate: query the pattern at cycle 0, peek the first
+        # event's :gain key. Falls back to 1.0 / "?" if not a ControlMap.
+        pat = muted ? get(_APP_MUTED_PATTERNS, slot, nothing) :
+                      get(m.scheduler.patterns, slot, nothing)
+        gain_str = "  -  "
+        source_str = "—"
+        if pat !== nothing
+            try
+                evs = pat(0//1, 1//1)
+                if !isempty(evs)
+                    v = evs[1].value
+                    if v isa Dict
+                        if haskey(v, :gain); gain_str = lpad(string(round(Float64(v[:gain]); digits=2)), 5) end
+                        if haskey(v, :s);    source_str = String(v[:s]) end
+                    elseif v isa Symbol
+                        source_str = String(v)
+                    end
+                end
+            catch
+            end
+        end
+        marker = is_cur ? "▶ " : "  "
+        bar_style = muted ? TK.tstyle(:text_dim) :
+                    intensity > 0 ? TK.tstyle(:accent, bold = true) :
+                                    TK.tstyle(:text_dim)
+        state_style = muted ? TK.tstyle(:warning) : TK.tstyle(:success)
+        # Render piece by piece so we can colour the bar separately.
+        TK.set_string!(buf, inner.x, row_y, marker,
+                       is_cur ? TK.tstyle(:accent, bold = true) :
+                                TK.tstyle(:text))
+        TK.set_string!(buf, inner.x + 2, row_y, rpad("@" * String(slot), 6),
+                       is_cur ? TK.tstyle(:accent, bold = true) :
+                                TK.tstyle(:title))
+        TK.set_string!(buf, inner.x + 8, row_y, bar, bar_style)
+        TK.set_string!(buf, inner.x + 8 + bar_w + 2, row_y, state, state_style)
+        TK.set_string!(buf, inner.x + 8 + bar_w + 8, row_y, gain_str,
+                       TK.tstyle(:text))
+        src_x = inner.x + 8 + bar_w + 14
+        src_w = max(0, inner.x + inner.width - src_x)
+        TK.set_string!(buf, src_x, row_y, first(source_str, src_w),
+                       TK.tstyle(:text_dim))
+    end
+    # Footer hint.
+    foot_y = inner.y + inner.height - 1
+    TK.set_string!(buf, inner.x, foot_y,
+        first(rpad("$(length(slots)) slot$(length(slots) == 1 ? "" : "s") · meters decay over 0.6s from last fire (no SC RMS feed)",
+                   inner.width), inner.width),
+        TK.tstyle(:text_dim))
+end
