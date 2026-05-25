@@ -51,11 +51,23 @@ s.waitForBoot({
     };
     ~dirt.start(57120, 0 ! 12);
 
+    // Ressac listener address. Declared HERE (not in the scope block
+    // further down) because the per-orbit RMS meters installed right
+    // below start emitting OSC immediately on play() — if the OSCFunc
+    // forwarder fires with ~ressacScopeAddr still nil, every meter
+    // packet throws DoesNotUnderstand and the boot log gets buried.
+    ~ressacScopeAddr = NetAddr.new("127.0.0.1", 57121);
+
     // ── Per-orbit RMS meters ──
     // Tap each orbit's dryBus (where its play synths write before
     // global effects). 20 Hz updates × 12 orbits = ~240 OSC msg/s,
     // negligible. Ressac listens on /ressac/rms <idx> <amp> and
     // renders per-slot bars in :mixer (matches @dN → orbit N-1).
+    OSCFunc({ |msg|
+        // msg = ['/ressac/rms', nodeID, replyID, idx, amp]
+        ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
+    }, '/ressac/rms');
+
     ~ressacOrbitMeters = nil;
     ~ressacInstallOrbitMeters = {
         if(~ressacOrbitMeters.notNil) {
@@ -77,11 +89,6 @@ s.waitForBoot({
     s.sync;
     ~ressacInstallOrbitMeters.value;
 
-    OSCFunc({ |msg|
-        // msg = ['/ressac/rms', nodeID, replyID, idx, amp]
-        ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
-    }, '/ressac/rms');
-
     // ── Master safety chain ──
     // Tree of "intercept master out, run it through:
     //   1. LeakDC.ar  — strip DC offset (a stuck-low oscillator can
@@ -101,7 +108,6 @@ s.waitForBoot({
     ~ressacSafetyOn = true;
     if(~ressacSafetyOn) {
         ~ressacSafetyGroup = Group.after(s);
-        ~ressacSafetyBoot = Synth.tail(~ressacSafetyGroup, \ressacSafetyBoot);
         SynthDef(\ressacSafetyChain, { |in = 0, out = 0|
             var sig, fade;
             sig = In.ar(in, 2);
@@ -279,7 +285,8 @@ s.waitForBoot({
     // ── Live scope: tap audio bus 0 + push analysis frames to Ressac ──
     // SendReply emits OSC to sclang's local port; OSCFunc forwarders
     // relay each frame to our Ressac listener on UDP 57121.
-    ~ressacScopeAddr  = NetAddr.new("127.0.0.1", 57121);
+    // ~ressacScopeAddr is already declared above (before the orbit
+    // meters that share the same NetAddr).
     ~ressacScopeSynth = nil;
 
     OSCFunc({ |msg|
