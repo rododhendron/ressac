@@ -110,4 +110,67 @@
         @test msg.address == "/dirt/play"
         @test msg.args[1] == "s" && msg.args[2] == "bd"
     end
+
+    # ── @synth macro: end-to-end via Base.include(SynthDSL, file) ─
+    # The previous testset stubbed everything around the macro
+    # (called `register_synth!` + `register_synth_alias!` directly).
+    # That missed a real bug: the macro's expansion referenced
+    # `__source__` as a symbol, which is only bound inside the macro
+    # body — `UndefVarError: __source__` at every plugin load.
+    # These tests load a real file via the path actual users hit.
+    @testset "@synth via Base.include — alias-less, sc_name from filename" begin
+        mock = MockOSCClient()
+        Ressac._LIVE_SCHEDULER[] = Ressac.Scheduler(mock; cps=0.5)
+        empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        try
+            mktempdir() do d
+                path = joinpath(d, "wobtest1.jl")
+                write(path, "@synth saw(:freq) |> rlpf(1200, 0.3)")
+                Base.include(Ressac.SynthDSL, path)
+                @test Ressac.synth_info(:wobtest1) !== nothing
+                @test isempty(Ressac._SYNTH_ALIASES)
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        end
+    end
+
+    @testset "@synth via Base.include — aliased, sc_name still from filename" begin
+        mock = MockOSCClient()
+        Ressac._LIVE_SCHEDULER[] = Ressac.Scheduler(mock; cps=0.5)
+        empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        try
+            mktempdir() do d
+                path = joinpath(d, "wobtest2.jl")
+                write(path, "@synth :wt saw(:freq) |> rlpf(1200, 0.3)")
+                Base.include(Ressac.SynthDSL, path)
+                @test Ressac.synth_info(:wobtest2) !== nothing
+                @test Ressac._SYNTH_ALIASES[:wt] === :wobtest2
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        end
+    end
+
+    @testset "@synth at REPL (no file) — alias required" begin
+        # In a REPL / Meta.parse context, __source__.file isn't a
+        # real path, so the alias-less form must error cleanly
+        # rather than mysteriously register under a Symbol("none").
+        mock = MockOSCClient()
+        Ressac._LIVE_SCHEDULER[] = Ressac.Scheduler(mock; cps=0.5)
+        empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        try
+            @test_throws ErrorException Core.eval(
+                Ressac.SynthDSL,
+                Meta.parse("@synth saw(:freq)"))
+            # With an alias, REPL works — the alias is the SC name.
+            Core.eval(Ressac.SynthDSL, Meta.parse("@synth :replbar sin_osc(:freq)"))
+            @test Ressac.synth_info(:replbar) !== nothing
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+            empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
+        end
+    end
 end

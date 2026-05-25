@@ -509,22 +509,21 @@ function play_synth(sc_name::Symbol, sig::Sig;
 end
 
 """
-    _sc_name_from_source(src) -> Symbol
+    _sc_name_from_source(file) -> Symbol
 
-Resolve the SC SynthDef name from a macro's source-file context.
+Resolve the SC SynthDef name from the macro's source-file path.
 Used by `@synth` when no explicit alias is given: the file basename
 (minus extension) becomes the name shipped to SuperCollider. Errors
-if there's no real file (REPL, eval'd string) — the user must
-provide an explicit alias in that case.
+if `file` doesn't point to a real file (REPL, eval'd string) — the
+user must provide an explicit alias in that case.
 """
-function _sc_name_from_source(src::LineNumberNode)
-    f = String(src.file)
-    isfile(f) || error("@synth: no source file context — provide an alias: `@synth :name body`")
-    return Symbol(splitext(basename(f))[1])
+function _sc_name_from_source(file::AbstractString)
+    isfile(file) || error("@synth: no source file context — provide an alias: `@synth :name body`")
+    return Symbol(splitext(basename(file))[1])
 end
 
 """
-    _sc_name_for_aliased(src, alias) -> Symbol
+    _sc_name_for_aliased(file, alias) -> Symbol
 
 When the user writes `@synth :alias body`, decide the SC SynthDef
 name. In a real file, the SC name is the filename (so renaming the
@@ -532,9 +531,8 @@ file renames the SynthDef without touching the macro). In a REPL /
 no-file context, the alias IS the SC name (there's nothing else to
 use).
 """
-function _sc_name_for_aliased(src::LineNumberNode, alias::Symbol)
-    f = String(src.file)
-    return isfile(f) ? Symbol(splitext(basename(f))[1]) : alias
+function _sc_name_for_aliased(file::AbstractString, alias::Symbol)
+    return isfile(file) ? Symbol(splitext(basename(file))[1]) : alias
 end
 
 """
@@ -589,9 +587,14 @@ macro synth(args...)
     end
     params = length(middle) >= 1 ? middle[1] : :(NamedTuple())
     opts   = length(middle) >= 2 ? middle[2] : nothing
+    # `__source__` is only bound inside the macro body. Capture its
+    # `.file` here at expansion time and embed as a string literal in
+    # the produced expression — referencing `__source__` from inside
+    # the expansion is a NameError at call site.
+    source_file = String(__source__.file)
     name_expr = alias_expr === nothing ?
-        :(_sc_name_from_source(__source__)) :
-        :(_sc_name_for_aliased(__source__, $alias_expr))
+        :(_sc_name_from_source($source_file)) :
+        :(_sc_name_for_aliased($source_file, $alias_expr))
     call = if opts === nothing
         :(play_synth($name_expr, $body; params = $params, alias = $alias_expr))
     else
