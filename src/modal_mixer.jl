@@ -53,13 +53,34 @@ function _handle_mixer_key!(m::RessacApp, evt::TK.KeyEvent)
 end
 
 """
+    _apply_gain_delta_to_line(line, delta) -> String
+
+Pure: bump (or insert) a `|> gain(N)` on `line` by `delta`. If `line`
+already has a gain in its pipe chain, parse N, add delta, clamp to
+`[0, 5]`, replace in place. Otherwise append `|> gain(1.0 + delta)`
+(neutral baseline). All values are rounded to 2 decimals so the
+buffer stays readable.
+
+Extracted from `_mixer_nudge_gain!` so the regex + clamp behaviour
+can be unit-tested without standing up a full RessacApp.
+"""
+function _apply_gain_delta_to_line(line::AbstractString, delta::Real)
+    mt = match(r"\|>\s*gain\(([0-9.+\-]+)\)", line)
+    if mt === nothing
+        return rstrip(line) * " |> gain($(round(1.0 + float(delta); digits = 2)))"
+    end
+    cur = parse(Float64, mt.captures[1])
+    new_v = clamp(cur + float(delta), 0.0, 5.0)
+    return replace(line, mt.match => "|> gain($(round(new_v; digits = 2)))"; count = 1)
+end
+
+"""
     _mixer_nudge_gain!(m, slot, delta)
 
 Adjust the gain of `slot`'s @dN line in the patterns buffer by
-`delta`, then re-eval. Finds an existing `|> gain(N)` in the line
-and bumps N (clamped to [0, 5]); if absent, appends a fresh
-`|> gain(1.0 + delta)` to the end. The mixer keeps the audio in
-sync because the re-eval calls `set_pattern!` on the scheduler.
+`delta`, then re-eval. The line-edit math lives in the pure helper
+`_apply_gain_delta_to_line`; this wrapper finds the slot's row,
+applies it, and re-evals so audio reflects the change.
 """
 function _mixer_nudge_gain!(m::RessacApp, slot::Symbol, delta::Real)
     txt = TK.text(m.editor)
@@ -67,20 +88,8 @@ function _mixer_nudge_gain!(m::RessacApp, slot::Symbol, delta::Real)
     slot_id = String(slot)
     row = findfirst(line -> occursin(Regex("^\\s*@$(slot_id)\\b"), String(line)), lines)
     row === nothing && return _push_app_log!(m, "[WARN] mixer +/-: no @$(slot_id) line in buffer")
-    line = String(lines[row])
-    # Find an existing |> gain(N) — capture the numeric literal.
-    mt = match(r"\|>\s*gain\(([0-9.+\-]+)\)", line)
-    new_line = if mt === nothing
-        # No gain in the chain — append one with neutral 1.0 + delta.
-        rstrip(line) * " |> gain($(round(1.0 + float(delta); digits = 2)))"
-    else
-        cur = parse(Float64, mt.captures[1])
-        new_v = clamp(cur + float(delta), 0.0, 5.0)
-        replace(line, mt.match => "|> gain($(round(new_v; digits = 2)))"; count = 1)
-    end
-    lines[row] = new_line
+    lines[row] = _apply_gain_delta_to_line(String(lines[row]), delta)
     TK.set_text!(m.editor, join(lines, '\n'))
-    # Re-eval just that slot so the audio reflects the change.
     _eval_pattern_blocks!(m, [slot])
 end
 

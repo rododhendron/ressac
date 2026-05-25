@@ -25,4 +25,5 @@ using Ressac
     include("test_tui_overlay.jl")
     include("test_tap_detection.jl")
     include("test_orbit_routing.jl")
+    include("test_modal_helpers.jl")
 end
