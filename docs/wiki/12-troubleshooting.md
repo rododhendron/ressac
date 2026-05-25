@@ -40,7 +40,7 @@ The most common cases and what they mean:
 | Error                                           | Cause                                                                  | Fix                                                                  |
 |-------------------------------------------------|------------------------------------------------------------------------|----------------------------------------------------------------------|
 | `unknown name `foo``                            | typo, or sample/synth not registered                                   | `:browse` to see registered names · `:lib` for synths                |
-| `a Symbol slipped into a Pattern slot`          | wrote `:bd \|> n(p"0 3")` — Symbol can't accept Pattern                | Wrap with `pure(:bd)` or use mini-notation: `p"bd" \|> n(p"0 3")`    |
+| `a Symbol slipped into a Pattern slot`          | wrote `:bd \|> n("0 3")` — Symbol can't accept Pattern                | Wrap with `pure(:bd)` or use mini-notation: `"bd" \|> n("0 3")`    |
 | `parse error — check matching brackets`        | unbalanced `(`, `[`, `<`, `"`                                          | scan the line, count opens and closes                                |
 | `bad arg: invalid base 10 digit`               | wrote a number where a name was expected, or vice versa                | check what the helper expects: `:doc gain` etc.                      |
 | `out-of-range index`                            | `degree()` or `n()` got a pattern longer than expected                 | check the indices fit the source                                     |
@@ -60,7 +60,7 @@ at the OS-level Ressac stderr — but the modal log gives you the gist.
 3. **Tempo is too slow / too fast.** `cps!(0.001)` makes the cycle take
    16 minutes. The status bar shows current cps + BPM — verify.
 
-4. **The pattern matched but the value is :silence.** `p"~"` produces
+4. **The pattern matched but the value is :silence.** `"~"` produces
    no events. Check the mini-notation didn't reduce to silence.
 
 5. **`auto_env=false` drone never fires.** A drone synth fires once

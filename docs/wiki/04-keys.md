@@ -26,7 +26,7 @@ V                  visual line-wise selection (j/k extends, dyc act)
 .                  repeat last edit (insert OR normal-mode dd/x/p)
 ```
 
-## Pattern editor — context-aware (cursor inside `p"…"`)
+## Pattern editor — context-aware (cursor inside `"…"`)
 
 ```
 >                  zoom pattern x2 (insert ~ between tokens)
@@ -117,12 +117,12 @@ r<char>            replace char under cursor
 ## Live input modes
 
 ```
-:tap [sample]      tap a rhythm with Space → quantized @dN p"..."
+:tap [sample]      tap a rhythm with Space → quantized @dN "..."
                    (loop detection + cps auto-set + auto-eval)
 :tap-strict        same but single-bar quantize, no loop detection
 :bpm / :tap-tempo  tap-set cps from inter-tap intervals
 :piano [synth]     letter keys → notes; [/] octave
-:piano-rec         same + records into @dN :synth |> n(p"...")
+:piano-rec         same + records into @dN :synth |> n("...")
 ```
 
 ## Files & sessions

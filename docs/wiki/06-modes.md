@@ -6,7 +6,7 @@ and show their state in the status bar.
 ## Tap loop — `:tap [sample]`
 
 The default: tap a rhythm, Ressac detects the loop period
-automatically, sets `cps`, writes the `@dN p"…"` line, and evals it.
+automatically, sets `cps`, writes the `@dN "…"` line, and evals it.
 
 ```
 :tap                → defaults to sample = bd
@@ -22,7 +22,7 @@ confidence indicator in the commit log). `Enter` commits:
    cleanly).
 2. Step inference chooses the smallest musical grid (3, 4, 6, 8,
    12, 16, 24, 32) where every tap lands on an integer step.
-3. Output: `cps!(<inferred>)` + `@d<next-free> p"…"` lines, both
+3. Output: `cps!(<inferred>)` + `@d<next-free> "…"` lines, both
    evaluated immediately.
 4. Confidence score in the log: `high`, `ok`, or `low — try more reps`.
 
@@ -60,7 +60,7 @@ Middle row (sharps):       s  d     g  h  j
 
 Same as piano mode but every press is stashed with its timestamp.
 `Enter` commits: notes get quantized across 16 steps, output is
-`@d<next-free> :synth |> n(p"0 4 7 0 4 7 ...")` below the cursor.
+`@d<next-free> :synth |> n("0 4 7 0 4 7 ...")` below the cursor.
 
 Status bar shows `● PIANO REC oct=4 [n]`.
 
@@ -68,7 +68,7 @@ Status bar shows `● PIANO REC oct=4 [n]`.
 
 Pressing `Space` in normal mode arms a one-shot trigger:
 
-- next char = `d` → expands `@d$1 p"$2"` with cursor on `$1`
+- next char = `d` → expands `@d$1 "$2"` with cursor on `$1`
 - next char = `b` / `L` / `I` / `w` / `?` → opens browse / lib /
   snippets / wiki / guide
 - next char = a letter in `_LEADER_SNIPPETS` → expands template

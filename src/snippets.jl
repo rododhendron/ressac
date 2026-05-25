@@ -17,59 +17,59 @@ const _SNIPPETS = _Snippet[
     # ── Patterns: rhythm starting points ────────────────────────────
     _Snippet("kick4", :patterns, "rhythm",
         "Four-on-the-floor kick — the most fundamental house beat.", raw"""
-        @d1 p"bd bd bd bd"
+        @d1 "bd bd bd bd"
         """),
     _Snippet("kickhat", :patterns, "rhythm",
         "Kick on 1+3, hat on every step. Foundational house pattern.", raw"""
-        @d1 p"bd ~ bd ~"
-        @d2 p"hh hh hh hh"
+        @d1 "bd ~ bd ~"
+        @d2 "hh hh hh hh"
         """),
     _Snippet("breakbeat", :patterns, "rhythm",
         "Classic break: kick on the 1, snare on the 3, ghost notes between.", raw"""
-        @d1 p"bd ~ sn bd*2 ~ sn ~ bd"
-        @d2 p"hh hh oh hh hh hh oh hh"
+        @d1 "bd ~ sn bd*2 ~ sn ~ bd"
+        @d2 "hh hh oh hh hh hh oh hh"
         """),
     _Snippet("polyrhythm", :patterns, "rhythm",
         "3-against-4 polyrhythm — kick triplets vs hat quads.", raw"""
-        @d1 p"bd*3" |> gain(0.8)
-        @d2 p"hh*4" |> gain(0.4)
+        @d1 "bd*3" |> gain(0.8)
+        @d2 "hh*4" |> gain(0.4)
         """),
     _Snippet("euclid", :patterns, "rhythm",
         "Euclidean rhythm. (k,n) = k beats spread evenly over n steps.", raw"""
-        @d1 p"bd(3,8)"
-        @d2 p"hh(7,16)" |> gain(0.5)
+        @d1 "bd(3,8)"
+        @d2 "hh(7,16)" |> gain(0.5)
         """),
     _Snippet("tribal", :patterns, "rhythm",
         "Tribal-style polyrhythm with rest accents.", raw"""
-        @d1 p"bd ~ ~ bd ~ bd ~ ~"
-        @d2 p"~ ~ cp ~ ~ ~ cp ~"
-        @d3 p"hh*8" |> gain(0.3)
+        @d1 "bd ~ ~ bd ~ bd ~ ~"
+        @d2 "~ ~ cp ~ ~ ~ cp ~"
+        @d3 "hh*8" |> gain(0.3)
         """),
 
     # ── Patterns: melody / bass ─────────────────────────────────────
     _Snippet("acidline", :patterns, "melody",
         "TB-303-style 16th-note acid line. Edit the n() sequence.", raw"""
-        @d1 :acid303 |> n(p"0 3 5 7 3 5 0 7 5 3 5 7 0 3 5 7") |> gain(0.6)
+        @d1 :acid303 |> n("0 3 5 7 3 5 0 7 5 3 5 7 0 3 5 7") |> gain(0.6)
         """),
     _Snippet("subline", :patterns, "melody",
         "Slow sub bass on the off-beats. Pair with a busy kick.", raw"""
-        @d1 :subdrop |> n(p"0 3 5 0") |> gain(0.7)
+        @d1 :subdrop |> n("0 3 5 0") |> gain(0.7)
         """),
     _Snippet("arp", :patterns, "melody",
         "Fast triadic arpeggio — root, 3rd, 5th, octave.", raw"""
-        @d1 :arpdriver |> n(p"0 4 7 12 0 4 7 12") |> gain(0.55)
+        @d1 :arpdriver |> n("0 4 7 12 0 4 7 12") |> gain(0.55)
         """),
     _Snippet("chord_stab", :patterns, "melody",
         "Off-beat lofi chord stabs.", raw"""
-        @d1 p"~ chordstab ~ chordstab" |> gain(0.6)
+        @d1 "~ chordstab ~ chordstab" |> gain(0.6)
         """),
     _Snippet("pad_drone", :patterns, "melody",
         "Long sustained pad drone. cps slow → notes blend.", raw"""
-        @d1 :softpad |> n(p"<0 5 7 3>") |> gain(0.4)
+        @d1 :softpad |> n("<0 5 7 3>") |> gain(0.4)
         """),
     _Snippet("wobble", :patterns, "melody",
         "Wobble bass with LFO rate riding the bar.", raw"""
-        @d1 :rezzbass |> n(p"0 0 5 0 3 0 5 0") |> set(:rate, 4) |> gain(0.6)
+        @d1 :rezzbass |> n("0 0 5 0 3 0 5 0") |> set(:rate, 4) |> gain(0.6)
         """),
 
     # ── Patterns: effect chains ─────────────────────────────────────
@@ -79,11 +79,11 @@ const _SNIPPETS = _Snippet[
         """),
     _Snippet("fx_lpf", :patterns, "fx",
         "Low-pass with resonance — for filter sweeps.", raw"""
-         |> lpf(p"<300 800 2000 6000>") |> resonance(0.4)
+         |> lpf("<300 800 2000 6000>") |> resonance(0.4)
         """),
     _Snippet("fx_pan", :patterns, "fx",
         "Auto-pan over the bar via the time-pattern <…>.", raw"""
-         |> pan(p"<0 0.5 1 0.5>")
+         |> pan("<0 0.5 1 0.5>")
         """),
     _Snippet("fx_drive", :patterns, "fx",
         "Hard saturation via SuperDirt's shape.", raw"""
@@ -94,184 +94,184 @@ const _SNIPPETS = _Snippet[
     _Snippet("track_dnb", :patterns, "track",
         "Drum & bass skeleton — fast break + sub on 1.", raw"""
         cps!(0.46)
-        @d1 p"bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~"
-        @d2 p"hh*16" |> gain(0.4)
-        @d3 :subdrop |> n(p"0 ~ ~ ~ 0 ~ 5 ~") |> gain(0.7)
+        @d1 "bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~"
+        @d2 "hh*16" |> gain(0.4)
+        @d3 :subdrop |> n("0 ~ ~ ~ 0 ~ 5 ~") |> gain(0.7)
         """),
     _Snippet("track_house", :patterns, "track",
         "Four-on-the-floor house template.", raw"""
         cps!(0.5)
-        @d1 p"bd bd bd bd"
-        @d2 p"~ cp ~ cp"
-        @d3 p"hh*16" |> gain(0.35)
-        @d4 :acid303 |> n(p"0 3 5 7") |> gain(0.45)
+        @d1 "bd bd bd bd"
+        @d2 "~ cp ~ cp"
+        @d3 "hh*16" |> gain(0.35)
+        @d4 :acid303 |> n("0 3 5 7") |> gain(0.45)
         """),
     _Snippet("track_dark", :patterns, "track",
         "Darksynth template — slow tempo, gated bass, pad.", raw"""
         cps!(0.42)
-        @d1 :kickbrut |> n(p"0 ~ ~ 0 ~ ~ ~ 0") |> gain(0.8)
-        @d2 :snareclap |> n(p"~ ~ 0 ~ ~ ~ 0 ~") |> gain(0.7)
-        @d3 :gatedbass |> n(p"0 ~ 0 ~ 5 ~ 7 ~") |> gain(0.6)
-        @d4 :darkpad |> n(p"<0 0 -2 -4>") |> gain(0.4)
+        @d1 :kickbrut |> n("0 ~ ~ 0 ~ ~ ~ 0") |> gain(0.8)
+        @d2 :snareclap |> n("~ ~ 0 ~ ~ ~ 0 ~") |> gain(0.7)
+        @d3 :gatedbass |> n("0 ~ 0 ~ 5 ~ 7 ~") |> gain(0.6)
+        @d4 :darkpad |> n("<0 0 -2 -4>") |> gain(0.4)
         """),
 
     # ── Patterns: genre-specific rhythm templates ───────────────────
     _Snippet("jersey", :patterns, "genre",
         "Jersey club — bed-creak bounce, 5-on-the-floor kick, triplet hats.", raw"""
         cps!(0.58)
-        @d1 p"bd ~ ~ bd bd ~ ~ bd"
-        @d2 p"~ ~ cp ~ ~ ~ cp ~"
-        @d3 p"[hh hh hh]*4" |> gain(0.35)
+        @d1 "bd ~ ~ bd bd ~ ~ bd"
+        @d2 "~ ~ cp ~ ~ ~ cp ~"
+        @d3 "[hh hh hh]*4" |> gain(0.35)
         """),
 
     _Snippet("footwork", :patterns, "genre",
         "Footwork — 160 BPM, fast hihats, sparse kicks, syncopated claps.", raw"""
         cps!(0.66)
-        @d1 p"bd ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~"
-        @d2 p"~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
-        @d3 p"hh*16" |> gain(0.4)
-        @d4 p"~ ~ sn*3 ~ ~ ~ sn ~ ~ sn*2 ~ ~ ~ ~" |> gain(0.5)
+        @d1 "bd ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~"
+        @d2 "~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
+        @d3 "hh*16" |> gain(0.4)
+        @d4 "~ ~ sn*3 ~ ~ ~ sn ~ ~ sn*2 ~ ~ ~ ~" |> gain(0.5)
         """),
 
     _Snippet("garage", :patterns, "genre",
         "UK garage / 2-step — broken kick, off-beat hats, swung snare.", raw"""
         cps!(0.55)
-        @d1 p"bd ~ ~ bd ~ ~ bd ~"
-        @d2 p"~ ~ cp ~ ~ ~ ~ cp"
-        @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
+        @d1 "bd ~ ~ bd ~ ~ bd ~"
+        @d2 "~ ~ cp ~ ~ ~ ~ cp"
+        @d3 "~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
         """),
 
     _Snippet("trap", :patterns, "genre",
         "Trap — rolling hi-hats with triplet bursts + 808 kick.", raw"""
         cps!(0.45)
-        @d1 p"bd ~ ~ ~ ~ ~ bd ~"
-        @d2 p"~ ~ cp ~ ~ ~ cp ~"
-        @d3 p"hh hh [hh hh hh] hh hh [hh hh hh] hh hh" |> gain(0.4)
-        @d4 :subdrop |> n(p"0 ~ ~ 0 ~ ~ 5 ~") |> gain(0.6)
+        @d1 "bd ~ ~ ~ ~ ~ bd ~"
+        @d2 "~ ~ cp ~ ~ ~ cp ~"
+        @d3 "hh hh [hh hh hh] hh hh [hh hh hh] hh hh" |> gain(0.4)
+        @d4 :subdrop |> n("0 ~ ~ 0 ~ ~ 5 ~") |> gain(0.6)
         """),
 
     _Snippet("dnb", :patterns, "genre",
         "Drum & bass — amen-inspired chop + sub on the 1.", raw"""
         cps!(0.46)
-        @d1 p"bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~"
-        @d2 p"hh*16" |> gain(0.4)
-        @d3 :subdrop |> n(p"0 ~ ~ ~ 0 ~ 5 ~") |> gain(0.7)
+        @d1 "bd ~ ~ ~ ~ ~ sn ~ ~ ~ bd ~ ~ ~ sn ~"
+        @d2 "hh*16" |> gain(0.4)
+        @d3 :subdrop |> n("0 ~ ~ ~ 0 ~ 5 ~") |> gain(0.7)
         """),
 
     _Snippet("techno", :patterns, "genre",
         "Minimal techno — 4-on-the-floor kick, clap on the 2 and 4, percs.", raw"""
         cps!(0.5)
-        @d1 p"bd bd bd bd"
-        @d2 p"~ cp ~ cp"
-        @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.35)
-        @d4 p"~ ~ ~ ~ ~ ~ ~ oh"  |> gain(0.4)
+        @d1 "bd bd bd bd"
+        @d2 "~ cp ~ cp"
+        @d3 "~ hh ~ hh ~ hh ~ hh" |> gain(0.35)
+        @d4 "~ ~ ~ ~ ~ ~ ~ oh"  |> gain(0.4)
         """),
 
     _Snippet("house", :patterns, "genre",
         "Deep house — 4-on-the-floor, off-beat hats, syncopated snare.", raw"""
         cps!(0.5)
-        @d1 p"bd bd bd bd"
-        @d2 p"~ cp ~ cp"
-        @d3 p"~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
-        @d4 p"~ ~ ~ ~ ~ ~ oh ~" |> gain(0.5)
+        @d1 "bd bd bd bd"
+        @d2 "~ cp ~ cp"
+        @d3 "~ hh ~ hh ~ hh ~ hh" |> gain(0.4)
+        @d4 "~ ~ ~ ~ ~ ~ oh ~" |> gain(0.5)
         """),
 
     _Snippet("breakcore", :patterns, "genre",
         "Breakcore — chopped fast break, ghost notes, kick chaos.", raw"""
         cps!(0.66)
-        @d1 p"bd*2 ~ [bd*4] ~ bd ~ [bd*3] ~"
-        @d2 p"~ ~ sn ~ ~ sn ~ [sn*2]"
-        @d3 p"hh*32" |> gain(0.3)
+        @d1 "bd*2 ~ [bd*4] ~ bd ~ [bd*3] ~"
+        @d2 "~ ~ sn ~ ~ sn ~ [sn*2]"
+        @d3 "hh*32" |> gain(0.3)
         """),
 
     _Snippet("drill", :patterns, "genre",
         "UK drill — sliding 808, triplet hat bursts, sparse snare.", raw"""
         cps!(0.48)
-        @d1 p"bd ~ ~ bd ~ ~ bd ~"
-        @d2 p"~ ~ cp ~ ~ ~ cp ~"
-        @d3 p"hh hh [hh*3] hh [hh*3] hh hh hh" |> gain(0.4)
-        @d4 :subdrop |> n(p"0 ~ -2 ~ -5 ~ ~ ~") |> gain(0.7)
+        @d1 "bd ~ ~ bd ~ ~ bd ~"
+        @d2 "~ ~ cp ~ ~ ~ cp ~"
+        @d3 "hh hh [hh*3] hh [hh*3] hh hh hh" |> gain(0.4)
+        @d4 :subdrop |> n("0 ~ -2 ~ -5 ~ ~ ~") |> gain(0.7)
         """),
 
     _Snippet("dembow", :patterns, "genre",
         "Reggaeton dembow — classic boom-ch-boom-chick pattern.", raw"""
         cps!(0.5)
-        @d1 p"bd ~ ~ cp bd cp ~ cp"
-        @d2 p"hh*8" |> gain(0.4)
+        @d1 "bd ~ ~ cp bd cp ~ cp"
+        @d2 "hh*8" |> gain(0.4)
         """),
 
     _Snippet("boombap", :patterns, "genre",
         "Boom-bap hip-hop — heavy kick on 1+3, snare on 2+4, swung hats.", raw"""
         cps!(0.42)
-        @d1 p"bd ~ ~ ~ bd ~ bd ~"
-        @d2 p"~ ~ sn ~ ~ ~ sn ~"
-        @d3 p"hh ~ hh ~ hh ~ hh ~" |> gain(0.4)
+        @d1 "bd ~ ~ ~ bd ~ bd ~"
+        @d2 "~ ~ sn ~ ~ ~ sn ~"
+        @d3 "hh ~ hh ~ hh ~ hh ~" |> gain(0.4)
         """),
 
     _Snippet("lofi_hiphop", :patterns, "genre",
         "Lofi hip-hop — slower boom-bap with mellow ghost notes.", raw"""
         cps!(0.38)
-        @d1 :lofikick |> n(p"0 ~ ~ ~ 0 ~ 0 ~") |> gain(0.7)
-        @d2 p"~ ~ sn ~ ~ ~ sn ~"
-        @d3 :lofihat |> n(p"0*16") |> gain(0.3)
-        @d4 :chordstab |> n(p"<0 5 -2 3>") |> gain(0.45)
+        @d1 :lofikick |> n("0 ~ ~ ~ 0 ~ 0 ~") |> gain(0.7)
+        @d2 "~ ~ sn ~ ~ ~ sn ~"
+        @d3 :lofihat |> n("0*16") |> gain(0.3)
+        @d4 :chordstab |> n("<0 5 -2 3>") |> gain(0.45)
         """),
 
     _Snippet("phonk", :patterns, "genre",
         "Phonk — cowbell, triplet hi-hats, deep 808 slides.", raw"""
         cps!(0.46)
-        @d1 p"bd ~ ~ bd ~ bd ~ ~"
-        @d2 p"~ cp ~ ~ ~ cp ~ ~"
-        @d3 p"[hh hh hh]*4" |> gain(0.35)
-        @d4 p"cb ~ ~ cb ~ ~ cb ~" |> gain(0.5)
-        @d5 :subdrop |> n(p"0 ~ ~ 0 -3 ~ ~ ~") |> gain(0.7)
+        @d1 "bd ~ ~ bd ~ bd ~ ~"
+        @d2 "~ cp ~ ~ ~ cp ~ ~"
+        @d3 "[hh hh hh]*4" |> gain(0.35)
+        @d4 "cb ~ ~ cb ~ ~ cb ~" |> gain(0.5)
+        @d5 :subdrop |> n("0 ~ ~ 0 -3 ~ ~ ~") |> gain(0.7)
         """),
 
     _Snippet("witch_house", :patterns, "genre",
         "Witch house — slow, sparse, eerie pads + slowed kicks.", raw"""
         cps!(0.28)
-        @d1 p"bd ~ ~ ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~"
-        @d2 p"~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
-        @d3 :ghostpad |> n(p"<0 -3 -5 -7>") |> gain(0.4)
+        @d1 "bd ~ ~ ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~"
+        @d2 "~ ~ ~ ~ cp ~ ~ ~ ~ ~ ~ ~ cp ~ ~ ~"
+        @d3 :ghostpad |> n("<0 -3 -5 -7>") |> gain(0.4)
         """),
 
     _Snippet("bossanova", :patterns, "genre",
         "Bossa nova clave — partido alto-ish pattern.", raw"""
         cps!(0.5)
-        @d1 p"bd ~ ~ bd ~ ~ bd ~"
-        @d2 p"~ ~ cp ~ cp ~ ~ cp"
-        @d3 p"hh hh ~ hh hh hh ~ hh" |> gain(0.35)
+        @d1 "bd ~ ~ bd ~ ~ bd ~"
+        @d2 "~ ~ cp ~ cp ~ ~ cp"
+        @d3 "hh hh ~ hh hh hh ~ hh" |> gain(0.35)
         """),
 
     # ── Pattern helpers ─────────────────────────────────────────────
     _Snippet("euclidean_layers", :patterns, "rhythm",
         "Three Euclidean rhythms layered — endless polyrhythmic groove.", raw"""
-        @d1 p"bd(3,8)"
-        @d2 p"sn(5,16)" |> gain(0.6)
-        @d3 p"hh(7,16)" |> gain(0.4)
+        @d1 "bd(3,8)"
+        @d2 "sn(5,16)" |> gain(0.6)
+        @d3 "hh(7,16)" |> gain(0.4)
         """),
 
     _Snippet("polyrhythm_3_4", :patterns, "rhythm",
         "3-against-4 polyrhythm — classic tension groove.", raw"""
-        @d1 p"bd*3"
-        @d2 p"hh*4" |> gain(0.4)
+        @d1 "bd*3"
+        @d2 "hh*4" |> gain(0.4)
         """),
 
     _Snippet("polyrhythm_5_4", :patterns, "rhythm",
         "5-against-4 — angular and unsettling.", raw"""
-        @d1 p"bd*5"
-        @d2 p"sn*4" |> gain(0.5)
+        @d1 "bd*5"
+        @d2 "sn*4" |> gain(0.5)
         """),
 
     _Snippet("call_response", :patterns, "rhythm",
         "Call-and-response — alternate between two motifs each cycle.", raw"""
-        @d1 p"<[bd hh sn hh] [bd*2 ~ sn ~]>"
+        @d1 "<[bd hh sn hh] [bd*2 ~ sn ~]>"
         """),
 
     _Snippet("ghost_notes", :patterns, "rhythm",
         "Heavy kicks with ghost notes between — accent variation.", raw"""
-        @d1 p"bd*2 [~ bd] sn [~ bd] bd*2 sn ~"
-        @d2 p"hh*16" |> gain(0.25)
+        @d1 "bd*2 [~ bd] sn [~ bd] bd*2 sn ~"
+        @d2 "hh*16" |> gain(0.25)
         """),
 
     # ── Patterns: cheatsheets — commented reference blocks ──────────
@@ -291,7 +291,7 @@ const _SNIPPETS = _Snippet[
         # stack(p, q, r)             — play patterns in parallel
         # cat([p, q, r])             — alternate one per cycle
         # mask(p, q::Pattern{Bool})  — gate p by q (true = let through)
-        # gate(:bd, p"1 0 1 1")      — substitute :bd for every "1" event
+        # gate(:bd, "1 0 1 1")      — substitute :bd for every "1" event
         # degree(x)                  — note as scale degree (set :scale first)
         # n(x)                       — sample variant index OR semitone offset
         """),
@@ -304,7 +304,7 @@ const _SNIPPETS = _Snippet[
         # speed(0.5)       — sample playback rate     (composes ×)
         # lpf(2000)        — low-pass cutoff Hz       (composes min — strictest wins)
         # hpf(200)         — high-pass cutoff Hz      (composes max)
-        # n(p"0 3 5")      — sample variant / semitones (overwrite)
+        # n("0 3 5")      — sample variant / semitones (overwrite)
         # room(0.4)        — reverb send 0..1
         # delay(0.4)       — delay send 0..1
         # delaytime(0.25)  — delay time in beats (¼ = 16th note at 4 cps)
@@ -320,7 +320,7 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("cheat_mini", :patterns, "reference",
         "Cheatsheet: the mini-notation grammar inside p\"…\".", raw"""
-        # ── Mini-notation (inside p"…") ──
+        # ── Mini-notation (inside "…") ──
         # bd hh sn hh        — 4 equal events per cycle
         # ~                  — rest / silence
         # bd*4               — repeat 4 times inside the slot (subdivide)
@@ -381,12 +381,12 @@ const _SNIPPETS = _Snippet[
         # ── Pipe-chain anatomy ──
         # Pattern  |>  control  |>  control  …
         #   :bd                    a bare symbol = pure(:bd) (lifted)
-        #   p"bd ~ sn ~"           mini-notation literal
-        #   gate(:bd, p"1 0 1 1")  named pattern
+        #   "bd ~ sn ~"           mini-notation literal
+        #   gate(:bd, "1 0 1 1")  named pattern
         #
         # Then each |> wraps the pattern in a ControlMap layer:
         #
-        #   @d1 p"bd hh sn hh" |> gain(0.8) |> lpf(1500) |> pan(0.3)
+        #   @d1 "bd hh sn hh" |> gain(0.8) |> lpf(1500) |> pan(0.3)
         #
         # @dN macro is the final stage — installs the pattern at the slot.
         # Composition rules (most useful):
@@ -397,10 +397,10 @@ const _SNIPPETS = _Snippet[
     _Snippet("helpers_tour", :patterns, "reference",
         "Working example showcasing helpers — eval & iterate.", raw"""
         cps!(0.5)
-        @d1 p"bd*4" |> gain(0.9)
-        @d2 p"~ sn ~ sn" |> gain(0.7) |> room(0.2)
-        @d3 p"hh*8" |> gain(0.35) |> hpf(4000) |> pan(p"0.4 -0.4")
-        @d4 :bass |> n(p"0 0 3 5") |> gain(0.6) |> lpf(800)
+        @d1 "bd*4" |> gain(0.9)
+        @d2 "~ sn ~ sn" |> gain(0.7) |> room(0.2)
+        @d3 "hh*8" |> gain(0.35) |> hpf(4000) |> pan("0.4 -0.4")
+        @d4 :bass |> n("0 0 3 5") |> gain(0.6) |> lpf(800)
         # Try:
         #   m on @d2     → mute the snare
         #   :solo d3     → only the hat
@@ -598,35 +598,35 @@ const _SNIPPETS = _Snippet[
 
     _Snippet("jux_rev", :patterns, "tidal",
         "[Tidal idiom] jux(rev) — stereo: original on L, reversed on R.", raw"""
-        @d1 p"bd hh sn hh" |> jux(rev)
+        @d1 "bd hh sn hh" |> jux(rev)
         """),
     _Snippet("every3_fast2", :patterns, "tidal",
         "[Tidal idiom] every(3, fast(2)) — speed bump on every 3rd cycle.", raw"""
-        @d1 p"bd ~ sn ~" |> every(3, fast(2))
+        @d1 "bd ~ sn ~" |> every(3, fast(2))
         """),
     _Snippet("off_arp", :patterns, "tidal",
         "[Tidal idiom] off — overlay a time-shifted copy for arpeggio feel.", raw"""
-        @d1 :supersaw |> n(p"0 5 7 12") |> off(1//8, fast(2))
+        @d1 :supersaw |> n("0 5 7 12") |> off(1//8, fast(2))
         """),
     _Snippet("sometimes_warp", :patterns, "tidal",
         "[Tidal idiom] sometimes(rev) — 50% of cycles get reversed. Surprise.", raw"""
-        @d1 p"bd hh sn hh" |> sometimes(rev)
+        @d1 "bd hh sn hh" |> sometimes(rev)
         """),
     _Snippet("chunk_evolve", :patterns, "tidal",
         "[Tidal idiom] chunk(4, fast(2)) — one quarter per cycle gets sped up.", raw"""
-        @d1 p"bd hh sn hh" |> chunk(4, fast(2))
+        @d1 "bd hh sn hh" |> chunk(4, fast(2))
         """),
     _Snippet("palindrome_loop", :patterns, "tidal",
         "[Tidal idiom] palindrome — 4-step phrase → 8-step there-and-back.", raw"""
-        @d1 p"bd hh sn cp" |> palindrome
+        @d1 "bd hh sn cp" |> palindrome
         """),
     _Snippet("degrade_thin", :patterns, "tidal",
         "[Tidal idiom] degradeBy(0.3) — drop 30% of events (seeded). Sparser feel.", raw"""
-        @d1 p"hh*16" |> degradeBy(0.3)
+        @d1 "hh*16" |> degradeBy(0.3)
         """),
     _Snippet("iter_rotate", :patterns, "tidal",
         "[Tidal idiom] iter(4) — rotate phrase by 1/4 each cycle. Evolving phase.", raw"""
-        @d1 p"bd hh sn hh" |> iter(4)
+        @d1 "bd hh sn hh" |> iter(4)
         """),
 ]
 

@@ -6,12 +6,12 @@ vocabulary carry over. The big differences:
 | Tidal (Haskell)            | Ressac (Julia)                |
 |----------------------------|-------------------------------|
 | `cps 0.5`                  | `cps!(0.5)`                   |
-| `d1 $ s "bd"`              | `@d1 p"bd"`  or `@d1 :bd`     |
+| `d1 $ s "bd"`              | `@d1 "bd"`  or `@d1 :bd`     |
 | `d1 silence`               | `@d1`        (no body unsets) |
 | `hush`                     | `:hush` or `,`                |
 | pipe `#`                   | pipe `\|>`                    |
-| `s "bd" # gain 0.7`        | `p"bd" \|> gain(0.7)`         |
-| `n "0 3 5"`                | `n(p"0 3 5")`                 |
+| `s "bd" # gain 0.7`        | `"bd" \|> gain(0.7)`         |
+| `n "0 3 5"`                | `n("0 3 5")`                 |
 | `every 4 rev`              | `every(4, rev)`               |
 | `jux rev`                  | `jux(rev)`                    |
 | `degradeBy 0.3`            | `degradeBy(0.3)`              |
@@ -33,8 +33,8 @@ vocabulary carry over. The big differences:
 ### Pattern values
 
 In Tidal, `s "bd hh sn"` is a `Pattern String`. In Ressac the equivalent
-`p"bd hh sn"` is a `Pattern{Symbol}`. The string atom becomes a Julia
-`Symbol`. Variant indices stay as part of the symbol: `p"bd:2"` →
+`"bd hh sn"` is a `Pattern{Symbol}`. The string atom becomes a Julia
+`Symbol`. Variant indices stay as part of the symbol: `"bd:2"` →
 `Symbol("bd:2")`.
 
 The bare-symbol shorthand `@d1 :bd` lifts to `pure(:bd)` automatically
@@ -43,7 +43,7 @@ The bare-symbol shorthand `@d1 :bd` lifts to `pure(:bd)` automatically
 ### The pipe operator is Julia's `|>`
 
 ```julia
-@d1 p"bd hh sn hh" |> fast(2) |> gain(0.8) |> lpf(1500)
+@d1 "bd hh sn hh" |> fast(2) |> gain(0.8) |> lpf(1500)
 ```
 
 Composition rules (same as Tidal's `#`):
@@ -55,16 +55,16 @@ Composition rules (same as Tidal's `#`):
 If a SuperDirt param isn't auto-exposed as a helper, `set(:key, value)`
 slots it in:
 ```julia
-@d1 p"bd" |> set(:cut, 1) |> set(:vibrato, 4)
+@d1 "bd" |> set(:cut, 1) |> set(:vibrato, 4)
 ```
 
 ### Probabilistic mini-notation
 
 ```julia
-p"bd? hh? sn? hh?"      # drop each with 50% probability
-p"bd?0.3 hh sn hh"      # only bd drops, with 30% prob
-p"bd _ _ sn"            # bd extended to occupy 3 slots
-p"bd(3,8,2)"            # 3-of-8 Euclidean rotated by 2 steps
+"bd? hh? sn? hh?"      # drop each with 50% probability
+"bd?0.3 hh sn hh"      # only bd drops, with 30% prob
+"bd _ _ sn"            # bd extended to occupy 3 slots
+"bd(3,8,2)"            # 3-of-8 Euclidean rotated by 2 steps
 ```
 
 The drops are seeded by `hash(event_start)` — they're deterministic,
@@ -91,11 +91,11 @@ If you miss something specific, open an issue and we'll prioritize.
 
 ```haskell
 -- Tidal                              -- Ressac
-d1 $ s "bd hh sn hh"                  -- @d1 p"bd hh sn hh"
-d1 $ s "bd*4" # gain 0.8              -- @d1 p"bd*4" |> gain(0.8)
+d1 $ s "bd hh sn hh"                  -- @d1 "bd hh sn hh"
+d1 $ s "bd*4" # gain 0.8              -- @d1 "bd*4" |> gain(0.8)
 d1 $ every 4 (fast 2) $ s "bd"        -- @d1 :bd |> every(4, fast(2))
-d1 $ jux rev $ s "bd hh sn hh"        -- @d1 p"bd hh sn hh" |> jux(rev)
-d1 $ s "bd" # n "0 3 5"               -- @d1 :bd |> n(p"0 3 5")
+d1 $ jux rev $ s "bd hh sn hh"        -- @d1 "bd hh sn hh" |> jux(rev)
+d1 $ s "bd" # n "0 3 5"               -- @d1 :bd |> n("0 3 5")
 hush                                  -- :hush  or  ,
 ```
 

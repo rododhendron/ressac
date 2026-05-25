@@ -8,8 +8,8 @@ Terminal UI · TidalCycles-style mini-notation · synth design in a Julia
 DSL that compiles to SC · 629 tests, 0 known regressions.
 
 ```julia
-@d1 p"bd(3,8) cp(1,8,4)"           # jersey kick + offset clap
-@d2 :supersaw |> n(p"0 7 5 12")    # ascending arp
+@d1 "bd(3,8) cp(1,8,4)"           # jersey kick + offset clap
+@d2 :supersaw |> n("0 7 5 12")    # ascending arp
 @d2          |> pump(8, 0.7)       # sidechain pump
 ```
 
@@ -70,9 +70,9 @@ When `live()` starts you'll see a pre-filled buffer:
 # Use m on a @dN line to mute · :tutorial for the 5-min tour · :q to quit.
 
 cps!(0.5)
-@d1 p"bd bd bd bd"
-@d2 p"~ ~ cp ~"
-@d3 p"hh hh hh hh" |> gain(0.4)
+@d1 "bd bd bd bd"
+@d2 "~ ~ cp ~"
+@d3 "hh hh hh hh" |> gain(0.4)
 ```
 
 1. Press **Esc** to enter normal mode

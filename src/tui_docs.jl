@@ -54,7 +54,7 @@ const _PARAM_DOCS = Dict{String,String}(
     "gate"        => "gate(:name, p\"1 0 0 1 …\") — substitute :name for every non-silence event of p. Short alias for rhythm masks.",
     "degree"      => "degree(x) — like n(x) but interprets x as a scale-degree in the current :scale (use `:scale minor` first).",
     # --- MINI-NOTATION (inside p\"…\") ---
-    "p"           => "p\"bd hh sn\" — mini-notation literal. Each whitespace-separated token = 1 event in the cycle.",
+    ""           => "p\"bd hh sn\" — mini-notation literal. Each whitespace-separated token = 1 event in the cycle.",
     "~"           => "~ inside p\"…\" — silence (no event for that slot).",
     "*"           => "name*N inside p\"…\" — repeat name N times inside its slot. p\"bd*4\" = 4 hits/cycle.",
     "!"           => "name!N — give name N times the weight (takes N slots).",
@@ -182,7 +182,7 @@ const _PARAM_EXAMPLES = Dict{String,Vector{String}}(
     "mask" => [
         "@d1 mask(p\"bd*8\", p\"1 0 1 1 0 1 0 1\")  # gate the kicks",
     ],
-    "p" => [
+    "" => [
         "@d1 p\"bd ~ sn ~\"            # 4 events per cycle",
         "@d1 p\"[bd bd] ~ sn ~\"       # nested = same time, two kicks",
         "@d1 p\"bd <hh sn cp> bd ~\"   # < > alternates each cycle",

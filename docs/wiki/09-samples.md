@@ -20,7 +20,7 @@ This:
 
 Use it immediately:
 ```julia
-@d1 p"kickheavy ~ kickheavy ~"
+@d1 "kickheavy ~ kickheavy ~"
 ```
 
 Re-running `:import` with the same name on a different file **adds a
@@ -33,9 +33,9 @@ variant** rather than overwriting. So:
 
 In patterns you then pick variants with `n(...)`:
 ```julia
-@d1 :mykick |> n(p"0 1 2 1")    # rotate through the three
-@d1 p"mykick"                    # random variant
-@d1 p"mykick:1"                  # variant #1 specifically
+@d1 :mykick |> n("0 1 2 1")    # rotate through the three
+@d1 "mykick"                    # random variant
+@d1 "mykick:1"                  # variant #1 specifically
 ```
 
 ## The plugin path
@@ -106,6 +106,6 @@ has headroom.
 - **Folder vs file**: a bank is a folder; each `.wav` inside is a
   variant. Even a single sample lives in a folder.
 - **Discovery**: after import, `:browse` shows it in the "samples"
-  category. Tab-completion in `:s name` and `p"name"` finds it too.
+  category. Tab-completion in `:s name` and `"name"` finds it too.
 - **Removal**: just delete the folder under `plugins/user-samples/`
   and restart. There's no `:unimport` yet.

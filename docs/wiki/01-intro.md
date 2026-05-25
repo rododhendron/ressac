@@ -24,7 +24,7 @@ so you can hit `Esc` then `E` immediately and hear something.
 - **Patterns pane** (always open) — Julia code with `@dN` slot definitions.
   Each slot fires events into SuperDirt; `e` evals the current line,
   `E` evals all `@dN` blocks. The playhead highlight moves through the
-  active token in each `p"…"` so you see what's playing right now.
+  active token in each `"…"` so you see what's playing right now.
 
 - **Synth pane** (opens on `:synth <name>` or `:lib`) — Julia DSL by
   default (`.jl`), or raw SuperCollider (`.scd`). `t` / `T` / `Space`
@@ -53,7 +53,7 @@ leader, while filling a snippet placeholder, etc).
 
 - `:tutorial` — interactive onboarding tour
 - `:tap` — tap a rhythm with Space; Ressac auto-detects period, sets
-  cps, writes the `@dN p"…"` line for you
+  cps, writes the `@dN "…"` line for you
 - `:browse` — searchable picker over every sample / instrument / synth
 - `:lib` — synth library: preview + instantiate sounds (built-in or
   user-saved). Includes the 909 kit.

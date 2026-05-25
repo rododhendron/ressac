@@ -7,18 +7,18 @@ patterns pane, eval with `e` (current line) or `E` (everything).
 
 ```julia
 cps!(0.5)
-@d1 p"bd ~ bd ~"               # kick on 1+3
-@d2 p"~ cp ~ cp"               # clap on 2+4
-@d3 p"hh*8" |> gain(0.4)       # hat 8ths
+@d1 "bd ~ bd ~"               # kick on 1+3
+@d2 "~ cp ~ cp"               # clap on 2+4
+@d3 "hh*8" |> gain(0.4)       # hat 8ths
 ```
 
 Layer a bass:
 
 ```julia
-@d4 :subdrop |> n(p"0 ~ -2 ~ 0 ~ 5 ~") |> gain(0.6)
+@d4 :subdrop |> n("0 ~ -2 ~ 0 ~ 5 ~") |> gain(0.6)
 ```
 
-Or use Space-leader to write it faster — `Space d` expands `@d$1 p"$2"`
+Or use Space-leader to write it faster — `Space d` expands `@d$1 "$2"`
 with placeholder navigation: type slot, Tab, type body, Esc.
 
 ## Add variation with one keystroke
@@ -26,22 +26,22 @@ with placeholder navigation: type slot, Tab, type body, Esc.
 The Tidal-style combinators let you mutate any pattern in place:
 
 ```julia
-@d1 p"bd hh sn hh" |> jux(rev)              # stereo: L original, R reversed
-@d1 p"bd hh sn hh" |> sometimes(fast(2))    # 50% of cycles double-time
-@d1 p"hh*8" |> degradeBy(0.3)               # drop 30% of hits (seeded)
-@d1 p"bd hh sn hh" |> iter(4)               # rotate by 1/4 each cycle
-@d1 p"bd hh sn hh" |> palindrome            # forward then reverse
-@d1 p"bd hh sn hh" |> chunk(4, fast(2))     # one chunk per cycle goes fast
-@d1 p"bd hh sn hh" |> off(1//8, fast(2))    # overlay shifted copy
+@d1 "bd hh sn hh" |> jux(rev)              # stereo: L original, R reversed
+@d1 "bd hh sn hh" |> sometimes(fast(2))    # 50% of cycles double-time
+@d1 "hh*8" |> degradeBy(0.3)               # drop 30% of hits (seeded)
+@d1 "bd hh sn hh" |> iter(4)               # rotate by 1/4 each cycle
+@d1 "bd hh sn hh" |> palindrome            # forward then reverse
+@d1 "bd hh sn hh" |> chunk(4, fast(2))     # one chunk per cycle goes fast
+@d1 "bd hh sn hh" |> off(1//8, fast(2))    # overlay shifted copy
 ```
 
 Or directly in mini-notation:
 
 ```julia
-@d1 p"bd? hh? sn hh?"           # ?  = drop with 50% probability
-@d1 p"bd?0.3 hh sn hh"           # ?N = drop with custom probability
-@d1 p"bd _ _ sn"                 # _  = extend the previous slot
-@d1 p"bd(3,8,2) cp(1,8,4)"       # 3rd arg = Euclidean rotation
+@d1 "bd? hh? sn hh?"           # ?  = drop with 50% probability
+@d1 "bd?0.3 hh sn hh"           # ?N = drop with custom probability
+@d1 "bd _ _ sn"                 # _  = extend the previous slot
+@d1 "bd(3,8,2) cp(1,8,4)"       # 3rd arg = Euclidean rotation
 ```
 
 ## Genre starters
@@ -63,8 +63,8 @@ Without real audio sidechain (which needs SC plumbing), the recognisable
 pumping sound is just a cycle-locked gain curve:
 
 ```julia
-@d1 :super808 |> n(p"0 ~ ~ 0") |> gain(1.2)    # kick on 1+3
-@d2 :supersaw |> n(p"-7 -5 -3 -7") |> pump(8, 0.7) |> gain(0.6)
+@d1 :super808 |> n("0 ~ ~ 0") |> gain(1.2)    # kick on 1+3
+@d2 :supersaw |> n("-7 -5 -3 -7") |> pump(8, 0.7) |> gain(0.6)
 #                                       └── 8 ducks per cycle, depth 0.7
 ```
 
@@ -73,16 +73,16 @@ when they say "sidechain".
 
 ## Filter sweeps and LFO motion
 
-Time-pattern values (`p"<...>"`) advance one slot per cycle:
+Time-pattern values (`"<...>"`) advance one slot per cycle:
 
 ```julia
-@d1 :acid303 |> n(p"0 3 5 7") |> set(:cutoff, p"<400 800 1600 3200>")
+@d1 :acid303 |> n("0 3 5 7") |> set(:cutoff, "<400 800 1600 3200>")
 ```
 
 `<>` rotates each cycle; combine with cycle-multipliers for slow sweeps:
 
 ```julia
-@d1 :supersaw |> set(:cutoff, p"<400 800 1200 2000 1200 800>" |> slow(2))
+@d1 :supersaw |> set(:cutoff, "<400 800 1200 2000 1200 800>" |> slow(2))
 ```
 
 ## Modulation effects (DSL synth design)
@@ -94,7 +94,7 @@ Time-pattern values (`p"<...>"`) advance one slot per cycle:
     |> chorus(0.4, 0.003, 0.5)
 
 # Then in patterns:
-@d1 :wob |> n(p"-12 -7 -12 -10") |> gain(0.7)
+@d1 :wob |> n("-12 -7 -12 -10") |> gain(0.7)
 ```
 
 Three modulated-delay effects exposed as DSL helpers:
@@ -110,11 +110,11 @@ saw(:freq) |> phaser(rate=0.3, depth=800)
 The `tr909` synth library category gives you editable 909 voices:
 
 ```julia
-@d1 p"k909 ~ s909 ~"                          # kick + snare on 2/4
-@d2 p"hh909*8" |> gain(0.4)                   # closed hats
-@d3 p"~ ~ ~ ~ ~ ~ oh909 ~" |> gain(0.5)       # open hat fill
-@d4 p"~ ~ cp909 ~" |> room(0.3)               # clap with verb
-@d5 p"tom909(3,8)" |> n(p"<-5 0 5 12>")       # tom fill cycling pitch
+@d1 "k909 ~ s909 ~"                          # kick + snare on 2/4
+@d2 "hh909*8" |> gain(0.4)                   # closed hats
+@d3 "~ ~ ~ ~ ~ ~ oh909 ~" |> gain(0.5)       # open hat fill
+@d4 "~ ~ cp909 ~" |> room(0.3)               # clap with verb
+@d5 "tom909(3,8)" |> n("<-5 0 5 12>")       # tom fill cycling pitch
 ```
 
 Open them in tabs (`:lib`, find e.g. `k909`, Enter) to edit the
@@ -123,31 +123,31 @@ underlying DSL recipe.
 ## Polyrhythmic textures
 
 ```julia
-@d1 p"bd*3"          # 3 hits per bar
-@d2 p"sn*4" |> gain(0.5)
-@d3 p"hh*5" |> gain(0.3)
+@d1 "bd*3"          # 3 hits per bar
+@d2 "sn*4" |> gain(0.5)
+@d3 "hh*5" |> gain(0.3)
 ```
 
 Or Euclidean for the rolling-pulse feel:
 
 ```julia
-@d1 p"bd(3,8)"
-@d2 p"sn(5,16)" |> gain(0.6)
-@d3 p"hh(7,16)" |> gain(0.4)
+@d1 "bd(3,8)"
+@d2 "sn(5,16)" |> gain(0.6)
+@d3 "hh(7,16)" |> gain(0.4)
 ```
 
 Add rotation to offset each layer:
 
 ```julia
-@d1 p"bd(3,8,0)"
-@d2 p"cp(1,8,4)"     # clap on beat 3
-@d3 p"hh(11,16,2)"
+@d1 "bd(3,8,0)"
+@d2 "cp(1,8,4)"     # clap on beat 3
+@d3 "hh(11,16,2)"
 ```
 
 ## Dub-style FX chain
 
 ```julia
-@d1 p"bd ~ sn ~" |> delay(0.5) |> delaytime(0.375) |>
+@d1 "bd ~ sn ~" |> delay(0.5) |> delaytime(0.375) |>
     delayfeedback(0.6) |> room(0.7)
 ```
 
@@ -158,7 +158,7 @@ Add rotation to offset each layer:
 ```
 :tap                                    # start tap recording
 Space Space Space ...                   # tap the rhythm twice (loop detection)
-Enter                                   # commits as cps!() + @dN p"..."
+Enter                                   # commits as cps!() + @dN "..."
                                         # and evals immediately
 ```
 
@@ -176,7 +176,7 @@ For just tempo: `:bpm` (4 taps = 1 bar).
 
 Then letter keys play notes (z/x/c/v/b/n/m = naturals,
 s/d/g/h/j = sharps), `[` `]` shift octave, Enter commits the
-recorded notes as `@dN :fmbell |> n(p"…")`.
+recorded notes as `@dN :fmbell |> n("…")`.
 
 ## Mix live with `:mixer`
 
@@ -207,7 +207,7 @@ last-fired-at — not true RMS but enough to see what's playing).
 
 ```
 :import ~/Downloads/mykick.wav as fatkick
-@d1 p"fatkick ~ fatkick ~"
+@d1 "fatkick ~ fatkick ~"
 ```
 
 Re-importing the same name appends a variant (so `fatkick:1`,

@@ -52,7 +52,7 @@ src/
   osc.jl                   OSC encode/decode (no networking)
   osc_listen.jl            UDP listen socket + scope-data dispatch
 
-  parse_minino.jl          mini-notation parser (the inside of p"…")
+  parse_minino.jl          mini-notation parser (the inside of "…")
 
   live_api.jl              @d1..@d64 macros, hush_all!, cps!
   live_api_helpers.jl      helpers shared with the legacy LiveModel

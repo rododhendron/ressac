@@ -1,6 +1,6 @@
 # Patterns & mini-notation
 
-Patterns live in the patterns pane as `@dN p"..."` lines. `p"..."` is
+Patterns live in the patterns pane as `@dN "..."` lines. `"..."` is
 the mini-notation parser — a compact DSL for rhythms.
 
 ## Tokens
@@ -23,8 +23,8 @@ bd?0.3         drop with custom probability 0..1
 Combine them freely:
 
 ```
-@d1 p"<[bd*2] sn> ~ bd ~"
-@d2 p"hh(7,16)" |> gain(0.4)
+@d1 "<[bd*2] sn> ~ bd ~"
+@d2 "hh(7,16)" |> gain(0.4)
 ```
 
 ## Effect chain (pipe operator)
@@ -32,7 +32,7 @@ Combine them freely:
 Each `@dN` line is Julia code. The `|>` operator chains combinators:
 
 ```
-@d1 p"bd hh sn hh" |> gain(0.8) |> lpf(2000) |> pan(0.3)
+@d1 "bd hh sn hh" |> gain(0.8) |> lpf(2000) |> pan(0.3)
 ```
 
 Available combinators:
@@ -54,18 +54,18 @@ Available combinators:
 - `compress` `compressThreshold` `compressRatio`
 - `pump(steps, depth)` — sidechain-style gain ducking
 
-Numeric vs pattern values: `gain(0.8)` is a constant; `gain(p"0.5 1
+Numeric vs pattern values: `gain(0.8)` is a constant; `gain("0.5 1
 0.5 1")` varies over the cycle.
 
 ## Combinator examples
 
 ```julia
-@d1 p"bd hh sn hh" |> jux(rev)           # stereo: left as-is, right reversed
-@d1 p"bd hh sn hh" |> sometimes(fast(2)) # 50% of cycles go double-time
-@d1 p"hh*8" |> degradeBy(0.3)            # drop 30% of hits (seeded)
-@d1 p"bd hh sn hh" |> iter(4)            # rotate by 1/4 each cycle
-@d1 p"bd hh sn hh" |> palindrome         # forward then reverse
-@d1 p"bd hh sn hh" |> chunk(4, fast(2))  # one chunk per cycle goes fast
+@d1 "bd hh sn hh" |> jux(rev)           # stereo: left as-is, right reversed
+@d1 "bd hh sn hh" |> sometimes(fast(2)) # 50% of cycles go double-time
+@d1 "hh*8" |> degradeBy(0.3)            # drop 30% of hits (seeded)
+@d1 "bd hh sn hh" |> iter(4)            # rotate by 1/4 each cycle
+@d1 "bd hh sn hh" |> palindrome         # forward then reverse
+@d1 "bd hh sn hh" |> chunk(4, fast(2))  # one chunk per cycle goes fast
 @d1 :pad |> pump(8, 0.7)                 # 4-on-the-floor sidechain pump
 ```
 
@@ -95,7 +95,7 @@ at the cursor with placeholders. Tab navigates between fields.
 
 | Trigger    | Expands to                                    |
 |------------|-----------------------------------------------|
-| `Space d`  | `@d$1 p"$2"`                                  |
+| `Space d`  | `@d$1 "$2"`                                  |
 | `Space g`  | `\|> gain($1)`                                |
 | `Space l`  | `\|> lpf($1)`                                 |
 | `Space h`  | `\|> hpf($1)`                                 |
@@ -103,16 +103,16 @@ at the cursor with placeholders. Tab navigates between fields.
 | `Space f`  | `\|> fast($1)`                                |
 | `Space s`  | `\|> slow($1)`                                |
 | `Space r`  | `\|> room($1)`                                |
-| `Space n`  | `\|> n(p"$1")`                                |
+| `Space n`  | `\|> n("$1")`                                |
 | `Space e`  | `\|> every($1, $2)`                           |
-| `Space m`  | `\|> mask(p"$1")`                             |
+| `Space m`  | `\|> mask("$1")`                             |
 | `Space D`  | `\|> delay($1) \|> delaytime($2) \|> ...`     |
-| `Space c`  | `\|> cat([p"$1", p"$2"])`                     |
-| `Space S`  | `\|> stack(p"$1", p"$2")`                     |
+| `Space c`  | `\|> cat(["$1", "$2"])`                     |
+| `Space S`  | `\|> stack("$1", "$2")`                     |
 | `Space v`  | `rev`                                         |
 | `Space E`  | `$1($2,$3)` — Euclidean token                 |
 | `Space R`  | `$1($2,$3,$4)` — Euclidean with rotation      |
-| `Space J`  | `@d$1 p"bd(3,8)" \|> gain($2)` — jersey       |
+| `Space J`  | `@d$1 "bd(3,8)" \|> gain($2)` — jersey       |
 
 Picker actions (open modals):
 

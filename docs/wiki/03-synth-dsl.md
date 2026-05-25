@@ -23,7 +23,7 @@ the same OSC path that `T` uses.
 ```
 
 Symbol references (`:freq`, `:cutoff`) become SC arg names, so the
-caller can drive them live from patterns: `@d1 :acid |> n(p"0 3 5")`.
+caller can drive them live from patterns: `@d1 :acid |> n("0 3 5")`.
 
 ## Drones — disable auto-env
 
@@ -104,7 +104,7 @@ inside an expression compiles to `(freq * 2)` in SC.
 ## Built-in library
 
 `:lib` (or `Space L`) shows every synth ready to play, including a
-909-style drum kit you can grab with `@d1 p"k909 ~ s909 ~"`:
+909-style drum kit you can grab with `@d1 "k909 ~ s909 ~"`:
 
 - **perc**: `kick hihat snare clap glitchhat kickbrut`
 - **tr909**: `k909 s909 hh909 oh909 cp909 rim909 ride909 tom909`
