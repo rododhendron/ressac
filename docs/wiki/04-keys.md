@@ -16,10 +16,34 @@ hjkl / arrows      move cursor
 w / b / e          word forward / back / end
 gg / G             buffer start / end
 e                  eval current line (or block joined by |>)
-:e                 eval every @dN
-:e1e5e15           eval just d1 / d5 / d15
-m                  mute/unmute slot under cursor
+E                  eval every @dN
+:e                 same as E
+m                  mute/unmute slot under cursor (frees voices too)
 K                  preview sample/synth under cursor
+?                  open the guide modal (one-keystroke help)
+v                  visual char-wise selection (hjkl extends, dyc act)
+V                  visual line-wise selection (j/k extends, dyc act)
+.                  repeat last edit (insert OR normal-mode dd/x/p)
+```
+
+## Pattern editor — context-aware (cursor inside `p"…"`)
+
+```
+>                  zoom pattern x2 (insert ~ between tokens)
+<                  zoom pattern ÷2 (keep every other token)
+H / L              shift token at cursor left / right
+X                  silence the token at cursor (replace with ~)
+1 / 2 / 3 / 4 / 6 / 8   subdivide token: 1=plain, 2=*2, 4=*4, etc.
+```
+
+## Space-leader (snippet expansion / picker)
+
+```
+Space d g l h p f s r n e m c S v   text snippet expansion
+Space E R J                          Euclidean snippets
+Space b L I w ?                      open browser / lib / snip / wiki / guide
+Tab / S-Tab                          navigate placeholders in expanded snippet
+Esc                                  exit placeholder mode (stay in insert)
 ```
 
 ## Synth pane (normal)
@@ -78,13 +102,15 @@ r<char>            replace char under cursor
 ## Modals (j/k scroll, q close)
 
 ```
-:guide             general guide
+:guide             general guide (also: ?)
+:tutorial          5-card interactive tour for new users
 :dsl               synth-DSL cookbook
 :wiki              this wiki
 :synth-guide       synth-pane workflow
-:lib               synth library picker
-:snip              snippets picker
-:browse            sample / instrument / synth browser
+:lib               synth library picker (built-in + user-saved)
+:snip              snippets picker (Tab cycles categories)
+:browse            sample / instrument / synth browser (Tab cycles filter)
+:mixer / :mix      per-slot meter + gain edit (+/-/*//) + mute/solo
 :sccode  / :sc     sccode.org browser
 ```
 
@@ -92,8 +118,21 @@ r<char>            replace char under cursor
 
 ```
 :tap [sample]      tap a rhythm with Space → quantized @dN p"..."
+                   (loop detection + cps auto-set + auto-eval)
+:tap-strict        same but single-bar quantize, no loop detection
+:bpm / :tap-tempo  tap-set cps from inter-tap intervals
 :piano [synth]     letter keys → notes; [/] octave
 :piano-rec         same + records into @dN :synth |> n(p"...")
+```
+
+## Files & sessions
+
+```
+:save <name>       save patterns buffer to sessions/<name>.txt
+:load <name>       reload (then press E to eval all blocks)
+:sessions          list saved sessions
+:import path.wav   copy a .wav into plugins/user-samples/ and register
+:import p.wav as N rename on import
 ```
 
 ## Recording

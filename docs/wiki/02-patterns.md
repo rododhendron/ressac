@@ -7,6 +7,7 @@ the mini-notation parser — a compact DSL for rhythms.
 
 ```
 ~              rest (silence at this step)
+_              extend the previous slot's duration by one step
 bd             sample / synth name
 bd:2           the second variant of bd
 [bd hh]        a group: subdivide one step into multiple
@@ -14,6 +15,9 @@ bd:2           the second variant of bd
 bd*4           repeat in time (4 hits during one step)
 bd!3           repeat in slot (3 copies side by side)
 bd(3,8)        Euclidean: 3 beats spread evenly over 8 steps
+bd(3,8,2)      Euclidean with rotation: 3-of-8 shifted by 2 steps
+bd?            drop with 50% probability (deterministic by hash)
+bd?0.3         drop with custom probability 0..1
 ```
 
 Combine them freely:
@@ -33,15 +37,37 @@ Each `@dN` line is Julia code. The `|>` operator chains combinators:
 
 Available combinators:
 
+**Pattern transforms** (re-shape time / value):
+- `fast` `slow` `density` `rev` `every` `stack` `cat` `mask` `gate`
+- `jux` `juxBy` `off` `degrade` `degradeBy`
+- `sometimes` `often` `rarely` `sometimesBy`
+- `palindrome` `iter` `chunk`
+- `pure` `silence`
+
+**Controls** (per-event params; `|>` chain):
 - `gain` `speed` `pan` `n` `degree`
 - `lpf` `hpf` `cutoff` `resonance` `bandq` `bandf`
 - `room` `delay` `delaytime` `delayfeedback`
 - `attack` `release` `hold` `sustain` `legato`
 - `shape` `crush` `coarse` `vowel`
 - `octave` `accelerate` `vibrato`
+- `compress` `compressThreshold` `compressRatio`
+- `pump(steps, depth)` — sidechain-style gain ducking
 
 Numeric vs pattern values: `gain(0.8)` is a constant; `gain(p"0.5 1
 0.5 1")` varies over the cycle.
+
+## Combinator examples
+
+```julia
+@d1 p"bd hh sn hh" |> jux(rev)           # stereo: left as-is, right reversed
+@d1 p"bd hh sn hh" |> sometimes(fast(2)) # 50% of cycles go double-time
+@d1 p"hh*8" |> degradeBy(0.3)            # drop 30% of hits (seeded)
+@d1 p"bd hh sn hh" |> iter(4)            # rotate by 1/4 each cycle
+@d1 p"bd hh sn hh" |> palindrome         # forward then reverse
+@d1 p"bd hh sn hh" |> chunk(4, fast(2))  # one chunk per cycle goes fast
+@d1 :pad |> pump(8, 0.7)                 # 4-on-the-floor sidechain pump
+```
 
 ## Slots
 
@@ -51,11 +77,52 @@ re-evals (muted slots are skipped). Or `:mute d1` from anywhere.
 
 ## Snippets
 
-`:snip` opens a picker. Genres available: jersey, footwork, garage,
-trap, dnb, techno, house, breakcore, drill, dembow, boombap,
-lofi_hiphop, phonk, witch_house, bossanova. Plus rhythm helpers:
-euclidean_layers, polyrhythm_3_4, polyrhythm_5_4, call_response,
-ghost_notes.
+`:snip` (or `Space I`) opens a picker. Categories cycle with Tab:
+**rhythm** · **melody** · **fx** · **track** · **genre** · **reference**.
+
+Genres available: jersey, footwork, garage, trap, dnb, techno, house,
+breakcore, drill, dembow, boombap, lofi_hiphop, phonk, witch_house,
+bossanova.
+
+Reference snippets (insert commented cheat-sheets into the buffer):
+cheat_combinators, cheat_controls, cheat_mini, cheat_commands,
+cheat_pipes, helpers_tour.
+
+## Space-leader templates
+
+Press `Space` in normal mode, then a letter, to expand a template
+at the cursor with placeholders. Tab navigates between fields.
+
+| Trigger    | Expands to                                    |
+|------------|-----------------------------------------------|
+| `Space d`  | `@d$1 p"$2"`                                  |
+| `Space g`  | `\|> gain($1)`                                |
+| `Space l`  | `\|> lpf($1)`                                 |
+| `Space h`  | `\|> hpf($1)`                                 |
+| `Space p`  | `\|> pan($1)`                                 |
+| `Space f`  | `\|> fast($1)`                                |
+| `Space s`  | `\|> slow($1)`                                |
+| `Space r`  | `\|> room($1)`                                |
+| `Space n`  | `\|> n(p"$1")`                                |
+| `Space e`  | `\|> every($1, $2)`                           |
+| `Space m`  | `\|> mask(p"$1")`                             |
+| `Space D`  | `\|> delay($1) \|> delaytime($2) \|> ...`     |
+| `Space c`  | `\|> cat([p"$1", p"$2"])`                     |
+| `Space S`  | `\|> stack(p"$1", p"$2")`                     |
+| `Space v`  | `rev`                                         |
+| `Space E`  | `$1($2,$3)` — Euclidean token                 |
+| `Space R`  | `$1($2,$3,$4)` — Euclidean with rotation      |
+| `Space J`  | `@d$1 p"bd(3,8)" \|> gain($2)` — jersey       |
+
+Picker actions (open modals):
+
+| Trigger    | Opens                                         |
+|------------|-----------------------------------------------|
+| `Space b`  | `:browse` (all sounds picker)                 |
+| `Space L`  | `:lib` (synth library)                        |
+| `Space I`  | `:snip` (snippet picker)                      |
+| `Space w`  | `:wiki`                                       |
+| `Space ?`  | `:guide`                                      |
 
 ## Shortcut DSL — `:s<verb>`
 
