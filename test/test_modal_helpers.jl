@@ -132,61 +132,75 @@
     end
 
     # ── app.jl — ex-command verb derivation ──
-    @testset "_all_ex_verbs covers every dispatcher" begin
-        # The autocomplete used to be a hand-maintained list that drifted
-        # away from the dispatch tables every time someone added a verb.
-        # `_all_ex_verbs()` derives the candidate set from the three
-        # dispatch tables directly, so the set can't drift. These checks
-        # catch the case where the EXTRACTOR itself breaks (e.g. someone
-        # changes a regex shape it doesn't recognise).
-        v = Set(Ressac._all_ex_verbs())
+    #
+    # The point of deriving the autocomplete verb list from the dispatch
+    # tables was to eliminate hand-maintained lists that drift. So these
+    # tests test STRUCTURAL invariants — no hardcoded "I expect this
+    # specific verb" list (which would just drift again). What we
+    # actually want to guarantee:
+    #
+    #   1. Every literal-dispatch verb appears in `_all_ex_verbs()`.
+    #   2. Every regex registered for dispatch produces ≥ 1 extracted
+    #      verb (otherwise it's invisible to autocomplete forever).
+    #   3. Every explicit special-dispatch verb appears.
+    #   4. The extractor itself handles the three known shapes correctly
+    #      — those tests document the contract, not the inventory.
 
-        # Literals — anything in _LITERAL_DISPATCH must appear.
+    @testset "every _LITERAL_DISPATCH key is autocompleteable" begin
+        v = Set(Ressac._all_ex_verbs())
         for k in keys(Ressac._LITERAL_DISPATCH)
             @test k in v
         end
-
-        # Regex-derived verbs — pin down a representative sample so a
-        # regression in the extractor is caught immediately.
-        for verb in ["tap", "starter", "synth", "scope", "import",
-                     "save", "load", "save-session", "load-session",
-                     "tap-strict", "piano", "piano-rec",
-                     "scale", "cps", "doc", "theme", "safety",
-                     "mute", "unmute", "solo",
-                     # Alternation: ^(?:sccode|sc)\s+...
-                     "sccode", "sc",
-                     "sccode-tag", "sctag",
-                     # Optional suffix: ^export(?:-synth)?\s+...
-                     "export", "export-synth",
-                     # Optional suffix: ^rec(?:ord)?\s+start
-                     "rec", "record"]
-            @test verb in v
-        end
-
-        # Special dispatch — only `:e` for now.
-        @test "e" in v
     end
 
-    @testset "_extract_regex_verbs — direct shape coverage" begin
-        # Plain verb.
-        @test Ressac._extract_regex_verbs(r"^scope\s+(\w+)$") == ["scope"]
+    @testset "every _REGEX_DISPATCH entry extracts ≥ 1 verb" begin
+        # If someone adds a regex with a shape `_extract_regex_verbs`
+        # doesn't recognise, this trips immediately — and they know to
+        # extend the extractor (rather than discover later that Tab
+        # silently dropped their new command).
+        for (rx, _) in Ressac._REGEX_DISPATCH
+            # _SHORTCUT_RX is intentionally not an ex-command — it's
+            # inline pattern DSL syntax (`:sg0.5`, `:sn-3`) and would
+            # only pollute Tab-completion. Skip exactly that one.
+            rx === Ressac._SHORTCUT_RX && continue
+            verbs = Ressac._extract_regex_verbs(rx)
+            @test !isempty(verbs)
+        end
+    end
 
-        # Alternation.
-        verbs = Ressac._extract_regex_verbs(r"^(?:sccode|sc)\s+(\S+)$")
-        @test sort(verbs) == ["sc", "sccode"]
+    @testset "every _SPECIAL_VERBS entry appears in autocomplete" begin
+        v = Set(Ressac._all_ex_verbs())
+        for verb in Ressac._SPECIAL_VERBS
+            @test verb in v
+        end
+    end
 
-        # Optional suffix.
-        verbs = Ressac._extract_regex_verbs(r"^export(?:-synth)?\s+(\S+)$")
-        @test sort(verbs) == ["export", "export-synth"]
+    @testset "_extract_regex_verbs — the three contract shapes" begin
+        # These document what shapes the extractor understands. Add a
+        # new shape here when you teach `_extract_regex_verbs` to
+        # handle one — that's the trigger for the rest of the suite
+        # to start picking it up automatically.
 
-        # Hyphenated verb (e.g. tap-strict).
-        @test Ressac._extract_regex_verbs(r"^tap-strict\s+(\w+)$") == ["tap-strict"]
+        # Shape 1: plain verb.
+        @test Ressac._extract_regex_verbs(r"^foo\s+(\w+)$") == ["foo"]
 
-        # Whole-line literal (no \s after — verb matches up to $).
-        # Currently no such regex exists but the extractor should handle it.
+        # Shape 2: alternation of literal alternatives.
+        @test sort(Ressac._extract_regex_verbs(r"^(?:foo|bar)\s+(\S+)$")) ==
+              ["bar", "foo"]
+
+        # Shape 3: prefix + optional literal suffix.
+        @test sort(Ressac._extract_regex_verbs(r"^foo(?:-bar)?\s+(\S+)$")) ==
+              ["foo", "foo-bar"]
+
+        # Hyphenated verbs are valid in any shape.
+        @test Ressac._extract_regex_verbs(r"^foo-bar\s+(\w+)$") == ["foo-bar"]
+
+        # Whole-line literal — no \s after, just $.
         @test Ressac._extract_regex_verbs(r"^foo$") == ["foo"]
 
-        # Pattern that doesn't start with ^ — return empty.
+        # Patterns without a leading ^ aren't dispatchers — extractor
+        # returns empty (so registering one would trip the
+        # "extracts ≥ 1 verb" invariant above, surfacing the problem).
         @test Ressac._extract_regex_verbs(r"foo\s+bar") == String[]
     end
 
