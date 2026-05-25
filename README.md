@@ -26,44 +26,37 @@ beat. Loop until you stop the loop.
 
 ## Install
 
-### With Nix (recommended — handles SuperCollider + SuperDirt for you)
+### One-shot install scripts (recommended)
+
+Each script handles Julia + SuperCollider + SuperDirt + Dirt-Samples
++ Julia deps + smoke-test. Idempotent — re-running is safe.
 
 ```bash
-git clone https://github.com/<you>/ressac
-cd ressac
-nix develop                      # drops you in a shell with everything
-just audio                       # in one terminal: boot SC + SuperDirt
-just live                        # in another: start the TUI
+git clone https://github.com/<you>/ressac && cd ressac
+
+# Pick your platform:
+bash install/install-debian.sh        # Debian / Ubuntu / Mint / Pop
+bash install/install-fedora.sh        # Fedora / RHEL / CentOS Stream
+bash install/install-arch.sh          # Arch / Manjaro / EndeavourOS
+bash install/install-macos.sh         # macOS (Apple Silicon + Intel)
+./install/install-windows.ps1         # Windows 10 / 11 (PowerShell)
+# NixOS / Nix: see install/install-nixos.md
 ```
 
-### Without Nix
-
-You need three things installed independently:
-
-1. **Julia ≥ 1.10** — `curl -fsSL https://install.julialang.org | sh`
-2. **SuperCollider** — `apt install supercollider` /
-   `brew install --cask supercollider` / from
-   <https://supercollider.github.io>
-3. **SuperDirt** — install the SuperCollider Quark:
-   ```supercollider
-   Quarks.install("SuperDirt")
-   thisProcess.recompile;
-   SuperDirt.start;
-   ```
-   …and the sample library (250 MB):
-   ```supercollider
-   Quarks.install("Dirt-Samples")
-   ```
-
-Then in this repo:
+Then:
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
-julia --project=. -t auto scripts/live.jl
+just audio                            # one terminal: boots SC + SuperDirt
+just live                             # another: starts the Ressac TUI
 ```
 
-The `-t auto` is **required** — Ressac's scheduler needs real threads
-to ship OSC while the TUI runs.
+### Manual install
+
+If the scripts don't fit your distro, see [install/README.md](install/README.md)
+for the four manual steps (Julia, SuperCollider, Quarks, Julia deps).
+
+The `julia ... -t auto` flag is **required** — Ressac's scheduler
+needs real threads to ship OSC while the TUI renders.
 
 ## First five minutes
 
