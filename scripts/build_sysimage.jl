@@ -13,7 +13,7 @@
 # Windows. The `just live-fast` recipe picks the right one automatically.
 
 using Pkg
-Pkg.activate(@__DIR__ * "/..")
+Pkg.activate(joinpath(@__DIR__, ".."))
 
 # Lazy-install PackageCompiler if missing. Keeps the dep out of the
 # project's runtime deps (it's only needed for this build step).
