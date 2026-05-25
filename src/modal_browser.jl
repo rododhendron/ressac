@@ -1,7 +1,63 @@
 # Browser modal — unified picker over registered samples,
-# instruments and synths. The _BrowserEntry type + summary helpers
-# live in src/tui_browser.jl (vestige of the pre-Tachikoma TUI).
-# This file owns the open/handle/preview/insert/render path.
+# instruments and synths. Owns the open/handle/preview/insert/render
+# path AND the shared types/helpers (`_BrowserEntry`, the three
+# `_*_summary` rendering helpers, and the `_PREVIEW_CUT_GROUP`
+# constant — moved here from the deleted tui_browser.jl).
+
+"""
+    _BrowserEntry(kind, name, plugin, summary)
+
+Unified picker row. Carries enough metadata to render a one-line
+summary and dispatch a preview without re-querying the registry.
+"""
+struct _BrowserEntry
+    kind::Symbol      # :instrument | :sample | :synth
+    name::Symbol
+    plugin::String
+    summary::String
+end
+
+# Preview-fire cut group: any sound previewed via `K` / Space uses
+# this group so that consecutive previews truncate each other —
+# you don't get a wash of overlapping samples when scanning the list
+# quickly. SuperDirt voices sharing a positive `cut` int are
+# mutually exclusive.
+const _PREVIEW_CUT_GROUP = 9999
+
+function _instrument_summary(e::InstrumentEntry)
+    s_target = ""
+    parts = String[]
+    for (k, v) in e.params
+        if k == "s"
+            s_target = String(v)
+        else
+            push!(parts, "$k=$v")
+        end
+    end
+    desc = get(e.metadata, "description", "")
+    tail = isempty(desc) ? "" : "  — $desc"
+    head = isempty(s_target) ? "" : "$(s_target)  "
+    return head * join(parts, ", ") * tail
+end
+
+function _sample_summary(e::SampleEntry)
+    nv = length(e.variants)
+    tags = get(e.metadata, "tags", String[])
+    tag_str = isempty(tags) ? "" : "  [" * join(tags, ", ") * "]"
+    bpm = get(e.metadata, "bpm", nothing)
+    bpm_str = bpm === nothing ? "" : "  $(bpm) BPM"
+    return "$(nv)v$tag_str$bpm_str"
+end
+
+function _synth_summary(e::SynthEntry)
+    tags = get(e.metadata, "tags", String[])
+    tag_str = isempty(tags) ? "" : "[" * join(tags, ", ") * "]"
+    desc = get(e.metadata, "description", "")
+    parts = String[]
+    isempty(tag_str) || push!(parts, tag_str)
+    isempty(desc) || push!(parts, desc)
+    return join(parts, "  ")
+end
 
 function _open_browser!(m::RessacApp)
     m.modal = :browse

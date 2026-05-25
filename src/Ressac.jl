@@ -20,14 +20,11 @@ include("tui_buffer.jl")
 include("tui_eval.jl")
 include("tui_search.jl")
 include("tui_hints.jl")
-include("tui_bindings.jl")
-include("tui_view.jl")
 include("tui_overlay.jl")
 include("tui_mouse.jl")
 include("tui.jl")
 include("live_api.jl")
 include("plugins.jl")
-include("tui_browser.jl")
 include("tui_docs.jl")
 include("tui_synthedit.jl")
 include("tui_livedoc.jl")
@@ -150,27 +147,10 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         _EVAL_MODE[] = (:immediate, 0)
     end
 
-    # TUI dispatch paths — exercise the dispatcher in normal/insert
-    # to lock in compile artefacts for editor keystrokes.
-    m = LiveModel(; scheduler=sched)
-    _LIVE_SCHEDULER[] = sched
-    try
-        m.mode = :insert
-        _dispatch_key!(m, (; code="@", modifiers=String[], kind="Press"))
-        _dispatch_key!(m, (; code="d", modifiers=String[], kind="Press"))
-        _dispatch_key!(m, (; code="1", modifiers=String[], kind="Press"))
-        _dispatch_key!(m, (; code="Esc", modifiers=String[], kind="Press"))
-        _dispatch_key!(m, (; code="e", modifiers=String[], kind="Press"))
-        # Goto / search.
-        _dispatch_key!(m, (; code="g", modifiers=String[], kind="Press"))
-        _dispatch_key!(m, (; code="d", modifiers=String[], kind="Press"))
-        _dispatch_key!(m, (; code="1", modifiers=String[], kind="Press"))
-        _dispatch_key!(m, (; code="Enter", modifiers=String[], kind="Press"))
-        # View rendering.
-        TUI.view(m)
-    finally
-        _LIVE_SCHEDULER[] = nothing
-    end
+    # (LiveModel dispatcher + TUI.view warmup removed in the phase-1
+    # cleanup that deleted tui_view.jl / tui_bindings.jl / tui_browser.jl.
+    # RessacApp coverage is below — exhaustive enough that first-keystroke
+    # JIT cost is comparable.)
 
     # Plugins: parse a fixture manifest if present and walk the loader
     # to warm up TOML parsing + the discover/topo_sort paths.
@@ -263,20 +243,9 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         # Best-effort: precompile failures only cost first-call latency.
     end
 
-    # Warm the TUI ex-command paths for instruments/synths/guide so first
-    # invocation in a live session is instant.
-    try
-        m2 = LiveModel(; scheduler=sched)
-        _execute_ex_command!(m2, "guide")
-        m2.mode = :normal  # :guide opens the modal now; reset for next exec
-        _execute_ex_command!(m2, "instruments")
-        _execute_ex_command!(m2, "synths")
-    catch
-        # Best-effort: any failure here just leaves first invocation slower.
-    end
-
-    # SP6 visual UX: warm fuzzy match, completion engine, overlay rendering
-    # paths, guide-mode handler.
+    # Fuzzy-match + completion engine warmup (callable from RessacApp;
+    # LiveModel-rendered overlays + dispatcher exercise that lived here
+    # removed in phase-1 cleanup).
     try
         _fuzzy_score("sa", "samples")
         _fuzzy_score("xy", "samples")
@@ -285,30 +254,7 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         _completion_context("@d1 fast", 9)
         _buffer_candidates(:default)
         _buffer_candidates(:mininotation)
-
-        m3 = LiveModel(; scheduler=sched)
-        m3.command_buffer = "sa"
-        _compute_completions(m3)
-        m3.command_buffer = "samples kic"
-        _compute_completions(m3)
-
-        # Toggle ? and render help + guide overlays.
-        m3.show_help = true
-        TUI.view(m3)
-        m3.show_help = false
-        m3.mode = :guide
-        TUI.view(m3)
-        m3.mode = :normal
-
-        # Insert-mode Tab + cycle.
-        m4 = LiveModel(; scheduler=sched)
-        m4.mode = :insert
-        m4.buffer = ["fas"]
-        m4.cursor_col = 4
-        _dispatch_key!(m4, (; code="Tab", modifiers=String[], kind="Press"))
-        _dispatch_key!(m4, (; code="Tab", modifiers=String[], kind="Press"))
     catch
-        # Best-effort.
     end
 
     # Effect chain hot paths: lift, set, gain (compose ×), lpf (compose min),
@@ -340,85 +286,20 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         empty!(_INSTRUMENT_REGISTRY)
     end
 
-    # SP7-SP10 hot paths: mouse wheel, word motions, browser, undo,
-    # :doc/:starter/:scale/:mute, degree(), pattern viz, log tail,
-    # session/snippet ops, vim editing commands. All best-effort —
-    # any catch keeps the rest of precompile going.
+    # Module-level hot paths still worth warming (no LiveModel needed):
+    # mouse-wheel literal bump, degree() + scale lookup, gate combinator.
     try
-        # Mouse wheel value tweaking: regex + bump + replace + re-eval path.
         _find_number_at("@d1 p\"bd\" |> gain(0.8)", 22)
         _bump_literal("0.8", 0.1, true)
         _bump_literal("3", 1.0, false)
-
-        # Word motions (w/b/W/B).
-        mw = LiveModel(; scheduler=sched)
-        mw.mode = :normal
-        mw.buffer = ["bd hh sn cp"]
-        mw.cursor_col = 1
-        _word_motion!(mw; dir=:forward, big=false)
-        _word_motion!(mw; dir=:backward, big=false)
-
-        # Browser modal: collect + filter + preview-ready entries.
-        empty!(_INSTRUMENT_REGISTRY)
-        register_instrument!(InstrumentEntry(:_pc_browse, "pc",
-            Pair{String,Any}["s" => "bd"], Dict{String,Any}()))
-        mb = LiveModel(; scheduler=sched)
-        mb.browser_filter = :all
-        mb.browser_query = "br"
-        _browser_collect(:all)
-        _browser_filtered(mb)
-        empty!(_INSTRUMENT_REGISTRY)
-
-        # Undo / redo: snapshot then bounce.
-        mu = LiveModel(; scheduler=sched)
-        mu.buffer = ["orig"]
-        _snapshot!(mu)
-        mu.buffer = ["modified"]
-        _undo!(mu)
-        _redo!(mu)
-
-        # :doc / :starter / :scale (warm the ex-command dispatcher).
-        mdoc = LiveModel(; scheduler=sched)
-        _execute_ex_command!(mdoc, "doc gain")
-        _execute_ex_command!(mdoc, "doc gate")
-        _execute_ex_command!(mdoc, "scale minor")
-
-        # degree() with scale: scalar + pattern variant.
         _CURRENT_SCALE[] = :minor
         _scale_offset(2, :minor)
         ds = pure(:bd) |> degree(2)
         ds_evs = ds(0//1, 1//1)
         isempty(ds_evs) || event_to_osc(ds_evs[1])
         _CURRENT_SCALE[] = :chromatic
-
-        # Pattern viz: parse + grid render.
-        _pattern_viz_line("@d1 p\"bd ~ ~ bd ~ ~ bd ~\" |> gain(1.2)")
-        _pattern_viz_line("@d2 p\"bd*4\"")
-        _pattern_viz_line("@d3 gate(:bd, p\"1 0 0 0\")")
-        _pattern_viz_line("# commented")
-
-        # gate combinator.
-        gp_evs = gate(:super808, parse_minino("1 0 0 1 0 0 1 0"))(0//1, 1//1)
-
-        # Vim editing helpers.
-        mv = LiveModel(; scheduler=sched)
-        mv.buffer = ["  hello world"]
-        mv.cursor_row = 1
-        mv.cursor_col = 1
-        _first_non_blank(mv.buffer[1])
-        mv.cursor_col = 5
-        _delete_to_eol!(mv)
-        _replace_char_under_cursor!(mv, 'X')
-
-        # Logs pane + editor pane + fast vstack render path.
-        mr = LiveModel(; scheduler=sched)
-        mr.buffer = ["@d1 p\"bd hh\""]
-        for i in 1:5; _push_log!(mr, "[INFO] warmup $i"); end
-        area = TUI.Rect(1, 1, 80, 24)
-        bufx = TUI.Buffer(area)
-        TUI.render(TUI.view(mr), area, bufx)
+        gate(:super808, parse_minino("1 0 0 1 0 0 1 0"))(0//1, 1//1)
     catch
-        # Best-effort: precompile failures here only cost first-call latency.
     end
 
     # ── Synth DSL precompile ────────────────────────────────────────

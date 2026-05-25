@@ -32,13 +32,7 @@ _fake_overlay_key(code::AbstractString; modifiers=String[], kind="Press") =
         @test Ressac._clip_lines(String[], 10) == String[]
     end
 
-    @testset "? toggles m.show_help in normal mode" begin
-        m = Ressac.LiveModel(; scheduler=Scheduler(_OverlayMockClient(); cps=0.5))
-        m.mode = :normal
-        @test m.show_help == false
-        Ressac._dispatch_key!(m, _fake_overlay_key("?"))
-        @test m.show_help == true
-        Ressac._dispatch_key!(m, _fake_overlay_key("?"))
-        @test m.show_help == false
-    end
+    # ("? toggles m.show_help" testset removed in phase-1 cleanup
+    # along with the LiveModel `_dispatch_key!` dispatcher. The new
+    # RessacApp path handles ? via Tachikoma.KeyEvent in update!.)
 end
