@@ -2091,6 +2091,7 @@ const _EX_COMMAND_VERBS = String[
     "wiki", "docs", "doc-wiki",
     "save", "load", "sessions", "ls-sessions",
     "tutorial", "tour", "start",
+    "import",
 ]
 
 # Verbs that take a name argument autocompleted against the synth / sample
@@ -2534,6 +2535,13 @@ _register_literal!(m -> _push_app_log!(m,
     "starter")
 _register_regex!(r"^starter\s+(\w+)$",
     (m, mt) -> _starter_command!(m, mt.captures[1]))
+# :import path  →  copies a .wav into plugins/user-samples/<basename>/
+#                  and registers it so it's usable as a sample name.
+# :import path as name  → same but rename to `name`.
+_register_regex!(r"^import\s+(\S+?)\s+as\s+(\w+)$",
+    (m, mt) -> _import_wav!(m, mt.captures[1], mt.captures[2]))
+_register_regex!(r"^import\s+(\S+)$",
+    (m, mt) -> _import_wav!(m, mt.captures[1], nothing))
 _register_literal!(m -> _push_app_log!(m,
         "[INFO] current scale: $(_CURRENT_SCALE[])"),
     "scale")
@@ -2674,6 +2682,62 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
     m.editor.cursor_row = 1
     m.editor.cursor_col = 0
     _push_app_log!(m, "[INFO] loaded :starter $genre — eval each @dN with e")
+end
+
+"""
+    _import_wav!(m, src_path, name_or_nothing)
+
+Copy `src_path` into `plugins/user-samples/<name>/<name>_0.wav` and
+register it as a single-variant SampleEntry so the user can call it
+in patterns immediately. If `name_or_nothing` is nothing, the
+basename (minus extension) of `src_path` becomes the sample name.
+
+Also fires `/dirt/loadSampleFolder` on the SC side so SuperDirt
+picks up the new audio without a restart.
+
+Subsequent imports of the same name add `_1`, `_2`, … variants under
+the existing folder rather than overwriting — calling `:s bd` then
+plays one variant at random, with `n(N)` picking a specific one.
+"""
+function _import_wav!(m::RessacApp, src_path::AbstractString,
+                     name_or_nothing::Union{Nothing,AbstractString})
+    src_path = String(src_path)
+    if !isfile(src_path)
+        _push_app_log!(m, "[ERROR] :import — no file at $src_path")
+        return
+    end
+    name = name_or_nothing === nothing ?
+        splitext(basename(src_path))[1] : String(name_or_nothing)
+    name = replace(name, r"[^A-Za-z0-9_]" => "_")
+    isempty(name) && (_push_app_log!(m, "[ERROR] :import — empty name"); return)
+    dest_dir = joinpath(pwd(), "plugins", "user-samples", name)
+    isdir(dest_dir) || mkpath(dest_dir)
+    # Find the next variant index — preserves existing samples in the
+    # folder so the user can pile up versions like bd_0, bd_1, bd_2…
+    existing = filter(f -> endswith(f, ".wav"), readdir(dest_dir))
+    idx = length(existing)
+    dest = joinpath(dest_dir, "$(name)_$(idx).wav")
+    try
+        cp(src_path, dest; force = false)
+    catch err
+        _push_app_log!(m, "[ERROR] :import copy → $(sprint(showerror, err))")
+        return
+    end
+    # Register (or re-register with the extra variant). variants must
+    # be the full sorted list of files in the bank folder.
+    variants = sort!([joinpath(dest_dir, f) for f in readdir(dest_dir)
+                      if endswith(f, ".wav")])
+    sym = Symbol(name)
+    haskey(_SAMPLE_REGISTRY, sym) && delete!(_SAMPLE_REGISTRY, sym)
+    register_sample!(SampleEntry(sym, "user-samples", dest_dir, variants,
+        Dict{String,Any}("description" => "imported via :import")))
+    # Tell SuperDirt to load the (new or extended) folder.
+    sched = _LIVE_SCHEDULER[]
+    sched !== nothing && send_osc(sched.osc,
+        encode(OSCMessage("/dirt/loadSampleFolder", Any[dest_dir])))
+    _push_app_log!(m,
+        "[INFO] :import → $(name) ($(length(variants)) variant$(length(variants) == 1 ? "" : "s")) " *
+        "— use it in patterns: p\"$(name)\"")
 end
 
 # ---------------------------------------------------------------------
