@@ -46,3 +46,26 @@ instantiate:
 update:
     nix flake update
     julia --project=. -e 'using Pkg; Pkg.update()'
+
+# Build a precompiled sysimage (Ressac + all deps AOT-compiled).
+# One-time ~2-4 min build, then `just live-fast` starts in ~1s vs ~12s.
+# Output: ressac.so (Linux) / ressac.dylib (macOS) / ressac.dll (Win).
+sysimage:
+    julia --project=. -t auto scripts/build_sysimage.jl
+
+# Same as `live` but uses the prebuilt sysimage if present. Falls
+# back to a fresh load if the sysimage doesn't exist yet.
+live-fast:
+    #!/usr/bin/env bash
+    set -e
+    img=""
+    for f in ressac.so ressac.dylib ressac.dll; do
+        if [ -f "$f" ]; then img="$f"; break; fi
+    done
+    if [ -z "$img" ]; then
+        echo "No sysimage found. Run 'just sysimage' first (one-time ~3 min)."
+        echo "Falling back to standard 'just live'..."
+        exec julia --project=. -t auto scripts/live.jl
+    fi
+    echo "Using sysimage: $img"
+    exec julia --sysimage="$img" --project=. -t auto scripts/live.jl

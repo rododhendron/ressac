@@ -16,3 +16,8 @@ deps/build.log
 .vscode/
 .remember/
 .direnv/
+
+# Sysimage outputs from `just sysimage` (multi-MB binaries, host-specific)
+ressac.so
+ressac.dylib
+ressac.dll
