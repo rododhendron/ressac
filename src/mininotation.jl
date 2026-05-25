@@ -9,7 +9,8 @@ struct SilenceNode   <: MNode end
 struct SeqNode       <: MNode; children::Vector{Tuple{MNode,Int}} end  # (child, weight)
 struct AltNode       <: MNode; children::Vector{MNode} end             # weights pre-expanded
 struct RepeatNode    <: MNode; child::MNode; n::Int end
-struct EuclidNode    <: MNode; child::MNode; k::Int; n::Int end
+struct EuclidNode    <: MNode; child::MNode; k::Int; n::Int; rot::Int end
+struct DegradeNode   <: MNode; child::MNode; prob::Float64 end          # probabilistic drop
 
 # ---------------------------------------------------------------------------
 # Tokenizer
@@ -51,6 +52,8 @@ function _tokenize(s::String)
             push!(tokens, MToken(:rparen, nothing, i)); i = nextind(s, i)
         elseif c == ','
             push!(tokens, MToken(:comma, nothing, i)); i = nextind(s, i)
+        elseif c == '?'
+            push!(tokens, MToken(:question, nothing, i)); i = nextind(s, i)
         elseif isdigit(c) || (c == '-' && nextind(s, i) <= n && isdigit(s[nextind(s, i)]))
             # Accept `-` as the start of a negative numeric literal (only
             # when immediately followed by a digit — `bd-sn` and similar
@@ -78,7 +81,11 @@ function _tokenize(s::String)
             while j <= n && (isletter(s[j]) || isdigit(s[j]) || s[j] == '_' || s[j] == ':')
                 j = nextind(s, j)
             end
-            push!(tokens, MToken(:ident, s[i:prevind(s, j)], i))
+            word = s[i:prevind(s, j)]
+            # A bare "_" is the Tidal "extend previous slot" marker, not
+            # an identifier — promote to a dedicated token kind so the
+            # parser handles it cleanly.
+            push!(tokens, MToken(word == "_" ? :extend : :ident, word, i))
             i = j
         else
             throw(ArgumentError("Unexpected character '$(c)' at position $i in mini-notation"))
@@ -165,10 +172,31 @@ function _parse_unit!(ps::ParseState)
             k_tok = _expect!(ps, :int, "integer after '('")
             _expect!(ps, :comma, "',' in Euclidean rhythm")
             n_tok = _expect!(ps, :int, "integer after ','")
+            # Optional 3rd arg: rotation (cyclic shift of the pulse vector).
+            # `bd(3,8,2)` rotates 3-of-8 forward by 2 steps.
+            rot = 0
+            if (la = _peek(ps)) !== nothing && la.kind == :comma
+                _advance!(ps)
+                r_tok = _expect!(ps, :int, "integer after second ','")
+                rot = r_tok.value
+            end
             _expect!(ps, :rparen, "')' closing Euclidean rhythm")
             (k_tok.value >= 0 && n_tok.value > 0) ||
                 throw(ArgumentError("Invalid Euclidean parameters ($(k_tok.value),$(n_tok.value)) at position $(k_tok.pos)"))
-            node = EuclidNode(node, k_tok.value, n_tok.value)
+            node = EuclidNode(node, k_tok.value, n_tok.value, rot)
+        elseif nxt.kind == :question
+            _advance!(ps)
+            # Optional probability literal: `bd?0.3` = drop with 30%.
+            # Without a number, defaults to 50%.
+            prob = 0.5
+            la = _peek(ps)
+            if la !== nothing && la.kind == :float
+                _advance!(ps); prob = la.value
+            elseif la !== nothing && la.kind == :int
+                _advance!(ps); prob = float(la.value)
+            end
+            prob = clamp(prob, 0.0, 1.0)
+            node = DegradeNode(node, prob)
         else
             break
         end
@@ -188,6 +216,19 @@ function _parse_seq_until!(ps::ParseState, end_kind::Symbol)
         if t.kind == end_kind
             _advance!(ps)
             break
+        end
+        # `_` extends the previous slot's duration by one — implemented
+        # as a weight bump rather than a new node. At the start of a
+        # sequence (no prev), behave as silence.
+        if t.kind == :extend
+            _advance!(ps)
+            if isempty(children)
+                push!(children, (SilenceNode(), 1))
+            else
+                last_node, last_w = children[end]
+                children[end] = (last_node, last_w + 1)
+            end
+            continue
         end
         push!(children, _parse_unit!(ps))
     end
@@ -251,6 +292,13 @@ end
 function _emit!(out::Vector{Event{Symbol}}, node::EuclidNode,
                 a::Rational, b::Rational, cycle::Int)
     pulses = _euclidean_pulses(node.k, node.n)
+    # Apply rotation: shift the pulse vector forward by `rot` steps,
+    # wrapping. `bd(3,8,2)` → pulses originally [1,0,0,1,0,0,1,0]
+    # become [0,1,1,0,0,1,0,0] for rot=2. Negative rotates backward.
+    if node.rot != 0
+        r = mod(node.rot, node.n)
+        pulses = vcat(pulses[end-r+1:end], pulses[1:end-r])
+    end
     width = b - a
     for i in 0:(node.n - 1)
         pulses[i + 1] || continue
@@ -258,6 +306,15 @@ function _emit!(out::Vector{Event{Symbol}}, node::EuclidNode,
         sub_b = i == node.n - 1 ? b : a + width * (i + 1) // node.n
         _emit!(out, node.child, sub_a, sub_b, cycle)
     end
+end
+
+function _emit!(out::Vector{Event{Symbol}}, node::DegradeNode,
+                a::Rational, b::Rational, cycle::Int)
+    # Deterministic per-event drop based on hash(start). Same start
+    # across renders ⇒ same drop decision ⇒ groove is stable.
+    r = (hash((a, cycle)) % UInt32(1_000_000)) / 1_000_000.0
+    r < node.prob && return
+    _emit!(out, node.child, a, b, cycle)
 end
 
 function _build_pattern(root::MNode)
