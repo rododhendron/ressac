@@ -1,7 +1,8 @@
-# Mixer modal — read-only-ish per-slot activity + mute/solo control.
-# Lacks true RMS metering (no per-slot SC tap), so the "level" bar is
-# derived from `sched.last_fired_at[slot]` decaying over ~600 ms.
-# Extracted from app.jl as part of the maintainability sprint.
+# Mixer modal — per-slot level + mute/solo + gain edit.
+# Level bar reads real per-orbit RMS from SC's Amplitude.kr taps
+# (forwarded via /ressac/rms, indexed by orbit = slot - 1). When SC
+# isn't connected or hasn't sent yet, falls back to a 600 ms decay
+# from `sched.last_fired_at[slot]` so the bar still shows life.
 
 function _open_mixer!(m::RessacApp)
     m.modal = :mixer
@@ -112,10 +113,19 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         row_y >= inner.y + inner.height && break
         is_cur = i == m.mixer_cursor
         muted  = haskey(_APP_MUTED_PATTERNS, slot)
-        # Activity bar: decay from last_fired_at over 0.6 s.
-        last_ts = get(m.scheduler.last_fired_at, slot, 0.0)
-        age = now - last_ts
-        intensity = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
+        # Level bar — prefer real SC RMS feed (per-orbit Amplitude.kr
+        # tap), fall back to event-fire decay if SC isn't sending.
+        rms = Float64(_orbit_rms(slot))
+        if rms > 0
+            # Compress to [0,1] with a soft knee — typical SuperDirt
+            # event amps land in 0.05..0.4, so √-scale gives visible
+            # motion across the full bar without clipping.
+            intensity = clamp(sqrt(min(rms, 1.0) / 0.5), 0.0, 1.0)
+        else
+            last_ts = get(m.scheduler.last_fired_at, slot, 0.0)
+            age = now - last_ts
+            intensity = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
+        end
         filled = clamp(floor(Int, intensity * bar_w), 0, bar_w)
         bar = "█" ^ filled * "░" ^ (bar_w - filled)
         state = muted ? "MUTED" : "PLAY "
@@ -163,8 +173,11 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     end
     # Footer hint.
     foot_y = inner.y + inner.height - 1
+    any_rms = any(_orbit_rms(s) > 0 for s in slots)
+    feed_note = any_rms ? "SC RMS @ 20 Hz" :
+                          "no SC RMS feed — fire-decay fallback"
     TK.set_string!(buf, inner.x, foot_y,
-        first(rpad("$(length(slots)) slot$(length(slots) == 1 ? "" : "s") · meters decay over 0.6s from last fire (no SC RMS feed)",
+        first(rpad("$(length(slots)) slot$(length(slots) == 1 ? "" : "s") · $(feed_note)",
                    inner.width), inner.width),
         TK.tstyle(:text_dim))
 end

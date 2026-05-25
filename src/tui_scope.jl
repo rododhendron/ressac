@@ -21,6 +21,11 @@ const _SCOPE_LIVE_MODEL = Ref{Union{LiveModel,Nothing}}(nothing)
 const _APP_SCOPE_DATA  = Ref{Vector{Float32}}(Float32[])
 const _APP_SCOPE_TYPE  = Ref{Symbol}(:off)
 const _APP_SCOPE_TS    = Ref{Float64}(0.0)
+# Per-orbit RMS — updated from /ressac/rms packets emitted by SC's
+# per-orbit Amplitude.kr taps. 12 slots, one per SuperDirt orbit
+# (mapped from @d1..@d12). Indexed 1..12 (orbit 0 → slot [1]).
+const _APP_ORBIT_RMS    = Ref{Vector{Float32}}(zeros(Float32, 12))
+const _APP_ORBIT_RMS_TS = Ref{Vector{Float64}}(zeros(Float64, 12))
 
 """
     _scope_set!(m, type)
@@ -192,6 +197,9 @@ function _app_scope_listener_loop()
                 continue
             elseif addr == "/ressac/set"
                 _handle_external_set!(msg.args)
+                continue
+            elseif addr == "/ressac/rms"
+                _handle_orbit_rms!(msg.args)
                 continue
             end
             # Otherwise: scope data frame.
@@ -391,4 +399,42 @@ function _handle_external_set!(args::Vector)
     if key == "cps" && val isa Number
         set_cps!(sched, Float64(val))
     end
+end
+
+"""
+    _handle_orbit_rms!(args)
+
+`/ressac/rms <nodeID:Int> <replyID:Int> <orbitIdx:Int> <amp:Float>`
+SC SendReply prepends two ints (node + reply id); we skip them.
+Stores the latest amp per orbit + timestamp so the `:mixer` renderer
+can show real per-slot levels.
+"""
+function _handle_orbit_rms!(args::Vector)
+    length(args) >= 4 || return
+    orbit_raw = args[3]
+    amp_raw   = args[4]
+    orbit = orbit_raw isa Integer ? Int(orbit_raw) :
+            orbit_raw isa Number  ? Int(round(orbit_raw)) : return
+    (0 <= orbit < 12) || return
+    amp = amp_raw isa Number ? Float32(amp_raw) : return
+    _APP_ORBIT_RMS[][orbit + 1]    = amp
+    _APP_ORBIT_RMS_TS[][orbit + 1] = time()
+end
+
+"""
+    _orbit_rms(slot::Symbol) -> Float32
+
+Look up the most recent RMS reading for `slot` (`:d1` → orbit 0, etc).
+Returns 0.0 if the slot isn't a `d<N>` form, the orbit is out of
+range, or no reading has arrived in the last 1.5 s (so the bar drops
+to zero when SC stops sending, instead of getting stuck on the last
+value forever).
+"""
+function _orbit_rms(slot::Symbol)
+    orbit = _orbit_for_slot(slot)
+    orbit === nothing && return 0.0f0
+    (0 <= orbit < 12) || return 0.0f0
+    ts = _APP_ORBIT_RMS_TS[][orbit + 1]
+    (time() - ts > 1.5) && return 0.0f0
+    return _APP_ORBIT_RMS[][orbit + 1]
 end

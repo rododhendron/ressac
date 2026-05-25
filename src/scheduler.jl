@@ -185,6 +185,47 @@ end
 event_to_osc(ev::Event) = throw(ArgumentError(
     "No event_to_osc method for Event{$(typeof(ev.value))}; define one."))
 
+"""
+    _orbit_for_slot(slot::Symbol) -> Union{Int, Nothing}
+
+Map a pattern slot to a SuperDirt orbit index (0-based). `:d1 → 0`,
+`:d2 → 1`, …, `:d12 → 11`. Slots beyond 12 wrap (`:d13 → 0`) so they
+still play, sharing an orbit with the lower slot. Anything that isn't
+`d<N>` returns `nothing` (won't get an orbit injection).
+"""
+function _orbit_for_slot(slot::Symbol)
+    s = String(slot)
+    (length(s) >= 2 && s[1] == 'd') || return nothing
+    n = tryparse(Int, SubString(s, 2))
+    n === nothing && return nothing
+    n < 1 && return nothing
+    return (n - 1) % 12
+end
+
+"""
+    _inject_orbit!(msg::OSCMessage, slot::Symbol) -> OSCMessage
+
+Append `"orbit" => N` to a `/dirt/play` message's args so SuperDirt
+routes the event through orbit `N`. No-op for any other address (e.g.
+`/ressac/play` — user synths bypass SuperDirt's orbit system). Lets
+the per-orbit RMS taps in SC see distinct levels per `@dN` slot.
+"""
+function _inject_orbit!(msg::OSCMessage, slot::Symbol)
+    msg.address == "/dirt/play" || return msg
+    orbit = _orbit_for_slot(slot)
+    orbit === nothing && return msg
+    # Skip if the user already set an orbit explicitly (defensive: today
+    # no API exposes this, but if one ever does, respect it).
+    for i in 1:2:length(msg.args)-1
+        v = msg.args[i]
+        if (v isa AbstractString && v == "orbit") || (v isa Symbol && v === :orbit)
+            return msg
+        end
+    end
+    push!(msg.args, "orbit"); push!(msg.args, Int32(orbit))
+    return msg
+end
+
 # ---------------------------------------------------------------------------
 # Stepping
 # ---------------------------------------------------------------------------
@@ -248,7 +289,8 @@ function _step!(s::Scheduler, now::Float64)
                 ev_start = Float64(ev.start)
                 if start_cycles <= ev_start < end_cycles
                     fire_time = t_start + ev_start / cps
-                    bundle = OSCBundle(fire_time, [event_to_osc(ev)])
+                    msg = _inject_orbit!(event_to_osc(ev), slot)
+                    bundle = OSCBundle(fire_time, [msg])
                     send_osc(s.osc, encode(bundle))
                     Threads.atomic_add!(s.events_shipped, 1)
                     push!(fired_at_local, slot => time())

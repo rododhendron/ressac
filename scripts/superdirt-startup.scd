@@ -51,6 +51,37 @@ s.waitForBoot({
     };
     ~dirt.start(57120, 0 ! 12);
 
+    // ── Per-orbit RMS meters ──
+    // Tap each orbit's dryBus (where its play synths write before
+    // global effects). 20 Hz updates × 12 orbits = ~240 OSC msg/s,
+    // negligible. Ressac listens on /ressac/rms <idx> <amp> and
+    // renders per-slot bars in :mixer (matches @dN → orbit N-1).
+    ~ressacOrbitMeters = nil;
+    ~ressacInstallOrbitMeters = {
+        if(~ressacOrbitMeters.notNil) {
+            ~ressacOrbitMeters.do { |syn| syn.free };
+        };
+        ~ressacOrbitMeters = ~dirt.orbits.collect { |o, i|
+            { |bus = 0, idx = 0|
+                var sig = In.ar(bus, 2);
+                var amp = Amplitude.kr(sig.sum * 0.5, 0.01, 0.15);
+                SendReply.kr(Impulse.kr(20), '/ressac/rms', [idx, amp]);
+                Silent.ar(2);
+            }.play(target: o.group,
+                   addAction: \addToTail,
+                   args: [\bus, o.dryBus.index, \idx, i]);
+        };
+        ("[ressac] " ++ ~ressacOrbitMeters.size.asString
+            ++ " per-orbit meters installed").postln;
+    };
+    s.sync;
+    ~ressacInstallOrbitMeters.value;
+
+    OSCFunc({ |msg|
+        // msg = ['/ressac/rms', nodeID, replyID, idx, amp]
+        ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
+    }, '/ressac/rms');
+
     // ── Master safety chain ──
     // Tree of "intercept master out, run it through:
     //   1. LeakDC.ar  — strip DC offset (a stuck-low oscillator can
