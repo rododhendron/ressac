@@ -5054,6 +5054,52 @@ function _copy_logs_to_clipboard!(m::RessacApp)
 end
 
 """
+    _humanize_eval_error(e, src) -> String
+
+Map common Julia exceptions thrown during pattern eval into one-line
+hints that point a non-dev user toward a fix. Falls back to the raw
+`showerror` text when no recogniser matches.
+
+  • UndefVarError(:foo)   → "le nom `foo` n'existe pas — :browse / :doc"
+  • MethodError on |>      → "type mismatch in the pipe chain — check the |> args"
+  • Meta.parse ParseError → "syntax error at position N — check brackets / quotes"
+  • LoadError wrapper      → unwrap once and recurse
+"""
+function _humanize_eval_error(e, src::AbstractString)
+    if e isa LoadError
+        return _humanize_eval_error(e.error, src)
+    end
+    if e isa UndefVarError
+        nm = String(e.var)
+        return "unknown name `$nm` — :browse to see loaded sounds, or :doc $nm"
+    end
+    if e isa Base.Meta.ParseError
+        # Pull out the position if present in the message.
+        msg = sprint(showerror, e)
+        return "parse error — check matching brackets / quotes in this line · $(first(msg, 90))"
+    end
+    if e isa MethodError
+        fname = string(e.f)
+        # Symbol-into-pipe-callback is the most common mistake — give
+        # a targeted hint when the failed call ate a Symbol.
+        if any(a -> a isa Symbol, e.args)
+            return "type mismatch on `$fname` — a Symbol slipped into a Pattern slot. " *
+                   "Wrap the name in `pure(:foo)` or use `p\"foo\"`."
+        end
+        return "no method `$fname` for these arguments — check the |> chain types"
+    end
+    if e isa ArgumentError
+        return "bad arg: $(e.msg)"
+    end
+    if e isa BoundsError
+        return "out-of-range index — pattern length doesn't match `n()` / `degree()` source"
+    end
+    # Fallback: trim the raw error to one readable line.
+    raw = sprint(showerror, e)
+    return first(replace(raw, r"\s*\n\s*" => " · "), 160)
+end
+
+"""
     _eval_pattern_blocks!(m, target)
 
 Walk the patterns buffer collecting `@dN ... [|> ... ]*` blocks,
@@ -5101,7 +5147,12 @@ function _eval_pattern_blocks!(m::RessacApp, target)
             push!(ok_slots, slot)
         catch e
             err += 1
-            _push_app_log!(m, "[ERROR] eval $slot: $(sprint(showerror, e))")
+            # Try to render a human-readable hint based on common
+            # Julia error classes. The raw stacktrace stays available
+            # in :keydebug logs if the user needs it; the modal log
+            # should be actionable, not technical.
+            hint = _humanize_eval_error(e, src)
+            _push_app_log!(m, "[ERROR] eval $slot: $hint")
         end
     end
     # Record the rows we just successfully evaluated so the view can
