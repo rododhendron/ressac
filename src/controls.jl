@@ -248,6 +248,57 @@ room(x)  = _control_op(:room,  _overwrite, x)
 delay(x) = _control_op(:delay, _overwrite, x)
 shape(x) = _control_op(:shape, _overwrite, x)
 
+"""
+    pump(steps_per_cycle=4, depth=0.6) -> (Pattern -> Pattern)
+
+Sidechain-style gain ducking, faked via a per-cycle gain pattern.
+Generates `steps_per_cycle` gain values that dip then ramp back:
+the first step is the duck floor (`1 - depth`) and the rest of the
+cycle ramps linearly back to 1.0 — sounds like a kick is squashing
+the chain on every beat.
+
+```julia
+@d1 :pad |> pump()         # 4 ducks per cycle, depth 0.6 (default)
+@d1 :pad |> pump(8, 0.8)   # 8 ducks per cycle, deeper duck
+```
+
+This is NOT true audio sidechain (no actual amplitude follower —
+no audio routing exists between Ressac patterns) but it produces
+the recognisable "pumping" sound users want. For real sidechain
+on SuperCollider side, see the global compressor wiring in the
+SuperDirt boot script.
+"""
+function pump(steps_per_cycle::Int = 4, depth::Real = 0.6)
+    n_steps = max(2, steps_per_cycle)
+    floor_v = clamp(1.0 - float(depth), 0.0, 1.0)
+    # Build a Pattern{Float64} that emits one gain value per step.
+    # The first slot is the duck floor; each subsequent slot ramps
+    # linearly up toward 1.0 by the end of the cycle.
+    Pattern_T = Pattern{Float64}
+    return (p::Pattern) -> begin
+        gain_pat = Pattern_T((s::Rational, e::Rational) -> begin
+            out = Event{Float64}[]
+            cyc_start = floor(Int, s)
+            cyc_stop  = ceil(Int, e)
+            step_dur = Rational{Int64}(1, n_steps)
+            for cyc in cyc_start:(cyc_stop - 1)
+                for k in 0:(n_steps - 1)
+                    a = Rational{Int64}(cyc) + k * step_dur
+                    b = a + step_dur
+                    a >= e && break
+                    b <= s && continue
+                    # k=0 is the floor, k=n-1 should be back near 1.0
+                    t = k / (n_steps - 1)
+                    val = floor_v + (1.0 - floor_v) * t
+                    push!(out, Event{Float64}(a, b, val))
+                end
+            end
+            out
+        end)
+        gain(gain_pat)(p)
+    end
+end
+
 # ---------------------------------------------------------------------
 # Auto-generated SuperDirt param helpers
 # ---------------------------------------------------------------------
@@ -293,6 +344,9 @@ const _SUPERDIRT_PARAM_HELPERS = [
     :vowel, :enhance, :leslie, :leslierate, :lesliespeed,
     # Spatial
     :pan2, :panspan, :panorbit, :panwidth,
+    # Compression — SuperDirt orbit-level compressor params.
+    # `compress(x)` lowers dynamics. Composition is overwrite, last wins.
+    :compress, :compressThreshold, :compressRatio,
 ]
 
 for name in _SUPERDIRT_PARAM_HELPERS
