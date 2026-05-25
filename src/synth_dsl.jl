@@ -26,7 +26,7 @@
 module SynthDSL
 
 import ..Ressac: _LIVE_SCHEDULER, send_osc, encode, OSCMessage,
-                 register_synth!, SynthEntry
+                 register_synth!, register_synth_alias!, SynthEntry
 
 # Re-export the whole UGen surface so `using Ressac.SynthDSL` brings
 # everything in scope at once.
@@ -473,51 +473,131 @@ the generated SC without playing it.
 synth_source(args...; kwargs...) = build_synth(args...; kwargs...)
 
 """
-    play_synth(name, sig; kwargs...) -> String
+    play_synth(sc_name, sig; alias=nothing, kwargs...) -> String
 
 Compile via `build_synth`, send to SC via `/ressac/evalAndPlay`
 (same path as T), and register the synth so :browse / :lib / pattern
-lookups see it. Returns the generated source. Same kwargs as
-build_synth.
+lookups see it.
+
+`sc_name` is the SynthDef name shipped to SuperCollider — typically
+derived from the source filename so the file-on-disk and the SC
+identifier are aligned.
+
+`alias` (optional) is the short name the user types in patterns
+(`p"alias"` or `:alias |> gate(...)`). The scheduler resolves alias
+→ sc_name before shipping. Pass `nothing` (the default) to skip
+aliasing; the user will type the sc_name directly. Aliases are
+collision-checked: re-binding an existing alias to a different
+sc_name logs an error and is refused (call `unregister_synth_alias!`
+first).
+
+Returns the generated SC source. Same kwargs as build_synth.
 """
-function play_synth(name::Symbol, sig::Sig; kwargs...)
-    src = build_synth(name, sig; kwargs...)
+function play_synth(sc_name::Symbol, sig::Sig;
+                    alias::Union{Symbol,Nothing} = nothing, kwargs...)
+    src = build_synth(sc_name, sig; kwargs...)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return src
     send_osc(sched.osc,
              encode(OSCMessage("/ressac/evalAndPlay",
-                                Any[String(name), src])))
-    register_synth!(SynthEntry(name, "user-dsl",
+                                Any[String(sc_name), src])))
+    register_synth!(SynthEntry(sc_name, "user-dsl",
                                Dict{String,Any}("description" => "DSL-defined",
                                                 "tags" => ["dsl"])))
+    alias !== nothing && register_synth_alias!(alias, sc_name)
     src
 end
 
 """
-    @synth name body
-    @synth name (params) body
-    @synth name (params,) (opts,) body
+    _sc_name_from_source(src) -> Symbol
 
-Sugar for play_synth. The simplest form auto-fills everything:
-
-    @synth :mywob saw(:freq) |> rlpf(1200, 0.3)
-
-With explicit params:
-
-    @synth :acid (freq=80, cutoff=2000, envmod=4) saw(:freq) |> rlpf(:cutoff * (1 + :envmod), 0.3)
-
-With opts (e.g. `auto_env=false` for drones):
-
-    @synth :drone (freq=110, sustain=999) (auto_env=false,) saw(:freq) |> low_pass(800)
+Resolve the SC SynthDef name from a macro's source-file context.
+Used by `@synth` when no explicit alias is given: the file basename
+(minus extension) becomes the name shipped to SuperCollider. Errors
+if there's no real file (REPL, eval'd string) — the user must
+provide an explicit alias in that case.
 """
-macro synth(name, body)
-    esc(:(play_synth($name, $body)))
+function _sc_name_from_source(src::LineNumberNode)
+    f = String(src.file)
+    isfile(f) || error("@synth: no source file context — provide an alias: `@synth :name body`")
+    return Symbol(splitext(basename(f))[1])
 end
-macro synth(name, params, body)
-    esc(:(play_synth($name, $body; params = $params)))
+
+"""
+    _sc_name_for_aliased(src, alias) -> Symbol
+
+When the user writes `@synth :alias body`, decide the SC SynthDef
+name. In a real file, the SC name is the filename (so renaming the
+file renames the SynthDef without touching the macro). In a REPL /
+no-file context, the alias IS the SC name (there's nothing else to
+use).
+"""
+function _sc_name_for_aliased(src::LineNumberNode, alias::Symbol)
+    f = String(src.file)
+    return isfile(f) ? Symbol(splitext(basename(f))[1]) : alias
 end
-macro synth(name, params, opts, body)
-    esc(:(play_synth($name, $body; params = $params, $opts...)))
+
+"""
+    @synth body
+    @synth (params) body
+    @synth (params,) (opts,) body
+    @synth :alias body
+    @synth :alias (params) body
+    @synth :alias (params,) (opts,) body
+
+Build a SynthDef from a DSL expression and ship it to SuperCollider.
+Two layers of naming:
+
+  * **SC SynthDef name** — the identifier SuperCollider knows the
+    synth by. Derived from the source filename (minus extension) so
+    `plugins/user-synths/wob1.jl` always ships as `\\wob1`. Rename
+    the file = rename the SynthDef.
+  * **Alias** (optional) — a short name the user types in patterns
+    (`p"alias"` / `:alias |> gate(...)`). The scheduler resolves
+    alias → SC name before sending. Skip the leading `:alias` to
+    use the SC name directly.
+
+Minimal: alias inferred, file-based SC name.
+
+    # in plugins/user-synths/wob1.jl
+    @synth saw(:freq) |> rlpf(1200, 0.3)
+    # → SC \\wob1, no alias; pattern: p"wob1"
+
+With short alias:
+
+    @synth :wob saw(:freq) |> rlpf(1200, 0.3)
+    # → SC \\wob1, alias `wob`; pattern: p"wob" or p"wob1"
+
+With params + opts (any combo):
+
+    @synth :acid (freq=80, cutoff=2000) saw(:freq) |> rlpf(:cutoff, 0.3)
+    @synth :drone (freq=110, sustain=999) (auto_env=false,) saw(:freq) |> low_pass(800)
+
+REPL / no-file context: an alias is required and becomes the SC
+name (no filename to fall back on).
+"""
+macro synth(args...)
+    isempty(args) && return :(error("@synth: needs a body"))
+    body = args[end]
+    rest = args[1:end-1]
+    # If the first arg is a QuoteNode (`:alias`) it's the alias.
+    # Otherwise we're in the file-derived form.
+    alias_expr, middle = if !isempty(rest) && rest[1] isa QuoteNode
+        (rest[1], rest[2:end])
+    else
+        (nothing, rest)
+    end
+    params = length(middle) >= 1 ? middle[1] : :(NamedTuple())
+    opts   = length(middle) >= 2 ? middle[2] : nothing
+    name_expr = alias_expr === nothing ?
+        :(_sc_name_from_source(__source__)) :
+        :(_sc_name_for_aliased(__source__, $alias_expr))
+    call = if opts === nothing
+        :(play_synth($name_expr, $body; params = $params, alias = $alias_expr))
+    else
+        :(play_synth($name_expr, $body; params = $params, alias = $alias_expr, $opts...))
+    end
+    return esc(call)
 end
 
 end # module SynthDSL

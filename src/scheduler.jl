@@ -96,6 +96,14 @@ function event_to_osc(ev::Event{Symbol})
         end
         return OSCMessage("/dirt/play", args)
     end
+    # Synth alias → SC name. `p"wob"` where `wob` is the alias for
+    # SynthDef \wob1: ship the SC name and route through /ressac/play
+    # so the SynthDef's own defaults apply (SuperDirt has no record
+    # of user synths and would reject the bare name).
+    sc_name = resolve_synth_name(ev.value)
+    if _is_user_synth(sc_name)
+        return OSCMessage("/ressac/play", Any[String(sc_name)])
+    end
     return OSCMessage("/dirt/play", Any["s", String(ev.value)])
 end
 
@@ -141,10 +149,12 @@ function event_to_osc(ev::Event{ControlMap})
     # freq/sustain/gain auto-injection. Pattern events end up using the
     # SynthDef's own defaults unless the user explicitly set the key.
     # Samples + super* synths from SuperDirt keep /dirt/play (they need
-    # SuperDirt's machinery).
+    # SuperDirt's machinery). When the `:s` is an alias, ship the
+    # resolved SC SynthDef name (the alias is purely client-side).
     target = haskey(final, :s) ? Symbol(final[:s] isa Symbol ? final[:s] : Symbol(final[:s])) : nothing
-    if target !== nothing && _is_user_synth(target)
-        args = Any[String(target)]
+    sc_target = target === nothing ? nothing : resolve_synth_name(target)
+    if sc_target !== nothing && _is_user_synth(sc_target)
+        args = Any[String(sc_target)]
         delete!(final, :s)
         for k in sort!(collect(keys(final)))
             v_conv = _osc_value(final[k])
