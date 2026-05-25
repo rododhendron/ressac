@@ -3,6 +3,7 @@
 # plugins/user-synths/. Extracted from app.jl.
 
 function _open_synth_library!(m::RessacApp)
+    m.modal_scroll = 0
     m.modal = :synth_library
     m.synthlib_cursor = 1
 end
@@ -150,8 +151,13 @@ function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffe
         h_target = max(10, min(area.height - 4, n + 4)))
     inner.width < 20 && return
     empty!(m.modal_rows)
-    for (i, entry) in enumerate(entries)
-        i > inner.height && break
+    body_h = inner.height
+    # Auto-scroll so the cursor follows j/k past the viewport.
+    m.modal_scroll = _scroll_to_show(m.synthlib_cursor, n, body_h, m.modal_scroll)
+    first_idx = m.modal_scroll + 1
+    last_idx  = min(n, m.modal_scroll + body_h)
+    for (slot, i) in enumerate(first_idx:last_idx)
+        entry = entries[i]
         is_cur = i == m.synthlib_cursor
         marker = is_cur ? "▶ " : "  "
         tag = entry.category == "user" ? "[user]  ★" : "[$(rpad(entry.category, 5))]"
@@ -159,7 +165,7 @@ function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffe
         base_style = entry.category == "user" ?
             TK.tstyle(:success) : TK.tstyle(:text)
         style = is_cur ? TK.tstyle(:accent, bold = true) : base_style
-        screen_y = inner.y + i - 1
+        screen_y = inner.y + slot - 1
         TK.set_string!(buf, inner.x, screen_y,
                        first(rpad(text, inner.width), inner.width), style)
         push!(m.modal_rows, (screen_y, i))

@@ -204,6 +204,38 @@
         @test Ressac._extract_regex_verbs(r"foo\s+bar") == String[]
     end
 
+    # ── app.jl — _scroll_to_show ──
+    @testset "_scroll_to_show — keep cursor visible in list modals" begin
+        # Cursor inside window: scroll stays put (no jumpy recentering).
+        @test Ressac._scroll_to_show(5,  100, 10, 0) == 0
+        @test Ressac._scroll_to_show(3,  100, 10, 0) == 0
+        @test Ressac._scroll_to_show(10, 100, 10, 0) == 0
+
+        # Cursor past bottom: scroll moves down just enough.
+        @test Ressac._scroll_to_show(11, 100, 10, 0) == 1
+        @test Ressac._scroll_to_show(20, 100, 10, 0) == 10
+        @test Ressac._scroll_to_show(50, 100, 10, 0) == 40
+
+        # Cursor above the top after scroll: snaps so cursor is row 1.
+        @test Ressac._scroll_to_show(5,  100, 10, 50) == 4
+        @test Ressac._scroll_to_show(1,  100, 10, 50) == 0
+
+        # End-of-list clamp: never reveal blank rows past the last entry.
+        @test Ressac._scroll_to_show(100, 100, 10, 95) == 90
+        @test Ressac._scroll_to_show(100, 100, 10,  0) == 90
+
+        # Short list: scroll always 0 (everything fits).
+        @test Ressac._scroll_to_show(5, 5,  10, 0)  == 0
+        @test Ressac._scroll_to_show(1, 5,  10, 3)  == 0
+
+        # Edge: body_h ≤ 0 → no scroll possible.
+        @test Ressac._scroll_to_show(5, 100, 0, 0)  == 0
+        @test Ressac._scroll_to_show(5, 100, -1, 0) == 0
+
+        # Edge: empty list (total = 0) — scroll always 0.
+        @test Ressac._scroll_to_show(0, 0, 10, 0) == 0
+    end
+
     @testset "_LEADER_SNIPPETS — every trigger has a label" begin
         # The footer reads from _LEADER_LABELS — every key in
         # _LEADER_SNIPPETS / _LEADER_ACTIONS must have one or the

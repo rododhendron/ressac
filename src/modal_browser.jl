@@ -143,6 +143,9 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Body fills rows 3..end.
     body_y = inner.y + 2
     body_h = inner.height - 2
+    # Auto-scroll so the cursor stays in view as the user j/k's past
+    # the bottom of the viewport.
+    m.modal_scroll = _scroll_to_show(m.browser_cursor, n, body_h, m.modal_scroll)
     visible = m.modal_scroll + 1 <= n ?
               entries[(m.modal_scroll + 1):min(end, m.modal_scroll + body_h)] :
               _BrowserEntry[]

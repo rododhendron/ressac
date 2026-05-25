@@ -2473,6 +2473,32 @@ function _render_modal_block!(buf::TK.Buffer, area::TK.Rect;
 end
 
 """
+    _scroll_to_show(cursor, total, body_h, scroll) -> Int
+
+Updated scroll offset so that `cursor` (1-based) is visible inside the
+window `[scroll+1, scroll+body_h]`. "Scroll-as-needed" semantics — if
+cursor is already in view, leaves `scroll` alone (no jumpy
+re-centering on every keystroke). When forced to move, scrolls just
+enough to bring the cursor to the nearest edge of the window.
+
+Result is clamped to `[0, max(0, total - body_h)]` so the window
+never reveals empty rows past the end of a short list.
+
+Pure helper — used by every list-style modal (browse / lib) to keep
+the cursor visible as the user j/k's past the bottom of the viewport.
+"""
+function _scroll_to_show(cursor::Int, total::Int, body_h::Int, scroll::Int)
+    body_h <= 0 && return 0
+    new_scroll = scroll
+    if cursor < new_scroll + 1
+        new_scroll = max(0, cursor - 1)
+    elseif cursor > new_scroll + body_h
+        new_scroll = cursor - body_h
+    end
+    return clamp(new_scroll, 0, max(0, total - body_h))
+end
+
+"""
     _active_slots_summary(m) -> String
 
 Compact list of slot ids currently scheduled, e.g. "@d1 @d2 @d4".
