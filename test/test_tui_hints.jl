@@ -86,37 +86,8 @@ Ressac.send_osc(c::_HintsMockClient, bytes::Vector{UInt8}) = push!(c.sent, bytes
         end
     end
 
-    @testset "_compute_completions empty buffer → all command names" begin
-        m = Ressac.LiveModel(; scheduler=Scheduler(_HintsMockClient(); cps=0.5))
-        m.command_buffer = ""
-        out = Ressac._compute_completions(m)
-        @test "samples" in out
-        @test "quit" in out
-        @test "guide" in out
-    end
-
-    @testset "_compute_completions verb prefix narrows" begin
-        m = Ressac.LiveModel(; scheduler=Scheduler(_HintsMockClient(); cps=0.5))
-        m.command_buffer = "sa"
-        out = Ressac._compute_completions(m)
-        @test "samples" in out
-        @test !("quit" in out)
-    end
-
-    @testset "_compute_completions :samples arg matches registry" begin
-        empty!(Ressac._SAMPLE_REGISTRY)
-        try
-            Ressac.register_sample!(Ressac.SampleEntry(:kicky, "p",
-                "/x", ["/x"], Dict{String,Any}()))
-            Ressac.register_sample!(Ressac.SampleEntry(:snares, "p",
-                "/y", ["/y"], Dict{String,Any}()))
-            m = Ressac.LiveModel(; scheduler=Scheduler(_HintsMockClient(); cps=0.5))
-            m.command_buffer = "samples ki"
-            out = Ressac._compute_completions(m)
-            @test "kicky" in out
-            @test !("snares" in out)
-        finally
-            empty!(Ressac._SAMPLE_REGISTRY)
-        end
-    end
+    # _compute_completions(::LiveModel) testsets removed in phase-3
+    # cleanup. The RessacApp path uses `_try_ex_autocomplete!` from
+    # autocomplete.jl (see test_modal_helpers.jl for its structural
+    # coverage — every regex dispatcher extracts ≥ 1 verb, etc.).
 end

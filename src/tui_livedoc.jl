@@ -352,29 +352,8 @@ A single-row widget showing the live doc for the word under the
 cursor. Empty when no doc is found. Always rendered between footer
 and logs so the user has docs at a glance.
 """
-struct _LivedocLine
-    text::String
-end
-
-function TUI.render(p::_LivedocLine, area::TUI.Rect, buf::TUI.Buffer)
-    TUI.height(area) < 1 && return
-    isempty(p.text) && return
-    clipped = String(first(p.text, TUI.width(area)))
-    TUI.set(buf, TUI.left(area), TUI.top(area), clipped,
-            TUI.Crayon(; foreground=:light_green))
-end
-
-function _livedoc_line(m::LiveModel)
-    # Pick the line + column to inspect based on focus.
-    lines, row, col = if m.focus === :synth && !isempty(m.synth_editing)
-        (m.buffer, m.cursor_row, m.cursor_col)
-    else
-        (m.buffer, m.cursor_row, m.cursor_col)
-    end
-    1 <= row <= length(lines) || return _LivedocLine("")
-    line = lines[row]
-    word = _word_under_cursor(line, col)
-    doc = _lookup_livedoc(word)
-    doc === nothing && return _LivedocLine("")
-    return _LivedocLine("📖 $word — $doc")
-end
+# `_LivedocLine` widget + `_livedoc_line(::LiveModel)` builder both
+# removed in phase-3 cleanup. The RessacApp path renders livedoc
+# inline via the editor's hint strip (see `app.jl`).
+# `_word_under_cursor` + `_lookup_livedoc` (defined above) are the
+# pure helpers it shares with the deleted widget.

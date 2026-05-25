@@ -172,25 +172,9 @@ function _known_session_names()
     [splitext(f)[1] for f in readdir(dir) if endswith(f, ".txt")]
 end
 
-"""
-    _compute_completions(m::LiveModel) -> Vector{String}
-
-Compute the current candidate list for `:`-mode autocomplete based on
-`m.command_buffer`. Empty buffer → all command names. Verb-only prefix
-→ matching command names. Verb + space + partial → matching argument
-candidates for that verb (registry lookup), or empty if the verb has
-no argument completion.
-"""
-function _compute_completions(m::LiveModel)::Vector{String}
-    buf = m.command_buffer
-    if !occursin(' ', buf)
-        return _fuzzy_rank(buf, _COMMAND_NAMES)
-    end
-    verb, rest = split(buf, ' '; limit=2)
-    cands = _command_arg_candidates(verb)
-    cands === nothing && return String[]
-    return _fuzzy_rank(strip(String(rest)), cands)
-end
+# `_compute_completions(::LiveModel)` removed in phase-3 cleanup.
+# The RessacApp path uses `_try_ex_autocomplete!` (autocomplete.jl)
+# which derives candidates directly from the dispatch tables.
 
 """
     _MODE_HINTS
