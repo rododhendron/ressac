@@ -175,6 +175,32 @@
         end
     end
 
+    # ── app.jl — _open_modal! ──
+    @testset "_open_modal! sets modal + resets cursor + scroll" begin
+        mock = MockOSCClient()
+        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
+        app.modal = :none
+        app.synthlib_cursor = 7
+        app.modal_scroll = 42
+        Ressac._open_modal!(app, :synth_library, :synthlib_cursor)
+        @test app.modal === :synth_library
+        @test app.synthlib_cursor == 1
+        @test app.modal_scroll == 0
+    end
+
+    @testset "_open_modal! without cursor field — scroll-only modals" begin
+        # Wiki uses its own scroll fields; cursor_field=nothing leaves
+        # all per-modal state alone, only modal + modal_scroll change.
+        mock = MockOSCClient()
+        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
+        app.synthlib_cursor = 7
+        app.modal_scroll = 42
+        Ressac._open_modal!(app, :wiki, nothing)
+        @test app.modal === :wiki
+        @test app.modal_scroll == 0
+        @test app.synthlib_cursor == 7   # untouched
+    end
+
     # ── app.jl — _modal_cursor_nav! / _modal_close_key! ──
     @testset "_modal_cursor_nav! handles j/k bounds correctly" begin
         TK   = Ressac.TK

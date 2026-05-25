@@ -2571,6 +2571,22 @@ function _scroll_to_show(cursor::Int, total::Int, body_h::Int, scroll::Int)
 end
 
 """
+    _open_modal!(m, kind, cursor_field=nothing)
+
+Universal modal entry. Sets `m.modal = kind`, resets `modal_scroll`
+to 0, and (when given) resets `cursor_field` to 1. Modals with
+their own query / search / page state set those fields after calling
+this. Pass `cursor_field = nothing` for scroll-only modals (e.g. wiki).
+"""
+function _open_modal!(m::RessacApp, kind::Symbol,
+                     cursor_field::Union{Symbol,Nothing} = nothing)
+    m.modal = kind
+    m.modal_scroll = 0
+    cursor_field === nothing || setfield!(m, cursor_field, 1)
+    return nothing
+end
+
+"""
     _modal_cursor_nav!(m, evt, cursor_field, n) -> Bool
 
 Standard list-modal cursor navigation: `j` / `:down` increments,

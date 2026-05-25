@@ -71,8 +71,7 @@ function _snip_cycle_category!(m::RessacApp, dir::Int)
 end
 
 function _open_snippets!(m::RessacApp)
-    m.modal = :snippets
-    m.snip_cursor = 1
+    _open_modal!(m, :snippets, :snip_cursor)
     m.snip_query = ""
     m.snip_search_mode = false
     m.snip_category = ""

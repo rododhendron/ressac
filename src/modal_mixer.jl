@@ -5,8 +5,7 @@
 # from `sched.last_fired_at[slot]` so the bar still shows life.
 
 function _open_mixer!(m::RessacApp)
-    m.modal = :mixer
-    m.mixer_cursor = 1
+    _open_modal!(m, :mixer, :mixer_cursor)
 end
 
 """

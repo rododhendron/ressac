@@ -3,9 +3,7 @@
 # plugins/user-synths/. Extracted from app.jl.
 
 function _open_synth_library!(m::RessacApp)
-    m.modal_scroll = 0
-    m.modal = :synth_library
-    m.synthlib_cursor = 1
+    _open_modal!(m, :synth_library, :synthlib_cursor)
 end
 
 """

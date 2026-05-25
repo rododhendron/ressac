@@ -25,8 +25,7 @@ of entries. Sccode loads in 1-2s typically; if the user wants more
 they hit `n`/`p` to paginate.
 """
 function _open_sccode!(m::RessacApp; tag::AbstractString = "")
-    m.modal = :sccode
-    m.sccode_cursor = 1
+    _open_modal!(m, :sccode, :sccode_cursor)
     m.sccode_page = 1
     m.sccode_loading = true
     m.sccode_query = ""

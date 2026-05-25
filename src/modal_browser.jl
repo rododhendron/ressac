@@ -60,11 +60,9 @@ function _synth_summary(e::SynthEntry)
 end
 
 function _open_browser!(m::RessacApp)
-    m.modal = :browse
+    _open_modal!(m, :browse, :browser_cursor)
     m.browser_query = ""
-    m.browser_cursor = 1
     m.browser_filter = :all
-    m.modal_scroll = 0
 end
 
 function _browser_entries(m::RessacApp)
