@@ -2715,15 +2715,27 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # Live doc row — word under cursor → doc string
     _render_livedoc_row(m, livedoc_area, buf)
 
-    # Footer (key hints) + logs with per-level coloring + bordered block.
+    # Footer (key hints) + bottom pane with per-level coloring + bordered block.
+    # Bottom pane content swaps to a completion picker while a Tab
+    # cycle is active; otherwise it's the rolling log.
     _render_footer(m, footer_area, buf)
-    log_right = "$(length(m.logs))" *
-                (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
+    if _completion_picker_active(m)
+        title       = "COMPLETIONS"
+        title_right = "$(m.completion_idx)/$(length(m.completion_candidates)) · Tab next · any other key cancels"
+    else
+        title       = "LOG"
+        title_right = "$(length(m.logs))" *
+                      (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
+    end
     _render_pane_block!(m, logs_area, buf;
-        title = "LOG", title_right = log_right, focused = false)
+        title = title, title_right = title_right, focused = false)
     log_inner = _inner_rect(logs_area)
     m.layout_logs = log_inner
-    _render_logs(m, log_inner, buf)
+    if _completion_picker_active(m)
+        _render_completion_picker!(m, log_inner, buf)
+    else
+        _render_logs(m, log_inner, buf)
+    end
 
     # Modal overlay (after everything else so it sits on top).
     if m.modal === :browse

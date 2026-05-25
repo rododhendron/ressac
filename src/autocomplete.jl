@@ -63,7 +63,8 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
         m.completion_idx = m.completion_idx % length(m.completion_candidates) + 1
         repl = m.completion_candidates[m.completion_idx]
         _splice_completion!(m, ed, repl)
-        _push_app_log!(m, "[INFO] tab $(m.completion_idx)/$(length(m.completion_candidates)): $(repl)")
+        # No log line — the completion picker (rendered in place of
+        # the log pane while a cycle is active) shows the full list.
         return true
     end
     # Fresh autocomplete: collect candidates, replace with the best.
@@ -100,10 +101,9 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     m.completion_row = ed.cursor_row
     m.completion_range = (start_col, end_col)
     _splice_completion!(m, ed, m.completion_candidates[1])
-    if length(m.completion_candidates) > 1
-        _push_app_log!(m, "[INFO] tab 1/$(length(m.completion_candidates)): " *
-                       join(first(m.completion_candidates, 8), "  "))
-    end
+    # No log line — the completion picker swaps in for the log pane
+    # while a cycle is active, showing the full candidate list with
+    # the current selection highlighted. Resets to log on next non-Tab.
     return true
 end
 
@@ -138,6 +138,47 @@ function _splice_completion!(m::RessacApp, ed::TK.CodeEditor, replacement::Abstr
     ed.cursor_row = row
     ed.cursor_col = start_col + length(replacement)
     m.completion_range = (start_col, start_col + length(replacement))
+end
+
+"""
+    _completion_picker_active(m) -> Bool
+
+True while a Tab cycle is in progress (cleared on any non-Tab key
+via `_reset_completion!`). When true, the LOG pane is replaced
+with a candidate picker that shows the full list and highlights
+the current selection.
+"""
+_completion_picker_active(m::RessacApp) =
+    m.completion_idx > 0 && !isempty(m.completion_candidates)
+
+"""
+    _render_completion_picker!(m, area, buf)
+
+Drop-in replacement for `_render_logs` while a Tab cycle is active.
+One candidate per row, the current selection highlighted with the
+accent style + a `▶ ` marker. Auto-scrolls so the selected row
+stays visible when the candidate list is taller than the pane.
+"""
+function _render_completion_picker!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    n = length(m.completion_candidates)
+    n == 0 && return
+    body_h = area.height
+    body_h <= 0 && return
+    # Keep the selected row in view (reuses the modal scroll helper).
+    scroll = _scroll_to_show(m.completion_idx, n, body_h, 0)
+    first_idx = scroll + 1
+    last_idx  = min(n, scroll + body_h)
+    for (slot, i) in enumerate(first_idx:last_idx)
+        slot > body_h && break
+        cand = m.completion_candidates[i]
+        is_cur = i == m.completion_idx
+        marker = is_cur ? "▶ " : "  "
+        style  = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
+        y = area.y + slot - 1
+        row = marker * cand
+        TK.set_string!(buf, area.x, y,
+                       first(rpad(row, area.width), area.width), style)
+    end
 end
 
 """

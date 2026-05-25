@@ -175,6 +175,26 @@
         end
     end
 
+    # ── autocomplete.jl — completion picker state ──
+    @testset "_completion_picker_active reflects Tab-cycle state" begin
+        # Plain construction: defaults aren't a cycle.
+        mock = MockOSCClient()
+        sched = Scheduler(mock; cps=0.5)
+        m = Ressac.RessacApp(; scheduler = sched)
+        @test Ressac._completion_picker_active(m) == false
+
+        # Fake a cycle in progress: idx>0 + non-empty candidates.
+        m.completion_candidates = ["fast", "fastN", "fast_loop"]
+        m.completion_idx = 2
+        @test Ressac._completion_picker_active(m) == true
+
+        # _reset_completion! clears it.
+        Ressac._reset_completion!(m)
+        @test Ressac._completion_picker_active(m) == false
+        @test m.completion_idx == 0
+        @test isempty(m.completion_candidates)
+    end
+
     @testset "_extract_regex_verbs — the three contract shapes" begin
         # These document what shapes the extractor understands. Add a
         # new shape here when you teach `_extract_regex_verbs` to
