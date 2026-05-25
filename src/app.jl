@@ -1347,6 +1347,17 @@ _register_literal!(m -> _open_snippets!(m),          "snip", "snippets", "snippe
 _register_literal!(m -> _open_sccode!(m),            "sccode", "sc")
 _register_regex!(r"^(?:sccode|sc)\s+(\S+)$",
     (m, mt) -> _direct_load_sccode!(m, mt.captures[1]))
+
+# ── Synth alias management ─────────────────────────────────────────
+# Aliases are short, user-typed names that resolve to SC SynthDef
+# names. See _SYNTH_ALIASES + register_synth_alias! in plugins.jl.
+_register_literal!(m -> _alias_list!(m),             "alias-ls", "aliases")
+_register_regex!(r"^alias-rm\s+(\w+)$",
+    (m, mt) -> _alias_remove!(m, Symbol(mt.captures[1])))
+_register_regex!(r"^alias-rename\s+(\w+)\s+(\w+)$",
+    (m, mt) -> _alias_rename!(m, Symbol(mt.captures[1]), Symbol(mt.captures[2])))
+_register_regex!(r"^alias\s+(\w+)\s+(\w+)$",
+    (m, mt) -> _alias_set!(m, Symbol(mt.captures[1]), Symbol(mt.captures[2])))
 _register_regex!(r"^(?:sccode-tag|sctag)\s+(\S+)$",
     (m, mt) -> _open_sccode!(m; tag = mt.captures[1]))
 
@@ -1526,6 +1537,53 @@ function _cps_set(m::RessacApp, mt::RegexMatch)
         _push_app_log!(m, "[INFO] cps = $(mt.captures[1])")
     catch err
         _push_app_log!(m, "[ERROR] cps: $(sprint(showerror, err))")
+    end
+end
+
+# ── Alias commands ────────────────────────────────────────────────
+function _alias_list!(m::RessacApp)
+    if isempty(_SYNTH_ALIASES)
+        _push_app_log!(m, "[INFO] no aliases registered — `:alias <alias> <sc_name>` to add one")
+        return
+    end
+    pairs_sorted = sort!(collect(_SYNTH_ALIASES); by = p -> String(p[1]))
+    lines = ["$(alias) → $(sc_name)" for (alias, sc_name) in pairs_sorted]
+    _push_app_log!(m, "[INFO] aliases: " * join(lines, ", "))
+end
+
+function _alias_remove!(m::RessacApp, alias::Symbol)
+    if unregister_synth_alias!(alias)
+        _push_app_log!(m, "[INFO] removed alias :$alias")
+    else
+        _push_app_log!(m, "[WARN] :alias-rm — no alias '$alias'")
+    end
+end
+
+function _alias_rename!(m::RessacApp, old::Symbol, new::Symbol)
+    target = get(_SYNTH_ALIASES, old, nothing)
+    if target === nothing
+        _push_app_log!(m, "[WARN] :alias-rename — no alias '$old'")
+        return
+    end
+    if haskey(_SYNTH_ALIASES, new) && _SYNTH_ALIASES[new] !== target
+        _push_app_log!(m, "[ERROR] :alias-rename — '$new' already points to '$(_SYNTH_ALIASES[new])'. :alias-rm $new first.")
+        return
+    end
+    unregister_synth_alias!(old)
+    register_synth_alias!(new, target)
+    _push_app_log!(m, "[INFO] alias :$old → :$new (both point to $target)")
+end
+
+function _alias_set!(m::RessacApp, alias::Symbol, sc_name::Symbol)
+    if register_synth_alias!(alias, sc_name)
+        if alias === sc_name
+            _push_app_log!(m, "[INFO] alias :$alias is identity (no aliasing needed)")
+        else
+            _push_app_log!(m, "[INFO] alias :$alias → $sc_name")
+        end
+    else
+        existing = get(_SYNTH_ALIASES, alias, nothing)
+        _push_app_log!(m, "[ERROR] :alias — '$alias' already points to '$existing'. :alias-rm $alias first.")
     end
 end
 
