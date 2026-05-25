@@ -94,6 +94,9 @@ function _handle_snippets_key!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     n = length(_snippets_visible(m))
+    # Query+category-aware Esc: Esc/q clears query → clears category
+    # → closes the modal (three escapes peel through filter state).
+    # Can't use _modal_close_key! because of that.
     if evt.key === :escape || evt.char == 'q'
         if !isempty(m.snip_query)
             m.snip_query = ""; m.snip_cursor = 1
@@ -102,16 +105,15 @@ function _handle_snippets_key!(m::RessacApp, evt::TK.KeyEvent)
         else
             m.modal = :none
         end
-    elseif evt.char == '/'
+        return
+    end
+    _modal_cursor_nav!(m, evt, :snip_cursor, n) && return
+    if evt.char == '/'
         m.snip_search_mode = true
     elseif evt.key === :tab || evt.char == 'l' || evt.key === :right
         _snip_cycle_category!(m, +1)
     elseif evt.char == 'h' || evt.key === :left
         _snip_cycle_category!(m, -1)
-    elseif evt.char == 'j' || evt.key === :down
-        m.snip_cursor = min(m.snip_cursor + 1, max(n, 1))
-    elseif evt.char == 'k' || evt.key === :up
-        m.snip_cursor = max(m.snip_cursor - 1, 1)
     elseif evt.char == ' '
         _preview_snippet!(m)
     elseif evt.key === :enter || evt.char == '\r'

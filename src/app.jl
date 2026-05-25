@@ -2571,6 +2571,47 @@ function _scroll_to_show(cursor::Int, total::Int, body_h::Int, scroll::Int)
 end
 
 """
+    _modal_cursor_nav!(m, evt, cursor_field, n) -> Bool
+
+Standard list-modal cursor navigation: `j` / `:down` increments,
+`k` / `:up` decrements. Reads + writes the cursor field via Symbol
+lookup so each modal can keep its own (`browser_cursor`,
+`mixer_cursor`, …). Cursor stays clamped to `[1, max(n, 1)]`.
+
+Returns `true` iff the event was a nav key and was consumed — the
+modal's handler should early-return in that case.
+"""
+function _modal_cursor_nav!(m::RessacApp, evt::TK.KeyEvent,
+                            cursor_field::Symbol, n::Int)
+    if evt.char == 'j' || evt.key === :down
+        cur = getfield(m, cursor_field)
+        setfield!(m, cursor_field, min(cur + 1, max(n, 1)))
+        return true
+    elseif evt.char == 'k' || evt.key === :up
+        cur = getfield(m, cursor_field)
+        setfield!(m, cursor_field, max(cur - 1, 1))
+        return true
+    end
+    return false
+end
+
+"""
+    _modal_close_key!(m, evt) -> Bool
+
+Standard modal close: `Esc` or `q` closes the modal. Returns `true`
+iff the modal was closed. Modals that need query-aware Esc (clear
+the query first, close on the second Esc) should NOT call this and
+handle Esc themselves.
+"""
+function _modal_close_key!(m::RessacApp, evt::TK.KeyEvent)
+    if evt.key === :escape || evt.char == 'q'
+        m.modal = :none
+        return true
+    end
+    return false
+end
+
+"""
     _active_slots_summary(m) -> String
 
 Compact list of slot ids currently scheduled, e.g. "@d1 @d2 @d4".

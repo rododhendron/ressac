@@ -55,13 +55,9 @@ end
 
 function _handle_synthlib_key!(m::RessacApp, evt::TK.KeyEvent)
     n = length(_synthlib_all_entries())
-    if evt.key === :escape || evt.char == 'q'
-        m.modal = :none
-    elseif evt.char == 'j' || evt.key === :down
-        m.synthlib_cursor = min(m.synthlib_cursor + 1, n)
-    elseif evt.char == 'k' || evt.key === :up
-        m.synthlib_cursor = max(m.synthlib_cursor - 1, 1)
-    elseif evt.char == ' '
+    _modal_close_key!(m, evt)        && return
+    _modal_cursor_nav!(m, evt, :synthlib_cursor, n) && return
+    if evt.char == ' '
         _preview_synth_from_library!(m)
     elseif evt.key === :enter || evt.char == '\r'
         _instantiate_synth_from_library!(m)

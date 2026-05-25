@@ -175,6 +175,71 @@
         end
     end
 
+    # ── app.jl — _modal_cursor_nav! / _modal_close_key! ──
+    @testset "_modal_cursor_nav! handles j/k bounds correctly" begin
+        TK   = Ressac.TK
+        mock = MockOSCClient()
+        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
+        kp   = TK.key_press
+        app.synthlib_cursor = 1
+        # j moves down, clamped to n.
+        @test Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:char, 'j', kp), :synthlib_cursor, 3) == true
+        @test app.synthlib_cursor == 2
+        @test Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:char, 'j', kp), :synthlib_cursor, 3) == true
+        @test app.synthlib_cursor == 3
+        # j at n stays at n.
+        Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:char, 'j', kp), :synthlib_cursor, 3)
+        @test app.synthlib_cursor == 3
+        # k decrements, clamped to 1.
+        @test Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:char, 'k', kp), :synthlib_cursor, 3) == true
+        @test app.synthlib_cursor == 2
+        # :down / :up also work.
+        @test Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:down, '\0', kp), :synthlib_cursor, 3) == true
+        @test app.synthlib_cursor == 3
+        @test Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:up, '\0', kp), :synthlib_cursor, 3) == true
+        @test app.synthlib_cursor == 2
+        # Non-nav key not consumed.
+        @test Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:char, 'x', kp), :synthlib_cursor, 3) == false
+    end
+
+    @testset "_modal_cursor_nav! — empty list cursor stays at 1" begin
+        TK = Ressac.TK
+        mock = MockOSCClient()
+        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
+        app.synthlib_cursor = 1
+        Ressac._modal_cursor_nav!(app,
+            TK.KeyEvent(:char, 'j', TK.key_press), :synthlib_cursor, 0)
+        @test app.synthlib_cursor == 1
+    end
+
+    @testset "_modal_close_key! — Esc or q closes" begin
+        TK = Ressac.TK
+        kp = TK.key_press
+        mock = MockOSCClient()
+        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
+        app.modal = :synth_library
+        @test Ressac._modal_close_key!(app,
+            TK.KeyEvent(:escape, '\0', kp)) == true
+        @test app.modal === :none
+        # q does the same.
+        app.modal = :synth_library
+        @test Ressac._modal_close_key!(app,
+            TK.KeyEvent(:char, 'q', kp)) == true
+        @test app.modal === :none
+        # Anything else: false, modal preserved.
+        app.modal = :synth_library
+        @test Ressac._modal_close_key!(app,
+            TK.KeyEvent(:char, 'x', kp)) == false
+        @test app.modal === :synth_library
+    end
+
     # ── autocomplete.jl — completion picker state ──
     @testset "ex-command Tab cycles + picks up via picker" begin
         # Regression: `:starter <Tab>` used to silently splice the

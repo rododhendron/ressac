@@ -26,13 +26,9 @@ end
 function _handle_mixer_key!(m::RessacApp, evt::TK.KeyEvent)
     slots = _mixer_slots(m)
     n = length(slots)
-    if evt.key === :escape || evt.char == 'q'
-        m.modal = :none; return
-    elseif evt.char == 'j' || evt.key === :down
-        m.mixer_cursor = min(m.mixer_cursor + 1, max(n, 1))
-    elseif evt.char == 'k' || evt.key === :up
-        m.mixer_cursor = max(m.mixer_cursor - 1, 1)
-    elseif evt.char == 'm' && 1 <= m.mixer_cursor <= n
+    _modal_close_key!(m, evt) && return
+    _modal_cursor_nav!(m, evt, :mixer_cursor, n) && return
+    if evt.char == 'm' && 1 <= m.mixer_cursor <= n
         slot = slots[m.mixer_cursor]
         if haskey(_APP_MUTED_PATTERNS, slot)
             _unmute_pattern_slot!(m, slot)

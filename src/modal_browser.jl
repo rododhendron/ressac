@@ -92,17 +92,19 @@ end
 function _handle_browser_key!(m::RessacApp, evt::TK.KeyEvent)
     entries = _browser_entries(m)
     n = length(entries)
+    # Query-aware Esc: with a non-empty query the modal stays open and
+    # the user just clears their filter. So this can't use the generic
+    # _modal_close_key! helper.
     if evt.key === :escape || (evt.char == 'q' && isempty(m.browser_query))
         m.modal = :none
-    elseif evt.key === :enter
+        return
+    end
+    _modal_cursor_nav!(m, evt, :browser_cursor, n) && return
+    if evt.key === :enter
         if 1 <= m.browser_cursor <= n
             _browser_insert!(m, entries[m.browser_cursor])
         end
         m.modal = :none
-    elseif evt.char == 'j' || evt.key === :down
-        m.browser_cursor = min(m.browser_cursor + 1, max(n, 1))
-    elseif evt.char == 'k' || evt.key === :up
-        m.browser_cursor = max(m.browser_cursor - 1, 1)
     elseif evt.char == 'K' || evt.char == ' '
         if 1 <= m.browser_cursor <= n
             _browser_preview!(m, entries[m.browser_cursor])

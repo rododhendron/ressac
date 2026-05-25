@@ -131,20 +131,19 @@ function _handle_sccode_key!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     n = length(_sccode_filtered(m))
+    # Query-aware Esc — see modal_snippets for the same pattern.
     if evt.key === :escape || evt.char == 'q'
-        # Esc with non-empty query clears the filter first; second Esc closes.
         if !isempty(m.sccode_query)
             m.sccode_query = ""
             m.sccode_cursor = 1
         else
             m.modal = :none
         end
-    elseif evt.char == '/'
+        return
+    end
+    _modal_cursor_nav!(m, evt, :sccode_cursor, n) && return
+    if evt.char == '/'
         m.sccode_search_mode = true
-    elseif evt.char == 'j' || evt.key === :down
-        m.sccode_cursor = min(m.sccode_cursor + 1, max(n, 1))
-    elseif evt.char == 'k' || evt.key === :up
-        m.sccode_cursor = max(m.sccode_cursor - 1, 1)
     elseif evt.char == 'n'
         _sccode_paginate!(m, +1)
     elseif evt.char == 'p'
