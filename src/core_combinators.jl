@@ -596,6 +596,15 @@ function run(n::Int)
 end
 
 """
+    runp(n) -> Pattern{Int}
+
+Exported alias of [`run`](@ref). Same behaviour — fires `0, 1, …, n-1`
+once per cycle. Renamed for export to avoid clashing with
+`Base.run` (which spawns shell commands).
+"""
+const runp = run
+
+"""
     choose(xs) -> Pattern{T}
 
 One random pick from `xs` per cycle. Same seed → same pick (the

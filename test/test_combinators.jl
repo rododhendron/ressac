@@ -186,11 +186,14 @@ using Ressac
         @test [ev.value for ev in evs] == [:bd, :bd, :bd, :sn, :sn, :sn]
     end
 
-    @testset "run produces 0..n-1 once per cycle" begin
-        # `run` collides with Base.run, so use the qualified path.
-        evs = query(Ressac.run(4), 0, 1)
+    @testset "runp produces 0..n-1 once per cycle" begin
+        # `run` collides with Base.run, so the export is `runp`.
+        evs = query(runp(4), 0, 1)
         @test [ev.value for ev in evs] == [0, 1, 2, 3]
         @test [ev.start for ev in evs] == [0//1, 1//4, 2//4, 3//4]
+        # The qualified path Ressac.run still works for code copied
+        # from Tidal/Strudel.
+        @test query(Ressac.run(4), 0, 1) == evs
     end
 
     @testset "choose is deterministic per cycle" begin

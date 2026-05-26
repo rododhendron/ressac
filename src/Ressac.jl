@@ -63,9 +63,9 @@ export mask
 export jux, juxBy, off, degrade, degradeBy
 export sometimes, sometimesBy, often, rarely
 export palindrome, iter, iterBack, chunk
-# `run` is in Base — call `Ressac.run(8)` or use the equivalent
-# `<0 1 2 3 4 5 6 7>` mini-notation. Not exported to avoid clash.
-export lastOf, firstOf, early, late, ply, choose, seq, structPat
+# `run` collides with Base.run (shell-spawn); export as `runp` instead.
+# Users can still use `Ressac.run(8)` directly in scripts.
+export lastOf, firstOf, early, late, ply, runp, choose, seq, structPat
 # Continuous signals. `range_pat` / `rand_pat` keep `_pat` to avoid
 # clashing with Base.range / Base.rand respectively.
 export sine, cosine, tri, saw, square, perlin, segment
