@@ -66,6 +66,9 @@ export palindrome, iter, iterBack, chunk
 # `run` collides with Base.run (shell-spawn); export as `runp` instead.
 # Users can still use `Ressac.run(8)` directly in scripts.
 export lastOf, firstOf, early, late, ply, runp, choose, seq, structPat
+# `chop` collides with Base.chop (string trim); export as `chopp`.
+# `Ressac.chop` still works for copy-pasted Tidal code.
+export striate, chopp, nrun
 # Continuous signals. `range_pat` / `rand_pat` keep `_pat` to avoid
 # clashing with Base.range / Base.rand respectively.
 export sine, cosine, tri, saw, square, perlin, segment

@@ -12,6 +12,7 @@ struct RepeatNode    <: MNode; child::MNode; n::Int end
 struct EuclidNode    <: MNode; child::MNode; k::Int; n::Int; rot::Int end
 struct DegradeNode   <: MNode; child::MNode; prob::Float64 end          # probabilistic drop
 struct ChordNode     <: MNode; children::Vector{MNode} end              # parallel sub-sequences (`[a b,c d]`)
+struct RandomAltNode <: MNode; children::Vector{MNode} end              # random pick per cycle (`a | b | c`)
 
 # ---------------------------------------------------------------------------
 # Tokenizer
@@ -53,6 +54,8 @@ function _tokenize(s::String)
             push!(tokens, MToken(:rparen, nothing, i)); i = nextind(s, i)
         elseif c == ','
             push!(tokens, MToken(:comma, nothing, i)); i = nextind(s, i)
+        elseif c == '|'
+            push!(tokens, MToken(:pipe, nothing, i)); i = nextind(s, i)
         elseif c == '?'
             push!(tokens, MToken(:question, nothing, i)); i = nextind(s, i)
         elseif isdigit(c) || (c == '-' && nextind(s, i) <= n && isdigit(s[nextind(s, i)]))
@@ -238,19 +241,25 @@ end
 """
     _parse_seq_or_chord!(ps, end_kind) -> MNode
 
-Same as `_parse_seq_until!` plus comma support: a `,` at the top
-level of the group splits the contents into parallel sub-sequences.
+Parse a group with three-level token-separation precedence:
 
-  `[bd hh sn]`       → SeqNode([bd, hh, sn])
-  `[bd hh, sn cp]`   → ChordNode([SeqNode([bd, hh]), SeqNode([sn, cp])])
+  `,`  separates parallel voices  →  ChordNode
+  `|`  separates random alternatives within a voice → RandomAltNode
+  ` `  (whitespace) is the sequence default → SeqNode
 
-The chord plays every sub-sequence in parallel over the same slot
-duration (Tidal's `[a b, c d]` semantics).
+  `[bd hh sn]`         → SeqNode([bd, hh, sn])
+  `[bd hh, sn cp]`     → ChordNode([SeqNode([bd, hh]), SeqNode([sn, cp])])
+  `[bd | hh | sn]`     → RandomAltNode (one pick per cycle)
+  `[bd, hh | cp]`      → ChordNode of (bd, RandomAlt(hh, cp))
+
+`,` binds the loosest (chord across voices), `|` tighter (alts inside
+a voice), juxtaposition (whitespace) tightest (sequence within an alt).
 """
 function _parse_seq_or_chord!(ps::ParseState, end_kind::Symbol)
-    sequences = Vector{Vector{Tuple{MNode,Int}}}()
-    current   = Tuple{MNode,Int}[]
-    seen_comma = false
+    # voices :: [ [alt_children1, alt_children2, ...], [alt_children1, ...], ... ]
+    voices = Vector{Vector{Vector{Tuple{MNode,Int}}}}()
+    current_voice = Vector{Vector{Tuple{MNode,Int}}}()
+    current_alt   = Tuple{MNode,Int}[]
     while true
         t = _peek(ps)
         if t === nothing
@@ -261,31 +270,43 @@ function _parse_seq_or_chord!(ps::ParseState, end_kind::Symbol)
             _advance!(ps); break
         end
         if t.kind == :comma
-            _advance!(ps); seen_comma = true
-            push!(sequences, current)
-            current = Tuple{MNode,Int}[]
+            _advance!(ps)
+            push!(current_voice, current_alt)
+            current_alt = Tuple{MNode,Int}[]
+            push!(voices, current_voice)
+            current_voice = Vector{Vector{Tuple{MNode,Int}}}()
+            continue
+        end
+        if t.kind == :pipe
+            _advance!(ps)
+            push!(current_voice, current_alt)
+            current_alt = Tuple{MNode,Int}[]
             continue
         end
         if t.kind == :extend
             _advance!(ps)
-            if isempty(current)
-                push!(current, (SilenceNode(), 1))
+            if isempty(current_alt)
+                push!(current_alt, (SilenceNode(), 1))
             else
-                last_node, last_w = current[end]
-                current[end] = (last_node, last_w + 1)
+                last_node, last_w = current_alt[end]
+                current_alt[end] = (last_node, last_w + 1)
             end
             continue
         end
-        push!(current, _parse_unit!(ps))
+        push!(current_alt, _parse_unit!(ps))
     end
-    push!(sequences, current)
-    if !seen_comma
-        return isempty(current) ? SilenceNode() : SeqNode(current)
+    push!(current_voice, current_alt)
+    push!(voices, current_voice)
+
+    # Reduce each voice's alts to one MNode.
+    voice_nodes = MNode[]
+    for voice in voices
+        alts = MNode[isempty(alt) ? SilenceNode() :
+                     (length(alt) == 1 && alt[1][2] == 1 ? alt[1][1] : SeqNode(alt))
+                     for alt in voice]
+        push!(voice_nodes, length(alts) == 1 ? alts[1] : RandomAltNode(alts))
     end
-    return ChordNode(MNode[
-        isempty(seq) ? SilenceNode() : SeqNode(seq)
-        for seq in sequences
-    ])
+    return length(voice_nodes) == 1 ? voice_nodes[1] : ChordNode(voice_nodes)
 end
 
 # ---------------------------------------------------------------------------
@@ -315,6 +336,20 @@ function _emit!(out::Vector{Event{Symbol}}, node::ChordNode,
     for child in node.children
         _emit!(out, child, a, b, cycle)
     end
+end
+
+# Random alternative: pick ONE child per cycle, deterministic via
+# hash so the same cycle always picks the same option (groove is
+# reproducible across renders).
+function _emit!(out::Vector{Event{Symbol}}, node::RandomAltNode,
+                a::Rational, b::Rational, cycle::Int)
+    n = length(node.children)
+    n == 0 && return
+    # Hash mixed with a fixed salt so different RandomAltNodes in
+    # the same cycle don't lockstep to the same choice.
+    salt = UInt(0x9e3779b97f4a7c15)
+    idx = mod(hash(cycle, salt) % UInt32, UInt32(n)) + 1
+    _emit!(out, node.children[idx], a, b, cycle)
 end
 
 function _emit!(::Vector{Event{Symbol}}, ::SilenceNode,

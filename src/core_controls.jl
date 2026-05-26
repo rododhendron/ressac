@@ -260,6 +260,20 @@ delay(x) = _control_op(:delay, _overwrite, x)
 shape(x) = _control_op(:shape, _overwrite, x)
 
 """
+    nrun(count) -> (Pattern -> ControlPattern)
+
+Shortcut for `p |> n(runp(count))` — iterate through `count`
+sample variants (or note offsets) once per cycle. The most common
+combo by far, so worth a dedicated name:
+
+```julia
+@d1 :supersaw |> nrun(8)        # arpège 0→7 (=  |> n(runp(8)))
+@d1 :amen     |> nrun(16)       # cycle through amen:0..amen:15
+```
+"""
+nrun(count::Int) = p -> _as_pattern(p) |> n(runp(count))
+
+"""
     pump(steps_per_cycle=4, depth=0.6) -> (Pattern -> Pattern)
 
 Sidechain-style gain ducking, faked via a per-cycle gain pattern.

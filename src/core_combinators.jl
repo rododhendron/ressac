@@ -17,11 +17,18 @@ function pure(v::T) where {T}
     Pattern{T}((s::Rational, e::Rational) -> begin
         events = Event{T}[]
         n_start = floor(Int, s)
-        n_stop = ceil(Int, e)
+        n_stop  = ceil(Int, e)
         for n in n_start:(n_stop - 1)
-            a = max(Rational{Int64}(n), s)
-            b = min(Rational{Int64}(n + 1), e)
-            a < b && push!(events, Event{T}(a, b, v))
+            nat_start = Rational{Int64}(n)
+            # Only emit when the NATURAL onset is in the query window.
+            # Don't clip on the left — a clipped left edge would make
+            # the scheduler treat the fragment as a fresh onset (and
+            # fire again), which was the `slow(2, pure(:bd))` bug.
+            # The natural stop overflows past `e` is fine: the scheduler
+            # cares about start, downstream consumers clip on intersect.
+            if s <= nat_start < e
+                push!(events, Event{T}(nat_start, Rational{Int64}(n + 1), v))
+            end
         end
         events
     end)
@@ -790,3 +797,82 @@ function segment(n::Int, p::Pattern{Float64})
     end)
 end
 segment(n::Int) = p -> segment(n, p)
+
+# ---------------------------------------------------------------------------
+# Sample slicing — striate / chop
+# ---------------------------------------------------------------------------
+#
+# Both produce N events per cycle from a single sample symbol, each event
+# carrying SuperDirt's `:begin`/`:end` params so SC plays only the slice
+# `[i/N, (i+1)/N)` of the sample's audio. Difference:
+#
+#   striate(N, p)  — N slices, INTERLEAVED across cycles. Each cycle gets
+#                    N events in the cycle's natural order: slice 0 ..
+#                    slice N-1. The sample is sliced uniformly.
+#   chop(N, p)     — same N events per cycle, same begin/end positions.
+#                    Functionally identical to striate for our purposes
+#                    (Tidal's chop has different semantics for compound
+#                    events; we expose them as aliases until that lands).
+#
+# Routing: events carry a ControlMap with `:s` (sample), `:begin`, `:end`,
+# `:n` (variant, default 0). Pipe-friendly: `:bd |> striate(8)`.
+
+"""
+    striate(n, p) -> Pattern{ControlMap}
+    striate(n)    -> (Pattern{Symbol} -> Pattern{ControlMap})
+
+Slice each sample event of `p` into `n` equal-time segments, emitting
+`n` ControlMap events per cycle with `:begin = i/n` and `:end = (i+1)/n`
+so SuperDirt plays only the matching slice of audio. Useful for
+amen-break choppage, granular textures, lo-fi sample mangling.
+
+```julia
+@d1 :amen |> striate(8)        # 8 even chops per cycle
+@d1 :amen |> striate(16) |> rev   # backward chops
+```
+"""
+function striate(n::Int, p::Pattern{Symbol})
+    n > 0 || throw(ArgumentError("striate needs n > 0"))
+    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+        inner = p(s, e)
+        out = Event{ControlMap}[]
+        n_rat = Rational{Int64}(n)
+        for ev in inner
+            width = ev.stop - ev.start
+            slice = width / n_rat
+            for i in 0:(n - 1)
+                a = ev.start + slice * i
+                b = i == n - 1 ? ev.stop : ev.start + slice * (i + 1)
+                a < e && b > s || continue
+                cm = ControlMap(:s => ev.value,
+                                :begin => Float32(i) / Float32(n),
+                                :end   => Float32(i + 1) / Float32(n))
+                push!(out, Event{ControlMap}(max(a, s), min(b, e), cm))
+            end
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+striate(n::Int) = p -> striate(n, _as_pattern(p))
+
+"""
+    chop(n, p) -> Pattern{ControlMap}
+    chop(n)    -> (Pattern{Symbol} -> Pattern{ControlMap})
+
+Alias of [`striate`](@ref) for now. Tidal differentiates `chop`
+from `striate` via compound-event semantics that we haven't
+implemented yet (Tidal's `chop` preserves the original event arc
+and emits N sub-events INSIDE it, whereas `striate` interleaves
+slices across cycles). Until then both ship the same OSC payload.
+"""
+chop(n::Int, p::Pattern{Symbol}) = striate(n, p)
+chop(n::Int) = p -> chop(n, _as_pattern(p))
+
+"""
+    chopp(n) -> (Pattern{Symbol} -> Pattern{ControlMap})
+
+Exported alias of [`chop`](@ref). Renamed to avoid clashing with
+`Base.chop` (which trims trailing characters from a string).
+"""
+const chopp = chop

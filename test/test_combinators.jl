@@ -4,15 +4,22 @@ using Ressac
 @testset "combinators" begin
     @testset "pure" begin
         p = pure(:bd)
+        # Natural-onset-only emission: an event whose start is INSIDE
+        # the query window is returned; an event whose natural start
+        # falls before the window is NOT (would otherwise cause
+        # `slow(2, pure(:bd))` to fire every cycle by re-treating the
+        # clipped fragment as a fresh onset).
         @test p(0//1, 1//1) == [Event(0//1, 1//1, :bd)]
         @test p(0//1, 2//1) == [Event(0//1, 1//1, :bd), Event(1//1, 2//1, :bd)]
-        # Partial window: event is clipped, not excluded.
-        @test p(1//4, 3//4) == [Event(1//4, 3//4, :bd)]
-        # Multi-cycle windows starting mid-cycle.
+        # Sub-cycle query that doesn't contain a natural onset (0 is
+        # before the window, 1 is at/after the window's end) → empty.
+        @test p(1//4, 3//4) == Event{Symbol}[]
+        # Query starting mid-cycle: only natural onsets 1 and 2 are
+        # in [1/2, 5/2). The cycle-0 onset (0) is before the window
+        # so its fragment isn't emitted.
         @test p(1//2, 5//2) == [
-            Event(1//2, 1//1, :bd),
             Event(1//1, 2//1, :bd),
-            Event(2//1, 5//2, :bd),
+            Event(2//1, 3//1, :bd),
         ]
     end
 
@@ -236,6 +243,42 @@ using Ressac
               query(p"bd sn cp" |> every(2, rev),  0, 4)
     end
 
+    # ── Random alternation in mini-notation: a | b | c ─────────────
+    @testset "bd | hh | cp picks one option per cycle" begin
+        p = parse_minino("bd | hh | cp")
+        picks = Set{Symbol}()
+        for cyc in 0:11
+            evs = p(Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+            @test length(evs) == 1   # exactly one alternative each cycle
+            push!(picks, evs[1].value)
+        end
+        # Across 12 cycles every alternative should appear at least once
+        # (probabilistically ~certain with 3 choices and hash randomness).
+        @test :bd in picks
+        @test :hh in picks
+        @test :cp in picks
+    end
+
+    @testset "random alt is deterministic per cycle" begin
+        p = parse_minino("bd | hh | cp")
+        a = [p(Rational{Int64}(c), Rational{Int64}(c+1))[1].value for c in 0:5]
+        b = [p(Rational{Int64}(c), Rational{Int64}(c+1))[1].value for c in 0:5]
+        @test a == b   # reproducible across queries
+    end
+
+    @testset "chord+alt interaction: [a, b | c]" begin
+        # voice 1 = a, voice 2 = (b | c). Chord of (a, RandomAlt).
+        # Every cycle: a is constant, second voice randomly b or c.
+        p = parse_minino("[bd, hh | cp]")
+        for cyc in 0:3
+            evs = p(Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+            @test length(evs) == 2
+            vals = Set([ev.value for ev in evs])
+            @test :bd in vals
+            @test (:hh in vals) || (:cp in vals)   # one of the two alts
+        end
+    end
+
     # ── Chord syntax in mini-notation: [a,b,c] = parallel events ──
     @testset "[a,b] chord: two atomic events with same arc" begin
         evs = (parse_minino("[bd,sn]"))(0//1, 1//1)
@@ -319,6 +362,36 @@ using Ressac
     @testset "segment(n) produces n events per cycle" begin
         evs = query(sine() |> segment(7), 0, 2)
         @test length(evs) == 14
+    end
+
+    # ── Sample slicing — striate / chop ─────────────────────────────
+    @testset "striate(n) emits n events with begin/end params" begin
+        evs = query(:bd |> striate(4), 0, 1)
+        @test length(evs) == 4
+        # First slice covers begin=0, end=1/4 of the sample.
+        @test evs[1].value[:s] === :bd
+        @test evs[1].value[:begin] ≈ 0.0f0
+        @test evs[1].value[:end]   ≈ 0.25f0
+        # Last slice covers 3/4..1.
+        @test evs[end].value[:begin] ≈ 0.75f0
+        @test evs[end].value[:end]   ≈ 1.0f0
+    end
+
+    @testset "chopp is an alias of striate today" begin
+        # Exported as `chopp` (Base.chop collision); also reachable via
+        # `Ressac.chop` for Tidal-style code.
+        @test [ev.value for ev in query(:bd |> striate(4), 0, 1)] ==
+              [ev.value for ev in query(:bd |> chopp(4),    0, 1)]
+        @test [ev.value for ev in query(:bd |> Ressac.chop(4), 0, 1)] ==
+              [ev.value for ev in query(:bd |> striate(4),     0, 1)]
+    end
+
+    # ── nrun convenience ────────────────────────────────────────────
+    @testset "nrun(N) is equivalent to n(runp(N))" begin
+        a = query(:supersaw |> nrun(4),         0, 1)
+        b = query(:supersaw |> n(runp(4)),      0, 1)
+        @test [ev.value[:n] for ev in a] == [ev.value[:n] for ev in b]
+        @test [ev.value[:n] for ev in a] == [0, 1, 2, 3]
     end
 
     @testset "structPat — use bool mask structure with pattern's values" begin
