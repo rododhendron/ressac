@@ -1,6 +1,6 @@
 # Wiki — in-app documentation browser modal.
 # Pages live in docs/wiki/*.md and are loaded by `_load_wiki_pages`
-# (defined in src/wiki.jl), one `_WikiPage` per file. Re-opens always
+# (defined in src/content_wiki.jl), one `_WikiPage` per file. Re-opens always
 # re-read from disk so editing a .md while Ressac is running shows up
 # on the next :wiki.
 #

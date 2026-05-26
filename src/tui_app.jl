@@ -906,8 +906,8 @@ function _apply_pattern_shortcut!(m::RessacApp, nl_before::Bool,
     _push_app_log!(m, "[INFO] shortcut → $(strip(snippet))")
 end
 
-include("pattern_editor.jl")
-include("leader_snippets.jl")
+include("tui_pattern_editor.jl")
+include("tui_leader_snippets.jl")
 
 
 # Number-nudge regex: optional sign, digits, optional fractional part.
@@ -1024,7 +1024,7 @@ function _char_split(line::AbstractString, col::Int)
     return (String(take!(pre)), suf)
 end
 
-include("autocomplete.jl")
+include("tui_autocomplete.jl")
 
 const _ACTIVE_SLOT_RX_APP   = r"^\s*@(d\d+)\b"
 const _COMMENTED_SLOT_RX_APP = r"^\s*#+\s*@(d\d+)\b"
@@ -1174,7 +1174,7 @@ end
 
 function _scope_cycle_key!(m::RessacApp; dir::Int = +1)
     # Use the shared cycle order so new scope types added in
-    # scope.jl automatically show up under S without a separate
+    # tui_scope.jl automatically show up under S without a separate
     # edit here. `dir = -1` reverses (used by scroll-down on the
     # scope pane).
     order = _SCOPE_CYCLE_ORDER
@@ -2943,17 +2943,13 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
     end
 end
 
-include("editor_ops.jl")
+include("tui_editor_ops.jl")
 
-# Wiki modal — extracted to src/modal_wiki.jl
 include("modal_wiki.jl")
 
-
-# Snippets picker — extracted to src/modal_snippets.jl
 include("modal_snippets.jl")
 
-
-include("input_modes.jl")
+include("tui_input_modes.jl")
 
 function _next_free_d_slot(ed::TK.CodeEditor)
     used = Set{Int}()

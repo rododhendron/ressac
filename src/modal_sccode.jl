@@ -1,5 +1,5 @@
 # sccode.org browser modal — UI half of the sccode integration.
-# The networking + parsing half lives in src/sccode.jl (struct
+# The networking + parsing half lives in src/content_sccode.jl (struct
 # _SccodeEntry, _sccode_fetch_list, _sccode_fetch_source,
 # _sccode_extract_synthdef_name). This file owns:
 #

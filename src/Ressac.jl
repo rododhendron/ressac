@@ -9,49 +9,49 @@ The full design is in `docs/journal/20260518_plan_dev.md`.
 module Ressac
 
 # ─── Core domain — pure pattern types + algebra, no I/O ───────────
-include("core.jl")           # Pattern{T}, Event{T}, query
-include("mininotation.jl")   # the p"…" / "…" parser
-include("combinators.jl")    # fast/slow/jux/every/sometimes/…
-include("algebra.jl")        # stack/cat/mask
-include("controls.jl")       # gain/lpf/hpf/pan/n/set/pump/…
+include("core_patterns.jl")      # Pattern{T}, Event{T}, query
+include("core_mininotation.jl")  # the p"…" / "…" parser
+include("core_combinators.jl")   # fast/slow/jux/every/sometimes/…
+include("core_algebra.jl")       # stack/cat/mask
+include("core_controls.jl")      # gain/lpf/hpf/pan/n/set/pump/…
 
 # ─── I/O primitives ───────────────────────────────────────────────
-include("osc.jl")            # OSC wire format (encode/decode)
-include("scheduler.jl")      # real-time loop + locked snapshots
+include("io_osc.jl")             # OSC wire format (encode/decode)
+include("io_scheduler.jl")       # real-time loop + locked snapshots
 
 # ─── Shared TUI helpers (used by autocomplete + modals + app) ─────
-include("hints.jl")          # _fuzzy_score, _COMMAND_NAMES, _MODE_HINTS
+include("tui_hints.jl")          # _fuzzy_score, _COMMAND_NAMES, _MODE_HINTS
 
 # ─── Live session lifecycle ───────────────────────────────────────
-include("tui.jl")            # _LIVE_SCHEDULER, start_live!, live()
-include("live_api.jl")       # @d1..@d64 macros, _route_to_slot!
+include("live_boot.jl")          # _LIVE_SCHEDULER, start_live!, live()
+include("live_api.jl")           # @d1..@d64 macros, _route_to_slot!
 
 # ─── Plugin registry + state flag ─────────────────────────────────
-include("plugins.jl")        # _SAMPLE/INSTRUMENT/SYNTH_REGISTRY,
-                             # _SYNTH_ALIASES, _INSTALLING_SYNTH
+include("plugin_registry.jl")    # _SAMPLE/INSTRUMENT/SYNTH_REGISTRY,
+                                 # _SYNTH_ALIASES, _INSTALLING_SYNTH
 
 # ─── Synth DSL submodule (uses _LIVE_SCHEDULER + registry helpers) ─
-include("synth_dsl.jl")      # SynthDSL: @synth, Sig, every ugen wrapper
-include("synth_library.jl")  # _SYNTH_LIBRARY entries (uses SynthDSL)
+include("synth_dsl.jl")          # SynthDSL: @synth, Sig, every ugen wrapper
+include("synth_library.jl")      # _SYNTH_LIBRARY entries (uses SynthDSL)
 
 # ─── Static docs / starter packs / scope state ────────────────────
-include("docs.jl")           # _PARAM_DOCS, _STARTER_PACKS
-include("livedoc.jl")        # _GUIDE_LINES, _SYNTH_GUIDE_LINES,
-                             # livedoc lookups
-include("scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
-                             # external OSC triggers
+include("tui_docs.jl")           # _PARAM_DOCS, _STARTER_PACKS
+include("tui_livedoc.jl")        # _GUIDE_LINES, _SYNTH_GUIDE_LINES,
+                                 # livedoc lookups
+include("tui_scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
+                                 # external OSC triggers
 
 # ─── Content / configuration / theming ────────────────────────────
-include("config.jl")         # RessacConfig, _load_ressac_config!
-include("themes.jl")         # _apply_theme!, palette switching
-include("snippets.jl")       # _SNIPPETS (browsable via :snip)
-include("sccode.jl")         # sccode.org HTTP client
-include("wiki.jl")           # docs/wiki/*.md loader
+include("session_config.jl")     # RessacConfig, _load_ressac_config!
+include("session_themes.jl")     # _apply_theme!, palette switching
+include("content_snippets.jl")   # _SNIPPETS (browsable via :snip)
+include("content_sccode.jl")     # sccode.org HTTP client
+include("content_wiki.jl")       # docs/wiki/*.md loader
 
 # ─── RessacApp TUI (transitively includes the modal_*.jl + key
-#     handlers + autocomplete + editor_ops + input_modes + pattern_editor
-#     + leader_snippets) ──────────────────────────────────────────
-include("app.jl")
+#     handlers + autocomplete + editor_ops + input_modes
+#     + pattern_editor + leader_snippets) ─────────────────────────
+include("tui_app.jl")
 
 # ─── Plugin section handlers (last — uses SynthDSL.@synth via
 #     Base.include for .jl orphan auto-discovery) ─────────────────

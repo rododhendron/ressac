@@ -1,5 +1,5 @@
 # Snippets picker — context-aware multi-line templates. The snippet
-# table itself lives in src/snippets.jl as the const _SNIPPETS; this
+# table itself lives in src/content_snippets.jl as the const _SNIPPETS; this
 # file owns the picker UI: context routing, filter, category tabs,
 # preview, insert, render. Extracted from app.jl.
 
