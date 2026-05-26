@@ -62,7 +62,14 @@ export pure, silence, fast, slow, density, rev, every, gate
 export mask
 export jux, juxBy, off, degrade, degradeBy
 export sometimes, sometimesBy, often, rarely
-export palindrome, iter, chunk
+export palindrome, iter, iterBack, chunk
+# `run` is in Base — call `Ressac.run(8)` or use the equivalent
+# `<0 1 2 3 4 5 6 7>` mini-notation. Not exported to avoid clash.
+export lastOf, firstOf, early, late, ply, choose, seq, structPat
+# Continuous signals. `range_pat` / `rand_pat` keep `_pat` to avoid
+# clashing with Base.range / Base.rand respectively.
+export sine, cosine, tri, saw, square, perlin, segment
+export range_pat, rand_pat
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
 export Scheduler, start!, stop!, set_pattern!, unset_pattern!, set_cps!, hush!, schedule_pattern!

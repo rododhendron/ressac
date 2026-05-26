@@ -11,6 +11,7 @@ struct AltNode       <: MNode; children::Vector{MNode} end             # weights
 struct RepeatNode    <: MNode; child::MNode; n::Int end
 struct EuclidNode    <: MNode; child::MNode; k::Int; n::Int; rot::Int end
 struct DegradeNode   <: MNode; child::MNode; prob::Float64 end          # probabilistic drop
+struct ChordNode     <: MNode; children::Vector{MNode} end              # parallel sub-sequences (`[a b,c d]`)
 
 # ---------------------------------------------------------------------------
 # Tokenizer
@@ -136,8 +137,7 @@ function _parse_unit!(ps::ParseState)
         node = AtomNode(Symbol(string(t.value)))
     elseif t.kind == :lbracket
         _advance!(ps)
-        children = _parse_seq_until!(ps, :rbracket)
-        node = SeqNode(children)
+        node = _parse_seq_or_chord!(ps, :rbracket)
     elseif t.kind == :langle
         _advance!(ps)
         raw = _parse_seq_until!(ps, :rangle)
@@ -235,6 +235,59 @@ function _parse_seq_until!(ps::ParseState, end_kind::Symbol)
     return children
 end
 
+"""
+    _parse_seq_or_chord!(ps, end_kind) -> MNode
+
+Same as `_parse_seq_until!` plus comma support: a `,` at the top
+level of the group splits the contents into parallel sub-sequences.
+
+  `[bd hh sn]`       → SeqNode([bd, hh, sn])
+  `[bd hh, sn cp]`   → ChordNode([SeqNode([bd, hh]), SeqNode([sn, cp])])
+
+The chord plays every sub-sequence in parallel over the same slot
+duration (Tidal's `[a b, c d]` semantics).
+"""
+function _parse_seq_or_chord!(ps::ParseState, end_kind::Symbol)
+    sequences = Vector{Vector{Tuple{MNode,Int}}}()
+    current   = Tuple{MNode,Int}[]
+    seen_comma = false
+    while true
+        t = _peek(ps)
+        if t === nothing
+            end_kind == :eof || throw(ArgumentError("Unclosed group: expected $end_kind"))
+            break
+        end
+        if t.kind == end_kind
+            _advance!(ps); break
+        end
+        if t.kind == :comma
+            _advance!(ps); seen_comma = true
+            push!(sequences, current)
+            current = Tuple{MNode,Int}[]
+            continue
+        end
+        if t.kind == :extend
+            _advance!(ps)
+            if isempty(current)
+                push!(current, (SilenceNode(), 1))
+            else
+                last_node, last_w = current[end]
+                current[end] = (last_node, last_w + 1)
+            end
+            continue
+        end
+        push!(current, _parse_unit!(ps))
+    end
+    push!(sequences, current)
+    if !seen_comma
+        return isempty(current) ? SilenceNode() : SeqNode(current)
+    end
+    return ChordNode(MNode[
+        isempty(seq) ? SilenceNode() : SeqNode(seq)
+        for seq in sequences
+    ])
+end
+
 # ---------------------------------------------------------------------------
 # Renderer
 # ---------------------------------------------------------------------------
@@ -251,6 +304,17 @@ end
 function _emit!(out::Vector{Event{Symbol}}, node::AtomNode,
                 a::Rational, b::Rational, cycle::Int)
     push!(out, Event{Symbol}(a, b, node.sym))
+end
+
+# Chord: each sub-sequence plays in parallel over the FULL [a, b)
+# slot. The renderer emits overlapping events with the same arc but
+# different values — the scheduler ships them all at the same time,
+# producing a true musical chord (or a layered rhythm).
+function _emit!(out::Vector{Event{Symbol}}, node::ChordNode,
+                a::Rational, b::Rational, cycle::Int)
+    for child in node.children
+        _emit!(out, child, a, b, cycle)
+    end
 end
 
 function _emit!(::Vector{Event{Symbol}}, ::SilenceNode,
@@ -366,12 +430,15 @@ Parse errors throw `ArgumentError` with the offending position.
 function parse_minino(s::String)
     tokens = _tokenize(s)
     state = ParseState(tokens, 1)
-    children = _parse_seq_until!(state, :eof)
-    if isempty(children)
+    root = _parse_seq_or_chord!(state, :eof)
+    if root isa SilenceNode
         return silence(Symbol)
     end
-    root = (length(children) == 1 && children[1][2] == 1) ?
-        children[1][1] : SeqNode(children)
+    # Unwrap a trivial SeqNode wrapping a single weight-1 atom so the
+    # simplest case `"bd"` returns the bare AtomNode at the top.
+    if root isa SeqNode && length(root.children) == 1 && root.children[1][2] == 1
+        root = root.children[1][1]
+    end
     return _build_pattern(root)
 end
 

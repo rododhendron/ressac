@@ -469,3 +469,315 @@ function chunk(n::Int, f, p::Pattern{T}) where {T}
     end)
 end
 chunk(n::Int, f) = p -> chunk(n, f, _as_pattern(p))
+
+# ---------------------------------------------------------------------------
+# Sprint 1 — Tidal/Strudel parity batch
+# ---------------------------------------------------------------------------
+
+"""
+    iterBack(n, p) -> Pattern{T}
+
+Like [`iter`](@ref) but rotates in the opposite direction. Cycle 0
+plays unshifted, cycle 1 starts at the LAST 1/n slice (effectively
+shifting by -1/n), cycle 2 by -2/n, etc.
+"""
+function iterBack(n::Int, p::Pattern{T}) where {T}
+    n > 0 || throw(ArgumentError("iterBack needs n > 0"))
+    iter(n, rev(p)) |> rev   # reverse twice for backward rotation
+end
+iterBack(n::Int) = p -> iterBack(n, _as_pattern(p))
+
+"""
+    lastOf(n, f, p) -> Pattern{T}
+
+Apply `f` to `p` on cycles `n-1, 2n-1, 3n-1, …` — i.e. every nth
+cycle starting from the LAST one in the period. Counterpart of
+[`every`](@ref) (which fires on cycles `0, n, 2n, …`). Same as
+Tidal's `lastOf`.
+"""
+function lastOf(n::Int, f, p::Pattern{T}) where {T}
+    n > 0 || throw(ArgumentError("lastOf needs n > 0"))
+    transformed = f(p)::Pattern{T}
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        n_start = floor(Int, s)
+        n_stop  = ceil(Int, e)
+        out = Event{T}[]
+        for cyc in n_start:(n_stop - 1)
+            a = max(Rational{Int64}(cyc), s)
+            b = min(Rational{Int64}(cyc + 1), e)
+            a < b || continue
+            chosen = (mod(cyc + 1, n) == 0) ? transformed : p
+            append!(out, chosen(a, b))
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+lastOf(n::Int, f) = p -> lastOf(n, f, _as_pattern(p))
+
+"`firstOf` — TidalCycles alias for `every` (cycle 0, n, 2n, …)."
+const firstOf = every
+
+"""
+    early(t, p) -> Pattern{T}
+
+Shift `p` `t` cycles EARLIER (`t > 0` brings events forward in
+time). Reciprocal of [`late`](@ref).
+"""
+function early(t::Real, p::Pattern{T}) where {T}
+    dt = _to_rat(t)
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        inner = p(s + dt, e + dt)
+        [Event{T}(ev.start - dt, ev.stop - dt, ev.value) for ev in inner]
+    end)
+end
+early(t::Real) = p -> early(t, _as_pattern(p))
+
+"""
+    late(t, p) -> Pattern{T}
+
+Shift `p` `t` cycles LATER. Equivalent to `early(-t, p)`.
+"""
+late(t::Real, p) = early(-_to_rat(t), _as_pattern(p))
+late(t::Real)    = p -> late(t, _as_pattern(p))
+
+"""
+    ply(n, p) -> Pattern{T}
+
+Repeat each event `n` times within its own slot (Tidal's `ply`).
+`ply(3, p"bd sn")` plays `bd bd bd sn sn sn` over one cycle.
+"""
+function ply(n::Int, p::Pattern{T}) where {T}
+    n > 0 || throw(ArgumentError("ply needs n > 0"))
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        inner = p(s, e)
+        out = Event{T}[]
+        n_rat = Rational{Int64}(n)
+        for ev in inner
+            width = ev.stop - ev.start
+            slice = width / n_rat
+            for i in 0:(n - 1)
+                a = ev.start + slice * i
+                b = i == n - 1 ? ev.stop : ev.start + slice * (i + 1)
+                a < e && b > s &&
+                    push!(out, Event{T}(max(a, s), min(b, e), ev.value))
+            end
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+ply(n::Int) = p -> ply(n, _as_pattern(p))
+
+"""
+    run(n) -> Pattern{Int}
+
+A pattern that fires the sequence `0, 1, …, n-1` once per cycle,
+each event of equal length. Useful for `n(run(8))` to iterate
+through sample variants.
+"""
+function run(n::Int)
+    n > 0 || throw(ArgumentError("run needs n > 0"))
+    Pattern{Int}((s::Rational, e::Rational) -> begin
+        n_start = floor(Int, s)
+        n_stop  = ceil(Int, e)
+        out = Event{Int}[]
+        n_rat = Rational{Int64}(n)
+        for cyc in n_start:(n_stop - 1)
+            for i in 0:(n - 1)
+                a = Rational{Int64}(cyc) + Rational{Int64}(i) / n_rat
+                b = Rational{Int64}(cyc) + Rational{Int64}(i + 1) / n_rat
+                a < e && b > s &&
+                    push!(out, Event{Int}(max(a, s), min(b, e), i))
+            end
+        end
+        out
+    end)
+end
+
+"""
+    choose(xs) -> Pattern{T}
+
+One random pick from `xs` per cycle. Same seed → same pick (the
+choice is `hash(cycle) mod length(xs)`), so the result is
+deterministic for a given session start.
+"""
+function choose(xs::AbstractVector{T}) where {T}
+    n = length(xs)
+    n > 0 || throw(ArgumentError("choose needs at least one element"))
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        n_start = floor(Int, s)
+        n_stop  = ceil(Int, e)
+        out = Event{T}[]
+        for cyc in n_start:(n_stop - 1)
+            idx = mod(hash(cyc) % UInt32, UInt32(n)) + 1
+            a = max(Rational{Int64}(cyc), s)
+            b = min(Rational{Int64}(cyc + 1), e)
+            a < b && push!(out, Event{T}(a, b, xs[idx]))
+        end
+        out
+    end)
+end
+
+"""
+    seq(xs) -> Pattern{T}
+
+Concatenate `xs` into one cycle (Tidal's `fastcat` / Strudel's
+`seq`). Each element gets a 1/n slice. Same as `fast(length(xs), cat(xs))`.
+"""
+seq(xs::AbstractVector{<:Pattern{T}}) where {T} = fast(length(xs), cat(xs))
+seq(xs::Vararg{Pattern}) = seq(collect(xs))
+
+"""
+    structPat(bools, p) -> Pattern{T}
+
+Take the *structure* of `bools` (a Pattern{Bool}) and use its
+true-events to gate `p`'s values, in order. Each true slot picks
+the NEXT value from `p`'s natural unfolding, ignoring its own
+timing. Useful when you have a rhythm mask and want to apply it
+to a melody source.
+
+Named `structPat` rather than `struct` because `struct` is a
+Julia reserved keyword.
+"""
+function structPat(bools::Pattern{Bool}, p::Pattern{T}) where {T}
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        b_evs = bools(s, e)
+        v_evs = p(s, e)
+        out = Event{T}[]
+        vi = 1
+        for be in b_evs
+            be.value || continue   # only fire on true slots
+            vi <= length(v_evs) || break
+            push!(out, Event{T}(be.start, be.stop, v_evs[vi].value))
+            vi += 1
+        end
+        out
+    end)
+end
+structPat(bools::Pattern{Bool}) = p -> structPat(bools, _as_pattern(p))
+
+# ---------------------------------------------------------------------------
+# Sprint 3 — Continuous signals (sine/saw/rand/perlin, range, segment)
+# ---------------------------------------------------------------------------
+#
+# Tidal/Strudel call these "continuous" patterns: not discrete events but
+# functions of time, sampled at query time. They're the modulation
+# backbone — `set(:cutoff, sine() |> range(400, 4000))` sweeps a filter.
+#
+# Internally we model them as `Pattern{Float64}` with a query function
+# that emits a SINGLE event covering the whole [s, e) arc with the
+# value sampled at the arc midpoint. `segment(n, sig)` discretises by
+# splitting the cycle into n samples.
+
+"""
+    sine() / cosine() / tri() / saw() / square() -> Pattern{Float64}
+
+Continuous waveform patterns, one cycle = one period. Output range
+`[-1, 1]` for sine/cosine/tri, `[0, 1]` for saw, `{0, 1}` for square.
+Used with `range(min, max)` and `segment(n)` to modulate other patterns.
+"""
+sine()   = _continuous(t -> sin(2π * t))
+cosine() = _continuous(t -> cos(2π * t))
+tri()    = _continuous(t -> begin u = mod(t, 1.0); u < 0.5 ? (4u - 1) : (3 - 4u) end)
+saw()    = _continuous(t -> mod(t, 1.0))
+square() = _continuous(t -> mod(t, 1.0) < 0.5 ? 0.0 : 1.0)
+
+"""
+    rand() -> Pattern{Float64}
+
+Continuous-ish random pattern: deterministic per cycle index but
+varying across cycles (so it doesn't freeze on a single value).
+Output `[0, 1)`. For discrete sampling use `rand() |> segment(n)`.
+"""
+function rand_pat()
+    Pattern{Float64}((s::Rational, e::Rational) -> begin
+        cyc = floor(Int, s)
+        mid = (s + e) / 2
+        v = (hash(cyc, hash(Float64(mid))) % UInt32) / Float64(typemax(UInt32))
+        [Event{Float64}(s, e, v)]
+    end)
+end
+
+"""
+    perlin() -> Pattern{Float64}
+
+Smoothed-random pattern (cheap 1D value-noise — not true Perlin
+but the use-case is identical: slowly-changing random in [0, 1)).
+Adjacent cycles' values are interpolated via cosine smoothstep.
+"""
+function perlin()
+    _h(c) = (hash(c, UInt(0x517cc1b727220a95)) % UInt32) / Float64(typemax(UInt32))
+    Pattern{Float64}((s::Rational, e::Rational) -> begin
+        mid = Float64((s + e) / 2)
+        c0 = floor(Int, mid)
+        c1 = c0 + 1
+        t  = mid - c0
+        # Cosine smoothstep blend.
+        u = (1 - cos(π * t)) / 2
+        v = _h(c0) * (1 - u) + _h(c1) * u
+        [Event{Float64}(s, e, v)]
+    end)
+end
+
+# Internal: lift `t -> Float64` into a Pattern{Float64} that emits a
+# single event covering the query arc, value sampled at the midpoint.
+function _continuous(f)
+    Pattern{Float64}((s::Rational, e::Rational) -> begin
+        mid = Float64((s + e) / 2)
+        [Event{Float64}(s, e, f(mid))]
+    end)
+end
+
+"""
+    range(lo, hi, p) -> Pattern{Float64}
+    range(lo, hi)    -> (Pattern -> Pattern)
+
+Linearly remap `p`'s output from `[-1, 1]` (or `[0, 1]` — whichever
+is its natural range) into `[lo, hi]`. The detection is naive:
+values in `[-1, 0)` are rescaled assuming a bipolar source; values
+in `[0, 1]` from a unipolar source pass through `[lo, hi]` directly.
+
+In practice, `sine() |> range(400, 4000)` does what you'd expect.
+"""
+function range_pat(lo::Real, hi::Real, p::Pattern{Float64})
+    lo_f = Float64(lo); hi_f = Float64(hi)
+    Pattern{Float64}((s::Rational, e::Rational) -> begin
+        inner = p(s, e)
+        [Event{Float64}(ev.start, ev.stop,
+                        lo_f + (hi_f - lo_f) * ((ev.value + 1) / 2))
+         for ev in inner]
+    end)
+end
+range_pat(lo::Real, hi::Real) = p -> range_pat(lo, hi, _as_pattern(p))
+
+"""
+    segment(n, p) -> Pattern{Float64}
+    segment(n)    -> (Pattern -> Pattern)
+
+Sample a continuous pattern `n` times per cycle, producing `n`
+discrete events with the value of `p` at each segment's midpoint.
+Converts a continuous signal into a usable event stream.
+"""
+function segment(n::Int, p::Pattern{Float64})
+    n > 0 || throw(ArgumentError("segment needs n > 0"))
+    Pattern{Float64}((s::Rational, e::Rational) -> begin
+        n_start = floor(Int, s)
+        n_stop  = ceil(Int, e)
+        out = Event{Float64}[]
+        n_rat = Rational{Int64}(n)
+        for cyc in n_start:(n_stop - 1)
+            for i in 0:(n - 1)
+                a = Rational{Int64}(cyc) + Rational{Int64}(i) / n_rat
+                b = Rational{Int64}(cyc) + Rational{Int64}(i + 1) / n_rat
+                a < e && b > s || continue
+                evs = p(a, b)
+                isempty(evs) && continue
+                ca = max(a, s); cb = min(b, e)
+                push!(out, Event{Float64}(ca, cb, evs[1].value))
+            end
+        end
+        out
+    end)
+end
+segment(n::Int) = p -> segment(n, p)
