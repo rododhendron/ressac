@@ -7,7 +7,7 @@ end
 _HintsMockClient() = _HintsMockClient(Vector{UInt8}[])
 Ressac.send_osc(c::_HintsMockClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
 
-@testset "tui_hints" begin
+@testset "hints" begin
     @testset "_fuzzy_score exact prefix is tight" begin
         @test Ressac._fuzzy_score("sa", "samples") == 0
     end

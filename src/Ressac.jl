@@ -8,32 +8,54 @@ The full design is in `docs/journal/20260518_plan_dev.md`.
 """
 module Ressac
 
-include("core.jl")
-include("combinators.jl")
-include("algebra.jl")
-include("controls.jl")
-include("mininotation.jl")
-include("osc.jl")
-include("scheduler.jl")
-include("tui_hints.jl")
-include("tui.jl")
-include("live_api.jl")
-include("plugins.jl")
-include("tui_docs.jl")
-include("tui_livedoc.jl")
-include("tui_scope.jl")
-include("synth_dsl.jl")        # DSL first — synth_library uses it
-include("synth_library.jl")
-include("snippets.jl")
-include("config.jl")
-include("themes.jl")
-include("sccode.jl")
-include("wiki.jl")
-include("app.jl")
-include("plugin_handlers.jl")
+# ─── Core domain — pure pattern types + algebra, no I/O ───────────
+include("core.jl")           # Pattern{T}, Event{T}, query
+include("mininotation.jl")   # the p"…" / "…" parser
+include("combinators.jl")    # fast/slow/jux/every/sometimes/…
+include("algebra.jl")        # stack/cat/mask
+include("controls.jl")       # gain/lpf/hpf/pan/n/set/pump/…
 
-# Module includes added by upcoming milestones:
-#   M6: include("reservoir.jl")
+# ─── I/O primitives ───────────────────────────────────────────────
+include("osc.jl")            # OSC wire format (encode/decode)
+include("scheduler.jl")      # real-time loop + locked snapshots
+
+# ─── Shared TUI helpers (used by autocomplete + modals + app) ─────
+include("hints.jl")          # _fuzzy_score, _COMMAND_NAMES, _MODE_HINTS
+
+# ─── Live session lifecycle ───────────────────────────────────────
+include("tui.jl")            # _LIVE_SCHEDULER, start_live!, live()
+include("live_api.jl")       # @d1..@d64 macros, _route_to_slot!
+
+# ─── Plugin registry + state flag ─────────────────────────────────
+include("plugins.jl")        # _SAMPLE/INSTRUMENT/SYNTH_REGISTRY,
+                             # _SYNTH_ALIASES, _INSTALLING_SYNTH
+
+# ─── Synth DSL submodule (uses _LIVE_SCHEDULER + registry helpers) ─
+include("synth_dsl.jl")      # SynthDSL: @synth, Sig, every ugen wrapper
+include("synth_library.jl")  # _SYNTH_LIBRARY entries (uses SynthDSL)
+
+# ─── Static docs / starter packs / scope state ────────────────────
+include("docs.jl")           # _PARAM_DOCS, _STARTER_PACKS
+include("livedoc.jl")        # _GUIDE_LINES, _SYNTH_GUIDE_LINES,
+                             # livedoc lookups
+include("scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
+                             # external OSC triggers
+
+# ─── Content / configuration / theming ────────────────────────────
+include("config.jl")         # RessacConfig, _load_ressac_config!
+include("themes.jl")         # _apply_theme!, palette switching
+include("snippets.jl")       # _SNIPPETS (browsable via :snip)
+include("sccode.jl")         # sccode.org HTTP client
+include("wiki.jl")           # docs/wiki/*.md loader
+
+# ─── RessacApp TUI (transitively includes the modal_*.jl + key
+#     handlers + autocomplete + editor_ops + input_modes + pattern_editor
+#     + leader_snippets) ──────────────────────────────────────────
+include("app.jl")
+
+# ─── Plugin section handlers (last — uses SynthDSL.@synth via
+#     Base.include for .jl orphan auto-discovery) ─────────────────
+include("plugin_handlers.jl")
 
 export Event, Pattern, query
 export pure, silence, fast, slow, density, rev, every, gate

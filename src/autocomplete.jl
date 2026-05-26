@@ -17,7 +17,7 @@
 #                          argument (`:doc gai<Tab>` → `:doc gain`),
 #                          driven by _EX_COMMAND_ARG_KIND.
 #
-# Extracted from app.jl. Depends on _fuzzy_score (tui_hints.jl),
+# Extracted from app.jl. Depends on _fuzzy_score (hints.jl),
 # RessacApp, the three registries (_SAMPLE/_INSTRUMENT/_SYNTH_REGISTRY),
 # and a handful of TK methods — all in scope by the time this file
 # is included.

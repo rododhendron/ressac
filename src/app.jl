@@ -1174,7 +1174,7 @@ end
 
 function _scope_cycle_key!(m::RessacApp; dir::Int = +1)
     # Use the shared cycle order so new scope types added in
-    # tui_scope.jl automatically show up under S without a separate
+    # scope.jl automatically show up under S without a separate
     # edit here. `dir = -1` reverses (used by scroll-down on the
     # scope pane).
     order = _SCOPE_CYCLE_ORDER
