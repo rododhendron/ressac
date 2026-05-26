@@ -451,8 +451,11 @@ function build_synth(name::Symbol, sig::Sig;
         code = "($code * EnvGen.kr(Env.linen(0.01, sustain, 0.1), doneAction: 2))"
     end
     # Auto-gain. Wrapped after the env so :gain scales the final
-    # amplitude rather than just the pre-env carrier.
-    if auto_gain && haskey(merged, :gain) && !occursin("gain", code)
+    # amplitude rather than just the pre-env carrier. The match is
+    # word-bounded so a user identifier containing the substring
+    # (e.g. `gain_factor`, `pre_gain_amount`) doesn't suppress the
+    # auto-multiply.
+    if auto_gain && haskey(merged, :gain) && !occursin(r"\bgain\b", code)
         code = "($code * gain)"
     end
 

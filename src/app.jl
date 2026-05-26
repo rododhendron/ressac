@@ -361,7 +361,7 @@ function _mouse_wheel!(m::RessacApp, evt::TK.MouseEvent)
     end
     # 3. Wheel over scope → cycle.
     if m.layout_scope !== nothing && _in_rect(m.layout_scope, evt.x, evt.y)
-        sign > 0 ? _scope_cycle_key!(m) : _scope_cycle_key!(m)
+        _scope_cycle_key!(m; dir = sign > 0 ? +1 : -1)
         return
     end
 end
@@ -1172,14 +1172,17 @@ function _preview_word_under_cursor!(m::RessacApp)
     _push_app_log!(m, "[INFO] K — preview $kind $(mt.captures[1])")
 end
 
-function _scope_cycle_key!(m::RessacApp)
+function _scope_cycle_key!(m::RessacApp; dir::Int = +1)
     # Use the shared cycle order so new scope types added in
     # tui_scope.jl automatically show up under S without a separate
-    # edit here.
+    # edit here. `dir = -1` reverses (used by scroll-down on the
+    # scope pane).
     order = _SCOPE_CYCLE_ORDER
     i = findfirst(==(_APP_SCOPE_TYPE[]), order)
     i === nothing && (i = 1)
-    next = order[(i % length(order)) + 1]
+    next_i = dir > 0 ? (i % length(order)) + 1 :
+                       (i == 1 ? length(order) : i - 1)
+    next = order[next_i]
     _app_scope_set!(next)
     _push_app_log!(m, "[INFO] scope → $next")
 end
@@ -1702,7 +1705,7 @@ end
 const _APP_MUTED_PATTERNS = Dict{Symbol, Pattern}()
 
 function _mute_pattern_slot!(m::RessacApp, slot::Symbol)
-    pat = get(m.scheduler.patterns, slot, nothing)
+    pat = pattern_get(m.scheduler, slot)
     if pat === nothing
         _push_app_log!(m, "[WARN] :mute — slot $slot has no live pattern")
         return
@@ -1776,7 +1779,7 @@ end
 
 function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
     muted = 0
-    for (other_slot, pat) in collect(m.scheduler.patterns)
+    for (other_slot, pat) in pattern_snapshot(m.scheduler)
         other_slot == solo_slot && continue
         _APP_MUTED_PATTERNS[other_slot] = pat
         unset_pattern!(m.scheduler, other_slot)
@@ -2635,10 +2638,10 @@ Empty string when nothing is playing. Goes in the patterns block title
 so the user always sees what's live.
 """
 function _active_slots_summary(m::RessacApp)
-    sched = m.scheduler
-    isempty(sched.patterns) && return ""
-    slots = sort!(collect(keys(sched.patterns));
-                  by = s -> try parse(Int, String(s)[2:end]) catch; 999 end)
+    slots = pattern_keys(m.scheduler)
+    isempty(slots) && return ""
+    sort!(slots;
+          by = s -> try parse(Int, String(s)[2:end]) catch; 999 end)
     join(("@" * String(s) for s in slots), " ")
 end
 
@@ -2688,7 +2691,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
     m.layout_synth = nothing
     m.layout_synth_tabs = nothing
     pat_focused = (m.focus === :patterns)
-    n_playing = length(m.scheduler.patterns)
+    n_playing = length(pattern_keys(m.scheduler))
     pat_right = n_playing == 0 ? "" :
                 "● $(n_playing) playing  $(_active_slots_summary(m))"
     if !_synth_pane_open(m)

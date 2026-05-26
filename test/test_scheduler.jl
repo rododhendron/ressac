@@ -25,6 +25,25 @@ _with_test_scheduler() do mock, sched
 end
 ```
 """
+# Locked-snapshot helpers — used by UI thread to read scheduler
+# state without racing the audio thread.
+@testset "scheduler locked snapshots" begin
+    mock = MockOSCClient()
+    s = Scheduler(mock; cps=0.5)
+    set_pattern!(s, :d1, pure(:bd))
+    set_pattern!(s, :d2, pure(:sn))
+    # pattern_keys: atomic snapshot, sorted by caller (we don't sort).
+    keys_snap = Ressac.pattern_keys(s)
+    @test sort(keys_snap) == [:d1, :d2]
+    # pattern_get: hit + miss.
+    @test Ressac.pattern_get(s, :d1) !== nothing
+    @test Ressac.pattern_get(s, :nope) === nothing
+    # pattern_snapshot: full pairs.
+    snap = Ressac.pattern_snapshot(s)
+    @test length(snap) == 2
+    @test all(p -> p.first in (:d1, :d2), snap)
+end
+
 function _with_test_scheduler(f; cps::Real = 0.5)
     mock = MockOSCClient()
     sched = Scheduler(mock; cps = cps)

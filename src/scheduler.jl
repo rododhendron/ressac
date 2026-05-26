@@ -345,6 +345,47 @@ end
 # ---------------------------------------------------------------------------
 
 """
+    pattern_keys(s::Scheduler) -> Vector{Symbol}
+
+Atomic snapshot of the slot keys currently installed on `s`. Use
+this from the UI thread instead of reading `s.patterns` directly:
+the scheduler loop mutates the dict under `s.lock`, and a lock-free
+read can observe torn state (missing or duplicated keys during
+rehash). Returns a fresh `Vector`; safe to sort / mutate.
+"""
+function pattern_keys(s::Scheduler)
+    lock(s.lock) do
+        collect(keys(s.patterns))
+    end
+end
+
+"""
+    pattern_get(s::Scheduler, slot::Symbol) -> Union{Pattern, Nothing}
+
+Atomic read of a single slot. Same rationale as [`pattern_keys`](@ref)
+— the scheduler loop can be mid-`set_pattern!` when a UI thread reads
+the dict, so the get must hold the lock for correctness.
+"""
+function pattern_get(s::Scheduler, slot::Symbol)
+    lock(s.lock) do
+        get(s.patterns, slot, nothing)
+    end
+end
+
+"""
+    pattern_snapshot(s::Scheduler) -> Vector{Pair{Symbol,Pattern}}
+
+Atomic snapshot of the full slot-to-pattern map. Used by code that
+needs to iterate every active pattern outside the scheduler loop
+(e.g. solo / mute helpers that operate on all-but-one slot).
+"""
+function pattern_snapshot(s::Scheduler)
+    lock(s.lock) do
+        collect(pairs(s.patterns))
+    end
+end
+
+"""
     set_pattern!(s, slot, p)
 
 Install (or replace) the pattern at `slot`. Thread-safe.

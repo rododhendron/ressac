@@ -16,7 +16,7 @@ All slots Ressac currently tracks: active patterns plus muted ones
 """
 function _mixer_slots(m::RessacApp)
     slots = Set{Symbol}()
-    union!(slots, keys(m.scheduler.patterns))
+    union!(slots, pattern_keys(m.scheduler))
     union!(slots, keys(_APP_MUTED_PATTERNS))
     return sort!(collect(slots);
                  by = s -> try parse(Int, String(s)[2:end]) catch; 999 end)
@@ -135,7 +135,7 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         # Gain estimate: query the pattern at cycle 0, peek the first
         # event's :gain key. Falls back to 1.0 / "?" if not a ControlMap.
         pat = muted ? get(_APP_MUTED_PATTERNS, slot, nothing) :
-                      get(m.scheduler.patterns, slot, nothing)
+                      pattern_get(m.scheduler, slot)
         gain_str = "  -  "
         source_str = "—"
         if pat !== nothing
