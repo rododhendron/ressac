@@ -16,6 +16,7 @@ using Ressac
     include("test_live_api.jl")
     include("test_plugins.jl")
     include("test_plugin_handlers.jl")
+    include("test_extension_registry.jl")
     include("test_controls.jl")
     include("test_hints.jl")
     include("test_tap_detection.jl")

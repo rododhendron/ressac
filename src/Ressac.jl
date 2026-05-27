@@ -34,6 +34,9 @@ include("plugin_registry.jl")    # _SAMPLE/INSTRUMENT/SYNTH_REGISTRY,
 include("synth_dsl.jl")          # SynthDSL: @synth, Sig, every ugen wrapper
 include("synth_library.jl")      # _SYNTH_LIBRARY entries (uses SynthDSL)
 
+# ─── Extension registry — plugin-contributed docs + snippets ──────
+include("extension_registry.jl")
+
 # ─── Static docs / starter packs / scope state ────────────────────
 include("tui_docs.jl")           # _PARAM_DOCS, _STARTER_PACKS
 include("tui_livedoc.jl")        # _GUIDE_LINES, _SYNTH_GUIDE_LINES,
