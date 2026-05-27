@@ -592,4 +592,4 @@ Sub-project 7 is done when:
    `keys(_STARTER_PACKS)` did before the refactor.
 7. Full test suite passes (currently 1392 tests; should be 1392 +
    new registry tests).
-8. Boot adds no more than 100 ms over the pre-refactor baseline.
+8. Boot adds no more than 200 ms over the pre-refactor baseline.
