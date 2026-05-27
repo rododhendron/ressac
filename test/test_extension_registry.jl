@@ -44,4 +44,48 @@ using Ressac
         end
         @test Ressac.list_docs() == ["alpha", "mango", "zebra"]
     end
+
+    @testset "SnippetEntry construction + register + lookup" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        e = Ressac.SnippetEntry(
+            "techno-classic", :starter,
+            "Four-on-the-floor", [:techno, :rhythm],
+            String[], String[],
+            "@d1 p\"bd*4\" |> gain(0.5)\n",
+            Any[], "core", "/tmp/techno-classic.toml")
+        Ressac.register_snippet!(e)
+        got = Ressac.lookup_snippet("techno-classic")
+        @test got !== nothing
+        @test got.mode === :starter
+        @test got.tags == [:techno, :rhythm]
+        @test got.resolved_content == "@d1 p\"bd*4\" |> gain(0.5)\n"
+    end
+
+    @testset "list_snippets returns all, list_starters filters" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        Ressac.register_snippet!(Ressac.SnippetEntry(
+            "zeta", :starter, "", Symbol[], String[], String[],
+            "", Any[], "core", ""))
+        Ressac.register_snippet!(Ressac.SnippetEntry(
+            "alpha", :block, "", Symbol[], String[], String[],
+            "", Any[], "core", ""))
+        Ressac.register_snippet!(Ressac.SnippetEntry(
+            "mango", :starter, "", Symbol[], String[], String[],
+            "", Any[], "core", ""))
+        @test Ressac.list_snippets() == ["alpha", "mango", "zeta"]
+        @test Ressac.list_starters() == ["mango", "zeta"]
+    end
+
+    @testset "register_snippet! last-wins with warning on conflict" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        e1 = Ressac.SnippetEntry("foo", :block, "v1", Symbol[],
+                                  String[], String[], "a", Any[], "plugA", "")
+        e2 = Ressac.SnippetEntry("foo", :block, "v2", Symbol[],
+                                  String[], String[], "b", Any[], "plugB", "")
+        Ressac.register_snippet!(e1)
+        @test_logs (:warn, r"snippet 'foo' shadowed by plugin 'plugB'") begin
+            Ressac.register_snippet!(e2)
+        end
+        @test Ressac.lookup_snippet("foo").plugin == "plugB"
+    end
 end

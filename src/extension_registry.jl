@@ -43,3 +43,57 @@ lookup_doc(name::AbstractString) = get(_DOCS, String(name), nothing)
 Names of every registered doc, sorted ascending.
 """
 list_docs() = sort!(collect(keys(_DOCS)))
+
+struct SnippetEntry
+    name::String
+    mode::Symbol                  # :starter or :block
+    description::String
+    tags::Vector{Symbol}
+    requires_plugins::Vector{String}   # transitive union after resolution
+    includes::Vector{String}           # raw declared includes (for debug)
+    resolved_content::String           # final Julia source ready to apply
+    panes::Vector{Any}                 # future UI hints, parsed but unused
+    plugin::String
+    path::String                       # path to the TOML manifest
+end
+
+const _SNIPPET_REGISTRY = Dict{String,SnippetEntry}()
+
+"""
+    register_snippet!(entry::SnippetEntry) -> SnippetEntry
+
+Register `entry` keyed by its `name`. Last-wins on conflicts between
+plugins, with a `@warn`.
+
+The resolved_content field may be `""` at registration time; it gets
+populated by `_resolve_snippet_includes!()` after all plugins have
+registered (called once by the plugin loader).
+"""
+function register_snippet!(e::SnippetEntry)
+    if haskey(_SNIPPET_REGISTRY, e.name) && _SNIPPET_REGISTRY[e.name].plugin != e.plugin
+        @warn "snippet '$(e.name)' shadowed by plugin '$(e.plugin)' " *
+              "(previously from '$(_SNIPPET_REGISTRY[e.name].plugin)')"
+    end
+    _SNIPPET_REGISTRY[e.name] = e
+    return e
+end
+
+"""
+    lookup_snippet(name) -> Union{SnippetEntry,Nothing}
+"""
+lookup_snippet(name::AbstractString) = get(_SNIPPET_REGISTRY, String(name), nothing)
+
+"""
+    list_snippets() -> Vector{String}
+
+Every registered snippet name, sorted ascending.
+"""
+list_snippets() = sort!(collect(keys(_SNIPPET_REGISTRY)))
+
+"""
+    list_starters() -> Vector{String}
+
+Names of snippets with `mode === :starter`, sorted ascending. Used
+by `:starter <Tab>` completion.
+"""
+list_starters() = sort!([k for (k, v) in _SNIPPET_REGISTRY if v.mode === :starter])
