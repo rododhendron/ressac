@@ -21,3 +21,8 @@ deps/build.log
 ressac.so
 ressac.dylib
 ressac.dll
+
+# Local user session captures (Tachikoma recordings + saved session text)
+sessions/*.txt
+!sessions/.keep
+tachikoma_*.tach

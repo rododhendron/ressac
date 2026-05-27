@@ -1,9 +1,0 @@
-@d1 p"bd hh sn hh"
-
-
-cps!(1.155)
-@d2 p"bd ~ bd bd ~ bd ~ ~"
-
-@d3 p"sn ~ sn ~"
-
-@d4 :arpdriver |> n(p"3 0 <4 1> 0")

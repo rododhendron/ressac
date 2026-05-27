@@ -1,2 +1,0 @@
-cps!(0.678)
-@d3 p"bd ~ ~ bd ~ ~ bd ~ ~ bd ~ ~ bd ~ bd ~"
