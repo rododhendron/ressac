@@ -97,3 +97,47 @@ Names of snippets with `mode === :starter`, sorted ascending. Used
 by `:starter <Tab>` completion.
 """
 list_starters() = sort!([k for (k, v) in _SNIPPET_REGISTRY if v.mode === :starter])
+
+"""
+    _parse_frontmatter(src::AbstractString) -> (Dict, String)
+
+Parse Hugo-style TOML frontmatter between `+++` fences at the start of
+`src`. Returns `(frontmatter_dict, body)`. If no frontmatter present,
+returns `(empty Dict, src unchanged)`. If the opening fence has no
+closing fence, logs a warning and returns `(empty Dict, src unchanged)`.
+
+Whitespace before the opening fence is permitted; the fence line
+itself must be exactly `+++` (optional trailing whitespace stripped).
+"""
+function _parse_frontmatter(src::AbstractString)
+    lines = split(src, '\n')
+    i = 1
+    while i <= length(lines) && isempty(strip(lines[i]))
+        i += 1
+    end
+    if i > length(lines) || strip(lines[i]) != "+++"
+        return (Dict{String,Any}(), String(src))
+    end
+    j = i + 1
+    while j <= length(lines) && strip(lines[j]) != "+++"
+        j += 1
+    end
+    if j > length(lines)
+        @warn "unterminated frontmatter (opening +++ at line $i has no closing fence)"
+        return (Dict{String,Any}(), String(src))
+    end
+    fm_text = join(lines[i+1:j-1], "\n")
+    fm = try
+        TOML.parse(fm_text)
+    catch err
+        @warn "invalid TOML frontmatter: $(sprint(showerror, err))"
+        Dict{String,Any}()
+    end
+    body = j+1 <= length(lines) ? join(lines[j+1:end], "\n") : ""
+    # Strip a single leading blank line so body's first non-blank line
+    # is what the reader sees first.
+    if !isempty(body) && lines[j+1] == ""
+        body = j+2 <= length(lines) ? join(lines[j+2:end], "\n") : ""
+    end
+    return (fm, body)
+end

@@ -88,4 +88,35 @@ using Ressac
         end
         @test Ressac.lookup_snippet("foo").plugin == "plugB"
     end
+
+    @testset "parse_frontmatter — TOML between +++ fences" begin
+        src = """
+        +++
+        name = "foo"
+        short = "tooltip"
+        tags = ["a", "b"]
+        +++
+
+        # Header
+        body line 1
+        """
+        fm, body = Ressac._parse_frontmatter(src)
+        @test fm["name"] == "foo"
+        @test fm["short"] == "tooltip"
+        @test fm["tags"] == ["a", "b"]
+        @test occursin("body line 1", body)
+
+        fm2, body2 = Ressac._parse_frontmatter("just body\nno fences\n")
+        @test isempty(fm2)
+        @test body2 == "just body\nno fences\n"
+
+        fm3, body3 = Ressac._parse_frontmatter("+++\n+++\nbody\n")
+        @test isempty(fm3)
+        @test body3 == "body\n"
+
+        @test_logs (:warn, r"unterminated frontmatter") begin
+            fm4, body4 = Ressac._parse_frontmatter("+++\nname = \"x\"\nno end\n")
+            @test isempty(fm4)
+        end
+    end
 end
