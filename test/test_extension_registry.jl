@@ -49,7 +49,7 @@ using Ressac
         empty!(Ressac._SNIPPET_REGISTRY)
         e = Ressac.SnippetEntry(
             "techno-classic", :starter,
-            "Four-on-the-floor", [:techno, :rhythm],
+            "Four-on-the-floor", [:techno, :rhythm], :any,
             String[], String[],
             "@d1 p\"bd*4\" |> gain(0.5)\n",
             Any[], "core", "/tmp/techno-classic.toml")
@@ -64,13 +64,13 @@ using Ressac
     @testset "list_snippets returns all, list_starters filters" begin
         empty!(Ressac._SNIPPET_REGISTRY)
         Ressac.register_snippet!(Ressac.SnippetEntry(
-            "zeta", :starter, "", Symbol[], String[], String[],
+            "zeta", :starter, "", Symbol[], :any, String[], String[],
             "", Any[], "core", ""))
         Ressac.register_snippet!(Ressac.SnippetEntry(
-            "alpha", :block, "", Symbol[], String[], String[],
+            "alpha", :block, "", Symbol[], :any, String[], String[],
             "", Any[], "core", ""))
         Ressac.register_snippet!(Ressac.SnippetEntry(
-            "mango", :starter, "", Symbol[], String[], String[],
+            "mango", :starter, "", Symbol[], :any, String[], String[],
             "", Any[], "core", ""))
         @test Ressac.list_snippets() == ["alpha", "mango", "zeta"]
         @test Ressac.list_starters() == ["mango", "zeta"]
@@ -78,9 +78,9 @@ using Ressac
 
     @testset "register_snippet! last-wins with warning on conflict" begin
         empty!(Ressac._SNIPPET_REGISTRY)
-        e1 = Ressac.SnippetEntry("foo", :block, "v1", Symbol[],
+        e1 = Ressac.SnippetEntry("foo", :block, "v1", Symbol[], :any,
                                   String[], String[], "a", Any[], "plugA", "")
-        e2 = Ressac.SnippetEntry("foo", :block, "v2", Symbol[],
+        e2 = Ressac.SnippetEntry("foo", :block, "v2", Symbol[], :any,
                                   String[], String[], "b", Any[], "plugB", "")
         Ressac.register_snippet!(e1)
         @test_logs (:warn, r"snippet 'foo' shadowed by plugin 'plugB'") begin
@@ -140,12 +140,12 @@ using Ressac
         empty!(Ressac._SNIPPET_REGISTRY)
         empty!(Ressac._SNIPPET_RAW)
         Ressac._SNIPPET_REGISTRY["B"] = Ressac.SnippetEntry(
-            "B", :block, "lib", Symbol[], String[], String[],
+            "B", :block, "lib", Symbol[], :any, String[], String[],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["B"] = (own_content = "B_content\n", includes = String[])
 
         Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
-            "A", :starter, "main", Symbol[], String[], ["B"],
+            "A", :starter, "main", Symbol[], :any, String[], ["B"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n", includes = ["B"])
 
@@ -164,7 +164,7 @@ using Ressac
         for (n, inc) in (("D", String[]), ("B", ["D"]), ("C", ["D"]),
                           ("A", ["B", "C"]))
             Ressac._SNIPPET_REGISTRY[n] = Ressac.SnippetEntry(
-                n, :block, "", Symbol[], String[], inc,
+                n, :block, "", Symbol[], :any, String[], inc,
                 "", Any[], "core", "")
             Ressac._SNIPPET_RAW[n] = (own_content = "$(n)_content\n",
                                        includes = inc)
@@ -178,7 +178,7 @@ using Ressac
         empty!(Ressac._SNIPPET_REGISTRY)
         empty!(Ressac._SNIPPET_RAW)
         Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
-            "A", :block, "", Symbol[], String[], ["ghost"],
+            "A", :block, "", Symbol[], :any, String[], ["ghost"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n",
                                      includes = ["ghost"])
@@ -193,12 +193,12 @@ using Ressac
         empty!(Ressac._SNIPPET_REGISTRY)
         empty!(Ressac._SNIPPET_RAW)
         Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
-            "A", :block, "", Symbol[], String[], ["B"],
+            "A", :block, "", Symbol[], :any, String[], ["B"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n",
                                      includes = ["B"])
         Ressac._SNIPPET_REGISTRY["B"] = Ressac.SnippetEntry(
-            "B", :block, "", Symbol[], String[], ["A"],
+            "B", :block, "", Symbol[], :any, String[], ["A"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["B"] = (own_content = "B_content\n",
                                      includes = ["A"])
@@ -213,11 +213,11 @@ using Ressac
         empty!(Ressac._SNIPPET_REGISTRY)
         empty!(Ressac._SNIPPET_RAW)
         Ressac._SNIPPET_REGISTRY["lib"] = Ressac.SnippetEntry(
-            "lib", :block, "", Symbol[], ["foo"], String[],
+            "lib", :block, "", Symbol[], :any, ["foo"], String[],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["lib"] = (own_content = "L\n", includes = String[])
         Ressac._SNIPPET_REGISTRY["main"] = Ressac.SnippetEntry(
-            "main", :starter, "", Symbol[], String[], ["lib"],
+            "main", :starter, "", Symbol[], :any, String[], ["lib"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["main"] = (own_content = "M\n", includes = ["lib"])
         Ressac._resolve_snippet_includes!()
@@ -265,6 +265,46 @@ using Ressac
         @test haskey(Ressac._SNIPPET_RAW, "sample_snippet")
         @test occursin("@d1 p\"bd*4\"",
                        Ressac._SNIPPET_RAW["sample_snippet"].own_content)
+    end
+
+    @testset "SnippetEntry context field — default :any, set via TOML" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+
+        # When TOML omits context, defaults to :any.
+        tmpdir = mktempdir()
+        try
+            open(joinpath(tmpdir, "no_ctx.toml"), "w") do io
+                println(io, """name = "no_ctx"
+                mode = "block"
+                content_file = "no_ctx.jl"
+                """)
+            end
+            write(joinpath(tmpdir, "no_ctx.jl"), "x = 1\n")
+            e = Ressac._load_snippet_toml(joinpath(tmpdir, "no_ctx.toml"), "p")
+            @test e !== nothing
+            @test e.context === :any
+        finally
+            rm(tmpdir; recursive=true, force=true)
+        end
+
+        # When TOML sets context = "patterns", uses :patterns.
+        tmpdir2 = mktempdir()
+        try
+            open(joinpath(tmpdir2, "pat.toml"), "w") do io
+                println(io, """name = "pat"
+                mode = "block"
+                context = "patterns"
+                content_file = "pat.jl"
+                """)
+            end
+            write(joinpath(tmpdir2, "pat.jl"), "y = 2\n")
+            e = Ressac._load_snippet_toml(joinpath(tmpdir2, "pat.toml"), "p")
+            @test e !== nothing
+            @test e.context === :patterns
+        finally
+            rm(tmpdir2; recursive=true, force=true)
+        end
     end
 
     @testset "_handle_snippets — missing dir is no-op" begin

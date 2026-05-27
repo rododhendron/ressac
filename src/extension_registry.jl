@@ -49,6 +49,7 @@ struct SnippetEntry
     mode::Symbol                  # :starter or :block
     description::String
     tags::Vector{Symbol}
+    context::Symbol               # :patterns | :synth | :any
     requires_plugins::Vector{String}   # transitive union after resolution
     includes::Vector{String}           # raw declared includes (for debug)
     resolved_content::String           # final Julia source ready to apply
@@ -183,6 +184,13 @@ function _load_snippet_toml(toml_path::AbstractString, plugin_name::AbstractStri
            end
     description = String(get(raw, "description", ""))
     tags = Symbol[Symbol(t) for t in get(raw, "tags", String[])]
+    context_str = String(get(raw, "context", "any"))
+    context = context_str in ("patterns", "synth", "any") ?
+              Symbol(context_str) :
+              begin
+                  @warn "snippet '$name' has unknown context '$context_str'; defaulting to :any"
+                  :any
+              end
     requires = String[String(p) for p in get(raw, "requires_plugins", String[])]
     includes = String[String(i) for i in get(raw, "includes", String[])]
     panes = get(raw, "panes", Any[])
@@ -212,7 +220,7 @@ function _load_snippet_toml(toml_path::AbstractString, plugin_name::AbstractStri
 
     _SNIPPET_RAW[String(name)] = (own_content = own_content, includes = includes)
     return SnippetEntry(
-        String(name), mode, description, tags,
+        String(name), mode, description, tags, context,
         requires, includes,
         "",
         collect(Any, panes),
@@ -319,7 +327,7 @@ function _resolve_snippet_includes!()
     for n in names
         old = _SNIPPET_REGISTRY[n]
         _SNIPPET_REGISTRY[n] = SnippetEntry(
-            old.name, old.mode, old.description, old.tags,
+            old.name, old.mode, old.description, old.tags, old.context,
             resolved_req[n], old.includes,
             resolved_str[n], old.panes, old.plugin, old.path,
         )
