@@ -320,24 +320,23 @@ _is_ugen_char(c::AbstractChar) =
 """
     _lookup_livedoc(word) -> Union{Nothing, String}
 
-Try `_PARAM_DOCS` first (covers params, combinators, mini-notation),
-then `_SC_UGEN_DOCS` (SC UGens), then strip a `.method` suffix and
-try the head. Returns `nothing` if no entry.
+Try `_DOCS` registry first (covers params, combinators, mini-notation,
+plus everything plugins ship under `[docs]`), then `_SC_UGEN_DOCS` (SC
+UGens), then strip a `.method` suffix and try the head. Returns
+`nothing` if no entry.
 """
 function _lookup_livedoc(word::AbstractString)
     isempty(word) && return nothing
-    doc = get(_PARAM_DOCS, String(word), nothing)
-    doc !== nothing && return doc
+    e = lookup_doc(String(word))
+    e !== nothing && return e.short
     doc = get(_SC_UGEN_DOCS, String(word), nothing)
     doc !== nothing && return doc
-    # Strip trailing `.method` and retry the head.
     if occursin('.', word)
         head, _ = split(word, '.'; limit=2)
         doc = get(_SC_UGEN_DOCS, String(head), nothing)
         doc !== nothing && return doc
-        doc = get(_PARAM_DOCS, String(head), nothing)
-        doc !== nothing && return doc
-        # And try just the .method tail.
+        e_head = lookup_doc(String(head))
+        e_head !== nothing && return e_head.short
         _, tail = split(word, '.'; limit=2)
         doc = get(_SC_UGEN_DOCS, String(tail), nothing)
         doc !== nothing && return doc

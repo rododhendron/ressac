@@ -1,6 +1,14 @@
 using Test
 using Ressac
 
+# Load plugins so the doc + snippet registry is populated for tests
+# that query `:doc <name>` or `:starter <name>`. Idempotent re-runs
+# repopulate the same dicts.
+empty!(Ressac._DOCS)
+empty!(Ressac._SNIPPET_REGISTRY)
+empty!(Ressac._SNIPPET_RAW)
+Ressac._load_plugins([joinpath(@__DIR__, "..", "plugins")])
+
 @testset "Ressac.jl" begin
     @testset "M0 — bootstrap" begin
         @test isdefined(@__MODULE__, :Ressac)
