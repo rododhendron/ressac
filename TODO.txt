@@ -1,0 +1,7 @@
+refactorer les widgets de vue pour pouvoir split pane, remplacer les panes, naviguer entre eux, ouvrir la doc à côté de pattern ou de synth par exemple etc...
+il manque de la doc, comment on peut systématiquement trouver la doc d'une fonction ?
+Aussi on pourrait extraire toutes les specs data dans des yaml ou toml plutot que dans le code. Genre snippet tout ça.
+Pareillement les plugins doivent pouvoir créer leur entry doc et wiki.
+unifier le systeme de snippet, rendre configurable les raccourcis snippets directement depuis l'editeur via un editeur de snippets + aliasing + :s command
+On utilise bien le type dispatch ?
+On pourrait pas autodiscover les fonctions supercollider ? Genre au boot on consulte les fonctions disponibles de supercollider et on expose automatiquement les fonctions ? genre autodiscover VarSaw |> var_saw en passant les args, kwargs ? on a la doc supercollider à disposition pour faire la doc de ces fonctions ? Après yes les multiline ça fait sens de les avoir dans le code, genre klang.
