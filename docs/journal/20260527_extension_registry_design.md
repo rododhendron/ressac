@@ -593,3 +593,7 @@ Sub-project 7 is done when:
 7. Full test suite passes (currently 1392 tests; should be 1392 +
    new registry tests).
 8. Boot adds no more than 200 ms over the pre-refactor baseline.
+
+**Measured post-migration (2026-05-28):** 198 ms total plugin load
+(125 docs, 121 snippets, 8 plugins). Of which ~25 % is JIT
+compilation — steady-state load is ~150 ms. Within budget.
