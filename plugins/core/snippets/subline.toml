@@ -1,0 +1,8 @@
+content_file = "subline.jl"
+context = "patterns"
+description = "Slow sub bass on the off-beats. Pair with a busy kick."
+includes = []
+mode = "block"
+name = "subline"
+requires_plugins = []
+tags = ["melody"]

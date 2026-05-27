@@ -105,14 +105,16 @@ using Ressac
         @test isempty(e.includes)
     end
 
-    @testset "_load_snippet_toml — sidecar with syntax error skipped" begin
+    @testset "_load_snippet_toml — sidecar with syntax error still loads" begin
+        # No syntax validation at load time — fragments and SC code are
+        # valid snippets even when they don't parse as Julia. Errors
+        # surface naturally at insert+eval time.
         empty!(Ressac._SNIPPET_RAW)
         fixture_dir = joinpath(@__DIR__, "fixtures", "registry")
         toml_path = joinpath(fixture_dir, "bad_syntax.toml")
-        @test_logs (:warn, r"syntax error") begin
-            e = Ressac._load_snippet_toml(toml_path, "testplug")
-            @test e === nothing
-        end
+        e = Ressac._load_snippet_toml(toml_path, "testplug")
+        @test e !== nothing
+        @test e.name == "fixture-bad"
     end
 
     @testset "_load_snippet_toml — missing sidecar skipped" begin

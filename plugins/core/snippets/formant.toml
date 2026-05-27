@@ -1,0 +1,8 @@
+content_file = "formant.jl"
+context = "synth_sc"
+description = "Bandpass at a swept formant freq — vowel-y mouth sounds."
+includes = []
+mode = "block"
+name = "formant"
+requires_plugins = []
+tags = ["filter"]

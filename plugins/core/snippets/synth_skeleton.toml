@@ -1,0 +1,8 @@
+content_file = "synth_skeleton.jl"
+context = "synth_sc"
+description = "Minimal SynthDef boilerplate ready to fill in."
+includes = []
+mode = "block"
+name = "synth_skeleton"
+requires_plugins = []
+tags = ["skeleton"]

@@ -1,0 +1,8 @@
+content_file = "dsl_pluck.jl"
+context = "synth_dsl"
+description = "Karplus-style pluck via comb-filtered noise."
+includes = []
+mode = "block"
+name = "dsl_pluck"
+requires_plugins = []
+tags = ["osc"]

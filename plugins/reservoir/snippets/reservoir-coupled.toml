@@ -1,0 +1,8 @@
+content_file = "reservoir-coupled.jl"
+context = "patterns"
+description = "╭─ E/I coupled populations ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-coupled"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

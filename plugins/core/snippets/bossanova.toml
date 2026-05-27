@@ -1,0 +1,8 @@
+content_file = "bossanova.jl"
+context = "patterns"
+description = "Bossa nova clave — partido alto-ish pattern."
+includes = []
+mode = "block"
+name = "bossanova"
+requires_plugins = []
+tags = ["genre"]

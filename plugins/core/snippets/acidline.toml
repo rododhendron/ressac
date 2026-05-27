@@ -1,0 +1,8 @@
+content_file = "acidline.jl"
+context = "patterns"
+description = "TB-303-style 16th-note acid line. Edit the n() sequence."
+includes = []
+mode = "block"
+name = "acidline"
+requires_plugins = []
+tags = ["melody"]

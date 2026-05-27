@@ -1,0 +1,8 @@
+content_file = "reservoir-spike.jl"
+context = "patterns"
+description = "Route I — AdEx bursting reservoir → percussive sinebursts"
+includes = []
+mode = "starter"
+name = "reservoir-spike"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

@@ -1,0 +1,8 @@
+content_file = "reservoir-explore.jl"
+context = "patterns"
+description = "╭─ reservoir — every knob exposed, eval lines selectively ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-explore"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

@@ -1,0 +1,8 @@
+content_file = "dub-techno.jl"
+context = "patterns"
+description = "Dub techno — Basic Channel / Maurizio idiom"
+includes = []
+mode = "starter"
+name = "dub-techno"
+requires_plugins = []
+tags = []

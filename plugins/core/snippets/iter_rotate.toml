@@ -1,0 +1,8 @@
+content_file = "iter_rotate.jl"
+context = "patterns"
+description = "[Tidal idiom] iter(4) — rotate phrase by 1/4 each cycle. Evolving phase."
+includes = []
+mode = "block"
+name = "iter_rotate"
+requires_plugins = []
+tags = ["tidal"]

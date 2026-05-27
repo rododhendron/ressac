@@ -1,0 +1,8 @@
+content_file = "reservoir-meanfield.jl"
+context = "patterns"
+description = "╭─ Wilson-Cowan mean field — limit-cycle population ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-meanfield"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

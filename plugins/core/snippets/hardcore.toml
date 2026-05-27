@@ -1,0 +1,8 @@
+content_file = "hardcore.jl"
+context = "patterns"
+description = ""
+includes = []
+mode = "starter"
+name = "hardcore"
+requires_plugins = []
+tags = []

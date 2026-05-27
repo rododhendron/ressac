@@ -1,0 +1,8 @@
+content_file = "euclid.jl"
+context = "patterns"
+description = "Euclidean rhythm. (k,n) = k beats spread evenly over n steps."
+includes = []
+mode = "block"
+name = "euclid"
+requires_plugins = []
+tags = ["rhythm"]

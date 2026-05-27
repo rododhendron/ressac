@@ -1,0 +1,8 @@
+content_file = "degrade_thin.jl"
+context = "patterns"
+description = "[Tidal idiom] degradeBy(0.3) — drop 30% of events (seeded). Sparser feel."
+includes = []
+mode = "block"
+name = "degrade_thin"
+requires_plugins = []
+tags = ["tidal"]

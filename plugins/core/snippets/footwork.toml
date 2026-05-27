@@ -1,0 +1,8 @@
+content_file = "footwork.jl"
+context = "patterns"
+description = "Footwork — 160 BPM, fast hihats, sparse kicks, syncopated claps."
+includes = []
+mode = "block"
+name = "footwork"
+requires_plugins = []
+tags = ["genre"]

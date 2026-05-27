@@ -1,0 +1,8 @@
+content_file = "trap-block.jl"
+context = "patterns"
+description = "Trap — rolling hi-hats with triplet bursts + 808 kick."
+includes = []
+mode = "block"
+name = "trap-block"
+requires_plugins = []
+tags = ["genre"]

@@ -1,0 +1,8 @@
+content_file = "euclidean_layers.jl"
+context = "patterns"
+description = "Three Euclidean rhythms layered — endless polyrhythmic groove."
+includes = []
+mode = "block"
+name = "euclidean_layers"
+requires_plugins = []
+tags = ["rhythm"]

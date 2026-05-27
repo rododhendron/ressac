@@ -1,0 +1,8 @@
+content_file = "cheat_pipes.jl"
+context = "patterns"
+description = "Cheatsheet: how |> threads through pattern → control → output."
+includes = []
+mode = "block"
+name = "cheat_pipes"
+requires_plugins = []
+tags = ["reference"]

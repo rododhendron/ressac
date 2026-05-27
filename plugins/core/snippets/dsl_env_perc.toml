@@ -1,0 +1,8 @@
+content_file = "dsl_env_perc.jl"
+context = "synth_dsl"
+description = "Percussive envelope — fast attack, exponential release."
+includes = []
+mode = "block"
+name = "dsl_env_perc"
+requires_plugins = []
+tags = ["envelope"]

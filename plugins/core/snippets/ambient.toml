@@ -1,0 +1,8 @@
+content_file = "ambient.jl"
+context = "patterns"
+description = ""
+includes = []
+mode = "starter"
+name = "ambient"
+requires_plugins = []
+tags = []

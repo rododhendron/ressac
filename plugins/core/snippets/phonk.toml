@@ -1,0 +1,8 @@
+content_file = "phonk.jl"
+context = "patterns"
+description = "Phonk — cowbell, triplet hi-hats, deep 808 slides."
+includes = []
+mode = "block"
+name = "phonk"
+requires_plugins = []
+tags = ["genre"]

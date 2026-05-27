@@ -1,0 +1,8 @@
+content_file = "amapiano.jl"
+context = "patterns"
+description = ""
+includes = []
+mode = "starter"
+name = "amapiano"
+requires_plugins = []
+tags = []

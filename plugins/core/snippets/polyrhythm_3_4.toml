@@ -1,0 +1,8 @@
+content_file = "polyrhythm_3_4.jl"
+context = "patterns"
+description = "3-against-4 polyrhythm — classic tension groove."
+includes = []
+mode = "block"
+name = "polyrhythm_3_4"
+requires_plugins = []
+tags = ["rhythm"]

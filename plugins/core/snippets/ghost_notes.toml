@@ -1,0 +1,8 @@
+content_file = "ghost_notes.jl"
+context = "patterns"
+description = "Heavy kicks with ghost notes between — accent variation."
+includes = []
+mode = "block"
+name = "ghost_notes"
+requires_plugins = []
+tags = ["rhythm"]

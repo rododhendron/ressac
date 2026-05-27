@@ -1,0 +1,8 @@
+content_file = "env_adsr.jl"
+context = "synth_sc"
+description = "ADSR envelope. Needs a gate arg in the SynthDef params."
+includes = []
+mode = "block"
+name = "env_adsr"
+requires_plugins = []
+tags = ["envelope"]

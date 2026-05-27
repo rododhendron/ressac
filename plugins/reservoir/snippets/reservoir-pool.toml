@@ -1,0 +1,8 @@
+content_file = "reservoir-pool.jl"
+context = "patterns"
+description = "╭─ tonal pool — neurones votent pour des notes ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-pool"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

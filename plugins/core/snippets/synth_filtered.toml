@@ -1,0 +1,8 @@
+content_file = "synth_filtered.jl"
+context = "synth_sc"
+description = "Saw → resonant filter → envelope, the bread-and-butter synth."
+includes = []
+mode = "block"
+name = "synth_filtered"
+requires_plugins = []
+tags = ["skeleton"]

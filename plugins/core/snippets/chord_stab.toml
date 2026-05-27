@@ -1,0 +1,8 @@
+content_file = "chord_stab.jl"
+context = "patterns"
+description = "Off-beat lofi chord stabs."
+includes = []
+mode = "block"
+name = "chord_stab"
+requires_plugins = []
+tags = ["melody"]

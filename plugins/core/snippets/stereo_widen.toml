@@ -1,0 +1,8 @@
+content_file = "stereo_widen.jl"
+context = "synth_sc"
+description = "Cheap stereo widening via tiny L/R delays."
+includes = []
+mode = "block"
+name = "stereo_widen"
+requires_plugins = []
+tags = ["output"]

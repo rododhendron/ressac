@@ -1,0 +1,8 @@
+content_file = "cheat_combinators.jl"
+context = "patterns"
+description = "Cheatsheet: every pattern combinator with a one-line example."
+includes = []
+mode = "block"
+name = "cheat_combinators"
+requires_plugins = []
+tags = ["reference"]

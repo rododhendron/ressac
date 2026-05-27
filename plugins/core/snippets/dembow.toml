@@ -1,0 +1,8 @@
+content_file = "dembow.jl"
+context = "patterns"
+description = "Reggaeton dembow — classic boom-ch-boom-chick pattern."
+includes = []
+mode = "block"
+name = "dembow"
+requires_plugins = []
+tags = ["genre"]

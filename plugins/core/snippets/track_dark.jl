@@ -1,0 +1,5 @@
+cps!(0.42)
+@d1 :kickbrut |> n("0 ~ ~ 0 ~ ~ ~ 0") |> gain(0.8)
+@d2 :snareclap |> n("~ ~ 0 ~ ~ ~ 0 ~") |> gain(0.7)
+@d3 :gatedbass |> n("0 ~ 0 ~ 5 ~ 7 ~") |> gain(0.6)
+@d4 :darkpad |> n("<0 0 -2 -4>") |> gain(0.4)

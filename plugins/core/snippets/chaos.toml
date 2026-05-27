@@ -1,0 +1,8 @@
+content_file = "chaos.jl"
+context = "patterns"
+description = "Chaos-driven modulation — control-rate Pattern{Float64}"
+includes = []
+mode = "starter"
+name = "chaos"
+requires_plugins = []
+tags = []

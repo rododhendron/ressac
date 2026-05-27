@@ -1,0 +1,8 @@
+content_file = "lofi.jl"
+context = "patterns"
+description = ""
+includes = []
+mode = "starter"
+name = "lofi"
+requires_plugins = []
+tags = []

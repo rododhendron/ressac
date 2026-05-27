@@ -1,0 +1,8 @@
+content_file = "palindrome_loop.jl"
+context = "patterns"
+description = "[Tidal idiom] palindrome — 4-step phrase → 8-step there-and-back."
+includes = []
+mode = "block"
+name = "palindrome_loop"
+requires_plugins = []
+tags = ["tidal"]

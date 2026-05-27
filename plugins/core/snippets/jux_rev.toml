@@ -1,0 +1,8 @@
+content_file = "jux_rev.jl"
+context = "patterns"
+description = "[Tidal idiom] jux(rev) — stereo: original on L, reversed on R."
+includes = []
+mode = "block"
+name = "jux_rev"
+requires_plugins = []
+tags = ["tidal"]

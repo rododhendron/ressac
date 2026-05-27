@@ -1,0 +1,8 @@
+content_file = "breakbeat.jl"
+context = "patterns"
+description = "Breakbeat — classic 'Amen' chop idiom"
+includes = []
+mode = "starter"
+name = "breakbeat"
+requires_plugins = []
+tags = []

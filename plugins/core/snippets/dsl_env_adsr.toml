@@ -1,0 +1,8 @@
+content_file = "dsl_env_adsr.jl"
+context = "synth_dsl"
+description = "ADSR envelope — needs gate (held note)."
+includes = []
+mode = "block"
+name = "dsl_env_adsr"
+requires_plugins = []
+tags = ["envelope"]

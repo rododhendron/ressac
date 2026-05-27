@@ -1,0 +1,8 @@
+content_file = "fx_lpf.jl"
+context = "patterns"
+description = "Low-pass with resonance — for filter sweeps."
+includes = []
+mode = "block"
+name = "fx_lpf"
+requires_plugins = []
+tags = ["fx"]

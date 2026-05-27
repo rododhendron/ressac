@@ -1,0 +1,8 @@
+content_file = "dsl_env_pluck.jl"
+context = "synth_dsl"
+description = "Sharp pluck — short release with curved decay."
+includes = []
+mode = "block"
+name = "dsl_env_pluck"
+requires_plugins = []
+tags = ["envelope"]

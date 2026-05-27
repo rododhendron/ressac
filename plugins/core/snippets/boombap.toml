@@ -1,0 +1,8 @@
+content_file = "boombap.jl"
+context = "patterns"
+description = "Boom-bap hip-hop — heavy kick on 1+3, snare on 2+4, swung hats."
+includes = []
+mode = "block"
+name = "boombap"
+requires_plugins = []
+tags = ["genre"]

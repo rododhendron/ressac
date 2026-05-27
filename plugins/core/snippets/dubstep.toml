@@ -1,0 +1,8 @@
+content_file = "dubstep.jl"
+context = "patterns"
+description = ""
+includes = []
+mode = "starter"
+name = "dubstep"
+requires_plugins = []
+tags = []

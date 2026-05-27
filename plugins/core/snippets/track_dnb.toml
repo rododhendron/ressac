@@ -1,0 +1,8 @@
+content_file = "track_dnb.jl"
+context = "patterns"
+description = "Drum & bass skeleton — fast break + sub on 1."
+includes = []
+mode = "block"
+name = "track_dnb"
+requires_plugins = []
+tags = ["track"]

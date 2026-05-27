@@ -1,0 +1,9 @@
+description = "Core docs + starter snippets shipped with Ressac"
+name = "core"
+version = "0.1.0"
+
+[docs]
+dir = "docs"
+
+[snippets]
+dir = "snippets"

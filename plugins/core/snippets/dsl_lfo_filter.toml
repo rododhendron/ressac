@@ -1,0 +1,8 @@
+content_file = "dsl_lfo_filter.jl"
+context = "synth_dsl"
+description = "LFO-modulated cutoff — wobble bass core."
+includes = []
+mode = "block"
+name = "dsl_lfo_filter"
+requires_plugins = []
+tags = ["filter"]

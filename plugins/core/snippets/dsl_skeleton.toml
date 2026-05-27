@@ -1,0 +1,8 @@
+content_file = "dsl_skeleton.jl"
+context = "synth_dsl"
+description = "Minimal @synth — sine wave, default freq/sustain/gain."
+includes = []
+mode = "block"
+name = "dsl_skeleton"
+requires_plugins = []
+tags = ["skeleton"]

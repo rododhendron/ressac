@@ -1,0 +1,8 @@
+content_file = "vaporwave.jl"
+context = "patterns"
+description = "Vaporwave — slow, lush, A E S T H E T I C"
+includes = []
+mode = "starter"
+name = "vaporwave"
+requires_plugins = []
+tags = []

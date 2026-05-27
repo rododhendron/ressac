@@ -1,0 +1,8 @@
+content_file = "pad_drone.jl"
+context = "patterns"
+description = "Long sustained pad drone. cps slow → notes blend."
+includes = []
+mode = "block"
+name = "pad_drone"
+requires_plugins = []
+tags = ["melody"]

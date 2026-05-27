@@ -1,0 +1,8 @@
+content_file = "techno.jl"
+context = "patterns"
+description = "Minimal techno — 4-on-the-floor kick, clap on the 2 and 4, percs."
+includes = []
+mode = "block"
+name = "techno"
+requires_plugins = []
+tags = ["genre"]

@@ -1,0 +1,8 @@
+content_file = "helpers_tour.jl"
+context = "patterns"
+description = "Working example showcasing helpers — eval & iterate."
+includes = []
+mode = "block"
+name = "helpers_tour"
+requires_plugins = []
+tags = ["reference"]

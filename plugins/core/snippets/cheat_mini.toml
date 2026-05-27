@@ -1,0 +1,8 @@
+content_file = "cheat_mini.jl"
+context = "patterns"
+description = "Cheatsheet: the mini-notation grammar inside p\"…\"."
+includes = []
+mode = "block"
+name = "cheat_mini"
+requires_plugins = []
+tags = ["reference"]

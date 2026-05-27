@@ -1,0 +1,8 @@
+content_file = "every_other.jl"
+context = "patterns"
+description = "[Tidal idiom] every(2, fast(2)) — double-time every other cycle."
+includes = []
+mode = "block"
+name = "every_other"
+requires_plugins = []
+tags = ["tidal"]

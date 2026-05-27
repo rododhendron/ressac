@@ -1,0 +1,8 @@
+content_file = "jersey.jl"
+context = "patterns"
+description = "Jersey club — bed-creak bounce, 5-on-the-floor kick, triplet hats."
+includes = []
+mode = "block"
+name = "jersey"
+requires_plugins = []
+tags = ["genre"]

@@ -1,0 +1,8 @@
+content_file = "reservoir-pop5.jl"
+context = "patterns"
+description = "╭─ 5 populations interconnectées qui se répondent ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-pop5"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

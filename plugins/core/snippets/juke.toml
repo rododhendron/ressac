@@ -1,0 +1,8 @@
+content_file = "juke.jl"
+context = "patterns"
+description = "Juke / 160bpm Chicago ghetto-house — fast hats, tight kicks"
+includes = []
+mode = "starter"
+name = "juke"
+requires_plugins = []
+tags = []

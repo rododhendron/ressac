@@ -1,0 +1,8 @@
+content_file = "dirt_out.jl"
+context = "synth_sc"
+description = "Standard SuperDirt output line."
+includes = []
+mode = "block"
+name = "dirt_out"
+requires_plugins = []
+tags = ["output"]

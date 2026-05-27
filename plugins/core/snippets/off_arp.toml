@@ -1,0 +1,8 @@
+content_file = "off_arp.jl"
+context = "patterns"
+description = "[Tidal idiom] off — overlay a time-shifted copy for arpeggio feel."
+includes = []
+mode = "block"
+name = "off_arp"
+requires_plugins = []
+tags = ["tidal"]

@@ -1,0 +1,8 @@
+content_file = "lofi_hiphop.jl"
+context = "patterns"
+description = "Lofi hip-hop — slower boom-bap with mellow ghost notes."
+includes = []
+mode = "block"
+name = "lofi_hiphop"
+requires_plugins = []
+tags = ["genre"]

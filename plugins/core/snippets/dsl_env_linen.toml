@@ -1,0 +1,8 @@
+content_file = "dsl_env_linen.jl"
+context = "synth_dsl"
+description = "Linear envelope (attack, sustain, release)."
+includes = []
+mode = "block"
+name = "dsl_env_linen"
+requires_plugins = []
+tags = ["envelope"]

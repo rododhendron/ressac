@@ -1,0 +1,8 @@
+content_file = "dsl_fm.jl"
+context = "synth_dsl"
+description = "2-op FM. Modulator at freq*mratio, depth via mindex."
+includes = []
+mode = "block"
+name = "dsl_fm"
+requires_plugins = []
+tags = ["osc"]

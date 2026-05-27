@@ -1,0 +1,8 @@
+content_file = "call_response.jl"
+context = "patterns"
+description = "Call-and-response — alternate between two motifs each cycle."
+includes = []
+mode = "block"
+name = "call_response"
+requires_plugins = []
+tags = ["rhythm"]

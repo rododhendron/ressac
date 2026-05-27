@@ -1,0 +1,8 @@
+content_file = "dsl_drive.jl"
+context = "synth_dsl"
+description = "Soft tanh saturation — warmth without crunch."
+includes = []
+mode = "block"
+name = "dsl_drive"
+requires_plugins = []
+tags = ["output"]

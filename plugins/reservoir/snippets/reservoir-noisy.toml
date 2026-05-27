@@ -1,0 +1,8 @@
+content_file = "reservoir-noisy.jl"
+context = "patterns"
+description = "╭─ noisy baseline + pattern drive — neurons sync to beats ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-noisy"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

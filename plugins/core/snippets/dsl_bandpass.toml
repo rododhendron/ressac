@@ -1,0 +1,8 @@
+content_file = "dsl_bandpass.jl"
+context = "synth_dsl"
+description = "Vowel-y bandpass on noise."
+includes = []
+mode = "block"
+name = "dsl_bandpass"
+requires_plugins = []
+tags = ["filter"]

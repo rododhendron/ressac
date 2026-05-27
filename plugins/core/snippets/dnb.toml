@@ -1,0 +1,8 @@
+content_file = "dnb.jl"
+context = "patterns"
+description = "Drum & bass — amen-inspired chop + sub on the 1."
+includes = []
+mode = "block"
+name = "dnb"
+requires_plugins = []
+tags = ["genre"]

@@ -1,0 +1,8 @@
+content_file = "sub_drop.jl"
+context = "synth_sc"
+description = "Pitch-drop sine for kick / sub."
+includes = []
+mode = "block"
+name = "sub_drop"
+requires_plugins = []
+tags = ["osc"]

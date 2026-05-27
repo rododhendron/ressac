@@ -1,0 +1,8 @@
+content_file = "cheat_commands.jl"
+context = "patterns"
+description = "Cheatsheet: every :ex-command grouped by purpose."
+includes = []
+mode = "block"
+name = "cheat_commands"
+requires_plugins = []
+tags = ["reference"]

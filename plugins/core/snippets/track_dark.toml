@@ -1,0 +1,8 @@
+content_file = "track_dark.jl"
+context = "patterns"
+description = "Darksynth template — slow tempo, gated bass, pad."
+includes = []
+mode = "block"
+name = "track_dark"
+requires_plugins = []
+tags = ["track"]

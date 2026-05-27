@@ -1,0 +1,8 @@
+content_file = "saw_stack.jl"
+context = "synth_sc"
+description = "Detuned saw stack (super-saw) for fat leads / pads."
+includes = []
+mode = "block"
+name = "saw_stack"
+requires_plugins = []
+tags = ["osc"]

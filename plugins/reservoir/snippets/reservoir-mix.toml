@@ -1,0 +1,8 @@
+content_file = "reservoir-mix.jl"
+context = "patterns"
+description = "All three routes at once — spikes fire notes, a separate"
+includes = []
+mode = "starter"
+name = "reservoir-mix"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

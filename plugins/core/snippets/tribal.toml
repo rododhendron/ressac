@@ -1,0 +1,8 @@
+content_file = "tribal.jl"
+context = "patterns"
+description = "Tribal-style polyrhythm with rest accents."
+includes = []
+mode = "block"
+name = "tribal"
+requires_plugins = []
+tags = ["rhythm"]

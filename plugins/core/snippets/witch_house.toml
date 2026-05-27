@@ -1,0 +1,8 @@
+content_file = "witch_house.jl"
+context = "patterns"
+description = "Witch house — slow, sparse, eerie pads + slowed kicks."
+includes = []
+mode = "block"
+name = "witch_house"
+requires_plugins = []
+tags = ["genre"]

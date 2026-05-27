@@ -1,0 +1,8 @@
+content_file = "dsl_saw_stack.jl"
+context = "synth_dsl"
+description = "Detuned saw stack — fat super-saw lead."
+includes = []
+mode = "block"
+name = "dsl_saw_stack"
+requires_plugins = []
+tags = ["osc"]

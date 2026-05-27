@@ -1,0 +1,8 @@
+content_file = "fx_pan.jl"
+context = "patterns"
+description = "Auto-pan over the bar via the time-pattern <…>."
+includes = []
+mode = "block"
+name = "fx_pan"
+requires_plugins = []
+tags = ["fx"]

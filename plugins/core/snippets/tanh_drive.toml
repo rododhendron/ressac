@@ -1,0 +1,8 @@
+content_file = "tanh_drive.jl"
+context = "synth_sc"
+description = "Soft saturation — warm clip without harsh distortion."
+includes = []
+mode = "block"
+name = "tanh_drive"
+requires_plugins = []
+tags = ["output"]

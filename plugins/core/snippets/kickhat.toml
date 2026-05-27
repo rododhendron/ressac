@@ -1,0 +1,8 @@
+content_file = "kickhat.jl"
+context = "patterns"
+description = "Kick on 1+3, hat on every step. Foundational house pattern."
+includes = []
+mode = "block"
+name = "kickhat"
+requires_plugins = []
+tags = ["rhythm"]

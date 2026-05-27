@@ -1,0 +1,8 @@
+content_file = "rarely_warp.jl"
+context = "patterns"
+description = "[Tidal idiom] rarely(rev) — 25% chance per cycle for surprise."
+includes = []
+mode = "block"
+name = "rarely_warp"
+requires_plugins = []
+tags = ["tidal"]

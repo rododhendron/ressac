@@ -1,0 +1,8 @@
+content_file = "garage.jl"
+context = "patterns"
+description = "UK garage / 2-step — broken kick, off-beat hats, swung snare."
+includes = []
+mode = "block"
+name = "garage"
+requires_plugins = []
+tags = ["genre"]

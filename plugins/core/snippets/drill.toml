@@ -1,0 +1,8 @@
+content_file = "drill.jl"
+context = "patterns"
+description = "UK drill — sliding 808, triplet hat bursts, sparse snare."
+includes = []
+mode = "block"
+name = "drill"
+requires_plugins = []
+tags = ["genre"]

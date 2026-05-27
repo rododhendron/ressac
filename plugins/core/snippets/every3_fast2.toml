@@ -1,0 +1,8 @@
+content_file = "every3_fast2.jl"
+context = "patterns"
+description = "[Tidal idiom] every(3, fast(2)) — speed bump on every 3rd cycle."
+includes = []
+mode = "block"
+name = "every3_fast2"
+requires_plugins = []
+tags = ["tidal"]

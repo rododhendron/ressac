@@ -1,0 +1,8 @@
+content_file = "house-block.jl"
+context = "patterns"
+description = "Deep house — 4-on-the-floor, off-beat hats, syncopated snare."
+includes = []
+mode = "block"
+name = "house-block"
+requires_plugins = []
+tags = ["genre"]

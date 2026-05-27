@@ -1,0 +1,8 @@
+content_file = "liquid-dnb.jl"
+context = "patterns"
+description = "Liquid drum & bass — smooth pad, rolling break, sub on 1+3"
+includes = []
+mode = "starter"
+name = "liquid-dnb"
+requires_plugins = []
+tags = []

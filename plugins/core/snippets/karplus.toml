@@ -1,0 +1,8 @@
+content_file = "karplus.jl"
+context = "synth_sc"
+description = "Karplus-Strong pluck — noise burst into a feedback delay."
+includes = []
+mode = "block"
+name = "karplus"
+requires_plugins = []
+tags = ["osc"]

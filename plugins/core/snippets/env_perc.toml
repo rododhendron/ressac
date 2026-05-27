@@ -1,0 +1,8 @@
+content_file = "env_perc.jl"
+context = "synth_sc"
+description = "One-shot percussive envelope. No gate needed."
+includes = []
+mode = "block"
+name = "env_perc"
+requires_plugins = []
+tags = ["envelope"]

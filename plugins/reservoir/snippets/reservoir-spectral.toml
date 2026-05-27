@@ -1,0 +1,8 @@
+content_file = "reservoir-spectral.jl"
+context = "patterns"
+description = "Route II — RECA rule 110 over harmonic partials."
+includes = []
+mode = "starter"
+name = "reservoir-spectral"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

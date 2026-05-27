@@ -1,0 +1,8 @@
+content_file = "2step.jl"
+context = "patterns"
+description = "UK 2-step garage — the syncopated kick + swung snare idiom"
+includes = []
+mode = "starter"
+name = "2step"
+requires_plugins = []
+tags = []

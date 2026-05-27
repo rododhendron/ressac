@@ -1,0 +1,8 @@
+content_file = "reservoir-rate.jl"
+context = "patterns"
+description = "╭─ Route V — spike rate AS frequency ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-rate"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

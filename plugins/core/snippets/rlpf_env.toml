@@ -1,0 +1,8 @@
+content_file = "rlpf_env.jl"
+context = "synth_sc"
+description = "Resonant LPF with envelope on cutoff — acid filter sweep."
+includes = []
+mode = "block"
+name = "rlpf_env"
+requires_plugins = []
+tags = ["filter"]

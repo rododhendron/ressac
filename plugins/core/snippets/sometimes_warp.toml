@@ -1,0 +1,8 @@
+content_file = "sometimes_warp.jl"
+context = "patterns"
+description = "[Tidal idiom] sometimes(rev) — 50% of cycles get reversed. Surprise."
+includes = []
+mode = "block"
+name = "sometimes_warp"
+requires_plugins = []
+tags = ["tidal"]

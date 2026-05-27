@@ -1,0 +1,8 @@
+content_file = "breakbeat-block.jl"
+context = "patterns"
+description = "Classic break: kick on the 1, snare on the 3, ghost notes between."
+includes = []
+mode = "block"
+name = "breakbeat-block"
+requires_plugins = []
+tags = ["rhythm"]

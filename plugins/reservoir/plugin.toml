@@ -1,34 +1,39 @@
-name        = "reservoir"
-version     = "0.1.0"
 description = "Spiking-reservoir + cellular-automaton reservoir as Pattern sources"
+name = "reservoir"
+version = "0.1.0"
+
+[docs]
+dir = "docs"
 
 [julia]
 files = ["./reservoir.jl"]
 
+[snippets]
+dir = "snippets"
+
 [synthdefs]
-files = ["./sineburst.scd", "./specloud16.scd", "./audio_in.scd",
-         "./rate_voice.scd"]
-
-[synths.sineburst]
-description = "percussive sine voice — used by reservoir Route I (spike → burst)"
-tags        = ["reservoir", "perc", "sine"]
-
-[synths.specloud16]
-description = "16-partial additive cloud — used by reservoir Route II (spectral)"
-tags        = ["reservoir", "additive", "spectral"]
+files = ["./sineburst.scd", "./specloud16.scd", "./audio_in.scd", "./rate_voice.scd"]
 
 [synths.rate_impulse]
 description = "raw click train — used by Route V (rate→voice, :impulse shape)"
-tags        = ["reservoir", "rate", "impulse"]
-
-[synths.rate_saw]
-description = "sawtooth — used by Route V (rate→voice, :saw shape)"
-tags        = ["reservoir", "rate", "saw"]
-
-[synths.rate_sin]
-description = "pure sine — used by Route V (rate→voice, :sin shape)"
-tags        = ["reservoir", "rate", "sine"]
+tags = ["reservoir", "rate", "impulse"]
 
 [synths.rate_pulse]
 description = "pulse/square — used by Route V (rate→voice, :pulse shape)"
-tags        = ["reservoir", "rate", "pulse"]
+tags = ["reservoir", "rate", "pulse"]
+
+[synths.rate_saw]
+description = "sawtooth — used by Route V (rate→voice, :saw shape)"
+tags = ["reservoir", "rate", "saw"]
+
+[synths.rate_sin]
+description = "pure sine — used by Route V (rate→voice, :sin shape)"
+tags = ["reservoir", "rate", "sine"]
+
+[synths.sineburst]
+description = "percussive sine voice — used by reservoir Route I (spike → burst)"
+tags = ["reservoir", "perc", "sine"]
+
+[synths.specloud16]
+description = "16-partial additive cloud — used by reservoir Route II (spectral)"
+tags = ["reservoir", "additive", "spectral"]

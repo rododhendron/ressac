@@ -1,0 +1,8 @@
+content_file = "dsl_filter_env.jl"
+context = "synth_dsl"
+description = "Filter envelope sweep — acid 303 character."
+includes = []
+mode = "block"
+name = "dsl_filter_env"
+requires_plugins = []
+tags = ["filter"]

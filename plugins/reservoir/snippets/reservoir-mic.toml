@@ -1,0 +1,8 @@
+content_file = "reservoir-mic.jl"
+context = "patterns"
+description = "╭─ Voice / mic / line input drives the reservoir ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-mic"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

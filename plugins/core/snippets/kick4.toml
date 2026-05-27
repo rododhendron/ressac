@@ -1,0 +1,8 @@
+content_file = "kick4.jl"
+context = "patterns"
+description = "Four-on-the-floor kick — the most fundamental house beat."
+includes = []
+mode = "block"
+name = "kick4"
+requires_plugins = []
+tags = ["rhythm"]

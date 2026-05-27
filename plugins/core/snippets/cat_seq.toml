@@ -1,0 +1,8 @@
+content_file = "cat_seq.jl"
+context = "patterns"
+description = "[Tidal idiom] cat — sequence of patterns, one per cycle."
+includes = []
+mode = "block"
+name = "cat_seq"
+requires_plugins = []
+tags = ["tidal"]

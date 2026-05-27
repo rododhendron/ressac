@@ -1,0 +1,8 @@
+content_file = "arp.jl"
+context = "patterns"
+description = "Fast triadic arpeggio — root, 3rd, 5th, octave."
+includes = []
+mode = "block"
+name = "arp"
+requires_plugins = []
+tags = ["melody"]

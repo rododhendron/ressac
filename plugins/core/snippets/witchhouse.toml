@@ -1,0 +1,8 @@
+content_file = "witchhouse.jl"
+context = "patterns"
+description = ""
+includes = []
+mode = "starter"
+name = "witchhouse"
+requires_plugins = []
+tags = []

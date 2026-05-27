@@ -1,6 +1,12 @@
-name        = "chaos"
-version     = "0.1.0"
 description = "Chaotic dynamical systems as Pattern{Float64} generators"
+name = "chaos"
+version = "0.1.0"
+
+[docs]
+dir = "docs"
 
 [julia]
 files = ["./chaos.jl"]
+
+[snippets]
+dir = "snippets"

@@ -1,0 +1,8 @@
+content_file = "dsl_layer.jl"
+context = "synth_dsl"
+description = "Layer multiple oscs with `+`. Useful for thickening."
+includes = []
+mode = "block"
+name = "dsl_layer"
+requires_plugins = []
+tags = ["output"]

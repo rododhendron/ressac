@@ -1,0 +1,8 @@
+content_file = "cheat_controls.jl"
+context = "patterns"
+description = "Cheatsheet: every effect / control op and its composition rule."
+includes = []
+mode = "block"
+name = "cheat_controls"
+requires_plugins = []
+tags = ["reference"]

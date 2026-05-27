@@ -1,0 +1,8 @@
+content_file = "fx_dub.jl"
+context = "patterns"
+description = "Dub-style delay + room — append to any pattern line."
+includes = []
+mode = "block"
+name = "fx_dub"
+requires_plugins = []
+tags = ["fx"]

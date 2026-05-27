@@ -1,0 +1,8 @@
+content_file = "track_house.jl"
+context = "patterns"
+description = "Four-on-the-floor house template."
+includes = []
+mode = "block"
+name = "track_house"
+requires_plugins = []
+tags = ["track"]

@@ -1,0 +1,8 @@
+content_file = "trap.jl"
+context = "patterns"
+description = ""
+includes = []
+mode = "starter"
+name = "trap"
+requires_plugins = []
+tags = []

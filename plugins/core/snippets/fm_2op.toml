@@ -1,0 +1,8 @@
+content_file = "fm_2op.jl"
+context = "synth_sc"
+description = "Classic 2-op FM. mratio drives timbre, mindex its evolution."
+includes = []
+mode = "block"
+name = "fm_2op"
+requires_plugins = []
+tags = ["osc"]

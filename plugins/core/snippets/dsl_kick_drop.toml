@@ -1,0 +1,8 @@
+content_file = "dsl_kick_drop.jl"
+context = "synth_dsl"
+description = "Sub kick with pitch drop — sine + click."
+includes = []
+mode = "block"
+name = "dsl_kick_drop"
+requires_plugins = []
+tags = ["osc"]

@@ -1,0 +1,8 @@
+content_file = "dsl_filtered.jl"
+context = "synth_dsl"
+description = "Saw → resonant LPF. Add params for cutoff/q."
+includes = []
+mode = "block"
+name = "dsl_filtered"
+requires_plugins = []
+tags = ["skeleton"]

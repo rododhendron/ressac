@@ -185,7 +185,7 @@ function _load_snippet_toml(toml_path::AbstractString, plugin_name::AbstractStri
     description = String(get(raw, "description", ""))
     tags = Symbol[Symbol(t) for t in get(raw, "tags", String[])]
     context_str = String(get(raw, "context", "any"))
-    context = context_str in ("patterns", "synth", "any") ?
+    context = context_str in ("patterns", "synth_dsl", "synth_sc", "any") ?
               Symbol(context_str) :
               begin
                   @warn "snippet '$name' has unknown context '$context_str'; defaulting to :any"
@@ -212,11 +212,14 @@ function _load_snippet_toml(toml_path::AbstractString, plugin_name::AbstractStri
         @warn "snippet '$name': sidecar read failed: $(sprint(showerror, err))"
         return nothing
     end
-    parsed = Meta.parse("begin\n$own_content\nend"; raise=false)
-    if parsed isa Expr && parsed.head === :error
-        @warn "snippet '$name': sidecar has Julia syntax error — skipping"
-        return nothing
-    end
+    # No Julia syntax validation at load time. Snippets come in many
+    # flavours:
+    #   * full top-level Julia (e.g. `@d1 p"bd"`)
+    #   * fragments meant to be appended to existing code (`|> shape(0.8)`)
+    #   * SuperCollider source for the synth pane (`var x = ...`)
+    # Pre-validating would reject every fragment. Errors surface
+    # naturally at insert+eval time, where the user sees them in
+    # the live log.
 
     _SNIPPET_RAW[String(name)] = (own_content = own_content, includes = includes)
     return SnippetEntry(

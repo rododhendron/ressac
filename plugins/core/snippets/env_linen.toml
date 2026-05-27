@@ -1,0 +1,8 @@
+content_file = "env_linen.jl"
+context = "synth_sc"
+description = "Linear-attack/sustain/release — predictable note length."
+includes = []
+mode = "block"
+name = "env_linen"
+requires_plugins = []
+tags = ["envelope"]

@@ -1,0 +1,8 @@
+content_file = "stack_layers.jl"
+context = "patterns"
+description = "[Tidal idiom] stack of 3 patterns — kick + offbeat hat + ghost snare."
+includes = []
+mode = "block"
+name = "stack_layers"
+requires_plugins = []
+tags = ["tidal"]

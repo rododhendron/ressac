@@ -1,0 +1,8 @@
+content_file = "often_thin.jl"
+context = "patterns"
+description = "[Tidal idiom] often(degradeBy 0.4) — 75% of cycles drop 40% of hits."
+includes = []
+mode = "block"
+name = "often_thin"
+requires_plugins = []
+tags = ["tidal"]

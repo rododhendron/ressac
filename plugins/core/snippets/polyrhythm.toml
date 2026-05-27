@@ -1,0 +1,8 @@
+content_file = "polyrhythm.jl"
+context = "patterns"
+description = "3-against-4 polyrhythm — kick triplets vs hat quads."
+includes = []
+mode = "block"
+name = "polyrhythm"
+requires_plugins = []
+tags = ["rhythm"]

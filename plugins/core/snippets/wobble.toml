@@ -1,0 +1,8 @@
+content_file = "wobble.jl"
+context = "patterns"
+description = "Wobble bass with LFO rate riding the bar."
+includes = []
+mode = "block"
+name = "wobble"
+requires_plugins = []
+tags = ["melody"]

@@ -1,0 +1,8 @@
+content_file = "reservoir-wta.jl"
+context = "patterns"
+description = "╭─ Winner-takes-all — séquence mono d'un seul neurone à la fois ─╮"
+includes = []
+mode = "starter"
+name = "reservoir-wta"
+requires_plugins = ["reservoir"]
+tags = ["reservoir"]

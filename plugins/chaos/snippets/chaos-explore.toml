@@ -1,0 +1,8 @@
+content_file = "chaos-explore.jl"
+context = "patterns"
+description = "╭─ chaos generators — modify any value to hear the effect ─╮"
+includes = []
+mode = "starter"
+name = "chaos-explore"
+requires_plugins = ["chaos"]
+tags = ["chaos"]

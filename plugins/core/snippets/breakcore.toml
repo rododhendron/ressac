@@ -1,0 +1,8 @@
+content_file = "breakcore.jl"
+context = "patterns"
+description = "Breakcore — chopped fast break, ghost notes, kick chaos."
+includes = []
+mode = "block"
+name = "breakcore"
+requires_plugins = []
+tags = ["genre"]

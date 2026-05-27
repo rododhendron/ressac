@@ -1,0 +1,8 @@
+content_file = "juxBy_split.jl"
+context = "patterns"
+description = "[Tidal idiom] juxBy(0.3, rev) — partial stereo widening (30%)."
+includes = []
+mode = "block"
+name = "juxBy_split"
+requires_plugins = []
+tags = ["tidal"]

@@ -1,0 +1,8 @@
+content_file = "fx_drive.jl"
+context = "patterns"
+description = "Hard saturation via SuperDirt's shape."
+includes = []
+mode = "block"
+name = "fx_drive"
+requires_plugins = []
+tags = ["fx"]

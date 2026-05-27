@@ -1,0 +1,8 @@
+content_file = "dsl_drone.jl"
+context = "synth_dsl"
+description = "No-env drone — runs until you :hush. Note auto_env=false."
+includes = []
+mode = "block"
+name = "dsl_drone"
+requires_plugins = []
+tags = ["skeleton"]
