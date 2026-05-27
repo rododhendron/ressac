@@ -1,0 +1,6 @@
+name        = "withdocs"
+version     = "0.1.0"
+description = "fixture plugin used for [docs] handler tests"
+
+[docs]
+dir = "docs"

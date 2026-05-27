@@ -328,3 +328,55 @@ function _resolve_snippet_includes!()
     empty!(_SNIPPET_RAW)
     return nothing
 end
+
+"""
+    _handle_docs(plugin_dir, data, plugin_name)
+
+`[docs]` section handler. Scans `<plugin_dir>/<data["dir"]>` (default
+`"docs"`) for `*.md` files. Each file is parsed for TOML frontmatter
+between `+++` fences; missing or malformed files are warned about
+and skipped.
+
+Frontmatter fields:
+  * `name` (required) — the registry key
+  * `short` (optional, default "") — tooltip / `:doc <name>` line
+  * `tags` (optional, default []) — list of strings, converted to Symbols
+  * `kwargs` (optional, default [])
+  * `examples` (optional, default [])
+
+The body (everything after the closing `+++`) is loaded into
+`DocEntry.body` for future use by the doc-pane UI.
+"""
+function _handle_docs(plugin_dir, data, plugin_name)
+    data isa AbstractDict || (data = Dict{String,Any}())
+    dir_rel = get(data, "dir", "docs")
+    docs_dir = isabspath(dir_rel) ? dir_rel : joinpath(plugin_dir, dir_rel)
+    isdir(docs_dir) || return nothing
+    for f in sort(readdir(docs_dir; join=false))
+        endswith(f, ".md") || continue
+        path = abspath(joinpath(docs_dir, f))
+        src = try
+            read(path, String)
+        catch err
+            @warn "doc file '$path': read failed: $(sprint(showerror, err))"
+            continue
+        end
+        fm, body = _parse_frontmatter(src)
+        name = get(fm, "name", nothing)
+        if name === nothing || !(name isa AbstractString) || isempty(name)
+            @warn "doc file '$path' has no frontmatter 'name' field; skipping"
+            continue
+        end
+        short = String(get(fm, "short", ""))
+        tags = Symbol[Symbol(t) for t in get(fm, "tags", String[])]
+        kwargs = Symbol[Symbol(k) for k in get(fm, "kwargs", String[])]
+        examples = String[String(x) for x in get(fm, "examples", String[])]
+        register_doc!(DocEntry(
+            String(name), short, tags, kwargs, examples,
+            body, String(plugin_name), path,
+        ))
+    end
+    return nothing
+end
+
+register_section_handler!(:docs, _handle_docs)

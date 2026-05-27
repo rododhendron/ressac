@@ -224,6 +224,33 @@ using Ressac
         @test "foo" in Ressac.lookup_snippet("main").requires_plugins
     end
 
+    @testset "_handle_docs — scans dir and registers entries" begin
+        empty!(Ressac._DOCS)
+        fixture = joinpath(@__DIR__, "fixtures", "plugins", "withdocs")
+        Ressac._handle_docs(fixture, Dict("dir" => "docs"), "withdocs")
+        e = Ressac.lookup_doc("sample_doc")
+        @test e !== nothing
+        @test e.short == "Fixture doc entry"
+        @test e.tags == [:fixture]
+        @test e.kwargs == [:foo, :bar]
+        @test e.examples == ["@d1 sample_doc(1)", "@d2 sample_doc(2)"]
+        @test occursin("body of the fixture doc", e.body)
+        @test e.plugin == "withdocs"
+    end
+
+    @testset "_handle_docs — missing dir is no-op" begin
+        empty!(Ressac._DOCS)
+        Ressac._handle_docs("/tmp", Dict("dir" => "does_not_exist"), "plug")
+        @test isempty(Ressac._DOCS)
+    end
+
+    @testset "_handle_docs — uses default dir when no key" begin
+        empty!(Ressac._DOCS)
+        fixture = joinpath(@__DIR__, "fixtures", "plugins", "withdocs")
+        Ressac._handle_docs(fixture, Dict{String,Any}(), "withdocs")
+        @test Ressac.lookup_doc("sample_doc") !== nothing
+    end
+
     @testset "parse_frontmatter — TOML between +++ fences" begin
         src = """
         +++
