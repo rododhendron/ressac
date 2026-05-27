@@ -89,6 +89,53 @@ using Ressac
         @test Ressac.lookup_snippet("foo").plugin == "plugB"
     end
 
+    @testset "_load_snippet_toml — valid manifest + valid sidecar" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        fixture_dir = joinpath(@__DIR__, "fixtures", "registry")
+        toml_path = joinpath(fixture_dir, "good_snippet.toml")
+        e = Ressac._load_snippet_toml(toml_path, "testplug")
+        @test e !== nothing
+        @test e.name == "fixture-good"
+        @test e.mode === :block
+        @test e.tags == [:fixture, :test]
+        @test e.plugin == "testplug"
+        @test e.resolved_content == ""
+        @test occursin("x = 1 + 2", Ressac._SNIPPET_RAW[e.name].own_content)
+        @test isempty(e.includes)
+    end
+
+    @testset "_load_snippet_toml — sidecar with syntax error skipped" begin
+        empty!(Ressac._SNIPPET_RAW)
+        fixture_dir = joinpath(@__DIR__, "fixtures", "registry")
+        toml_path = joinpath(fixture_dir, "bad_syntax.toml")
+        @test_logs (:warn, r"syntax error") begin
+            e = Ressac._load_snippet_toml(toml_path, "testplug")
+            @test e === nothing
+        end
+    end
+
+    @testset "_load_snippet_toml — missing sidecar skipped" begin
+        empty!(Ressac._SNIPPET_RAW)
+        tmpdir = mktempdir()
+        try
+            open(joinpath(tmpdir, "orphan.toml"), "w") do io
+                println(io, """name = "orphan"
+                mode = "block"
+                description = "missing sidecar"
+                content_file = "does_not_exist.jl"
+                """)
+            end
+            @test_logs (:warn, r"sidecar.*does_not_exist") begin
+                e = Ressac._load_snippet_toml(joinpath(tmpdir, "orphan.toml"),
+                                              "testplug")
+                @test e === nothing
+            end
+        finally
+            rm(tmpdir; recursive=true, force=true)
+        end
+    end
+
     @testset "parse_frontmatter — TOML between +++ fences" begin
         src = """
         +++

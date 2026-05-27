@@ -1,0 +1,4 @@
+name = "fixture-bad"
+mode = "block"
+description = "Sidecar has a syntax error"
+content_file = "bad_syntax.jl"

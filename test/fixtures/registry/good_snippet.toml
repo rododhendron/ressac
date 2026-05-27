@@ -1,0 +1,5 @@
+name = "fixture-good"
+mode = "block"
+description = "A well-formed fixture snippet"
+tags = ["fixture", "test"]
+content_file = "good_snippet.jl"

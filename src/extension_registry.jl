@@ -141,3 +141,82 @@ function _parse_frontmatter(src::AbstractString)
     end
     return (fm, body)
 end
+
+# Bookkeeping for the resolver: between registration and resolution, we
+# need to remember each snippet's own_content + raw includes. We stash
+# them in a parallel dict keyed by snippet name. The resolver consumes
+# this dict, computes resolved_content, and clears the dict.
+const _SNIPPET_RAW = Dict{String, NamedTuple{(:own_content, :includes), Tuple{String, Vector{String}}}}()
+
+"""
+    _load_snippet_toml(toml_path, plugin_name) -> Union{SnippetEntry, Nothing}
+
+Read a snippet manifest TOML at `toml_path`. Resolves `content_file`
+relative to the TOML's directory. Validates the sidecar parses as
+Julia. Builds a `SnippetEntry` with `resolved_content = ""` (filled
+later by the resolver). Stashes the raw own-content + declared
+includes in `_SNIPPET_RAW` for the resolver to consume.
+
+Returns `nothing` and logs a warning if:
+  * The manifest TOML is malformed
+  * `content_file` is missing or unreadable
+  * The sidecar fails `Meta.parse` with a `:error` head
+"""
+function _load_snippet_toml(toml_path::AbstractString, plugin_name::AbstractString)
+    raw = try
+        TOML.parsefile(toml_path)
+    catch err
+        @warn "snippet manifest '$toml_path': TOML parse failed: $(sprint(showerror, err))"
+        return nothing
+    end
+    name = get(raw, "name", nothing)
+    if name === nothing || !(name isa AbstractString) || isempty(name)
+        @warn "snippet manifest '$toml_path' missing or invalid 'name' field"
+        return nothing
+    end
+    mode_str = get(raw, "mode", "block")
+    mode = mode_str == "starter" ? :starter :
+           mode_str == "block"   ? :block   :
+           begin
+               @warn "snippet '$name' has unknown mode '$mode_str'; defaulting to :block"
+               :block
+           end
+    description = String(get(raw, "description", ""))
+    tags = Symbol[Symbol(t) for t in get(raw, "tags", String[])]
+    requires = String[String(p) for p in get(raw, "requires_plugins", String[])]
+    includes = String[String(i) for i in get(raw, "includes", String[])]
+    panes = get(raw, "panes", Any[])
+    panes isa AbstractVector || (panes = Any[])
+
+    content_file = get(raw, "content_file", "")
+    if isempty(content_file)
+        @warn "snippet '$name' at '$toml_path' has no content_file"
+        return nothing
+    end
+    sidecar_path = joinpath(dirname(toml_path), content_file)
+    if !isfile(sidecar_path)
+        @warn "snippet '$name': sidecar '$content_file' not found at '$sidecar_path'"
+        return nothing
+    end
+    own_content = try
+        read(sidecar_path, String)
+    catch err
+        @warn "snippet '$name': sidecar read failed: $(sprint(showerror, err))"
+        return nothing
+    end
+    parsed = Meta.parse("begin\n$own_content\nend"; raise=false)
+    if parsed isa Expr && parsed.head === :error
+        @warn "snippet '$name': sidecar has Julia syntax error — skipping"
+        return nothing
+    end
+
+    _SNIPPET_RAW[String(name)] = (own_content = own_content, includes = includes)
+    return SnippetEntry(
+        String(name), mode, description, tags,
+        requires, includes,
+        "",
+        collect(Any, panes),
+        String(plugin_name),
+        abspath(toml_path),
+    )
+end
