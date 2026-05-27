@@ -31,9 +31,9 @@ isdefined(Main, :Reservoir) ||
     @testset "every starter pack key matches the dispatcher regex" begin
         # The literal regex from tui_app.jl. Keeping it duplicated here
         # is fine — that's the contract being asserted.
-        starter_regex = r"^[\w-]+$"
+        starter_regex = r"^[\w.-]+$"
         @check db = false function starter_keys_dispatchable(
-            key = Data.SampledFrom(collect(keys(Ressac._STARTER_PACKS))))
+            key = Data.SampledFrom(Ressac.list_starters()))
             !isnothing(match(starter_regex, key))
         end
     end

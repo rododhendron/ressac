@@ -616,7 +616,7 @@ function _ex_arg_candidates(verb::AbstractString)
     elseif kind === :synths
         return String.(keys(_SYNTH_REGISTRY))
     elseif kind === :starters
-        return collect(keys(_STARTER_PACKS))
+        return list_starters()
     elseif kind === :scales
         return String.(keys(_SCALES))
     elseif kind === :slots
@@ -633,7 +633,7 @@ function _ex_arg_candidates(verb::AbstractString)
         # `:doc <Tab>` should also surface the prose-doc keys (params,
         # combinators, chaos / reservoir helpers, etc.) — they're often
         # the actual thing the user wants when they hit doc.
-        append!(out, collect(keys(_PARAM_DOCS)))
+        append!(out, list_docs())
         unique!(out)
         return out
     end

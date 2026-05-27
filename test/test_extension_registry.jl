@@ -391,4 +391,18 @@ using Ressac
             @test isempty(fm4)
         end
     end
+
+    # Restore the project's plugin tree at the end of this file so
+    # downstream testsets (test_modal_helpers, test_properties) see the
+    # full registry. Several testsets above wipe + re-populate the
+    # registry with fixture-only entries; without this restore they'd
+    # bleed into the rest of the suite.
+    @testset "restore project plugin tree after fixture pollution" begin
+        empty!(Ressac._DOCS)
+        empty!(Ressac._SNIPPETS)
+        empty!(Ressac._SNIPPET_RAW)
+        Ressac._load_plugins([joinpath(@__DIR__, "..", "plugins")])
+        @test !isempty(Ressac.list_starters())
+        @test !isempty(Ressac.list_docs())
+    end
 end
