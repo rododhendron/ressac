@@ -2390,18 +2390,22 @@ function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
 end
 
 function _doc_command!(m::RessacApp, name::AbstractString)
-    desc = _lookup_livedoc(name)
-    if desc === nothing
-        _push_app_log!(m, "[WARN] :doc — no entry for '$name'")
+    entry = lookup_doc(String(name))
+    if entry === nothing
+        # Fall back to _lookup_livedoc (covers the _SC_UGEN_DOCS branch
+        # for SC UGens that aren't in the plugin doc tree).
+        desc = _lookup_livedoc(name)
+        if desc === nothing
+            _push_app_log!(m, "[WARN] :doc — no entry for '$name'")
+            return
+        end
+        _push_app_log!(m, "[doc] $name — $desc")
         return
     end
-    _push_app_log!(m, "[doc] $name — $desc")
-    # Surface any registered usage examples. Each line gets its own
-    # log entry so it copy-pastes cleanly with :copylogs.
-    examples = get(_PARAM_EXAMPLES, String(name), String[])
-    isempty(examples) && return
+    _push_app_log!(m, "[doc] $name — $(entry.short)")
+    isempty(entry.examples) && return
     _push_app_log!(m, "[doc]   examples:")
-    for ex in examples
+    for ex in entry.examples
         _push_app_log!(m, "[doc]     $ex")
     end
 end
