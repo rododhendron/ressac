@@ -12,3 +12,27 @@ tags = ["user"]
 [synths.mywob2]
 description = "user synth"
 tags = ["user"]
+
+[synths.chaodrone]
+description = "Lorenz attractor — low-rate rumbling drone, RLPF tamed"
+tags = ["chaos", "drone", "bass"]
+
+[synths.chaoglitch]
+description = "Hénon-map percussive glitch — pitched but noisy blip"
+tags = ["chaos", "perc", "glitch"]
+
+[synths.chaopad]
+description = "Latoocarfian noisy-buzz pad with LFO sweep + reverb"
+tags = ["chaos", "pad", "noise"]
+
+[synths.chaobass]
+description = "Logistic map at chaos threshold (paramA≈3.9), tanh-driven"
+tags = ["chaos", "bass"]
+
+[synths.chaofm]
+description = "Feedback-sine FM-like timbre — im/fb shape harmonics"
+tags = ["chaos", "fm", "bell"]
+
+[synths.chaopluck]
+description = "LinCong → comb resonator — damaged Karplus-Strong pluck"
+tags = ["chaos", "pluck", "lead"]

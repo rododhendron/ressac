@@ -173,6 +173,73 @@ function _render_eval_flash!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
 end
 
 """
+    _render_visual_selection!(m, rect, buf)
+
+Paint the visual-mode selection (V or v) on top of the editor render.
+:line highlights whole rows [anchor_row..cursor_row]; :char highlights
+character-wise from anchor to cursor in reading order. Background-tinted
+style so the underlying text stays readable.
+"""
+function _render_visual_selection!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
+    m.visual_active || return
+    ed = m.editor
+    th = TK.theme()
+    sel_style = TK.Style(; fg = th.text_bright, bg = th.secondary, bold = true)
+
+    gw = ed.show_line_numbers ?
+         ndigits(max(length(ed.lines), 1)) + 1 : 0
+    first_row = ed.scroll_offset + 1
+    last_row  = first_row + rect.height - 1
+
+    paint_cell = (row, col_in_line, ch) -> begin
+        screen_x = rect.x + gw + col_in_line - 1 - ed.h_scroll
+        screen_x < rect.x + gw && return
+        screen_x >= rect.x + rect.width && return
+        screen_y = rect.y + (row - first_row)
+        TK.set_char!(buf, screen_x, screen_y, ch, sel_style)
+    end
+
+    if m.visual_kind === :line
+        r1 = min(m.visual_anchor_row, ed.cursor_row)
+        r2 = max(m.visual_anchor_row, ed.cursor_row)
+        for row in r1:r2
+            (row < first_row || row > last_row) && continue
+            row <= length(ed.lines) || continue
+            line_chars = ed.lines[row]
+            # Paint every char of the row + trail spaces up to the rect
+            # right edge so the highlight feels like a full-line block.
+            line_w = max(length(line_chars), 1)
+            visible_w = rect.width - gw + ed.h_scroll
+            paint_w = max(line_w, visible_w)
+            for col in 1:paint_w
+                ch = col <= length(line_chars) ? line_chars[col] : ' '
+                paint_cell(row, col, ch)
+            end
+        end
+    else  # :char
+        ar, ac = m.visual_anchor_row, m.visual_anchor_col
+        cr, cc = ed.cursor_row, ed.cursor_col
+        if (cr < ar) || (cr == ar && cc < ac)
+            r1, c1, r2, c2 = cr, cc, ar, ac
+        else
+            r1, c1, r2, c2 = ar, ac, cr, cc
+        end
+        for row in r1:r2
+            (row < first_row || row > last_row) && continue
+            row <= length(ed.lines) || continue
+            line_chars = ed.lines[row]
+            col_lo = row == r1 ? c1 + 1 : 1
+            col_hi = row == r2 ? c2 + 1 : length(line_chars)
+            col_hi = min(col_hi, max(length(line_chars), 1))
+            for col in col_lo:col_hi
+                ch = col <= length(line_chars) ? line_chars[col] : ' '
+                paint_cell(row, col, ch)
+            end
+        end
+    end
+end
+
+"""
     _split_minino_top(body) -> Vector{Tuple{Int,Int}}
 
 Split `body` (the inside of a `p"…"` string) into top-level

@@ -317,7 +317,14 @@ function _step!(s::Scheduler, now::Float64)
     fired_at_local = Pair{Symbol,Float64}[]
     for (slot, pattern) in patterns_snapshot
         for n in n_start:(n_stop - 1)
-            events = pattern(Rational{Int64}(n), Rational{Int64}(n + 1))
+            # `Base.invokelatest` lets us call closures defined in
+            # plugins loaded AFTER the scheduler task spawned. Without
+            # it, world-age limits raise MethodError when a plugin's
+            # Pattern is assigned to a slot post-boot (e.g. anything
+            # from the reservoir plugin built via `Reservoir.spike_burst`).
+            events = Base.invokelatest(pattern,
+                                       Rational{Int64}(n),
+                                       Rational{Int64}(n + 1))
             for ev in events
                 ev_start = Float64(ev.start)
                 if start_cycles <= ev_start < end_cycles

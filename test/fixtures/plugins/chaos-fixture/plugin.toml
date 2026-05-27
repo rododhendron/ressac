@@ -1,0 +1,6 @@
+name        = "chaos-fixture"
+version     = "0.1.0"
+description = "fixture that loads the real chaos plugin via the [julia] handler"
+
+[julia]
+files = ["../../../../plugins/chaos/chaos.jl"]

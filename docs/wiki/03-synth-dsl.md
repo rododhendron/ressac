@@ -38,6 +38,7 @@ caller can drive them live from patterns: `@d1 :acid |> n("0 3 5")`.
 | ---------- | ----------------------------------------------------------------- |
 | Osc        | `saw sin_osc pulse tri square var_saw blip formant`               |
 | Noise      | `white pink brown gray dust crackle lf_noise0/1/2`                |
+| Chaos      | `lorenz henon logistic standard_map latoo lincong quad fbsine gbman cusp` |
 | LFOs       | `lfo lfo_saw lfo_tri lfo_pulse lf_cub lf_par`                     |
 | Lines      | `line x_line ramp_kr lag_kr/2/3`                                  |
 | Filters    | `low_pass high_pass band_pass band_reject rlpf rhpf moog_ff`      |
@@ -100,6 +101,94 @@ inside an expression compiles to `(freq * 2)` in SC.
 @synth :sweepy (freq=220, sustain=2)
     saw(:freq) |> phaser(0.3, 800) |> env_linen(0.01, :sustain, 0.2)
 ```
+
+## Chaotic / nonlinear sources
+
+Audio-rate chaos UGens from sc3-plugins, wired into the DSL like
+oscillators. Use them anywhere `saw()` or `white()` would go. The
+`freq` arg is the **iteration rate** of the underlying system — not
+pitch per se, but it does land in audible pitch territory when set
+near typical note frequencies.
+
+| UGen           | Character                                       |
+| -------------- | ----------------------------------------------- |
+| `lorenz`       | 3D continuous attractor — smooth, drone-friendly |
+| `henon`        | 2D map — sharp, glitchy, percussive             |
+| `logistic`     | 1D map — `paramA` ∈ [3.57, 4] selects chaos    |
+| `standard_map` | area-preserving — droney, `k` controls intensity |
+| `latoo`        | Latoocarfian — very 'noisy buzz', good for pads |
+| `lincong`      | linear congruential — can be very pitched       |
+| `quad`         | quadratic map                                    |
+| `fbsine`       | feedback sine — FM-bell at high `im`/`fb`      |
+| `gbman`        | Gingerbreadman map — area-preserving 2D         |
+| `cusp`         | cusp catastrophe                                |
+
+Each wraps the **-L** (linear interpolation) variant. For raw / no-interp
+or cubic versions, use the `ugen()` escape hatch:
+
+```julia
+@synth :rawlo  ugen(:LorenzN, :freq, 10, 28, 8/3, 0.05) |> rlpf(800, 0.3)
+@synth :smoolo ugen(:LorenzC, :freq, 10, 28, 8/3, 0.05) |> rlpf(800, 0.3)
+```
+
+### Cookbook — chaos sound sources
+
+Six ready-to-go examples ship in `plugins/user-synths/` — try
+`:lib`, filter tag `chaos`:
+
+```julia
+# Lorenz drone — low iteration rate gives rumbling texture
+@synth :chaodrone (freq=80, sustain=4, cutoff=600) begin
+  lorenz(:freq * 6, 10, 28, 8/3, 0.05) |>
+  rlpf(:cutoff, 0.3) |> tanh_drive(1.2)
+end
+
+# Hénon glitch — pitched but harmonically noisy blip
+@synth :chaoglitch (freq=440, sustain=0.18, a=1.4, b=0.3) begin
+  henon(:freq * 4, :a, :b) |>
+  rlpf(2200, 0.4) |> env_perc(0.001, :sustain)
+end
+
+# Latoocarfian pad — heavy LP + reverb tames the buzz
+@synth :chaopad (freq=220, sustain=4) (auto_env=false,) begin
+  latoo(:freq * 16, 1.0, 3.0, 0.5, 0.5, 0.5, 0.5) |>
+  low_pass(lfo(0.18; low=600, high=2200)) |>
+  free_verb(0.5, 0.92, 0.6) |> amp(0.35)
+end
+
+# Logistic bass at the chaos threshold
+@synth :chaobass (freq=55, sustain=0.45, drive=1.4) begin
+  logistic(:freq * 8, 3.9, 0.5) |>
+  low_pass(:freq * 8) |> tanh_drive(:drive) |>
+  env_perc(0.005, :sustain)
+end
+
+# Feedback-sine FM-like — push im/fb up for more bell-like
+@synth :chaofm (freq=220, sustain=1.2, im=1.0, fb=0.1) begin
+  fbsine(:freq * 100, :im, :fb, 1.1, 0.5, 0.1, 0.1) |>
+  rlpf(:freq * 8, 0.3) |> env_perc(0.005, :sustain)
+end
+
+# LinCong pluck — damaged Karplus-Strong
+@synth :chaopluck (freq=220, sustain=1.0, damp=0.5) begin
+  lincong(:freq * 64, 1.1, 0.13, 1.0, 0.0) |>
+  comb_l(1 / :freq, :sustain, 0.05) |>
+  low_pass(:freq * 6) |> env_perc(0.001, :sustain)
+end
+```
+
+### Driving chaos params from a pattern
+
+Each chaos UGen exposes its system parameters as SC controls, so you
+can sweep them live like any other param:
+
+```julia
+@d1 :chaobass |> n("0 3 5 7") |> set(:drive, sine() |> range_pat(1.0, 2.5))
+@d2 :chaoglitch |> set(:a, perlin() |> range_pat(1.0, 1.5))
+```
+
+See `14-chaos-reservoir.md` for the bigger picture (control-rate chaos
+patterns and reservoir-driven synthesis).
 
 ## Built-in library
 

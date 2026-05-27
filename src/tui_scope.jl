@@ -6,7 +6,115 @@
 const _SCOPE_LISTEN_PORT = 57121
 const _SCOPE_CYCLE_ORDER = (:off, :amp, :wave, :spectrum,
                             :xy, :goni, :spectrogram, :peak,
-                            :pitch, :onset, :hist, :corr)
+                            :pitch, :onset, :hist, :corr,
+                            :reservoir, Symbol("reservoir-graph"))
+# Audio-in shared state — fed from the SC `\ressac_audio_in` SynthDef
+# (see plugins/reservoir/audio_in.scd) via /ressac/audio_in packets at
+# ~50 Hz. `_AUDIO_IN_VALUE` is a single mono amplitude (RMS); the
+# values vector is for the optional N-band split.
+const _AUDIO_IN_VALUE  = Ref{Float64}(0.0)
+const _AUDIO_IN_BANDS  = Ref{Vector{Float64}}(Float64[])
+const _AUDIO_IN_TS     = Ref{Float64}(0.0)
+
+"""
+    _handle_audio_in!(args)
+
+OSC handler for `/ressac/audio_in <rms> [band1, band2, …]`. First arg
+is the broadband RMS, subsequent args are optional per-band magnitudes.
+Both are clamped to `[0, 1]` so the reservoir input scaling stays
+predictable across input levels.
+"""
+function _handle_audio_in!(args)
+    isempty(args) && return
+    floats = Float64[]
+    for v in args
+        v isa Number && push!(floats, Float64(v))
+    end
+    isempty(floats) && return
+    _AUDIO_IN_VALUE[] = clamp(floats[1], 0.0, 1.0)
+    if length(floats) > 1
+        bands = Float64[clamp(x, 0.0, 1.0) for x in floats[2:end]]
+        _AUDIO_IN_BANDS[] = bands
+    end
+    _AUDIO_IN_TS[] = time()
+    return
+end
+
+# Force-directed positions for the reservoir-graph view, cached on
+# scope-mode switch. Tuple{Float64,Float64} in unit-square coords; the
+# renderer scales to area.width × area.height.
+const _APP_GRAPH_LAYOUT = Ref{Vector{Tuple{Float64,Float64}}}(Tuple{Float64,Float64}[])
+
+"""
+    _force_directed_layout(W, N; iterations=120) -> Vector{Tuple{Float64,Float64}}
+
+Fruchterman-Reingold layout: nodes repel each other globally; edges
+(weighted by |W|) pull connected pairs together. Result is a vector
+of `N` (x, y) positions in `[0, 1]²`, where strongly-coupled units
+cluster and weakly-connected units spread out.
+"""
+function _force_directed_layout(W::AbstractMatrix{Float64}, N::Int;
+                                iterations::Int = 120,
+                                edge_threshold_frac::Real = 0.15)
+    pos = Vector{Tuple{Float64,Float64}}(undef, N)
+    for i in 1:N
+        θ = 2π * (i - 1) / N
+        pos[i] = (0.5 + 0.35 * cos(θ), 0.5 + 0.35 * sin(θ))
+    end
+    k = sqrt(1.0 / N)
+    max_w = maximum(abs, W) + 1e-12
+    thr = edge_threshold_frac * max_w
+
+    for iter in 1:iterations
+        disp = fill((0.0, 0.0), N)
+        # Repulsion — every pair.
+        @inbounds for i in 1:N, j in (i+1):N
+            dx = pos[i][1] - pos[j][1]
+            dy = pos[i][2] - pos[j][2]
+            d  = sqrt(dx * dx + dy * dy) + 1e-9
+            f  = (k * k) / d
+            ux, uy = dx / d, dy / d
+            disp[i] = (disp[i][1] + f * ux, disp[i][2] + f * uy)
+            disp[j] = (disp[j][1] - f * ux, disp[j][2] - f * uy)
+        end
+        # Attraction — symmetrised over W (undirected for layout purposes).
+        @inbounds for i in 1:N, j in (i+1):N
+            w = (abs(W[i, j]) + abs(W[j, i])) / 2
+            w < thr && continue
+            wnorm = w / max_w
+            dx = pos[i][1] - pos[j][1]
+            dy = pos[i][2] - pos[j][2]
+            d  = sqrt(dx * dx + dy * dy) + 1e-9
+            f  = wnorm * (d * d) / k
+            ux, uy = dx / d, dy / d
+            disp[i] = (disp[i][1] - f * ux, disp[i][2] - f * uy)
+            disp[j] = (disp[j][1] + f * ux, disp[j][2] + f * uy)
+        end
+        # Cool-down + step limit (simulated annealing).
+        temp = 0.08 * (1.0 - iter / iterations)
+        @inbounds for i in 1:N
+            dx, dy = disp[i]
+            d = sqrt(dx * dx + dy * dy)
+            if d > 1e-9
+                lim = min(d, temp)
+                px = pos[i][1] + (dx / d) * lim
+                py = pos[i][2] + (dy / d) * lim
+                pos[i] = (clamp(px, 0.0, 1.0), clamp(py, 0.0, 1.0))
+            end
+        end
+    end
+    pos
+end
+
+# Currently-attached reservoir for the `:reservoir` scope. Set by
+# `:scope reservoir <varname>` which resolves the name in `Main` and
+# turns on history recording. `nothing` when no reservoir is bound.
+const _APP_SCOPE_RESERVOIR = Ref{Any}(nothing)
+const _APP_SCOPE_RESERVOIR_NAME = Ref{Symbol}(:none)
+# History ring size — large enough to cover a few seconds of activity
+# at typical step rates (1000 Hz → 4 s @ 4000 entries). Memory cost is
+# ~N bytes per snapshot ; for N=64 neurons that's ~256 KB total.
+const _SCOPE_RESERVOIR_CAPACITY = 4000
 # Rolling history for the waterfall spectrogram. Each entry is a
 # 32-band magnitude snapshot; oldest at front, newest at back.
 const _APP_SPECTROGRAM_HISTORY = Ref{Vector{Vector{Float32}}}(Vector{Float32}[])
@@ -92,6 +200,9 @@ function _app_scope_listener_loop()
                 continue
             elseif addr == "/ressac/rms"
                 _handle_orbit_rms!(msg.args)
+                continue
+            elseif addr == "/ressac/audio_in"
+                _handle_audio_in!(msg.args)
                 continue
             end
             # Otherwise: scope data frame.

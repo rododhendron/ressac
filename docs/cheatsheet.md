@@ -101,6 +101,47 @@ pure(0.5) * 2             # multiply
 pure(60) + pure(12)       # arc-intersect + sum
 ```
 
+## Chaos & reservoir
+
+Try-immediately starters: `:starter chaos`, `:starter reservoir-spike`,
+`:starter reservoir-spectral`, `:starter reservoir-mix`.
+
+Pattern-side chaotic generators (control-rate, plug into `set`):
+
+```julia
+Chaos.lorenz(axis=:x)              # 3D continuous attractor
+Chaos.henon()                       # 2D map — glitchy
+Chaos.logistic(r=3.9)               # 1D map — `r` selects chaos
+Chaos.rossler() ; Chaos.standard()  # extras
+
+@d1 :pad |> set(:cutoff, Chaos.lorenz() |> range_pat(400, 4000))
+```
+
+Reservoir-driven synthesis (AdEx neurons / RECA cellular automata):
+
+```julia
+r = Reservoir.adex(N=48, params=Reservoir.ADEX_BURSTING, seed=42)
+@d1 Reservoir.spike_burst(r; drive=600.0, layout=:scale,
+                          layout_args=(scale=:minor_pentatonic, root=220))
+
+r2 = Reservoir.reca(N=16, rule=110, init=:single)
+@d2 Reservoir.spectral_cloud(r2; frames_per_cycle=8, layout=:harmonic,
+                             layout_args=(fund=110,))
+
+mod = Reservoir.modulator(r, neuron=5, drive=500.0) |> range_pat(400, 4000)
+@d3 p"bd*4" |> set(:cutoff, mod)
+```
+
+Audio-rate chaos UGens inside `@synth` (like `white()` / `pink()`):
+
+```julia
+@synth :lo lorenz(:freq * 8, 10, 28, 8/3, 0.05) |> rlpf(800, 0.3)
+# Wrapped: lorenz henon logistic standard_map latoo lincong quad fbsine gbman cusp
+# For -N or -C variants:  ugen(:LorenzN, :freq, …)
+```
+
+Full reference in `14-chaos-reservoir`.
+
 ## REPL workflow (no TUI)
 
 ```julia

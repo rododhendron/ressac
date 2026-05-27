@@ -1,0 +1,6 @@
+name        = "reservoir-fixture"
+version     = "0.1.0"
+description = "fixture that loads the real reservoir plugin via the [julia] handler"
+
+[julia]
+files = ["../../../../plugins/reservoir/reservoir.jl"]

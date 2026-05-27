@@ -162,7 +162,10 @@ function _command_arg_candidates(verb::AbstractString)
     verb == "scale"       && return String.(keys(_SCALES))
     verb == "snippet"     && return _known_snippet_names()
     verb == "load-session" && return _known_session_names()
-    verb == "scope"       && return ["off", "amp", "wave", "spectrum"]
+    verb == "scope"       && return ["off", "amp", "wave", "spectrum",
+                                      "xy", "goni", "spectrogram", "peak",
+                                      "pitch", "onset", "hist", "corr",
+                                      "reservoir", "reservoir-graph"]
     return nothing
 end
 

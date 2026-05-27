@@ -85,6 +85,71 @@ Time-pattern values (`"<...>"`) advance one slot per cycle:
 @d1 :supersaw |> set(:cutoff, "<400 800 1200 2000 1200 800>" |> slow(2))
 ```
 
+## Chaos as control-rate modulation
+
+Pattern-side chaos generators ship in the `chaos` plugin. Each
+returns a `Pattern{Float64}` you can drop into `set(...)` like
+`sine()` or `perlin()`. Full reference in
+[14-chaos-reservoir](14-chaos-reservoir.md).
+
+> **Quick start:** type `:starter chaos` to load a ready-to-eval
+> demo into the buffer.
+
+```julia
+# Lorenz attractor sweeping the filter cutoff
+@d1 :acid303 |> n("0 3 5 7") |>
+   set(:cutoff, Chaos.lorenz(axis=:x) |> range_pat(400, 4000))
+
+# Hénon map glitches the speed every step
+@d2 "bd hh sn hh" |> set(:speed, Chaos.henon() |> range_pat(0.8, 1.4))
+
+# Logistic at the chaos edge controls pan
+@d3 :supersaw |> n("0 3 7 10") |>
+   set(:pan, Chaos.logistic(r=3.95) |> range_pat(-0.8, 0.8))
+```
+
+`segment(N)` discretises a continuous chaos signal into N steps
+per cycle if you want quantised rather than smooth modulation:
+
+```julia
+@d1 :pad |> set(:cutoff,
+   Chaos.rossler() |> segment(8) |> range_pat(500, 3000))
+```
+
+## Reservoir-driven patterns
+
+Spiking-neuron + cellular-automaton reservoirs ship in the
+`reservoir` plugin. Three routes from reservoir state to sound:
+
+> **Quick start:** `:starter reservoir-spike` (Route I),
+> `:starter reservoir-spectral` (Route II), or
+> `:starter reservoir-mix` (all three).
+
+```julia
+# Route I — each spike fires a sineburst at a layout-assigned freq.
+# AdEx in bursting mode, mapped to a pentatonic scale.
+r = Reservoir.adex(N=48, params=Reservoir.ADEX_BURSTING, seed=42)
+@d1 Reservoir.spike_burst(r; drive=600.0, layout=:scale,
+                          layout_args=(scale=:minor_pentatonic, root=220))
+
+# Route II — additive resynthesis (16 partials per frame).
+# RECA rule 110 (Turing-complete, edge of chaos) over a harmonic series.
+r2 = Reservoir.reca(N=16, rule=110, init=:single)
+@d2 Reservoir.spectral_cloud(r2; frames_per_cycle=8,
+                             layout=:harmonic, layout_args=(fund=110,))
+
+# Route III — reservoir as a scalar modulator for any synth param.
+r3 = Reservoir.adex(N=16, seed=1)
+mod = Reservoir.modulator(r3, neuron=5, drive=500.0) |> range_pat(400, 4000)
+@d3 p"bd*4" |> set(:cutoff, mod)
+```
+
+Different rules / parameter sets give very different textures —
+rule 30 is fully chaotic, rule 90 makes Sierpinski-like recurring
+patterns, rule 184 looks like traffic flow, `ADEX_BURSTING` fires
+bursts, `ADEX_FAST` fires tonic spikes. Combine with `slow(N)` /
+`fast(N)` to retime to musical cycles.
+
 ## Modulation effects (DSL synth design)
 
 ```julia

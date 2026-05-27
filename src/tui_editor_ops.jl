@@ -66,16 +66,12 @@ function _word_back_bounds(line::AbstractString, col::Int; big::Bool=false)
 end
 
 function _vim_word_motion!(ed::TK.CodeEditor, ch::Char)
-    row = ed.cursor_row
-    1 <= row <= length(ed.lines) || return
-    line = String(ed.lines[row])
-    big = (ch == 'W' || ch == 'B')
-    if ch == 'w' || ch == 'W'
-        _, stop = _word_bounds(line, ed.cursor_col; big=big)
-        ed.cursor_col = clamp(stop, 0, max(length(line) - 1, 0))
-    elseif ch == 'b' || ch == 'B'
-        ed.cursor_col = _word_back_bounds(line, ed.cursor_col; big=big)
-    end
+    # Forward to the multi-line-aware implementation in tui_app.jl.
+    # The original single-line version stopped at EOL — `w` could get
+    # stuck on the last char of a line rather than wrapping.
+    kind = (ch == 'W' || ch == 'B') ? :big : :small
+    dir  = (ch == 'w' || ch == 'W') ? +1 : -1
+    _word_motion!(ed, dir, kind)
 end
 
 """
@@ -87,66 +83,44 @@ chars. Word boundaries reuse the same helpers as the standalone
 motions so behaviour stays consistent.
 """
 function _vim_op_motion!(m::RessacApp, ed::TK.CodeEditor, op::Char, motion::Char)
-    row = ed.cursor_row
-    1 <= row <= length(ed.lines) || return
-    line = String(ed.lines[row])
-    n = length(line)
-    col = ed.cursor_col
-    range_start, range_stop = if motion == 'w' || motion == 'W'
-        # Vim's cw is special: it stops at the END of the current word,
-        # not the next-word-start. Mirror that — operating on
-        # whitespace-included `w` deletes the gap too which is dw, but
-        # cw leaves it.
-        is_word = motion == 'W' ? (c -> !isspace(c)) :
-                                  (c -> isletter(c) || isdigit(c) || c == '_')
-        i = col + 1
-        while i <= n && is_word(line[i]); i += 1; end
-        word_end = i - 1
-        if op == 'c'
-            (col, word_end)
-        else
-            # dw/yw extend through trailing whitespace.
-            while i <= n && isspace(line[i]); i += 1; end
-            (col, i - 1)
-        end
-    elseif motion == 'b' || motion == 'B'
-        new_col = _word_back_bounds(line, col; big = motion == 'B')
-        (new_col, col - 1)
-    elseif motion == 'e' || motion == 'E'
-        is_word = motion == 'E' ? (c -> !isspace(c)) :
-                                  (c -> isletter(c) || isdigit(c) || c == '_')
-        i = col + 1
-        # If on whitespace, skip ahead to next word first.
-        while i <= n && isspace(line[i]); i += 1; end
-        while i <= n && is_word(line[i]); i += 1; end
-        (col, i - 1)
-    elseif motion == '\$'
-        (col, n)
+    # `$` (end of line) and `0` (start of line) are single-line-only,
+    # cheap operations — handle them inline.
+    if motion == '$'
+        row = ed.cursor_row
+        1 <= row <= length(ed.lines) || return
+        line = String(ed.lines[row])
+        n = length(line)
+        col = ed.cursor_col
+        captured = col < n ? line[col + 1 : n] : ""
+        ed.yank_buffer = [collect(captured)]; ed.yank_is_linewise = false
+        if op == 'y'; return; end
+        saved_scroll = ed.scroll_offset
+        new_line = col > 0 ? line[1:col] : ""
+        TK.set_text!(ed, _set_one_line(ed, row, new_line))
+        ed.scroll_offset = saved_scroll
+        ed.cursor_row = row; ed.cursor_col = col
+        op == 'c' && (ed.mode = :insert)
+        return
     elseif motion == '0'
-        (0, col - 1)
-    else
+        row = ed.cursor_row
+        1 <= row <= length(ed.lines) || return
+        line = String(ed.lines[row])
+        col = ed.cursor_col
+        captured = col > 0 ? line[1:col] : ""
+        ed.yank_buffer = [collect(captured)]; ed.yank_is_linewise = false
+        if op == 'y'; return; end
+        saved_scroll = ed.scroll_offset
+        new_line = col < length(line) ? line[col + 1 : end] : ""
+        TK.set_text!(ed, _set_one_line(ed, row, new_line))
+        ed.scroll_offset = saved_scroll
+        ed.cursor_row = row; ed.cursor_col = 0
+        op == 'c' && (ed.mode = :insert)
         return
     end
-    range_start = clamp(range_start, 0, n)
-    range_stop  = clamp(range_stop, range_start, n)
-    captured = range_start < range_stop ?
-        line[range_start + 1 : range_stop] : ""
-    if op == 'y'
-        # Yank only — leave the buffer alone, set Tachikoma's yank.
-        ed.yank_buffer = [collect(captured)]
-        ed.yank_is_linewise = false
-        return
-    end
-    # d / c — splice the slice out.
-    new_line = (range_start > 0 ? line[1:range_start] : "") *
-               (range_stop >= n ? "" : line[range_stop + 1 : end])
-    ed.yank_buffer = [collect(captured)]
-    ed.yank_is_linewise = false
-    TK.set_text!(ed, _set_one_line(ed, row, new_line))
-    ed.cursor_row = row
-    ed.cursor_col = range_start
-    if op == 'c'
-        ed.mode = :insert
+    # Word motions (w/b/W/B/e/E) — delegate to the multi-line-aware,
+    # scroll-preserving impl in tui_app.jl.
+    if motion in ('w', 'b', 'W', 'B', 'e', 'E')
+        _op_with_motion!(m, ed, op, motion)
     end
 end
 # ---------------------------------------------------------------------

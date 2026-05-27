@@ -87,6 +87,40 @@ function _advance_completion_session!(m::RessacApp)
 end
 
 """
+    _move_completion_session!(m, dir::Symbol) -> Bool
+
+Arrow-key navigation for an active completion picker. `dir` ∈
+`:left, :right, :up, :down`. Horizontal moves are ±1 with wrap;
+vertical moves are ±`completion_cols` (the grid column count
+published by the renderer), clamped to bounds. Returns true iff a
+session was active and the move was applied.
+"""
+function _move_completion_session!(m::RessacApp, dir::Symbol)
+    _completion_picker_active(m) || return false
+    m.completion_splice === nothing && return false
+    n = length(m.completion_candidates)
+    n == 0 && return false
+    cols = max(1, m.completion_cols)
+    idx = m.completion_idx
+    new_idx = if dir === :right
+        idx % n + 1
+    elseif dir === :left
+        idx == 1 ? n : idx - 1
+    elseif dir === :down
+        cand = idx + cols
+        cand > n ? idx : cand
+    elseif dir === :up
+        cand = idx - cols
+        cand < 1 ? idx : cand
+    else
+        return false
+    end
+    m.completion_idx = new_idx
+    m.completion_splice(new_idx)
+    return true
+end
+
+"""
     _try_autocomplete!(m, ed) -> Bool
 
 Tab in `:insert` mode. Looks at the word under the cursor, fuzzy-
@@ -114,7 +148,8 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     end
     start_col == end_col && return false
     partial = String(chars[(start_col + 1):end_col])
-    # Fuzzy-rank against the global candidate pool, top 12.
+    # Fuzzy-rank against the global candidate pool. Generous cap — the
+    # picker is multi-column + scrollable, so a large list is fine.
     candidates = copy(_APP_AUTOCOMPLETE_CANDIDATES)
     append!(candidates, String.(keys(_SAMPLE_REGISTRY)))
     append!(candidates, String.(keys(_INSTRUMENT_REGISTRY)))
@@ -122,7 +157,7 @@ function _try_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     unique!(candidates)
     ranked = _fuzzy_rank(partial, candidates)
     isempty(ranked) && return false
-    top = first(ranked, 12)
+    top = first(ranked, 200)
     row = ed.cursor_row
     splice = _make_editor_splicer(m, ed, row, start_col)
     return _start_completion_session!(m, top, splice; label = "insert")
@@ -178,29 +213,50 @@ _completion_picker_active(m::RessacApp) =
     _render_completion_picker!(m, area, buf)
 
 Drop-in replacement for `_render_logs` while a Tab cycle is active.
-One candidate per row, the current selection highlighted with the
-accent style + a `▶ ` marker. Auto-scrolls so the selected row
-stays visible when the candidate list is taller than the pane.
+Renders candidates as a row-major grid so the pane can show many
+items at once — column count is derived from the longest candidate
+and the pane width. Selected cell is marked with `▶ ` and the
+accent style. Auto-scrolls vertically when the grid is taller than
+the pane.
 """
 function _render_completion_picker!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     n = length(m.completion_candidates)
     n == 0 && return
     body_h = area.height
     body_h <= 0 && return
-    # Keep the selected row in view (reuses the modal scroll helper).
-    scroll = _scroll_to_show(m.completion_idx, n, body_h, 0)
-    first_idx = scroll + 1
-    last_idx  = min(n, scroll + body_h)
-    for (slot, i) in enumerate(first_idx:last_idx)
-        slot > body_h && break
-        cand = m.completion_candidates[i]
-        is_cur = i == m.completion_idx
-        marker = is_cur ? "▶ " : "  "
-        style  = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
-        y = area.y + slot - 1
-        row = marker * cand
-        TK.set_string!(buf, area.x, y,
-                       first(rpad(row, area.width), area.width), style)
+
+    # Column layout: width per cell = longest candidate + marker (2)
+    # + trailing gutter (2). Minimum cell width prevents an absurd
+    # single-column rendering when there's just one short candidate
+    # but plenty of width.
+    max_cand_w = maximum(textwidth(c) for c in m.completion_candidates)
+    col_w = max(max_cand_w + 4, 14)
+    cols = max(1, area.width ÷ col_w)
+    cols = min(cols, n)
+    rows = cld(n, cols)
+    # Publish the column count for arrow-key navigation in :command mode.
+    m.completion_cols = cols
+
+    # Selected cell coordinates (row-major: idx → (row, col)).
+    sel_row = cld(m.completion_idx, cols)
+    scroll = _scroll_to_show(sel_row, rows, body_h, 0)
+    first_row = scroll + 1
+    last_row  = min(rows, scroll + body_h)
+
+    for r in first_row:last_row
+        y = area.y + (r - first_row)
+        for c in 1:cols
+            idx = (r - 1) * cols + c
+            idx > n && break
+            cand = m.completion_candidates[idx]
+            is_cur = idx == m.completion_idx
+            marker = is_cur ? "▶ " : "  "
+            style  = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
+            x = area.x + (c - 1) * col_w
+            # rpad to col_w - 1 leaves a one-cell gutter between columns.
+            text = first(rpad(marker * cand, col_w - 1), col_w - 1)
+            TK.set_string!(buf, x, y, text, style)
+        end
     end
 end
 
@@ -464,7 +520,10 @@ const _EX_COMMAND_ARG_KIND = Dict{String,Symbol}(
 )
 
 const _EX_COMMAND_ARG_LITERALS = Dict{String,Vector{String}}(
-    "scope" => ["off", "amp", "wave", "spectrum"],
+    "scope" => ["off", "amp", "wave", "spectrum",
+                "xy", "goni", "spectrogram", "peak",
+                "pitch", "onset", "hist", "corr",
+                "reservoir", "reservoir-graph"],
 )
 
 """
@@ -493,7 +552,7 @@ function _try_ex_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
         partial = buf
         ranked = _fuzzy_rank(partial, _all_ex_verbs())
         isempty(ranked) && return false
-        top = first(ranked, 12)
+        top = first(ranked, 200)
         splice = _make_ex_verb_splicer(m, ed)
         return _start_completion_session!(m, top, splice; label = "ex:verb")
     else
@@ -506,7 +565,7 @@ function _try_ex_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
         isempty(candidates) && return false
         ranked = _fuzzy_rank(partial, candidates)
         isempty(ranked) && return false
-        top = first(ranked, 12)
+        top = first(ranked, 200)
         splice = _make_ex_arg_splicer(m, ed, verb, toks)
         return _start_completion_session!(m, top, splice; label = "ex:$verb")
     end
@@ -571,6 +630,10 @@ function _ex_arg_candidates(verb::AbstractString)
         append!(out, String.(keys(_SYNTH_REGISTRY)))
         append!(out, String.(keys(_INSTRUMENT_REGISTRY)))
         append!(out, String.(keys(_SAMPLE_REGISTRY)))
+        # `:doc <Tab>` should also surface the prose-doc keys (params,
+        # combinators, chaos / reservoir helpers, etc.) — they're often
+        # the actual thing the user wants when they hit doc.
+        append!(out, collect(keys(_PARAM_DOCS)))
         unique!(out)
         return out
     end

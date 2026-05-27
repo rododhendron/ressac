@@ -176,6 +176,24 @@ non-empty), and the focus toggle for keystroke routing.
     completion_idx::Int          = 0
     completion_splice::Union{Function,Nothing} = nothing
     completion_label::String     = ""           # picker title prefix
+    # Multi-column grid layout published by `_render_completion_picker!`
+    # at draw time so arrow-key navigation (up/down = ±cols, left/right
+    # = ±1) can compute the next cell without re-deriving the picker
+    # geometry. Stays 1 until the first render of a session.
+    completion_cols::Int         = 1
+    # Ex-command history cursor. 0 = inactive (next ↑ in :command yanks
+    # the latest entry); 1..N indexes into `_EX_COMMAND_HISTORY` from
+    # the END (1 = most recent). Reset to 0 on submit / Esc.
+    ex_history_idx::Int          = 0
+    # Reservoir scope — visible time span in wall-clock seconds. The
+    # renderer maps `span_seconds` of recent history into the area's
+    # width, so a spike at the right edge takes `span_seconds` to
+    # scroll all the way to the left.
+    #
+    # `+` zooms IN (smaller span, less time visible, faster apparent
+    # scroll, individual spikes pop). `-` zooms OUT (more time, slower).
+    # Bounded to [0.1, 60] seconds.
+    scope_reservoir_span_seconds::Float64 = 1.5
     # :keydebug toggles a verbose-input mode that pushes every KeyEvent
     # received from the terminal to the log pane. Lets the user see the
     # exact symbol + char + action for any keystroke when diagnosing
@@ -435,6 +453,402 @@ function _try_nudge_at!(m::RessacApp, ed::TK.CodeEditor, row::Int, col::Int, ste
 end
 
 """
+    _try_scale_at!(m, ed, row, col, factor) -> Bool
+
+Multiplicative nudge of the number under (row, col) by `factor` (e.g.
+`2.0` for `*`, `0.5` for `/`). Integer values round to int; floats
+keep their decimal places. Returns true iff a number was found.
+"""
+function _try_scale_at!(m::RessacApp, ed::TK.CodeEditor,
+                        row::Int, col::Int, factor::Float64)
+    1 <= row <= length(ed.lines) || return false
+    line = String(ed.lines[row])
+    best = nothing
+    for mt in eachmatch(_NUMBER_RX, line)
+        s = mt.offset
+        e = s + length(mt.match) - 1
+        s - 1 <= col <= e && (best = mt; break)
+    end
+    best === nothing && return false
+    txt = best.match
+    s = best.offset
+    e = s + length(txt) - 1
+    is_float = occursin('.', txt)
+    new_str = if is_float
+        val = parse(Float64, txt) * factor
+        dot = findfirst('.', txt)
+        decimals = length(txt) - dot
+        string(round(val; digits = decimals))
+    else
+        string(Int(round(parse(Int, txt) * factor)))
+    end
+    new_line = (s > 1 ? line[1:s-1] : "") * new_str *
+               (e >= lastindex(line) ? "" : line[e+1:end])
+    TK.set_text!(ed, _set_one_line(ed, row, new_line))
+    _push_app_log!(m, "[INFO] scale $txt → $new_str  @ row $row")
+    return true
+end
+
+"""
+    _viewport_h(m, ed) -> Int
+
+Visible-line height of the pane currently hosting `ed`. Falls back to
+a conservative 20 if no layout has been recorded yet (first frame).
+"""
+function _viewport_h(m::RessacApp, ed::TK.CodeEditor)
+    rect = ed === m.editor ? m.layout_patterns : m.layout_synth
+    rect === nothing && return 20
+    return max(1, rect.height)
+end
+
+"""
+    _word_motion!(ed, dir, kind)
+
+Move the cursor by one word and keep its SCREEN row stable. `dir`=`+1`
+forward (w/W), `-1` back (b/B). `kind`=`:small` uses letter+digit+`_`
+as word chars (TK lowercase semantics, but always advances and wraps
+lines); `:big` uses whitespace as the only separator (vim W/B).
+
+Screen-row preservation: whatever the visible offset of the cursor
+was before, it's the same after. The view follows the cursor, never
+the other way around — no surprise re-centering when crossing a
+buffer-page boundary.
+"""
+function _word_motion!(ed::TK.CodeEditor, dir::Int, kind::Symbol)
+    n_rows = length(ed.lines)
+    n_rows == 0 && return
+
+    is_space(c) = c == ' ' || c == '\t'
+    is_word(c) = kind === :big ? !is_space(c) :
+                                 (isletter(c) || isdigit(c) || c == '_')
+    # For :small motion we have THREE classes (word, punct, space).
+    # For :big motion we have TWO (non-space, space).
+    function classify(c)
+        is_space(c) && return :sp
+        is_word(c)  && return :wd
+        return :pn
+    end
+
+    pre_screen_row = ed.cursor_row - ed.scroll_offset
+    row = ed.cursor_row
+    line = ed.lines[row]
+    n = length(line)
+    pos = ed.cursor_col + 1   # 1-based
+
+    if dir > 0
+        # Forward — skip current class run, then any whitespace, wrap
+        # across lines until we land on a non-space char (or EOF).
+        if 1 <= pos <= n
+            cls = classify(line[pos])
+            if cls === :wd
+                while pos <= n && is_word(line[pos]); pos += 1; end
+            elseif cls === :pn
+                while pos <= n && !is_word(line[pos]) && !is_space(line[pos]); pos += 1; end
+            end
+        end
+        while true
+            while pos <= n && is_space(line[pos]); pos += 1; end
+            if pos > n
+                if row < n_rows
+                    row += 1; line = ed.lines[row]; n = length(line); pos = 1
+                else
+                    pos = max(n, 1)
+                    break
+                end
+            else
+                break
+            end
+        end
+    else
+        # Backward — step back at least one char, skip whitespace
+        # (wrapping lines), then back to the start of the current class.
+        if pos > 1
+            pos -= 1
+        elseif row > 1
+            row -= 1; line = ed.lines[row]; n = length(line); pos = max(n, 1)
+        end
+        while true
+            while pos > 0 && is_space(line[pos])
+                pos -= 1
+            end
+            if pos == 0
+                if row > 1
+                    row -= 1; line = ed.lines[row]; n = length(line); pos = n
+                else
+                    pos = 1; break
+                end
+            else
+                break
+            end
+        end
+        # Step back to start of the class run we just landed on.
+        if pos > 0
+            cls = classify(line[pos])
+            if cls === :wd
+                while pos > 1 && is_word(line[pos - 1]); pos -= 1; end
+            elseif cls === :pn
+                while pos > 1 && !is_word(line[pos - 1]) && !is_space(line[pos - 1])
+                    pos -= 1
+                end
+            end
+        end
+    end
+
+    line_len = length(ed.lines[row])
+    ed.cursor_row = row
+    ed.cursor_col = clamp(pos - 1, 0, max(line_len - 1, 0))
+    # Re-anchor scroll_offset so cursor stays on the SAME screen row.
+    ed.scroll_offset = max(0, ed.cursor_row - pre_screen_row)
+    return
+end
+
+"""
+    _word_end_motion!(ed, kind)
+
+Land on the LAST char of the current word (or the next word if on
+whitespace). `kind=:small` honours the word-class boundary (alnum +
+`_` vs punctuation); `:big` treats whitespace as the only separator.
+Used by `e` / `E` and by the `cw` / `cW` operator combos (vim quirk
+where cw acts like ce).
+"""
+function _word_end_motion!(ed::TK.CodeEditor, kind::Symbol)
+    n_rows = length(ed.lines)
+    n_rows == 0 && return
+    is_space(c) = c == ' ' || c == '\t'
+    is_word(c) = kind === :big ? !is_space(c) :
+                                 (isletter(c) || isdigit(c) || c == '_')
+
+    row = ed.cursor_row
+    line = ed.lines[row]
+    n = length(line)
+    pos = ed.cursor_col + 1   # 1-based
+
+    # If on space (or past EOL), advance to next non-space — possibly
+    # wrapping across lines.
+    if pos > n || (pos >= 1 && is_space(line[pos]))
+        while true
+            while pos <= n && is_space(line[pos]); pos += 1; end
+            if pos > n
+                if row < n_rows
+                    row += 1; line = ed.lines[row]; n = length(line); pos = 1
+                else
+                    pos = max(n, 1); break
+                end
+            else
+                break
+            end
+        end
+    end
+    if pos < 1 || pos > n
+        ed.cursor_row = row
+        ed.cursor_col = max(n - 1, 0)
+        return
+    end
+
+    # On a non-space char — extend forward through the current class run.
+    cls_is_word = is_word(line[pos])
+    if cls_is_word
+        while pos < n && is_word(line[pos + 1]); pos += 1; end
+    else
+        while pos < n && !is_word(line[pos + 1]) && !is_space(line[pos + 1])
+            pos += 1
+        end
+    end
+
+    ed.cursor_row = row
+    ed.cursor_col = clamp(pos - 1, 0, max(n - 1, 0))
+    return
+end
+
+"""
+    _big_word_motion!(ed, dir, target)
+
+Legacy E (end-of-word) motion, kept for the `E` key wire-up. Forward-
+only, lands on the last char of the current/next word.
+"""
+function _big_word_motion!(ed::TK.CodeEditor, dir::Int, target::Symbol)
+    is_space(c) = c == ' ' || c == '\t'
+    n_rows = length(ed.lines)
+    n_rows == 0 && return
+    row = ed.cursor_row
+    col = ed.cursor_col  # 0-based
+    line = ed.lines[row]
+
+    # Convert to 1-based pos in current line; handle line wraps as we go.
+    pos = col + 1
+    line_len = length(line)
+
+    if dir > 0
+        # Forward: W → next word start ; E → next word end.
+        if target === :start
+            # Skip the current non-space run, then any whitespace.
+            while pos <= line_len && !is_space(line[pos]); pos += 1; end
+            while pos <= line_len && is_space(line[pos]); pos += 1; end
+            while pos > line_len && row < n_rows
+                row += 1; line = ed.lines[row]; line_len = length(line); pos = 1
+                while pos <= line_len && is_space(line[pos]); pos += 1; end
+            end
+        else  # :end
+            # If already at/past end of current word, advance into next.
+            if pos > line_len || is_space(line[pos])
+                while pos <= line_len && is_space(line[pos]); pos += 1; end
+                while pos > line_len && row < n_rows
+                    row += 1; line = ed.lines[row]; line_len = length(line); pos = 1
+                    while pos <= line_len && is_space(line[pos]); pos += 1; end
+                end
+            elseif pos < line_len && is_space(line[pos + 1])
+                # On last char of a word — jump to next.
+                while pos <= line_len && !is_space(line[pos]); pos += 1; end
+                while pos <= line_len && is_space(line[pos]); pos += 1; end
+                while pos > line_len && row < n_rows
+                    row += 1; line = ed.lines[row]; line_len = length(line); pos = 1
+                    while pos <= line_len && is_space(line[pos]); pos += 1; end
+                end
+            end
+            # Now pos is the first char of a word — advance to its end.
+            while pos < line_len && !is_space(line[pos + 1]); pos += 1; end
+        end
+    else
+        # Backward (B): move to previous word's start.
+        if pos > 1
+            pos -= 1
+            while pos > 0 && is_space(line[pos]); pos -= 1; end
+            while pos > 1 && !is_space(line[pos - 1]); pos -= 1; end
+        elseif row > 1
+            row -= 1; line = ed.lines[row]; line_len = length(line)
+            pos = line_len
+            while pos > 0 && is_space(line[pos]); pos -= 1; end
+            while pos > 1 && !is_space(line[pos - 1]); pos -= 1; end
+        end
+    end
+
+    pos = clamp(pos, 1, max(line_len, 1))
+    ed.cursor_row = row
+    ed.cursor_col = clamp(pos - 1, 0, max(line_len - 1, 0))
+    return
+end
+
+"""
+    _op_with_motion!(m, ed, op::Char, motion::Char)
+
+Run a vim operator-motion combo (`cw`/`dw`/`yw`/`cW`/`dW`/`yW`/`ce`/
+`de`/`ye`/`cE`/`dE`/`yE`). Computes the motion's target, deletes (or
+yanks) the range from the cursor to that target, and — for `c` —
+drops into insert mode. **Preserves `scroll_offset` end-to-end** so
+the buffer view stays put even though the text mutated.
+
+Notes:
+  * `cw` follows vim convention and behaves like `ce` (deletes to the
+    end of the word, NOT to the start of the next one — keeps the
+    trailing whitespace alone).
+  * `dw`/`yw` use the start-of-next-word target.
+"""
+function _op_with_motion!(m::RessacApp, ed::TK.CodeEditor,
+                          op::Char, motion::Char)
+    kind = (motion in ('W', 'B', 'E')) ? :big : :small
+    dir  = (motion in ('w', 'W', 'e', 'E')) ? +1 : -1
+    # Vim quirk: cw / cW target END of word, not start-of-next.
+    use_end = (motion in ('e', 'E')) || (op == 'c' && motion in ('w', 'W'))
+
+    saved_scroll = ed.scroll_offset
+    src_row, src_col = ed.cursor_row, ed.cursor_col
+
+    # Compute the target by running the motion on a tiny clone so the
+    # real editor state is untouched until we apply the edit.
+    probe = TK.CodeEditor()
+    TK.set_text!(probe, TK.text(ed))
+    probe.cursor_row = src_row
+    probe.cursor_col = src_col
+    if use_end
+        _word_end_motion!(probe, kind)
+        dst_row = probe.cursor_row
+        dst_col = probe.cursor_col + 1   # +1 = exclusive end (include last word char)
+    else
+        _word_motion!(probe, dir, kind)
+        dst_row = probe.cursor_row
+        dst_col = probe.cursor_col
+    end
+
+    # Normalise so (src) <= (dst) — backward motions (b/B) flip.
+    if (dst_row, dst_col) < (src_row, src_col)
+        src_row, src_col, dst_row, dst_col = dst_row, dst_col, src_row, src_col
+    end
+    if src_row == dst_row && src_col == dst_col
+        return
+    end
+
+    # Build the yanked text. Char-wise yank (yank_is_linewise=false).
+    lines = collect(split(TK.text(ed), '\n'; keepempty = true))
+    dst_col = clamp(dst_col, 0, length(lines[dst_row]))
+    src_col = clamp(src_col, 0, length(lines[src_row]))
+    yanked_str = if src_row == dst_row
+        SubString(lines[src_row], src_col + 1, dst_col)
+    else
+        first_part = SubString(lines[src_row], src_col + 1, length(lines[src_row]))
+        middle = src_row + 1 <= dst_row - 1 ?
+                 lines[src_row + 1 : dst_row - 1] : SubString{String}[]
+        last_part = SubString(lines[dst_row], 1, dst_col)
+        join([first_part, middle..., last_part], '\n')
+    end
+    ed.yank_buffer = [collect(line) for line in split(yanked_str, '\n')]
+    ed.yank_is_linewise = false
+
+    if op == 'y'
+        # Yank only — leave cursor at the original position (vim quirk
+        # for character-wise yank).
+        ed.cursor_row = src_row
+        ed.cursor_col = src_col
+        ed.scroll_offset = saved_scroll
+        _push_app_log!(m, "[INFO] $op$motion — yanked $(length(yanked_str)) char(s)")
+        return
+    end
+
+    # Delete the range. Rebuild affected lines, then collapse.
+    if src_row == dst_row
+        lines[src_row] = lines[src_row][1:src_col] *
+                         lines[src_row][dst_col + 1 : end]
+    else
+        lines[src_row] = lines[src_row][1:src_col] *
+                         lines[dst_row][dst_col + 1 : end]
+        deleteat!(lines, src_row + 1 : dst_row)
+    end
+    isempty(lines) && push!(lines, "")
+
+    # `set_text!` resets scroll_offset to 0 — save & restore.
+    TK.set_text!(ed, join(lines, '\n'))
+    ed.cursor_row = clamp(src_row, 1, length(ed.lines))
+    ed.cursor_col = clamp(src_col, 0,
+                          max(length(ed.lines[ed.cursor_row]) - 1, 0))
+    ed.scroll_offset = saved_scroll
+
+    if op == 'c'
+        ed.mode = :insert
+    end
+    _push_app_log!(m, "[INFO] $op$motion done")
+    return
+end
+
+"""
+    _page_scroll!(m, ed, delta)
+
+Move both cursor and `scroll_offset` by `delta` rows so the cursor
+stays at the same screen position. Unlike vim's `j`-times-N which
+auto-recenters on overshoot, this keeps the view stable when the
+cursor hits buffer edges.
+"""
+function _page_scroll!(m::RessacApp, ed::TK.CodeEditor, delta::Int)
+    n = length(ed.lines)
+    n == 0 && return
+    new_row = clamp(ed.cursor_row + delta, 1, n)
+    actual = new_row - ed.cursor_row
+    ed.cursor_row = new_row
+    ed.scroll_offset = max(0, ed.scroll_offset + actual)
+    ed.cursor_col = clamp(ed.cursor_col, 0,
+                          max(0, length(ed.lines[ed.cursor_row])))
+    return
+end
+
+"""
     _click_into_editor!(ed, rect, x, y)
 
 Move the editor's cursor to the screen position the user clicked.
@@ -687,6 +1101,62 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         # Unknown trigger — silently cancel leader.
         return
     end
+    # Page-scroll keys (PgUp/PgDn + vim Ctrl-D/Ctrl-U). We handle these
+    # ourselves so the view AND cursor move by the same delta — keeps
+    # the cursor in the same screen position rather than re-centering.
+    # Available in :normal mode in both panes.
+    if is_press && ed.mode === :normal
+        if evt.key === :pagedown
+            _page_scroll!(m, ed, +_viewport_h(m, ed)); return
+        elseif evt.key === :pageup
+            _page_scroll!(m, ed, -_viewport_h(m, ed)); return
+        elseif evt.key === :ctrl && evt.char == 'd'
+            _page_scroll!(m, ed, +max(1, _viewport_h(m, ed) ÷ 2)); return
+        elseif evt.key === :ctrl && evt.char == 'u'
+            _page_scroll!(m, ed, -max(1, _viewport_h(m, ed) ÷ 2)); return
+        end
+    end
+    # Operator-motion combos (cw / dw / yw + big variants + e variants).
+    # TK only implements the doubled forms (cc/dd/yy) — these proper
+    # combos are ours. Each preserves `scroll_offset` so the buffer
+    # view doesn't jump when text is mutated.
+    if is_press && ed.mode === :normal &&
+       ed.pending_key in ('c', 'd', 'y') &&
+       evt.char in ('w', 'b', 'W', 'B', 'e', 'E')
+        op = ed.pending_key
+        ed.pending_key = nothing
+        _op_with_motion!(m, ed, op, evt.char)
+        return
+    end
+    # Word motions — override TK's so they ALWAYS advance and wrap
+    # across lines reliably, never blocking on punctuation. W / B / E
+    # are vim's "big word" variants treating whitespace as the only
+    # separator (foo.bar = one jump). Skipped when a multi-key pending
+    # is active (handled above as a NOOP) so they don't fire under
+    # cw/dw/yw.
+    if is_press && ed.mode === :normal &&
+       evt.char in ('w', 'b', 'W', 'B') &&
+       ed.pending_key === nothing
+        kind = (evt.char == 'W' || evt.char == 'B') ? :big : :small
+        dir  = (evt.char == 'w' || evt.char == 'W') ? +1 : -1
+        _word_motion!(ed, dir, kind)
+        return
+    end
+    # +/- nudge the number under the cursor (keyboard version of the
+    # existing mouse-wheel nudge). Only intercepts when the cursor IS
+    # on a number — otherwise falls through to vim's `+`/`-`
+    # "next/previous line" motion.
+    if is_press && ed.mode === :normal && m.focus === :patterns
+        if evt.char == '+'
+            _try_nudge_at!(m, ed, ed.cursor_row, ed.cursor_col, +1) && return
+        elseif evt.char == '-'
+            _try_nudge_at!(m, ed, ed.cursor_row, ed.cursor_col, -1) && return
+        elseif evt.char == '*'
+            _try_scale_at!(m, ed, ed.cursor_row, ed.cursor_col, 2.0) && return
+        elseif evt.char == '/'
+            _try_scale_at!(m, ed, ed.cursor_row, ed.cursor_col, 0.5) && return
+        end
+    end
     # Intercept our normal-mode actions BEFORE handle_key! so the
     # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
     # potential vim commands and consumes the keystroke).
@@ -746,6 +1216,18 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         elseif evt.char == '-' && _APP_SCOPE_TYPE[] === :wave
             m.scope_zoom = clamp(m.scope_zoom / 1.5, 0.1, 32.0)
             _push_app_log!(m, "[INFO] scope Y-zoom ×$(round(m.scope_zoom; digits=2))"); return
+        elseif evt.char == '+' &&
+               (_APP_SCOPE_TYPE[] === :reservoir ||
+                _APP_SCOPE_TYPE[] === Symbol("reservoir-graph"))
+            m.scope_reservoir_span_seconds = clamp(
+                m.scope_reservoir_span_seconds / 1.5, 0.1, 60.0)
+            _push_app_log!(m, "[INFO] reservoir scope span = $(round(m.scope_reservoir_span_seconds; digits=2)) s (faster)"); return
+        elseif evt.char == '-' &&
+               (_APP_SCOPE_TYPE[] === :reservoir ||
+                _APP_SCOPE_TYPE[] === Symbol("reservoir-graph"))
+            m.scope_reservoir_span_seconds = clamp(
+                m.scope_reservoir_span_seconds * 1.5, 0.1, 60.0)
+            _push_app_log!(m, "[INFO] reservoir scope span = $(round(m.scope_reservoir_span_seconds; digits=2)) s (slower)"); return
         elseif evt.char == '=' && _APP_SCOPE_TYPE[] === :wave
             m.scope_zoom = 1.0; m.scope_zoom_x = 1.0
             _push_app_log!(m, "[INFO] scope zoom reset (X & Y)"); return
@@ -809,10 +1291,38 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             return
         end
     end
-    # Any non-Tab key in :command clears the completion cycle (so the
-    # splice closure's captured tokens don't go stale).
-    if is_press && ed.mode === :command && evt.key !== :tab
+    # Arrow keys navigate the completion picker grid while an
+    # ex-command cycle is active. Up/down move by row (±cols), left/
+    # right move by one cell with wrap. The picker stays open so the
+    # user can refine; Enter accepts the current selection by virtue
+    # of the splice having already rewritten the command_buffer.
+    if is_press && ed.mode === :command && _completion_picker_active(m)
+        if evt.key === :up
+            _move_completion_session!(m, :up) && return
+        elseif evt.key === :down
+            _move_completion_session!(m, :down) && return
+        elseif evt.key === :left
+            _move_completion_session!(m, :left) && return
+        elseif evt.key === :right
+            _move_completion_session!(m, :right) && return
+        end
+    end
+    # ↑/↓ in :command (with no completion picker) navigate the ex-cmd
+    # history — like a shell prompt. Reset on any other keypress.
+    if is_press && ed.mode === :command && !_completion_picker_active(m) &&
+       (evt.key === :up || evt.key === :down)
+        _ex_history_nav!(m, ed, evt.key)
+        return
+    end
+    # Any other non-Tab / non-arrow key in :command clears the
+    # completion cycle (so the splice closure's captured tokens
+    # don't go stale).
+    if is_press && ed.mode === :command && evt.key !== :tab &&
+       !(evt.key in (:up, :down, :left, :right))
         _reset_completion!(m)
+        # Editing the buffer also exits history-nav mode so the next ↑
+        # restarts from the most-recent entry.
+        evt.key === :char && (m.ex_history_idx = 0)
     end
     # Snapshot for normal-mode `.` recording — see _vim_post_normal!.
     pre_text = ed.mode === :normal ? TK.text(ed) : ""
@@ -1043,29 +1553,49 @@ function _toggle_mute_current_line!(m::RessacApp)
     row = m.editor.cursor_row
     col = m.editor.cursor_col
     1 <= row <= length(lines) || return
-    line = String(lines[row])
-    if (mt = match(_ACTIVE_SLOT_RX_APP, line)) !== nothing
+    # Detect the logical block the cursor is on, then mute/unmute its
+    # ROOT line — the @dN call sits there. For multi-line blocks we
+    # comment every line of the block so the parser doesn't trip on
+    # orphan continuation arguments while the slot is muted.
+    (root_row, end_row) = _logical_block_range(lines, row)
+    root_line = String(lines[root_row])
+
+    if (mt = match(_ACTIVE_SLOT_RX_APP, root_line)) !== nothing
         slot = Symbol(mt.captures[1])
-        lines[row] = "# " * line
+        # Prepend "# " to every line of the block so indentation is
+        # preserved exactly (and unmute can strip the same prefix).
+        for r in root_row:end_row
+            lines[r] = "# " * lines[r]
+        end
         TK.set_text!(m.editor, join(lines, '\n'))
         m.editor.cursor_row = row
-        m.editor.cursor_col = col
+        m.editor.cursor_col = col + 2
         unset_pattern!(m.scheduler, slot)
-        # Best-effort voice kill: parse the slot line for synth/sample
-        # names and free any running voices with those defNames on SC.
-        # Drones (auto_env=false) wouldn't otherwise stop on mute since
-        # they have no envelope releasing them.
-        _kill_voices_for_line!(m, line)
+        # Best-effort voice kill: free any drones on the SC side that
+        # would otherwise hang now that the pattern stopped scheduling.
+        _kill_voices_for_line!(m, join(lines[root_row:end_row], "\n"))
         _push_app_log!(m, "[INFO] muted $slot")
-    elseif match(_COMMENTED_SLOT_RX_APP, line) !== nothing
-        lines[row] = replace(line, r"^\s*#+\s*" => ""; count=1)
+    elseif match(_COMMENTED_SLOT_RX_APP, root_line) !== nothing
+        # Strip EXACTLY the "# " (or bare "#") we added at mute time.
+        # The previous greedy `^\s*#+\s*` regex ate the line's natural
+        # indentation on continuation rows like "#     drive=600.0".
+        for r in root_row:end_row
+            s = String(lines[r])
+            if startswith(s, "# ")
+                lines[r] = s[3:end]
+            elseif startswith(s, "#")
+                lines[r] = s[2:end]
+            end
+        end
         TK.set_text!(m.editor, join(lines, '\n'))
         m.editor.cursor_row = row
         m.editor.cursor_col = max(0, col - 2)
-        # Re-eval the now-uncommented line so the pattern comes back live.
+        # Re-eval so the slot comes back live — `_eval_current_line!`
+        # uses the same block detection, so multi-line blocks evaluate
+        # correctly from any cursor row inside them.
         _eval_current_line!(m)
     else
-        _push_app_log!(m, "[WARN] m: cursor line isn't a slot def, no-op")
+        _push_app_log!(m, "[WARN] m: cursor block isn't a slot def, no-op")
     end
 end
 
@@ -1335,10 +1865,23 @@ _register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m),
 _register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m; raw=true),
                    "test-raw")
 
+# ── Audio input → reservoir bridge ─────────────────────────────────
+_register_regex!(r"^audio-in\s+start$",
+    (m, _) -> _audio_in_start!(m))
+_register_regex!(r"^audio-in\s+stop$",
+    (m, _) -> _audio_in_stop!(m))
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] :audio-in start  → ship \\ressac_audio_in SynthDef + listen\n" *
+        "       :audio-in stop   → free the listener node"),
+    "audio-in")
+
 # ── Scope ───────────────────────────────────────────────────────────
 _register_literal!(m -> _scope_command!(m, :off),    "scope")
-_register_regex!(r"^scope\s+(\w+)$",
+_register_regex!(r"^scope\s+([\w-]+)$",
     (m, mt) -> _scope_command!(m, Symbol(mt.captures[1])))
+# :scope reservoir <varname> — attach a global var to the reservoir scope.
+_register_regex!(r"^scope\s+reservoir\s+([\w-]+)$",
+    (m, mt) -> _scope_reservoir!(m, Symbol(mt.captures[1])))
 
 # ── Modals (browse / lib / sccode / snip / guides) ───────────────────
 _register_literal!(m -> (m.modal = :guide; m.modal_scroll = 0),
@@ -1443,7 +1986,7 @@ _register_literal!(m -> _copy_logs_to_clipboard!(m), "copylogs", "yanklogs")
 _register_literal!(m -> _push_app_log!(m,
         "[INFO] :starter <genre> — " * join(sort!(collect(keys(_STARTER_PACKS))), ", ")),
     "starter")
-_register_regex!(r"^starter\s+(\w+)$",
+_register_regex!(r"^starter\s+([\w-]+)$",
     (m, mt) -> _starter_command!(m, mt.captures[1]))
 # :import path  →  copies a .wav into plugins/user-samples/<basename>/
 #                  and registers it so it's usable as a sample name.
@@ -1607,6 +2150,17 @@ unknown fallback.
 """
 function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     s = String(cmd)
+    # Record into history BEFORE dispatch (so even commands that error
+    # are recallable for editing). Skip empties + exact duplicates of
+    # the most recent entry so up-arrow doesn't get stuck on repeats.
+    if !isempty(s) && (isempty(_EX_COMMAND_HISTORY) ||
+                       last(_EX_COMMAND_HISTORY) != s)
+        push!(_EX_COMMAND_HISTORY, s)
+        while length(_EX_COMMAND_HISTORY) > _EX_HISTORY_CAP
+            popfirst!(_EX_COMMAND_HISTORY)
+        end
+    end
+    m.ex_history_idx = 0   # any new command resets the navigation cursor
     # 1. Literal exact-match (O(1))
     h = get(_LITERAL_DISPATCH, s, nothing)
     h !== nothing && (h(m); return)
@@ -1622,6 +2176,37 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     _push_app_log!(m, "[WARN] unknown command: :$s")
 end
 
+# Ring of recent ex-commands ; `m.ex_history_idx` tracks where the
+# up/down navigation currently sits. 0 means "no navigation in
+# progress, the next ↑ should yank the most recent entry".
+const _EX_HISTORY_CAP = 200
+const _EX_COMMAND_HISTORY = String[]
+
+"""
+    _ex_history_nav!(m, ed, dir)
+
+Up/Down navigation through `_EX_COMMAND_HISTORY` while in :command
+mode. Yanks the historical command into the active `command_buffer`
+so the user can edit + re-submit. `dir ∈ (:up, :down)`.
+"""
+function _ex_history_nav!(m::RessacApp, ed::TK.CodeEditor, dir::Symbol)
+    n = length(_EX_COMMAND_HISTORY)
+    n == 0 && return
+    if dir === :up
+        m.ex_history_idx = min(n, m.ex_history_idx + 1)
+    elseif dir === :down
+        m.ex_history_idx = max(0, m.ex_history_idx - 1)
+    end
+    if m.ex_history_idx == 0
+        empty!(ed.command_buffer)
+    else
+        entry = _EX_COMMAND_HISTORY[end - m.ex_history_idx + 1]
+        empty!(ed.command_buffer)
+        append!(ed.command_buffer, collect(entry))
+    end
+    return
+end
+
 """
     _starter_command!(m, genre)
 
@@ -1631,15 +2216,32 @@ overwrite without confirmation; vim convention says you should :w
 first if you want to keep things.
 """
 function _starter_command!(m::RessacApp, genre::AbstractString)
-    pack = get(_STARTER_PACKS, String(genre), nothing)
+    key = String(genre)
+    pack = get(_STARTER_PACKS, key, nothing)
     if pack === nothing
-        _push_app_log!(m, "[WARN] :starter — no pack '$genre'")
-        return
+        # Convenience: unique-prefix match. `:starter reservoir-sp` →
+        # `reservoir-spike`. Ambiguous prefixes list the alternatives.
+        all_keys = collect(keys(_STARTER_PACKS))
+        matches = filter(k -> startswith(k, key), all_keys)
+        if length(matches) == 1
+            key = matches[1]
+            pack = _STARTER_PACKS[key]
+        elseif length(matches) > 1
+            _push_app_log!(m,
+                "[WARN] :starter — '$genre' is ambiguous: " *
+                join(sort!(matches), ", "))
+            return
+        else
+            _push_app_log!(m,
+                "[WARN] :starter — no pack '$genre' — try: " *
+                join(sort!(all_keys), ", "))
+            return
+        end
     end
     TK.set_text!(m.editor, join(pack, "\n"))
     m.editor.cursor_row = 1
     m.editor.cursor_col = 0
-    _push_app_log!(m, "[INFO] loaded :starter $genre — eval each @dN with e")
+    _push_app_log!(m, "[INFO] loaded :starter $key — eval each @dN with e")
 end
 
 """
@@ -2110,12 +2712,158 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     end
 end
 
+"""
+    _safe_history_snapshot(hist) -> Vector{Vector{Bool}}
+
+Snapshot the reservoir's history vector without racing the scheduler
+thread's `push!` / `popfirst!`. Slots that aren't yet assigned (the
+array is mid-grow) are silently skipped. Cost = a length read + N
+isassigned checks ; OK at 30 FPS.
+"""
+function _safe_history_snapshot(hist::Vector{Vector{Bool}})
+    snap = Vector{Vector{Bool}}()
+    n = length(hist)
+    sizehint!(snap, n)
+    for i in 1:n
+        @inbounds isassigned(hist, i) || continue
+        try
+            push!(snap, hist[i])
+        catch
+            # mid-mutation; bail rather than crash the renderer
+            break
+        end
+    end
+    snap
+end
+
+"""
+    _sync_cursor_style!(ed)
+
+Vim-style caret: distinct colour per mode so the user can see at a
+glance whether they're in `:normal`, `:insert`, `:command`, or visual.
+Insert lights the accent in warning; normal stays default accent
+block; command uses :title; visual uses :success.
+"""
+function _sync_cursor_style!(ed::TK.CodeEditor)
+    th = TK.theme()
+    ed.cursor_style = if ed.mode === :insert
+        TK.Style(; fg = th.bg, bg = th.warning, bold = true)
+    elseif ed.mode === :command
+        TK.Style(; fg = th.bg, bg = th.title,   bold = true)
+    elseif ed.mode === :search
+        TK.Style(; fg = th.bg, bg = th.warning)
+    else  # :normal (and visual modes — we paint the selection separately)
+        TK.Style(; fg = th.bg, bg = th.accent,  bold = true)
+    end
+    return ed
+end
+
+"""
+    _refresh_scope_reservoir!(m)
+
+Re-resolve the scope's attached reservoir from its variable name.
+Called automatically after a cascade re-eval rebinds the underlying
+variable — keeps the visualisation tracking the live reservoir
+instead of the now-stale object. Preserves the current scope mode
+(raster vs graph) and recomputes the graph layout on demand.
+"""
+function _refresh_scope_reservoir!(m::RessacApp)
+    name = _APP_SCOPE_RESERVOIR_NAME[]
+    name === :none && return
+    isdefined(Main, name) || return
+    obj = getfield(Main, name)
+    target = if obj isa Main.Reservoir.CoupledReservoirs
+        obj.members[obj.output_idx]
+    else
+        obj
+    end
+    try
+        Main.Reservoir.record_history!(target, _SCOPE_RESERVOIR_CAPACITY)
+    catch
+        return
+    end
+    _APP_SCOPE_RESERVOIR[] = target
+    if _APP_SCOPE_TYPE[] === Symbol("reservoir-graph") &&
+       target isa Main.Reservoir.AdExReservoir
+        _APP_GRAPH_LAYOUT[] = _force_directed_layout(target.W, target.N)
+    end
+    return
+end
+
+function _audio_in_start!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_app_log!(m, "[ERROR] :audio-in start — no live session"); return)
+    _ensure_app_scope_listener!()
+    code = "if(~ressacAudioInNode.notNil) { ~ressacAudioInNode.free }; " *
+           "~ressacAudioInNode = Synth(\\ressac_audio_in);"
+    send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[code])))
+    _push_app_log!(m, "[INFO] :audio-in started — speak / play into the input")
+    return
+end
+
+function _audio_in_stop!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    sched === nothing && (_push_app_log!(m, "[ERROR] :audio-in stop — no live session"); return)
+    code = "if(~ressacAudioInNode.notNil) { ~ressacAudioInNode.free; ~ressacAudioInNode = nil };"
+    send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[code])))
+    _AUDIO_IN_VALUE[] = 0.0
+    empty!(_AUDIO_IN_BANDS[])
+    _push_app_log!(m, "[INFO] :audio-in stopped")
+    return
+end
+
 function _scope_command!(m::RessacApp, type::Symbol)
     if _app_scope_set!(type)
         _push_app_log!(m, "[INFO] :scope $type")
+        # For the graph view, pre-compute the force-directed layout
+        # ONCE so the renderer can just look up positions every frame.
+        # Cost ≈ N² × iterations; ~30 ms for N=32, iterations=120.
+        if type === Symbol("reservoir-graph")
+            r = _APP_SCOPE_RESERVOIR[]
+            if r !== nothing && isdefined(Main, :Reservoir) &&
+               r isa Main.Reservoir.AdExReservoir
+                _APP_GRAPH_LAYOUT[] = _force_directed_layout(r.W, r.N)
+            end
+        end
     else
         _push_app_log!(m, "[ERROR] :scope — unknown type or no live session")
     end
+end
+
+"""
+    _scope_reservoir!(m, varname)
+
+Attach the global variable `varname` (must hold a reservoir) to the
+visual scope. Enables history recording on the reservoir and switches
+the scope into `:reservoir` mode. Detaches by re-running with a
+non-reservoir or with `:off`.
+"""
+function _scope_reservoir!(m::RessacApp, varname::Symbol)
+    if !isdefined(Main, varname)
+        _push_app_log!(m, "[ERROR] :scope reservoir — '$varname' not defined in Main")
+        return
+    end
+    obj = getfield(Main, varname)
+    # We rely on `record_history!` being callable on the object —
+    # the AdEx and RECA implementations both expose it, as does
+    # any CoupledReservoirs (it forwards to the output member).
+    try
+        if obj isa Main.Reservoir.CoupledReservoirs
+            target = obj.members[obj.output_idx]
+            Main.Reservoir.record_history!(target, _SCOPE_RESERVOIR_CAPACITY)
+            _APP_SCOPE_RESERVOIR[] = target
+        else
+            Main.Reservoir.record_history!(obj, _SCOPE_RESERVOIR_CAPACITY)
+            _APP_SCOPE_RESERVOIR[] = obj
+        end
+        _APP_SCOPE_RESERVOIR_NAME[] = varname
+        _APP_SCOPE_TYPE[] = :reservoir
+        _push_app_log!(m, "[INFO] :scope reservoir $varname")
+    catch err
+        _push_app_log!(m, "[ERROR] :scope reservoir '$varname': " *
+                          sprint(showerror, err))
+    end
+    return
 end
 
 """
@@ -2132,14 +2880,33 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     h, w = area.height, area.width
     h < 2 && return
     # Title row — show the zoom for wave so the user sees the keys' effect.
-    title = type === :wave ?
-        "scope: wave  Y×$(round(m.scope_zoom; digits=2)) X×$(round(m.scope_zoom_x; digits=2))   (+/-/= amp,  >/</= time)" :
-        "scope: $type   (S cycles, :scope <type> picks: amp wave spectrum xy goni spectrogram peak pitch onset hist corr)"
+    title = if type === :wave
+        "scope: wave  Y×$(round(m.scope_zoom; digits=2)) X×$(round(m.scope_zoom_x; digits=2))   (+/-/= amp,  >/</= time)"
+    elseif type === :reservoir
+        rname = _APP_SCOPE_RESERVOIR_NAME[]
+        sp = round(m.scope_reservoir_span_seconds; digits=2)
+        "scope: reservoir · $rname   span=$(sp)s   (+/- adjust, rows = neurons, ◼ = spike)"
+    elseif type === Symbol("reservoir-graph")
+        rname = _APP_SCOPE_RESERVOIR_NAME[]
+        "scope: reservoir-graph · $rname   (● = spike fires, edges = synapses from firing units)"
+    else
+        "scope: $type   (S cycles, :scope <type> picks: amp wave spectrum xy goni spectrogram peak pitch onset hist corr reservoir reservoir-graph)"
+    end
     TK.set_string!(buf, area.x, area.y, rpad(first(title, w), w),
                    TK.tstyle(:accent, bold=true))
     body_y = area.y + 1
     body_h = h - 1
     body_area = TK.Rect(area.x, body_y, w, body_h)
+    # Reservoir scope handles itself — it has no `data` from the OSC
+    # listener, only reads from the attached reservoir's history field.
+    if type === :reservoir
+        _app_render_reservoir(body_area, buf, m)
+        return
+    end
+    if type === Symbol("reservoir-graph")
+        _app_render_reservoir_graph(body_area, buf, m)
+        return
+    end
     if isempty(data)
         TK.set_string!(buf, area.x, body_y,
                        "  (waiting for audio — press T to test the synth)",
@@ -2170,6 +2937,280 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     elseif type === :corr
         _app_render_corr(data, body_area, buf)
     end
+end
+
+"""
+    _app_render_reservoir(area, buf)
+
+Raster plot of the currently-attached reservoir's spike history. Rows
+are neurons (downsampled if N > area.height); columns are recent steps
+(oldest left, newest right). A solid block ◼ marks a spike at that
+(neuron, step) cell. If the reservoir is RECA, the plot looks like a
+classic cellular-automaton trail.
+"""
+function _app_render_reservoir(area::TK.Rect, buf::TK.Buffer, m::RessacApp)
+    r = _APP_SCOPE_RESERVOIR[]
+    if r === nothing
+        TK.set_string!(buf, area.x, area.y,
+                       "  (no reservoir attached — use :scope reservoir <var>)",
+                       TK.tstyle(:text_dim))
+        return
+    end
+    # Snapshot the history vector once so the scheduler thread can keep
+    # pushing while we render. `r.history` is mutated by `step!` on the
+    # scheduler task, so a live `hist[i]` would race with `push!` /
+    # `popfirst!` (the array can be in a transient state with undef
+    # backing slots during reallocation).
+    hist = _safe_history_snapshot(r.history)
+    if isempty(hist)
+        TK.set_string!(buf, area.x, area.y,
+                       "  (waiting for spikes — drive the reservoir to populate)",
+                       TK.tstyle(:text_dim))
+        return
+    end
+    N = length(r)
+    H = area.height
+    W = area.width
+    H < 1 || W < 1 && return
+
+    # Time-span view: `span_seconds` of recent wall-clock time fits
+    # into the area. Estimate step rate from the live scheduler.
+    sched = _LIVE_SCHEDULER[]
+    cps = sched === nothing ? 0.5 : sched.cps
+    steps_per_sec = r.spc * cps
+    n_visible_steps = max(1,
+        round(Int, m.scope_reservoir_span_seconds * steps_per_sec))
+    first_hist_idx = max(1, length(hist) - n_visible_steps + 1)
+
+    # Braille rendering: each terminal cell encodes a 2 cols × 4 rows
+    # sub-grid → 8× density. "Now" sits on the right edge so newer
+    # spikes always enter from the right and scroll leftward.
+    sub_W = W * 2
+    sub_H = H * 4
+    steps_per_subcol = n_visible_steps / sub_W
+    n_sub_rows = min(N, sub_H)
+    sub_row_of_neuron = n_sub_rows == N ?
+        collect(1:N) :
+        [round(Int, 1 + (i - 1) * (N - 1) / (n_sub_rows - 1)) for i in 1:n_sub_rows]
+    last_hist_idx = length(hist)
+
+    # Pre-compute the (col, row) → bit mapping for Braille dots:
+    #   col=0,row=0→dot1 (bit0)   col=1,row=0→dot4 (bit3)
+    #   col=0,row=1→dot2 (bit1)   col=1,row=1→dot5 (bit4)
+    #   col=0,row=2→dot3 (bit2)   col=1,row=2→dot6 (bit5)
+    #   col=0,row=3→dot7 (bit6)   col=1,row=3→dot8 (bit7)
+    bit_of(col0::Int, row0::Int) =
+        col0 == 0 ? (row0 == 0 ? 0 : row0 == 1 ? 1 : row0 == 2 ? 2 : 6) :
+                    (row0 == 0 ? 3 : row0 == 1 ? 4 : row0 == 2 ? 5 : 7)
+
+    active_style = TK.tstyle(:accent, bold = true)
+    medium_style = TK.tstyle(:accent)
+    quiet_style  = TK.tstyle(:text_dim)
+
+    for cell_col in 1:W
+        for cell_row in 1:H
+            # 4×2 sub-cells make up this Braille cell.
+            bits = 0
+            spike_count = 0
+            for sub_col_off in 0:1, sub_row_off in 0:3
+                sub_col = (cell_col - 1) * 2 + sub_col_off + 1   # 1-based
+                sub_row = (cell_row - 1) * 4 + sub_row_off + 1
+                sub_row > n_sub_rows && continue
+                n_idx = sub_row_of_neuron[sub_row]
+                # Right-align: rightmost sub_col = newest history entry.
+                offset_from_right = sub_W - sub_col
+                h_hi = last_hist_idx - floor(Int, offset_from_right * steps_per_subcol)
+                h_lo = last_hist_idx - ceil(Int, (offset_from_right + 1) * steps_per_subcol) + 1
+                h_lo > length(hist) && continue
+                h_lo = clamp(h_lo, 1, length(hist))
+                h_hi = clamp(h_hi, h_lo, length(hist))
+                spiked = false
+                @inbounds for h_idx in h_lo:h_hi
+                    snap = hist[h_idx]
+                    if n_idx <= length(snap) && snap[n_idx]
+                        spiked = true
+                        break
+                    end
+                end
+                if spiked
+                    bits |= 1 << bit_of(sub_col_off, sub_row_off)
+                    spike_count += 1
+                end
+            end
+            x = area.x + cell_col - 1
+            y = area.y + cell_row - 1
+            if bits == 0
+                TK.set_char!(buf, x, y, '⠀', quiet_style)
+            else
+                ch = Char(0x2800 + bits)
+                # Style by density — many sub-cells active = brighter.
+                style = spike_count >= 5 ? active_style :
+                        spike_count >= 2 ? medium_style :
+                                            TK.tstyle(:accent)
+                TK.set_char!(buf, x, y, ch, style)
+            end
+        end
+    end
+    return
+end
+
+"""
+    _app_render_reservoir_graph(area, buf)
+
+Spatial graph view of the attached reservoir. Neurons sit on a circle;
+edges are drawn FROM currently-spiking neurons toward the neurons
+they connect to. Edge character density (·, ▒, ▓) maps to absolute
+weight; positive weights render in :success (excitatory), negative
+in :error (inhibitory). Quiet neurons stay as `o`, spikers as `●` in
+:accent bold so they "blink" each step they fire.
+
+Only works on plain `AdExReservoir` (needs the W matrix). For RECA
+or coupled groups, the raster scope is more meaningful.
+"""
+function _app_render_reservoir_graph(area::TK.Rect, buf::TK.Buffer, m::RessacApp)
+    r = _APP_SCOPE_RESERVOIR[]
+    if r === nothing
+        TK.set_string!(buf, area.x, area.y,
+                       "  (no reservoir attached — use :scope reservoir <var>)",
+                       TK.tstyle(:text_dim))
+        return
+    end
+    if !isdefined(Main, :Reservoir) || !(r isa Main.Reservoir.AdExReservoir)
+        TK.set_string!(buf, area.x, area.y,
+                       "  (graph view needs an AdEx reservoir — try :scope reservoir for raster)",
+                       TK.tstyle(:text_dim))
+        return
+    end
+    N = r.N
+    H, W = area.height, area.width
+    H < 3 || W < 6 && return
+
+    # Position layout: prefer the cached force-directed layout (set by
+    # `:scope reservoir-graph`); fall back to a circle if absent.
+    layout = _APP_GRAPH_LAYOUT[]
+    positions = Vector{Tuple{Int,Int}}(undef, N)
+    if length(layout) == N
+        # layout coords are in [0, 1]² — map into the area with a small
+        # inset so nodes don't sit right on the border.
+        inset_x = 2
+        inset_y = 1
+        ux_w = max(1, W - 2 * inset_x)
+        uy_h = max(1, H - 2 * inset_y)
+        for i in 1:N
+            ux, uy = layout[i]
+            x = round(Int, area.x + inset_x + ux * ux_w)
+            y = round(Int, area.y + inset_y + uy * uy_h)
+            positions[i] = (clamp(x, area.x, area.x + W - 1),
+                            clamp(y, area.y, area.y + H - 1))
+        end
+    else
+        cx = area.x + W / 2
+        cy = area.y + H / 2
+        rx = max(2.0, (W - 4) / 2)
+        ry = max(1.5, (H - 2) / 2)
+        for i in 1:N
+            θ = 2π * (i - 1) / N - π / 2
+            x = round(Int, cx + rx * cos(θ))
+            y = round(Int, cy + ry * sin(θ))
+            positions[i] = (clamp(x, area.x, area.x + W - 1),
+                            clamp(y, area.y, area.y + H - 1))
+        end
+    end
+
+    # Edge weight threshold — only draw the meaningful synapses to keep
+    # the picture readable. Use 30% of the max |W| as the floor.
+    max_w = maximum(abs, r.W)
+    threshold = max_w * 0.3
+
+    # Snapshot history once — see _app_render_reservoir for the race
+    # rationale (scheduler thread writes while we read).
+    hist = _safe_history_snapshot(r.history)
+    sched = _LIVE_SCHEDULER[]
+    cps = sched === nothing ? 0.5 : sched.cps
+    steps_per_sec = r.N == 0 ? 1.0 : r.spc * cps
+    n_window = clamp(round(Int, m.scope_reservoir_span_seconds * steps_per_sec),
+                     1, length(hist))
+    recency = zeros(Float64, N)
+    if !isempty(hist) && n_window > 0
+        first_idx = max(1, length(hist) - n_window + 1)
+        @inbounds for h_idx in first_idx:length(hist)
+            snap = hist[h_idx]
+            # Newer entries weighted higher (linear ramp).
+            weight = (h_idx - first_idx + 1) / n_window
+            for i in 1:min(N, length(snap))
+                snap[i] && (recency[i] = max(recency[i], weight))
+            end
+        end
+    end
+
+    # Brightness tiers from recency.
+    node_glyph(rec) = rec > 0.8 ? ('●', TK.tstyle(:accent, bold = true)) :
+                      rec > 0.4 ? ('●', TK.tstyle(:accent)) :
+                      rec > 0.1 ? ('◯', TK.tstyle(:text)) :
+                                    ('o', TK.tstyle(:text_dim))
+    edge_style(w, src_rec) = begin
+        base = w > 0 ? TK.tstyle(:success) : TK.tstyle(:error)
+        src_rec > 0.5 ? (w > 0 ? TK.tstyle(:success, bold = true) :
+                                  TK.tstyle(:error,   bold = true)) :
+                        base
+    end
+
+    # Draw edges from any RECENTLY active neuron (not just current step).
+    @inbounds for src in 1:N
+        src_rec = recency[src]
+        src_rec < 0.1 && continue
+        sx, sy = positions[src]
+        for dst in 1:N
+            dst == src && continue
+            w = r.W[dst, src]
+            absw = abs(w)
+            absw < threshold && continue
+            tx, ty = positions[dst]
+            density = absw / max_w
+            # Edge char picks up both weight magnitude AND src recency
+            # so fresher spikes leave brighter edge trails.
+            combined = density * (0.4 + 0.6 * src_rec)
+            ch = combined > 0.55 ? '▓' :
+                 combined > 0.25 ? '▒' : '·'
+            style = edge_style(w, src_rec)
+            for (x, y) in _bresenham_line(sx, sy, tx, ty)
+                (x == sx && y == sy) && continue
+                (x == tx && y == ty) && continue
+                TK.set_char!(buf, x, y, ch, style)
+            end
+        end
+    end
+
+    # Draw nodes on top — brightness reflects recency.
+    @inbounds for i in 1:N
+        x, y = positions[i]
+        ch, style = node_glyph(recency[i])
+        TK.set_char!(buf, x, y, ch, style)
+    end
+    return
+end
+
+"Integer-only line walk between two points (Bresenham). Used by the
+reservoir graph view to draw edges on the character grid."
+function _bresenham_line(x0::Int, y0::Int, x1::Int, y1::Int)
+    pts = Tuple{Int,Int}[]
+    dx = abs(x1 - x0); dy = abs(y1 - y0)
+    sx = x0 < x1 ? 1 : -1
+    sy = y0 < y1 ? 1 : -1
+    err = dx - dy
+    x, y = x0, y0
+    while true
+        push!(pts, (x, y))
+        x == x1 && y == y1 && break
+        e2 = 2 * err
+        if e2 > -dy
+            err -= dy; x += sx
+        end
+        if e2 < dx
+            err += dx; y += sy
+        end
+    end
+    pts
 end
 
 function _app_render_amp(data, area::TK.Rect, buf::TK.Buffer)
@@ -2702,6 +3743,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
             title_right_accent = n_playing > 0)
         inner = _inner_rect(body_area)
         m.layout_patterns = inner
+        _sync_cursor_style!(m.editor)
         TK.render(m.editor, inner, buf)
     else
         cols = TK.split_layout(TK.Layout(TK.Horizontal, [TK.Fill(), TK.Fill()]), body_area)
@@ -2713,7 +3755,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
                 title_right_accent = n_playing > 0)
             pat_inner = _inner_rect(cols[1])
             m.layout_patterns = pat_inner
-            TK.render(m.editor, pat_inner, buf)
+            _sync_cursor_style!(m.editor)
+        TK.render(m.editor, pat_inner, buf)
 
             synth_focused = (m.focus === :synth)
             tab = _current_synth_tab(m)
@@ -2734,12 +3777,14 @@ function TK.view(m::RessacApp, f::TK.Frame)
                                     active  = m.synth_tab_idx,
                                     focused = synth_focused)
                     TK.render(bar, synth_rows[1], buf)
+                    _sync_cursor_style!(_current_synth_tab(m).editor)
                     TK.render(_current_synth_tab(m).editor, synth_rows[2], buf)
                     m.layout_synth_tabs = synth_rows[1]
                     m.layout_synth = synth_rows[2]
                 end
             else
                 m.layout_synth = synth_inner
+                _sync_cursor_style!(_current_synth_tab(m).editor)
                 TK.render(_current_synth_tab(m).editor, synth_inner, buf)
             end
         end
@@ -2762,6 +3807,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # still wins on the active token.
     if m.layout_patterns !== nothing
         _render_eval_flash!(m, m.layout_patterns, buf)
+        _render_visual_selection!(m, m.layout_patterns, buf)
     end
 
     # Playhead — highlights the active token in every @dN p"..." line
@@ -3448,13 +4494,102 @@ function _eval_pattern_blocks!(m::RessacApp, target)
 end
 
 """
-    _eval_current_line!(m)
+    _delim_depth(s) -> Int
 
-Eval the line at the currently-focused editor's cursor. Continuation
-lines starting with `|>` (immediately above OR below) get joined into
-one logical block so the snippet DSL (`:snf2` → newline + `|> fast(2)`)
-evaluates as a single expression.
+Net depth of unclosed `(`, `[`, `{` minus matching closers in `s`,
+skipping string literals and `#` comments. Used by
+`_logical_block_range` to detect multi-line expressions even when a
+mid-block line on its own would parse as `:error` (which is what
+happens for the tail of a multi-line array literal, e.g.
+`     collect(37:48), collect(49:60)],`).
 """
+function _delim_depth(s::AbstractString)
+    depth = 0
+    in_str = false
+    str_char = ' '
+    in_cmt = false
+    i = firstindex(s)
+    n = lastindex(s)
+    while i <= n
+        c = s[i]
+        if in_cmt
+            c == '\n' && (in_cmt = false)
+        elseif in_str
+            if c == '\\' && i < n
+                i = nextind(s, i)  # skip escaped char
+            elseif c == str_char
+                in_str = false
+            end
+        else
+            if c == '#'
+                in_cmt = true
+            elseif c == '"'
+                in_str = true; str_char = '"'
+            elseif c == '(' || c == '[' || c == '{'
+                depth += 1
+            elseif c == ')' || c == ']' || c == '}'
+                depth -= 1
+            end
+        end
+        i = nextind(s, i)
+    end
+    depth
+end
+
+"""
+    _logical_block_range(lines, row) -> (start_row, end_row)
+
+Find the range of lines that form a single logical Julia expression
+containing `row`. Walks UP through `|>` continuations and any lines
+that leave an open bracket / paren / brace; walks DOWN until those
+brackets all close AND the gathered text parses (or we hit EOF).
+Comment prefixes (`# ` / `#`) are stripped first so muted blocks have
+the same range as their active twin.
+"""
+function _logical_block_range(lines::AbstractVector, row::Int)
+    1 <= row <= length(lines) || return (row, row)
+    _strip_cmt(s) = replace(String(s), r"^\s*#+\s*" => "")
+
+    # depths[i] = net delim depth at the START of line i (1-based).
+    # Walking up while depths[i] > 0 means "still inside an unclosed
+    # bracket from a previous line" — i.e. line i is a continuation.
+    stripped = _strip_cmt.(lines)
+    depths = zeros(Int, length(lines) + 1)
+    for i in 1:length(lines)
+        depths[i + 1] = depths[i] + _delim_depth(stripped[i])
+    end
+
+    start_row = row
+    while start_row > 1
+        cur = stripped[start_row]
+        if startswith(lstrip(cur), "|>") || depths[start_row] > 0
+            start_row -= 1
+        else
+            break
+        end
+    end
+
+    end_row = row
+    # First close every still-open bracket from start_row's perspective.
+    while end_row < length(lines) && depths[end_row + 1] > depths[start_row]
+        end_row += 1
+    end
+    # Then keep extending while the joined block is still parse-incomplete
+    # or the next line continues with `|>`.
+    while end_row < length(lines)
+        block = join(stripped[start_row:end_row], "\n")
+        parsed = Meta.parse(block; raise = false)
+        is_inc = parsed isa Expr && parsed.head === :incomplete
+        next_cont = startswith(lstrip(stripped[end_row + 1]), "|>")
+        if is_inc || next_cont
+            end_row += 1
+        else
+            break
+        end
+    end
+    return (start_row, end_row)
+end
+
 function _eval_current_line!(m::RessacApp)
     ce = _active_editor(m)
     txt = TK.text(ce)
@@ -3462,27 +4597,133 @@ function _eval_current_line!(m::RessacApp)
     row = ce.cursor_row
     1 <= row <= length(lines) || return
     isempty(strip(lines[row])) && return
-    # Gather the logical block — the cursor row plus any contiguous
-    # continuation lines that start with `|>` so the snippet DSL
-    # (`:snf2` → newline + `|> fast(2)`) evaluates as one expression.
-    start_row = row
-    while start_row > 1 && startswith(lstrip(lines[start_row]), "|>")
-        start_row -= 1
-    end
-    end_row = row
-    while end_row < length(lines) && startswith(lstrip(lines[end_row + 1]), "|>")
-        end_row += 1
-    end
-    block = join(lines[start_row:end_row], " ")
+    (start_row, end_row) = _logical_block_range(lines, row)
+    block = join(lines[start_row:end_row], "\n")
     try
         ex = Meta.parse(block)
         result = Core.eval(Main, ex)
         rstr = sprint(io -> show(IOContext(io, :limit=>true, :displaysize=>(1, 60)), result))
         _push_app_log!(m, "[INFO] eval ⇒ $rstr")
+        # Cascade: if this eval rebound any top-level names, sweep the
+        # buffer for `@dN` blocks that reference them and re-eval, so the
+        # slots pick up the new value. Single-level (no recursive cascade).
+        rebound = _names_bound_by(ex)
+        if !isempty(rebound)
+            _cascade_dN_reeval!(m, lines, rebound, start_row, end_row)
+            # If the scope is attached to a name we just rebound, re-
+            # resolve the reference so the visualisation tracks the
+            # fresh reservoir instead of the dead one. Pre-computes the
+            # graph layout when applicable.
+            if _APP_SCOPE_RESERVOIR_NAME[] in rebound
+                _refresh_scope_reservoir!(m)
+            end
+        end
     catch err
         _push_app_log!(m, "[ERROR] $(sprint(showerror, err))")
     end
 end
+
+# Collect names bound by a top-level expression. Handles assignments,
+# function definitions, and `const`. Used by the cascade re-eval to
+# decide which dependent @dN blocks need refreshing.
+function _names_bound_by(ex)
+    names = Set{Symbol}()
+    _collect_bound_names!(names, ex)
+    names
+end
+
+_collect_bound_names!(::Set{Symbol}, ::Any) = nothing
+
+function _collect_bound_names!(names::Set{Symbol}, ex::Expr)
+    if ex.head === :(=)
+        lhs = ex.args[1]
+        if lhs isa Symbol
+            push!(names, lhs)
+        elseif lhs isa Expr && lhs.head === :call
+            fname = lhs.args[1]
+            fname isa Symbol && push!(names, fname)
+        elseif lhs isa Expr && lhs.head === :tuple
+            for s in lhs.args
+                s isa Symbol && push!(names, s)
+            end
+        end
+    elseif ex.head === :function
+        sig = ex.args[1]
+        if sig isa Expr && sig.head === :call
+            fname = sig.args[1]
+            fname isa Symbol && push!(names, fname)
+        end
+    elseif ex.head === :const || ex.head === :global
+        for sub in ex.args
+            _collect_bound_names!(names, sub)
+        end
+    elseif ex.head === :block
+        for sub in ex.args
+            _collect_bound_names!(names, sub)
+        end
+    end
+    return
+end
+
+# Walk the buffer, find every `@dN ...` block (multi-line aware), and
+# re-eval those whose AST references any of `rebound`. The block being
+# eval'd (rows in `skip_first..skip_last`) is excluded.
+function _cascade_dN_reeval!(m::RessacApp, lines::Vector,
+                              rebound::Set{Symbol},
+                              skip_first::Int, skip_last::Int)
+    n = length(lines)
+    i = 1
+    n_cascade = 0
+    while i <= n
+        line = lines[i]
+        if !occursin(r"^\s*@d\d+\b", line)
+            i += 1
+            continue
+        end
+        # Found a @dN line — extend down while incomplete.
+        end_row = i
+        block = String(line)
+        while end_row < n
+            parsed = Meta.parse(block; raise = false)
+            if parsed isa Expr && parsed.head === :incomplete
+                end_row += 1
+                block = join(lines[i:end_row], "\n")
+            else
+                break
+            end
+        end
+        # Skip the just-evaled block to avoid double-firing.
+        if !(end_row < skip_first || i > skip_last)
+            i = end_row + 1
+            continue
+        end
+        # Parse + check for any reference to a rebound name.
+        try
+            ex = Meta.parse(block)
+            if _refs_any(ex, rebound)
+                Core.eval(Main, ex)
+                n_cascade += 1
+            end
+        catch err
+            _push_app_log!(m,
+                "[WARN] cascade row $i: $(sprint(showerror, err))")
+        end
+        i = end_row + 1
+    end
+    n_cascade > 0 &&
+        _push_app_log!(m, "[INFO] cascade re-evaled $n_cascade slot$(n_cascade == 1 ? "" : "s")")
+    return
+end
+
+# AST walk: returns true iff `ex` references any symbol in `names`.
+_refs_any(ex::Symbol, names::Set{Symbol}) = ex in names
+function _refs_any(ex::Expr, names::Set{Symbol})
+    for arg in ex.args
+        _refs_any(arg, names) && return true
+    end
+    return false
+end
+_refs_any(::Any, ::Set{Symbol}) = false
 
 # ---------------------------------------------------------------------
 # Synth pane management
@@ -3726,7 +4967,10 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
         # compiles to SC and ships to /ressac/evalAndPlay itself.
         src = _align_dsl_synth_name(src, tab.name)
         try
-            Core.eval(Main, Meta.parse(src))
+            # Eval in the SynthDSL submodule so unqualified UGen names
+            # (saw, sin_osc, rlpf, …) resolve. Main only has the Pattern
+            # signal variants of the colliding names (saw, tri, square).
+            Core.eval(SynthDSL, Meta.parse(src))
             _push_app_log!(m, "[INFO] T — test $(tab.name) (DSL → compiled SC)")
         catch err
             _push_app_log!(m, "[ERROR] DSL eval: $(sprint(showerror, err))")

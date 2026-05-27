@@ -78,3 +78,4 @@ leader, while filling a snippet placeholder, etc).
 - `11-tidal-migration` — if you're coming from TidalCycles
 - `12-troubleshooting` — when something doesn't work
 - `13-external-midi` — MIDI + OSC control from anything that speaks OSC
+- `14-chaos-reservoir` — chaotic generators and spiking-reservoir patterns

@@ -22,4 +22,9 @@ using Ressac
     include("test_orbit_routing.jl")
     include("test_modal_helpers.jl")
     include("test_synth_alias.jl")
+    include("test_synth_dsl.jl")
+    include("test_chaos.jl")
+    include("test_reservoir.jl")
+    include("test_properties.jl")
+    include("test_vim_motions.jl")
 end

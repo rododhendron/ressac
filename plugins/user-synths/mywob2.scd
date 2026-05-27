@@ -7,7 +7,7 @@
 // `gain`, `sustain` from cycle + n — patterns shape the music, defaults
 // shape the timbre.
 
-SynthDef(\\mywob2, { |out, pan = 0, freq = 33, sustain = 0.15, gain = 0.5, accelerate = -0.1,
+SynthDef(\mywob2, { |out, pan = 0, freq = 33, sustain = 0.15, gain = 0.5, accelerate = -0.1,
                     attack = 0.01, release = 0.12,
                     rate = 6, depth = 2000, centre = 800, q = 0.3, shape = 0.4|
     var lfo, osc, filt, env, sig;

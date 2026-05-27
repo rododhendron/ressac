@@ -31,13 +31,15 @@ import ..Ressac: _LIVE_SCHEDULER, _INSTALLING_SYNTH,
 
 # Re-export the whole UGen surface so `using Ressac.SynthDSL` brings
 # everything in scope at once.
-export Sig, sc_arg
+export Sig, sc_arg, ugen
 # Oscillators
 export saw, sin_osc, pulse, tri, square, var_saw, blip, formant, klang
 export impulse_ar, impulse_kr
 # Noise
 export white, pink, brown, gray, clip_noise, crackle, dust, dust2
 export lf_noise0, lf_noise1, lf_noise2
+# Chaotic / nonlinear sources (sc3-plugins)
+export lorenz, henon, logistic, standard_map, latoo, lincong, quad, fbsine, gbman, cusp
 # Modulators
 export lfo, lfo_saw, lfo_tri, lfo_pulse, lf_cub, lf_par
 export line, x_line, ramp_kr, lag_kr, lag2_kr, lag3_kr
@@ -97,6 +99,31 @@ sc_arg(xs::AbstractVector) = "[" * join(sc_arg.(xs), ", ") * "]"
 sc_sym(s::Symbol)         = "\\" * String(s)
 sc_sym(s::AbstractString) = startswith(s, "\\") ? String(s) : "\\" * String(s)
 
+"""
+    ugen(name::Symbol, args...; rate::Symbol = :ar) -> Sig
+    ugen(args...; rate::Symbol = :ar) -> (name::Symbol -> Sig)
+
+Escape hatch for any SuperCollider UGen that isn't wrapped explicitly.
+
+Direct form:
+
+    ugen(:Pluck, white(), 1, 0.5, 0.4, 0.95)
+    # → Sig("Pluck.ar(WhiteNoise.ar, 1, 0.5, 0.4, 0.95)")
+
+Curried form for piping the UGen name:
+
+    :Pluck |> ugen(white(), 1, 0.5, 0.4, 0.95)
+    # same Sig as above
+
+Pass `rate=:kr` for control-rate UGens.
+"""
+function ugen(name::Symbol, args...; rate::Symbol = :ar)
+    Sig(string(name, ".", rate, "(", join(sc_arg.(args), ", "), ")"))
+end
+
+ugen(args...; rate::Symbol = :ar) =
+    (name::Symbol) -> ugen(name, args...; rate = rate)
+
 # ════════════════════════════════════════════════════════════════════
 # Audio-rate oscillators
 # ════════════════════════════════════════════════════════════════════
@@ -133,6 +160,88 @@ dust2(density=10)      = Sig("Dust2.ar($(sc_arg(density)))")
 lf_noise0(rate)        = Sig("LFNoise0.kr($(sc_arg(rate)))")
 lf_noise1(rate)        = Sig("LFNoise1.kr($(sc_arg(rate)))")
 lf_noise2(rate)        = Sig("LFNoise2.kr($(sc_arg(rate)))")
+
+# ════════════════════════════════════════════════════════════════════
+# Chaotic / nonlinear audio sources (from sc3-plugins)
+# ════════════════════════════════════════════════════════════════════
+# Drop into a SynthDef like an oscillator — output is in roughly
+# [-1, 1] and can drive filters, envelopes, FM, etc. Each system has
+# the linear-interpolation variant (–L) exposed under the unsuffixed
+# name; for raw / hard-edged variants use `ugen(:LorenzN, …)` etc.
+#
+# The `freq` arg controls the iteration rate (samples / second) of
+# the underlying ODE or map — pitched textures emerge near
+# `SampleRate.ir`, drone/granular textures at lower rates.
+
+"Lorenz attractor — 3D continuous, classic chaos. Outputs the x-axis."
+lorenz(freq = 22050, s = 10, r = 28, b = 8/3, h = 0.05,
+       xi = 0.1, yi = 0, zi = 0) =
+    Sig(string("LorenzL.ar(",
+               join((sc_arg(freq), sc_arg(s), sc_arg(r), sc_arg(b),
+                     sc_arg(h), sc_arg(xi), sc_arg(yi), sc_arg(zi)), ", "),
+               ")"))
+
+"Hénon map — 2D discrete. Sharp, glitchy chaos."
+henon(freq = 22050, a = 1.4, b = 0.3, x0 = 0, x1 = 0) =
+    Sig(string("HenonL.ar(",
+               join((sc_arg(freq), sc_arg(a), sc_arg(b),
+                     sc_arg(x0), sc_arg(x1)), ", "),
+               ")"))
+
+"Logistic map. `paramA` ∈ [3.57, 4] is chaotic. (SC class is `Logistic`,
+no L/N/C variants — the map is already discrete.)"
+logistic(freq = 1000, paramA = 3.0, x0 = 0.5) =
+    Sig(string("Logistic.ar(",
+               join((sc_arg(paramA), sc_arg(freq), sc_arg(x0)), ", "),
+               ")"))
+
+"Chirikov standard map — `k` controls chaos amount."
+standard_map(freq = 22050, k = 1.0, xi = 0.5, yi = 0) =
+    Sig(string("StandardL.ar(",
+               join((sc_arg(freq), sc_arg(k), sc_arg(xi), sc_arg(yi)), ", "),
+               ")"))
+
+"Latoocarfian — Pickover's 2D map. Very 'noisy buzz' sounding."
+latoo(freq = 22050, a = 1.0, b = 3.0, c = 0.5, d = 0.5,
+      xi = 0.5, yi = 0.5) =
+    Sig(string("LatoocarfianL.ar(",
+               join((sc_arg(freq), sc_arg(a), sc_arg(b), sc_arg(c),
+                     sc_arg(d), sc_arg(xi), sc_arg(yi)), ", "),
+               ")"))
+
+"Linear congruential generator — granular, can be very pitched."
+lincong(freq = 22050, a = 1.1, c = 0.13, m = 1.0, xi = 0) =
+    Sig(string("LinCongL.ar(",
+               join((sc_arg(freq), sc_arg(a), sc_arg(c),
+                     sc_arg(m), sc_arg(xi)), ", "),
+               ")"))
+
+"Quadratic map — xn+1 = a·xn² + b·xn + c."
+quad(freq = 22050, a = 1.0, b = -1.0, c = -0.75, xi = 0) =
+    Sig(string("QuadL.ar(",
+               join((sc_arg(freq), sc_arg(a), sc_arg(b),
+                     sc_arg(c), sc_arg(xi)), ", "),
+               ")"))
+
+"Feedback sine with linear congruential phase increment."
+fbsine(freq = 22050, im = 1.0, fb = 0.1, a = 1.1, c = 0.5,
+       xi = 0.1, yi = 0.1) =
+    Sig(string("FBSineL.ar(",
+               join((sc_arg(freq), sc_arg(im), sc_arg(fb), sc_arg(a),
+                     sc_arg(c), sc_arg(xi), sc_arg(yi)), ", "),
+               ")"))
+
+"Gingerbreadman map — area-preserving 2D map."
+gbman(freq = 22050, xi = 1.2, yi = 2.1) =
+    Sig(string("GbmanL.ar(",
+               join((sc_arg(freq), sc_arg(xi), sc_arg(yi)), ", "),
+               ")"))
+
+"Cusp catastrophe map."
+cusp(freq = 22050, a = 1.0, b = 1.9, xi = 0) =
+    Sig(string("CuspL.ar(",
+               join((sc_arg(freq), sc_arg(a), sc_arg(b), sc_arg(xi)), ", "),
+               ")"))
 
 # ════════════════════════════════════════════════════════════════════
 # Control-rate modulators / lines
@@ -605,13 +714,18 @@ macro synth(args...)
     # the produced expression — referencing `__source__` from inside
     # the expansion is a NameError at call site.
     source_file = String(__source__.file)
+    # GlobalRef bypasses call-site name lookup so the macro works when
+    # expanded outside SynthDSL (e.g. from Main during a `:synth foo`
+    # preview, where `_sc_name_for_aliased` would not be in scope).
     name_expr = alias_expr === nothing ?
-        :(_sc_name_from_source($source_file)) :
-        :(_sc_name_for_aliased($source_file, $alias_expr))
+        Expr(:call, GlobalRef(@__MODULE__, :_sc_name_from_source), source_file) :
+        Expr(:call, GlobalRef(@__MODULE__, :_sc_name_for_aliased),
+             source_file, alias_expr)
+    play_fn = GlobalRef(@__MODULE__, :play_synth)
     call = if opts === nothing
-        :(play_synth($name_expr, $body; params = $params, alias = $alias_expr))
+        :($play_fn($name_expr, $body; params = $params, alias = $alias_expr))
     else
-        :(play_synth($name_expr, $body; params = $params, alias = $alias_expr, $opts...))
+        :($play_fn($name_expr, $body; params = $params, alias = $alias_expr, $opts...))
     end
     return esc(call)
 end
