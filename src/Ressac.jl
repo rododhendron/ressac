@@ -38,7 +38,7 @@ include("synth_library.jl")      # _SYNTH_LIBRARY entries (uses SynthDSL)
 include("extension_registry.jl")
 
 # ─── Static docs / starter packs / scope state ────────────────────
-include("tui_docs.jl")           # _PARAM_DOCS, _STARTER_PACKS
+include("tui_docs.jl")           # stub — content now lives in plugins/{core,…}/
 include("tui_livedoc.jl")        # _GUIDE_LINES, _SYNTH_GUIDE_LINES,
                                  # livedoc lookups
 include("tui_scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
