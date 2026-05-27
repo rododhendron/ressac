@@ -220,3 +220,111 @@ function _load_snippet_toml(toml_path::AbstractString, plugin_name::AbstractStri
         abspath(toml_path),
     )
 end
+
+"""
+    _resolve_snippet_includes!()
+
+Walk the snippet include DAG, compute `resolved_content` for every
+entry in `_SNIPPET_REGISTRY`, and replace each entry with a fresh
+`SnippetEntry` whose `resolved_content` field is populated.
+
+Cycle members and snippets with unresolvable includes fall back to
+`resolved_content = own_content` (i.e. they're still usable, just
+without the include's contribution).
+
+`requires_plugins` is the **union** of own + every transitively
+included snippet's requires_plugins.
+
+Called once by the plugin loader after every plugin has registered.
+"""
+function _resolve_snippet_includes!()
+    raw = _SNIPPET_RAW
+    names = collect(keys(raw))
+    deps = Dict(n => Set(raw[n].includes) for n in names)
+    # Drop unknown includes and warn for each.
+    missing_includes = Dict{String, Vector{String}}()
+    for n in names
+        for inc in deps[n]
+            if !haskey(raw, inc)
+                push!(get!(() -> String[], missing_includes, n), inc)
+            end
+        end
+        intersect!(deps[n], Set(names))
+    end
+    for (n, miss) in missing_includes
+        for inc in miss
+            @warn "snippet '$n': missing include '$inc' — fallback to own content only"
+        end
+    end
+
+    # Kahn's algorithm.
+    in_degree = Dict(n => length(deps[n]) for n in names)
+    rev = Dict{String, Vector{String}}()
+    for n in names, d in deps[n]
+        push!(get!(() -> String[], rev, d), n)
+    end
+    ordered = String[]
+    ready = sort([n for n in names if in_degree[n] == 0])
+    while !isempty(ready)
+        n = popfirst!(ready)
+        push!(ordered, n)
+        for child in get(rev, n, String[])
+            in_degree[child] -= 1
+            in_degree[child] == 0 && push!(ready, child)
+        end
+        sort!(ready)
+    end
+
+    cycle_members = Set(setdiff(names, ordered))
+    if !isempty(cycle_members)
+        @warn "snippet include cycle detected: $(sort(collect(cycle_members)))"
+    end
+
+    # Resolution: each atom (raw[a].own_content for snippet a) appears
+    # EXACTLY ONCE in the final resolved_content. To handle diamond
+    # dependencies (A depends on B and C, both on D) without duplicating
+    # D, we compute each snippet's transitive ancestor set, order it by
+    # the global topological order, and concat each ancestor's own
+    # content in that order before appending the snippet's own content.
+    ancestors = Dict{String, Set{String}}()
+    for n in ordered
+        acc = Set{String}()
+        for d in deps[n]
+            haskey(ancestors, d) && union!(acc, ancestors[d])
+            push!(acc, d)
+        end
+        ancestors[n] = acc
+    end
+
+    topo_idx = Dict(n => i for (i, n) in enumerate(ordered))
+    resolved_str = Dict{String, String}()
+    resolved_req = Dict{String, Vector{String}}()
+    for n in ordered
+        anc_topo = sort([a for a in ancestors[n]]; by = a -> topo_idx[a])
+        parts = String[raw[a].own_content for a in anc_topo]
+        push!(parts, raw[n].own_content)
+        resolved_str[n] = join(parts, "\n\n")
+
+        own_req = Set(_SNIPPET_REGISTRY[n].requires_plugins)
+        for a in anc_topo
+            union!(own_req, Set(_SNIPPET_REGISTRY[a].requires_plugins))
+        end
+        resolved_req[n] = sort!(collect(own_req))
+    end
+    for n in cycle_members
+        resolved_str[n] = raw[n].own_content
+        resolved_req[n] = sort!(collect(Set(_SNIPPET_REGISTRY[n].requires_plugins)))
+    end
+
+    for n in names
+        old = _SNIPPET_REGISTRY[n]
+        _SNIPPET_REGISTRY[n] = SnippetEntry(
+            old.name, old.mode, old.description, old.tags,
+            resolved_req[n], old.includes,
+            resolved_str[n], old.panes, old.plugin, old.path,
+        )
+    end
+
+    empty!(_SNIPPET_RAW)
+    return nothing
+end

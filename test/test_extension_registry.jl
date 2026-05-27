@@ -136,6 +136,94 @@ using Ressac
         end
     end
 
+    @testset "_resolve_snippet_includes! — two-snippet chain" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        Ressac._SNIPPET_REGISTRY["B"] = Ressac.SnippetEntry(
+            "B", :block, "lib", Symbol[], String[], String[],
+            "", Any[], "core", "")
+        Ressac._SNIPPET_RAW["B"] = (own_content = "B_content\n", includes = String[])
+
+        Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
+            "A", :starter, "main", Symbol[], String[], ["B"],
+            "", Any[], "core", "")
+        Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n", includes = ["B"])
+
+        Ressac._resolve_snippet_includes!()
+        a = Ressac.lookup_snippet("A")
+        @test occursin("B_content", a.resolved_content)
+        @test occursin("A_content", a.resolved_content)
+        b_idx = findfirst("B_content", a.resolved_content)
+        a_idx = findfirst("A_content", a.resolved_content)
+        @test b_idx[1] < a_idx[1]
+    end
+
+    @testset "_resolve_snippet_includes! — diamond, no duplicate" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        for (n, inc) in (("D", String[]), ("B", ["D"]), ("C", ["D"]),
+                          ("A", ["B", "C"]))
+            Ressac._SNIPPET_REGISTRY[n] = Ressac.SnippetEntry(
+                n, :block, "", Symbol[], String[], inc,
+                "", Any[], "core", "")
+            Ressac._SNIPPET_RAW[n] = (own_content = "$(n)_content\n",
+                                       includes = inc)
+        end
+        Ressac._resolve_snippet_includes!()
+        a = Ressac.lookup_snippet("A").resolved_content
+        @test length(collect(eachmatch(r"D_content", a))) == 1
+    end
+
+    @testset "_resolve_snippet_includes! — missing include warns + fallback" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
+            "A", :block, "", Symbol[], String[], ["ghost"],
+            "", Any[], "core", "")
+        Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n",
+                                     includes = ["ghost"])
+        @test_logs (:warn, r"missing include 'ghost'") begin
+            Ressac._resolve_snippet_includes!()
+        end
+        a = Ressac.lookup_snippet("A")
+        @test a.resolved_content == "A_content\n"
+    end
+
+    @testset "_resolve_snippet_includes! — cycle detected + fallback" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
+            "A", :block, "", Symbol[], String[], ["B"],
+            "", Any[], "core", "")
+        Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n",
+                                     includes = ["B"])
+        Ressac._SNIPPET_REGISTRY["B"] = Ressac.SnippetEntry(
+            "B", :block, "", Symbol[], String[], ["A"],
+            "", Any[], "core", "")
+        Ressac._SNIPPET_RAW["B"] = (own_content = "B_content\n",
+                                     includes = ["A"])
+        @test_logs (:warn, r"cycle") begin
+            Ressac._resolve_snippet_includes!()
+        end
+        @test Ressac.lookup_snippet("A").resolved_content == "A_content\n"
+        @test Ressac.lookup_snippet("B").resolved_content == "B_content\n"
+    end
+
+    @testset "_resolve_snippet_includes! — requires_plugins propagates" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        Ressac._SNIPPET_REGISTRY["lib"] = Ressac.SnippetEntry(
+            "lib", :block, "", Symbol[], ["foo"], String[],
+            "", Any[], "core", "")
+        Ressac._SNIPPET_RAW["lib"] = (own_content = "L\n", includes = String[])
+        Ressac._SNIPPET_REGISTRY["main"] = Ressac.SnippetEntry(
+            "main", :starter, "", Symbol[], String[], ["lib"],
+            "", Any[], "core", "")
+        Ressac._SNIPPET_RAW["main"] = (own_content = "M\n", includes = ["lib"])
+        Ressac._resolve_snippet_includes!()
+        @test "foo" in Ressac.lookup_snippet("main").requires_plugins
+    end
+
     @testset "parse_frontmatter — TOML between +++ fences" begin
         src = """
         +++
