@@ -1,0 +1,5 @@
+name = "sample_snippet"
+mode = "starter"
+description = "Fixture snippet"
+tags = ["fixture"]
+content_file = "sample_snippet.jl"

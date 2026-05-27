@@ -380,3 +380,30 @@ function _handle_docs(plugin_dir, data, plugin_name)
 end
 
 register_section_handler!(:docs, _handle_docs)
+
+"""
+    _handle_snippets(plugin_dir, data, plugin_name)
+
+`[snippets]` section handler. Scans `<plugin_dir>/<data["dir"]>`
+(default `"snippets"`) for `*.toml` manifests. Each manifest is
+parsed via `_load_snippet_toml` (which validates the sidecar `.jl`).
+Valid entries are registered with `resolved_content = ""`; the
+resolver pass (`_resolve_snippet_includes!`) is called once by the
+plugin loader after all plugins have finished registering.
+"""
+function _handle_snippets(plugin_dir, data, plugin_name)
+    data isa AbstractDict || (data = Dict{String,Any}())
+    dir_rel = get(data, "dir", "snippets")
+    snippets_dir = isabspath(dir_rel) ? dir_rel : joinpath(plugin_dir, dir_rel)
+    isdir(snippets_dir) || return nothing
+    for f in sort(readdir(snippets_dir; join=false))
+        endswith(f, ".toml") || continue
+        toml_path = abspath(joinpath(snippets_dir, f))
+        e = _load_snippet_toml(toml_path, plugin_name)
+        e === nothing && continue
+        register_snippet!(e)
+    end
+    return nothing
+end
+
+register_section_handler!(:snippets, _handle_snippets)

@@ -251,6 +251,28 @@ using Ressac
         @test Ressac.lookup_doc("sample_doc") !== nothing
     end
 
+    @testset "_handle_snippets — scans dir and registers entries" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        fixture = joinpath(@__DIR__, "fixtures", "plugins", "withdocs")
+        Ressac._handle_snippets(fixture, Dict("dir" => "snippets"), "withdocs")
+        e = Ressac.lookup_snippet("sample_snippet")
+        @test e !== nothing
+        @test e.mode === :starter
+        @test e.tags == [:fixture]
+        @test e.plugin == "withdocs"
+        @test e.resolved_content == ""
+        @test haskey(Ressac._SNIPPET_RAW, "sample_snippet")
+        @test occursin("@d1 p\"bd*4\"",
+                       Ressac._SNIPPET_RAW["sample_snippet"].own_content)
+    end
+
+    @testset "_handle_snippets — missing dir is no-op" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        Ressac._handle_snippets("/tmp", Dict("dir" => "does_not_exist"), "plug")
+        @test isempty(Ressac._SNIPPET_REGISTRY)
+    end
+
     @testset "parse_frontmatter — TOML between +++ fences" begin
         src = """
         +++
