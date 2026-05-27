@@ -58,7 +58,7 @@ struct SnippetEntry
     path::String                       # path to the TOML manifest
 end
 
-const _SNIPPET_REGISTRY = Dict{String,SnippetEntry}()
+const _SNIPPETS = Dict{String,SnippetEntry}()
 
 """
     register_snippet!(entry::SnippetEntry) -> SnippetEntry
@@ -71,25 +71,25 @@ populated by `_resolve_snippet_includes!()` after all plugins have
 registered (called once by the plugin loader).
 """
 function register_snippet!(e::SnippetEntry)
-    if haskey(_SNIPPET_REGISTRY, e.name) && _SNIPPET_REGISTRY[e.name].plugin != e.plugin
+    if haskey(_SNIPPETS, e.name) && _SNIPPETS[e.name].plugin != e.plugin
         @warn "snippet '$(e.name)' shadowed by plugin '$(e.plugin)' " *
-              "(previously from '$(_SNIPPET_REGISTRY[e.name].plugin)')"
+              "(previously from '$(_SNIPPETS[e.name].plugin)')"
     end
-    _SNIPPET_REGISTRY[e.name] = e
+    _SNIPPETS[e.name] = e
     return e
 end
 
 """
     lookup_snippet(name) -> Union{SnippetEntry,Nothing}
 """
-lookup_snippet(name::AbstractString) = get(_SNIPPET_REGISTRY, String(name), nothing)
+lookup_snippet(name::AbstractString) = get(_SNIPPETS, String(name), nothing)
 
 """
     list_snippets() -> Vector{String}
 
 Every registered snippet name, sorted ascending.
 """
-list_snippets() = sort!(collect(keys(_SNIPPET_REGISTRY)))
+list_snippets() = sort!(collect(keys(_SNIPPETS)))
 
 """
     list_starters() -> Vector{String}
@@ -97,7 +97,23 @@ list_snippets() = sort!(collect(keys(_SNIPPET_REGISTRY)))
 Names of snippets with `mode === :starter`, sorted ascending. Used
 by `:starter <Tab>` completion.
 """
-list_starters() = sort!([k for (k, v) in _SNIPPET_REGISTRY if v.mode === :starter])
+list_starters() = sort!([k for (k, v) in _SNIPPETS if v.mode === :starter])
+
+"""
+    _snippets_for_context(ctx::Symbol) -> Vector{SnippetEntry}
+
+All registered snippets whose `context` matches `ctx` OR is `:any`.
+Sorted by name. Used by the `:snip` browser to show only snippets
+applicable to the active pane (patterns vs synth_dsl vs synth_sc).
+"""
+function _snippets_for_context(ctx::Symbol)
+    out = SnippetEntry[]
+    for (_, s) in _SNIPPETS
+        (s.context === ctx || s.context === :any) && push!(out, s)
+    end
+    sort!(out, by = e -> e.name)
+    return out
+end
 
 """
     _parse_frontmatter(src::AbstractString) -> (Dict, String)
@@ -236,7 +252,7 @@ end
     _resolve_snippet_includes!()
 
 Walk the snippet include DAG, compute `resolved_content` for every
-entry in `_SNIPPET_REGISTRY`, and replace each entry with a fresh
+entry in `_SNIPPETS`, and replace each entry with a fresh
 `SnippetEntry` whose `resolved_content` field is populated.
 
 Cycle members and snippets with unresolvable includes fall back to
@@ -316,20 +332,20 @@ function _resolve_snippet_includes!()
         push!(parts, raw[n].own_content)
         resolved_str[n] = join(parts, "\n\n")
 
-        own_req = Set(_SNIPPET_REGISTRY[n].requires_plugins)
+        own_req = Set(_SNIPPETS[n].requires_plugins)
         for a in anc_topo
-            union!(own_req, Set(_SNIPPET_REGISTRY[a].requires_plugins))
+            union!(own_req, Set(_SNIPPETS[a].requires_plugins))
         end
         resolved_req[n] = sort!(collect(own_req))
     end
     for n in cycle_members
         resolved_str[n] = raw[n].own_content
-        resolved_req[n] = sort!(collect(Set(_SNIPPET_REGISTRY[n].requires_plugins)))
+        resolved_req[n] = sort!(collect(Set(_SNIPPETS[n].requires_plugins)))
     end
 
     for n in names
-        old = _SNIPPET_REGISTRY[n]
-        _SNIPPET_REGISTRY[n] = SnippetEntry(
+        old = _SNIPPETS[n]
+        _SNIPPETS[n] = SnippetEntry(
             old.name, old.mode, old.description, old.tags, old.context,
             resolved_req[n], old.includes,
             resolved_str[n], old.panes, old.plugin, old.path,

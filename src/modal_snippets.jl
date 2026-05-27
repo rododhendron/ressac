@@ -1,7 +1,15 @@
 # Snippets picker — context-aware multi-line templates. The snippet
-# table itself lives in src/content_snippets.jl as the const _SNIPPETS; this
-# file owns the picker UI: context routing, filter, category tabs,
-# preview, insert, render. Extracted from app.jl.
+# table lives in the plugin-discoverable _SNIPPETS registry (see
+# src/extension_registry.jl), populated from every plugin's
+# snippets/*.toml + sidecar *.jl. This file owns the picker UI:
+# context routing, filter, category tabs, preview, insert, render.
+#
+# Mapping from the previous _Snippet struct to SnippetEntry:
+#   .trigger      → .name
+#   .body         → .resolved_content
+#   .description  → .description  (unchanged)
+#   .category     → first(.tags)  (empty string if no tags)
+#   .context      → .context      (unchanged)
 
 """
     _snip_context(m) -> Symbol
@@ -19,18 +27,23 @@ function _snip_context(m::RessacApp)
     return :patterns
 end
 
+# Category for a SnippetEntry = first tag (legacy `.category` was a
+# single string; SnippetEntry stores `tags::Vector{Symbol}`). Empty
+# string when no tags are declared.
+_snip_category_of(s::SnippetEntry) =
+    isempty(s.tags) ? "" : String(first(s.tags))
+
 function _snippets_visible(m::RessacApp)
     ctx = _snip_context(m)
     base = _snippets_for_context(ctx)
-    # Filter by active category tab (empty == "all").
     if !isempty(m.snip_category)
-        base = [s for s in base if s.category == m.snip_category]
+        base = [s for s in base if _snip_category_of(s) == m.snip_category]
     end
     isempty(m.snip_query) && return base
     q = lowercase(m.snip_query)
     return [s for s in base
-            if occursin(q, lowercase(s.trigger)) ||
-               occursin(q, lowercase(s.category)) ||
+            if occursin(q, lowercase(s.name)) ||
+               occursin(q, lowercase(_snip_category_of(s))) ||
                occursin(q, lowercase(s.description))]
 end
 
@@ -47,8 +60,10 @@ function _snip_categories(m::RessacApp)
     cats = String[""]
     seen = Set{String}()
     for s in base
-        s.category in seen && continue
-        push!(seen, s.category); push!(cats, s.category)
+        cat = _snip_category_of(s)
+        isempty(cat) && continue
+        cat in seen && continue
+        push!(seen, cat); push!(cats, cat)
     end
     return cats
 end
@@ -130,8 +145,8 @@ function _preview_snippet!(m::RessacApp)
     snips = _snippets_visible(m)
     1 <= m.snip_cursor <= length(snips) || return
     s = snips[m.snip_cursor]
-    _push_app_log!(m, "[INFO] snippet preview: $(s.trigger) — $(s.description)")
-    for line in split(strip(s.body), '\n')
+    _push_app_log!(m, "[INFO] snippet preview: $(s.name) — $(s.description)")
+    for line in split(strip(s.resolved_content), '\n')
         _push_app_log!(m, "        $line")
     end
 end
@@ -150,7 +165,7 @@ function _insert_snippet!(m::RessacApp)
     1 <= m.snip_cursor <= length(snips) || return
     s = snips[m.snip_cursor]
     ed = _active_editor(m)
-    body_lines = split(strip(s.body), '\n')
+    body_lines = split(strip(s.resolved_content), '\n')
     min_indent = typemax(Int)
     for line in body_lines
         stripped = lstrip(line)
@@ -169,7 +184,7 @@ function _insert_snippet!(m::RessacApp)
     ed.cursor_row = row + 1
     ed.cursor_col = 0
     m.modal = :none
-    _push_app_log!(m, "[INFO] inserted snippet $(s.trigger) ($(length(inserted)) lines)")
+    _push_app_log!(m, "[INFO] inserted snippet $(s.name) ($(length(inserted)) lines)")
 end
 
 function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
@@ -225,7 +240,8 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             s = snips[i]
             is_cur = i == m.snip_cursor
             marker = is_cur ? "▶ " : "  "
-            label = "$(marker)$(rpad(s.trigger, 18)) [$(rpad(s.category, 9))]  $(s.description)"
+            cat = _snip_category_of(s)
+            label = "$(marker)$(rpad(s.name, 18)) [$(rpad(cat, 9))]  $(s.description)"
             style = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
             screen_y = body_y0 + slot - 1
             TK.set_string!(buf, inner.x, screen_y,

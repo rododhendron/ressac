@@ -1,0 +1,6 @@
+cps!(0.788)
+@d3 p"bd ~ ~ ~ bd ~ ~ ~ bd ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~"
+
+@d1 p"sn ~ ~ ~" |> fast(2)
+
+@d2 :techkick |> gate(p"0 1 1 0 1 0 0 1") |> gain(1.3)

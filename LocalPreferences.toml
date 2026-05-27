@@ -1,2 +1,6 @@
 [Tachikoma]
 animations = true
+export_embed_font = true
+export_font = ""
+export_formats = "gif,svg"
+export_theme = "neuromancer"

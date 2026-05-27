@@ -46,7 +46,7 @@ using Ressac
     end
 
     @testset "SnippetEntry construction + register + lookup" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         e = Ressac.SnippetEntry(
             "techno-classic", :starter,
             "Four-on-the-floor", [:techno, :rhythm], :any,
@@ -62,7 +62,7 @@ using Ressac
     end
 
     @testset "list_snippets returns all, list_starters filters" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         Ressac.register_snippet!(Ressac.SnippetEntry(
             "zeta", :starter, "", Symbol[], :any, String[], String[],
             "", Any[], "core", ""))
@@ -77,7 +77,7 @@ using Ressac
     end
 
     @testset "register_snippet! last-wins with warning on conflict" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         e1 = Ressac.SnippetEntry("foo", :block, "v1", Symbol[], :any,
                                   String[], String[], "a", Any[], "plugA", "")
         e2 = Ressac.SnippetEntry("foo", :block, "v2", Symbol[], :any,
@@ -90,7 +90,7 @@ using Ressac
     end
 
     @testset "_load_snippet_toml — valid manifest + valid sidecar" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
         fixture_dir = joinpath(@__DIR__, "fixtures", "registry")
         toml_path = joinpath(fixture_dir, "good_snippet.toml")
@@ -139,14 +139,14 @@ using Ressac
     end
 
     @testset "_resolve_snippet_includes! — two-snippet chain" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
-        Ressac._SNIPPET_REGISTRY["B"] = Ressac.SnippetEntry(
+        Ressac._SNIPPETS["B"] = Ressac.SnippetEntry(
             "B", :block, "lib", Symbol[], :any, String[], String[],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["B"] = (own_content = "B_content\n", includes = String[])
 
-        Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
+        Ressac._SNIPPETS["A"] = Ressac.SnippetEntry(
             "A", :starter, "main", Symbol[], :any, String[], ["B"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n", includes = ["B"])
@@ -161,11 +161,11 @@ using Ressac
     end
 
     @testset "_resolve_snippet_includes! — diamond, no duplicate" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
         for (n, inc) in (("D", String[]), ("B", ["D"]), ("C", ["D"]),
                           ("A", ["B", "C"]))
-            Ressac._SNIPPET_REGISTRY[n] = Ressac.SnippetEntry(
+            Ressac._SNIPPETS[n] = Ressac.SnippetEntry(
                 n, :block, "", Symbol[], :any, String[], inc,
                 "", Any[], "core", "")
             Ressac._SNIPPET_RAW[n] = (own_content = "$(n)_content\n",
@@ -177,9 +177,9 @@ using Ressac
     end
 
     @testset "_resolve_snippet_includes! — missing include warns + fallback" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
-        Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
+        Ressac._SNIPPETS["A"] = Ressac.SnippetEntry(
             "A", :block, "", Symbol[], :any, String[], ["ghost"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n",
@@ -192,14 +192,14 @@ using Ressac
     end
 
     @testset "_resolve_snippet_includes! — cycle detected + fallback" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
-        Ressac._SNIPPET_REGISTRY["A"] = Ressac.SnippetEntry(
+        Ressac._SNIPPETS["A"] = Ressac.SnippetEntry(
             "A", :block, "", Symbol[], :any, String[], ["B"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["A"] = (own_content = "A_content\n",
                                      includes = ["B"])
-        Ressac._SNIPPET_REGISTRY["B"] = Ressac.SnippetEntry(
+        Ressac._SNIPPETS["B"] = Ressac.SnippetEntry(
             "B", :block, "", Symbol[], :any, String[], ["A"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["B"] = (own_content = "B_content\n",
@@ -212,13 +212,13 @@ using Ressac
     end
 
     @testset "_resolve_snippet_includes! — requires_plugins propagates" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
-        Ressac._SNIPPET_REGISTRY["lib"] = Ressac.SnippetEntry(
+        Ressac._SNIPPETS["lib"] = Ressac.SnippetEntry(
             "lib", :block, "", Symbol[], :any, ["foo"], String[],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["lib"] = (own_content = "L\n", includes = String[])
-        Ressac._SNIPPET_REGISTRY["main"] = Ressac.SnippetEntry(
+        Ressac._SNIPPETS["main"] = Ressac.SnippetEntry(
             "main", :starter, "", Symbol[], :any, String[], ["lib"],
             "", Any[], "core", "")
         Ressac._SNIPPET_RAW["main"] = (own_content = "M\n", includes = ["lib"])
@@ -254,7 +254,7 @@ using Ressac
     end
 
     @testset "_handle_snippets — scans dir and registers entries" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
         fixture = joinpath(@__DIR__, "fixtures", "plugins", "withdocs")
         Ressac._handle_snippets(fixture, Dict("dir" => "snippets"), "withdocs")
@@ -270,7 +270,7 @@ using Ressac
     end
 
     @testset "SnippetEntry context field — default :any, set via TOML" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
 
         # When TOML omits context, defaults to :any.
@@ -310,13 +310,13 @@ using Ressac
     end
 
     @testset "_handle_snippets — missing dir is no-op" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         Ressac._handle_snippets("/tmp", Dict("dir" => "does_not_exist"), "plug")
-        @test isempty(Ressac._SNIPPET_REGISTRY)
+        @test isempty(Ressac._SNIPPETS)
     end
 
     @testset "_load_plugins calls _resolve_snippet_includes! after load" begin
-        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
         plugin_root = joinpath(@__DIR__, "fixtures", "plugins")
         Ressac._load_plugins([plugin_root])

@@ -47,7 +47,6 @@ include("tui_scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
 # ─── Content / configuration / theming ────────────────────────────
 include("session_config.jl")     # RessacConfig, _load_ressac_config!
 include("session_themes.jl")     # _apply_theme!, palette switching
-include("content_snippets.jl")   # _SNIPPETS (browsable via :snip)
 include("content_sccode.jl")     # sccode.org HTTP client
 include("content_wiki.jl")       # docs/wiki/*.md loader
 
