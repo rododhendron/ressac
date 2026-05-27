@@ -4,3 +4,6 @@ description = "fixture plugin used for [docs] handler tests"
 
 [docs]
 dir = "docs"
+
+[snippets]
+dir = "snippets"

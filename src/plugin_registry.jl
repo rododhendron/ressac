@@ -248,6 +248,15 @@ internally by `start_live!`; exposed for tests.
 function _load_plugins(path::AbstractVector{<:AbstractString} = default_plugin_path())
     manifests = discover_plugins(path)
     ordered = topo_sort(manifests)
+    # Core-first reordering: pluck `core` out (if present) and put it at
+    # the head. Preserves topo order for everything else. Lets a user
+    # plugin override a core doc/snippet via last-wins registration.
+    core_idx = findfirst(m -> m.name == "core", ordered)
+    if core_idx !== nothing && core_idx != 1
+        core = ordered[core_idx]
+        deleteat!(ordered, core_idx)
+        pushfirst!(ordered, core)
+    end
     for m in ordered
         try
             load_plugin(m)
@@ -255,6 +264,12 @@ function _load_plugins(path::AbstractVector{<:AbstractString} = default_plugin_p
         catch err
             @error "plugin '$(m.name)' failed to load: $(sprint(showerror, err))"
         end
+    end
+    # Resolve snippet composition after every plugin has registered.
+    try
+        _resolve_snippet_includes!()
+    catch err
+        @error "snippet include resolution failed: $(sprint(showerror, err))"
     end
     return nothing
 end

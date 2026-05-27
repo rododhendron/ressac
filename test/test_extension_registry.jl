@@ -273,6 +273,52 @@ using Ressac
         @test isempty(Ressac._SNIPPET_REGISTRY)
     end
 
+    @testset "_load_plugins calls _resolve_snippet_includes! after load" begin
+        empty!(Ressac._SNIPPET_REGISTRY)
+        empty!(Ressac._SNIPPET_RAW)
+        plugin_root = joinpath(@__DIR__, "fixtures", "plugins")
+        Ressac._load_plugins([plugin_root])
+        e = Ressac.lookup_snippet("sample_snippet")
+        @test e !== nothing
+        @test !isempty(e.resolved_content)
+        @test occursin("@d1 p\"bd*4\"", e.resolved_content)
+    end
+
+    @testset "_load_plugins loads 'core' first" begin
+        tmproot = mktempdir()
+        try
+            for (plugname, short) in (("core", "from-core"),
+                                       ("aaa", "from-aaa"))
+                pdir = joinpath(tmproot, plugname)
+                mkpath(joinpath(pdir, "docs"))
+                open(joinpath(pdir, "plugin.toml"), "w") do io
+                    println(io, """name = "$plugname"
+                    version = "0.1.0"
+                    description = "ordering test"
+                    [docs]
+                    dir = "docs"
+                    """)
+                end
+                open(joinpath(pdir, "docs", "clash.md"), "w") do io
+                    println(io, """+++
+                    name = "clash"
+                    short = "$short"
+                    +++
+
+                    body
+                    """)
+                end
+            end
+            empty!(Ressac._DOCS)
+            Ressac._load_plugins([tmproot])
+            @test Ressac.lookup_doc("clash") !== nothing
+            @test Ressac.lookup_doc("clash").short == "from-aaa"
+            @test Ressac.lookup_doc("clash").plugin == "aaa"
+        finally
+            rm(tmproot; recursive=true, force=true)
+        end
+    end
+
     @testset "parse_frontmatter — TOML between +++ fences" begin
         src = """
         +++
