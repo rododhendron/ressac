@@ -1984,9 +1984,9 @@ _register_literal!(m -> _copy_logs_to_clipboard!(m), "copylogs", "yanklogs")
 
 # ── Starter / scale / cps ───────────────────────────────────────────
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] :starter <genre> — " * join(sort!(collect(keys(_STARTER_PACKS))), ", ")),
+        "[INFO] :starter <genre> — " * join(list_starters(), ", ")),
     "starter")
-_register_regex!(r"^starter\s+([\w-]+)$",
+_register_regex!(r"^starter\s+([\w.-]+)$",
     (m, mt) -> _starter_command!(m, mt.captures[1]))
 # :import path  →  copies a .wav into plugins/user-samples/<basename>/
 #                  and registers it so it's usable as a sample name.
@@ -2217,15 +2217,14 @@ first if you want to keep things.
 """
 function _starter_command!(m::RessacApp, genre::AbstractString)
     key = String(genre)
-    pack = get(_STARTER_PACKS, key, nothing)
-    if pack === nothing
-        # Convenience: unique-prefix match. `:starter reservoir-sp` →
-        # `reservoir-spike`. Ambiguous prefixes list the alternatives.
-        all_keys = collect(keys(_STARTER_PACKS))
+    snip = lookup_snippet(key)
+    if snip === nothing || snip.mode !== :starter
+        # Prefix match against starter names only.
+        all_keys = list_starters()
         matches = filter(k -> startswith(k, key), all_keys)
         if length(matches) == 1
             key = matches[1]
-            pack = _STARTER_PACKS[key]
+            snip = lookup_snippet(key)
         elseif length(matches) > 1
             _push_app_log!(m,
                 "[WARN] :starter — '$genre' is ambiguous: " *
@@ -2238,7 +2237,7 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
             return
         end
     end
-    TK.set_text!(m.editor, join(pack, "\n"))
+    TK.set_text!(m.editor, snip.resolved_content)
     m.editor.cursor_row = 1
     m.editor.cursor_col = 0
     _push_app_log!(m, "[INFO] loaded :starter $key — eval each @dN with e")
