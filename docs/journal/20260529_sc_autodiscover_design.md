@@ -46,7 +46,7 @@ Three abstractions:
   "Boot lifecycle" below for the rationale).
 - **`~/.cache/ressac/plugins/sc-autodiscover/`** — the generated
   output: a plugin manifest + one MD file per UGen + a
-  `cache_meta.json` invalidation signature. Treated as a regular
+  `cache_meta.toml` invalidation signature. Treated as a regular
   plugin by the loader.
 - **Plugin loader extension** — `default_plugin_path()` adds the
   user cache directory to its scan list, after the project tree and
@@ -66,7 +66,7 @@ plugins/sc-discoverer/              # runner plugin (in project repo)
 
 ~/.cache/ressac/plugins/sc-autodiscover/   # generated content plugin
 ├── plugin.toml                     # auto-generated, declares [docs]
-├── cache_meta.json                 # invalidation signature
+├── cache_meta.toml                 # invalidation signature
 └── docs/
     ├── SinOsc.md
     ├── EnvGen.md
@@ -100,7 +100,7 @@ start_live!
           → [julia] bootstrap.jl runs (registers handler)
           → [sc_discover] section invoked:
               * roundtrip /ressac/sc-meta → sc_version + ugen_count
-              * compare against cache_meta.json
+              * compare against cache_meta.toml
               * cache valid → return (skip discovery)
               * cache invalid → send /dirt/evalSC <discover.scd>
                                 → wait for /ressac/sc-discovery-done (30s timeout)
@@ -147,16 +147,23 @@ C. **Ack** — when finished, SC sends
 
 ## File formats
 
-### `cache_meta.json`
+### `cache_meta.toml`
 
-```json
-{
-  "sc_version": "3.13.0",
-  "ugen_count": 587,
-  "generated_at": "2026-05-29T14:23:11Z",
-  "discover_script_sha256": "a3f1b4…"
-}
+Flat TOML (no nested tables). Written by **Julia** after receiving
+the SC discovery ack — Julia knows the script SHA from the filesystem
+and owns the cache invalidation logic.
+
+```toml
+sc_version              = "3.13.0"
+ugen_count              = 587
+generated_at            = "2026-05-29T14:23:11Z"
+discover_script_sha256  = "a3f1b4…"
 ```
+
+We use TOML rather than JSON for two reasons: TOML is already a
+project dependency (used by every other plugin manifest), and the
+flat key-value shape is trivially expressed without JSON's nested
+syntax.
 
 - `sc_version` — `Main.version` from SC.
 - `ugen_count` — `UGen.allSubclasses.size`.
@@ -253,7 +260,7 @@ Frontmatter rules:
 
 5. **`~ressacMain { … }`** — orchestrator. Empties the cache dir,
    iterates UGens, calls the above for each, writes
-   `cache_meta.json`, sends OSC ack.
+   `cache_meta.toml`, sends OSC ack.
 
 The script also writes `plugin.toml` for the cached plugin (so the
 generated tree is self-sufficient when scanned by the loader).
@@ -276,12 +283,12 @@ _sc_script_sha256(scd_path) =
     bytes2hex(SHA.sha256(read(scd_path, String)))
 
 function _sc_cache_valid(cache_dir, scd_path)
-    meta_path = joinpath(cache_dir, "cache_meta.json")
+    meta_path = joinpath(cache_dir, "cache_meta.toml")
     isfile(meta_path) || return false
     meta = try
-        JSON.parse(read(meta_path, String))
+        TOML.parsefile(meta_path)
     catch
-        @warn "sc-autodiscover: cache_meta.json corrupted, will rediscover"
+        @warn "sc-autodiscover: cache_meta.toml corrupted, will rediscover"
         return false
     end
     # Auto-invalidate when the SC script content changes — frees us
@@ -371,10 +378,10 @@ override is what `lookup_doc("SinOsc")` returns.
 ## User-facing commands
 
 - `:sc-rediscover` — force re-discovery. Deletes
-  `cache_meta.json` (not the docs, in case discovery fails halfway,
+  `cache_meta.toml` (not the docs, in case discovery fails halfway,
   the old MD files stay readable) then calls
   `_handle_sc_discover(...)` synchronously.
-- `:sc-cache-info` — log the contents of `cache_meta.json` + the
+- `:sc-cache-info` — log the contents of `cache_meta.toml` + the
   cache directory path.
 
 Both are registered in `tui_app.jl` as `_register_literal!` actions.
@@ -386,10 +393,10 @@ They require an active live session; on no-session, log an error.
 |---|---|
 | SC not started at handler invocation | `[WARN] sc-autodiscover: no live session, discovery deferred`; skip. Discovery retried at next `start_live!`. |
 | `/ressac/sc-meta` roundtrip timeout (3s) | Assume cache invalid → trigger full discovery as fallback. |
-| Full discovery timeout (30s) | `[ERROR] sc-autodiscover: discovery timed out`. `cache_meta.json` not written, so next boot retries. Existing MD files (if any) are still loaded. |
+| Full discovery timeout (30s) | `[ERROR] sc-autodiscover: discovery timed out`. `cache_meta.toml` not written, so next boot retries. Existing MD files (if any) are still loaded. |
 | Cache dir not writable | `[ERROR] sc-autodiscover: cache write failed: <reason>`. Boot continues without SC UGen docs. |
 | Single MD file fails to parse | Per-file warning, skip that entry. Other files load normally (already handled by `_handle_docs` from sub-project 7). |
-| Corrupted `cache_meta.json` | `[WARN] sc-autodiscover: cache_meta.json corrupted, will rediscover`; treat as invalid. |
+| Corrupted `cache_meta.toml` | `[WARN] sc-autodiscover: cache_meta.toml corrupted, will rediscover`; treat as invalid. |
 | User has no SC and triggers `:sc-rediscover` | `[ERROR] :sc-rediscover requires an active SC session — start the live first`. |
 
 ## Testing
@@ -397,7 +404,7 @@ They require an active live session; on no-session, log an error.
 **Unit tests (`test/test_sc_autodiscover.jl`)**, no SC required:
 
 - `_sc_cache_valid`:
-  - Mock `cache_meta.json` with matching SC version + UGen count +
+  - Mock `cache_meta.toml` with matching SC version + UGen count +
     script SHA → true.
   - SC version mismatch → false.
   - UGen count mismatch → false.
@@ -437,7 +444,7 @@ They require an active live session; on no-session, log an error.
 4. **Forced re-discovery**: `:sc-rediscover` re-runs discovery
    without manual cache cleanup.
 5. **Invalidation**: manually edit `sc_version` in
-   `cache_meta.json`, restart, verify re-discovery triggers.
+   `cache_meta.toml`, restart, verify re-discovery triggers.
 
 **SC script syntax check**:
 - `sclang -h discover.scd` in CI lints the SC script (parse only,
@@ -499,7 +506,7 @@ Sub-project 8 is done when:
 
 - **Risk**: A future sc3-plugin install (after first-boot) silently
   adds UGens that aren't in the cache. **Mitigation**: `ugen_count`
-  in `cache_meta.json` catches this — next boot detects the
+  in `cache_meta.toml` catches this — next boot detects the
   mismatch and re-discovers automatically.
 
 ## Open questions deferred
