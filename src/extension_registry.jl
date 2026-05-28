@@ -9,12 +9,23 @@ struct DocEntry
     tags::Vector{Symbol}
     kwargs::Vector{Symbol}
     examples::Vector{String}
+    aliases::Vector{String}    # explicit alternative names (`aliases = […]`
+                               # in frontmatter); auto-extended by basename
+                               # when name contains '.'
     body::String          # raw MD body after frontmatter ("" if none)
     plugin::String        # source plugin name
     path::String          # absolute path to the source file
 end
 
 const _DOCS = Dict{String,DocEntry}()
+# Alias resolution table: alias name → primary doc name. Populated by
+# register_doc! from the entry's `aliases` field PLUS an implicit
+# basename-after-final-`.` derivation. A primary name in `_DOCS`
+# always wins over an alias (we check `_DOCS` first in lookup_doc).
+# Alias collisions are silent last-wins — most "short names" collide
+# naturally between modules (e.g. `adex` from Reservoir vs hypothetical
+# Chaos.adex), and warning on every collision would be noisy.
+const _DOC_ALIASES = Dict{String,String}()
 
 """
     register_doc!(entry::DocEntry) -> DocEntry
@@ -29,13 +40,38 @@ function register_doc!(e::DocEntry)
               "(previously from '$(_DOCS[e.name].plugin)')"
     end
     _DOCS[e.name] = e
+    # Register aliases: explicit ones from frontmatter + automatic
+    # basename (last segment after final `.`) when the name is
+    # qualified. Skip self-aliases.
+    auto_aliases = String[]
+    if occursin('.', e.name)
+        push!(auto_aliases, String(last(split(e.name, '.'))))
+    end
+    for alias in Iterators.flatten((e.aliases, auto_aliases))
+        alias == e.name && continue
+        isempty(alias) && continue
+        _DOC_ALIASES[alias] = e.name
+    end
     return e
 end
 
 """
     lookup_doc(name) -> Union{DocEntry,Nothing}
+
+Resolution order:
+  1. exact match against the primary registry (`_DOCS`)
+  2. alias table (`_DOC_ALIASES`) — dereferences to the primary entry
+
+Primary always wins over alias when both are defined.
 """
-lookup_doc(name::AbstractString) = get(_DOCS, String(name), nothing)
+function lookup_doc(name::AbstractString)
+    key = String(name)
+    e = get(_DOCS, key, nothing)
+    e !== nothing && return e
+    target = get(_DOC_ALIASES, key, nothing)
+    target === nothing && return nothing
+    return get(_DOCS, target, nothing)
+end
 
 """
     list_docs() -> Vector{String}
@@ -398,8 +434,9 @@ function _handle_docs(plugin_dir, data, plugin_name)
         tags = Symbol[Symbol(t) for t in get(fm, "tags", String[])]
         kwargs = Symbol[Symbol(k) for k in get(fm, "kwargs", String[])]
         examples = String[String(x) for x in get(fm, "examples", String[])]
+        aliases = String[String(a) for a in get(fm, "aliases", String[])]
         register_doc!(DocEntry(
-            String(name), short, tags, kwargs, examples,
+            String(name), short, tags, kwargs, examples, aliases,
             body, String(plugin_name), path,
         ))
     end

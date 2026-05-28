@@ -7,7 +7,7 @@ using Ressac
         empty!(Ressac._DOCS)
         e = Ressac.DocEntry("gain", "Volume multiplier.",
                             [:control], [:val], ["@d1 :bd |> gain(0.5)"],
-                            "", "core", "/tmp/gain.md")
+                            String[], "", "core", "/tmp/gain.md")
         Ressac.register_doc!(e)
         got = Ressac.lookup_doc("gain")
         @test got !== nothing
@@ -26,9 +26,9 @@ using Ressac
     @testset "register_doc! last-wins with warning on conflict" begin
         empty!(Ressac._DOCS)
         e1 = Ressac.DocEntry("foo", "first", Symbol[], Symbol[], String[],
-                             "", "plugA", "/a/foo.md")
+                             String[], "", "plugA", "/a/foo.md")
         e2 = Ressac.DocEntry("foo", "second", Symbol[], Symbol[], String[],
-                             "", "plugB", "/b/foo.md")
+                             String[], "", "plugB", "/b/foo.md")
         Ressac.register_doc!(e1)
         @test_logs (:warn, r"shadowed by plugin 'plugB'") begin
             Ressac.register_doc!(e2)
@@ -40,9 +40,56 @@ using Ressac
         empty!(Ressac._DOCS)
         for n in ["zebra", "alpha", "mango"]
             Ressac.register_doc!(Ressac.DocEntry(n, "", Symbol[], Symbol[],
-                                                 String[], "", "core", ""))
+                                                 String[], String[], "", "core", ""))
         end
         @test Ressac.list_docs() == ["alpha", "mango", "zebra"]
+    end
+
+    @testset "doc aliases — explicit aliases + auto basename" begin
+        empty!(Ressac._DOCS)
+        empty!(Ressac._DOC_ALIASES)
+        # Explicit alias — note this constructor uses the new 9-field
+        # signature with `aliases` in position 6 (after `examples`).
+        e1 = Ressac.DocEntry("Reservoir.pool_burst",
+            "Route IV", Symbol[], Symbol[], String[],
+            ["pool", "pool_route"],
+            "", "reservoir", "")
+        Ressac.register_doc!(e1)
+        @test Ressac.lookup_doc("Reservoir.pool_burst") === e1
+        @test Ressac.lookup_doc("pool") === e1
+        @test Ressac.lookup_doc("pool_route") === e1
+        # Auto basename alias (last segment after final '.')
+        @test Ressac.lookup_doc("pool_burst") === e1
+    end
+
+    @testset "doc aliases — primary always wins over alias" begin
+        empty!(Ressac._DOCS)
+        empty!(Ressac._DOC_ALIASES)
+        # A's auto-alias is "bar"
+        a = Ressac.DocEntry("Foo.bar", "from-A", Symbol[], Symbol[],
+                            String[], String[], "", "A", "")
+        Ressac.register_doc!(a)
+        @test Ressac.lookup_doc("bar") === a
+        # B registers "bar" as a primary — primary must win over A's alias.
+        b = Ressac.DocEntry("bar", "from-B-primary", Symbol[], Symbol[],
+                            String[], String[], "", "B", "")
+        Ressac.register_doc!(b)
+        @test Ressac.lookup_doc("bar") === b
+    end
+
+    @testset "doc aliases — last-wins on alias collision, no warning" begin
+        empty!(Ressac._DOCS)
+        empty!(Ressac._DOC_ALIASES)
+        a = Ressac.DocEntry("Foo.x", "from-A", Symbol[], Symbol[],
+                            String[], String[], "", "A", "")
+        b = Ressac.DocEntry("Bar.x", "from-B", Symbol[], Symbol[],
+                            String[], String[], "", "B", "")
+        Ressac.register_doc!(a)
+        # Both auto-alias to "x". Second registration wins silently.
+        Ressac.register_doc!(b)
+        @test Ressac.lookup_doc("x") === b
+        @test Ressac.lookup_doc("Foo.x") === a
+        @test Ressac.lookup_doc("Bar.x") === b
     end
 
     @testset "SnippetEntry construction + register + lookup" begin
@@ -399,6 +446,7 @@ using Ressac
     # bleed into the rest of the suite.
     @testset "restore project plugin tree after fixture pollution" begin
         empty!(Ressac._DOCS)
+        empty!(Ressac._DOC_ALIASES)
         empty!(Ressac._SNIPPETS)
         empty!(Ressac._SNIPPET_RAW)
         Ressac._load_plugins([joinpath(@__DIR__, "..", "plugins")])

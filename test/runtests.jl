@@ -5,6 +5,7 @@ using Ressac
 # that query `:doc <name>` or `:starter <name>`. Idempotent re-runs
 # repopulate the same dicts.
 empty!(Ressac._DOCS)
+empty!(Ressac._DOC_ALIASES)
 empty!(Ressac._SNIPPETS)
 empty!(Ressac._SNIPPET_RAW)
 Ressac._load_plugins([joinpath(@__DIR__, "..", "plugins")])
