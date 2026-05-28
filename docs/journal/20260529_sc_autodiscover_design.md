@@ -154,15 +154,20 @@ C. **Ack** — when finished, SC sends
   "sc_version": "3.13.0",
   "ugen_count": 587,
   "generated_at": "2026-05-29T14:23:11Z",
-  "ressac_discover_version": 1
+  "discover_script_sha256": "a3f1b4…"
 }
 ```
 
 - `sc_version` — `Main.version` from SC.
 - `ugen_count` — `UGen.allSubclasses.size`.
 - `generated_at` — ISO 8601 timestamp, debug-only.
-- `ressac_discover_version` — bumped manually when the SC script or
-  the MD format changes incompatibly.
+- `discover_script_sha256` — SHA-256 of `plugins/sc-discoverer/discover.scd`
+  as it exists on disk at the moment of cache write. Lets us
+  auto-invalidate the cache whenever the SC script changes (so the
+  user never has to remember to bump a version constant by hand).
+  Computed via the Julia `SHA` stdlib. Cosmetic-only edits (whitespace,
+  comments) do trigger re-discovery — that's acceptable since
+  re-discovery is rare (only at `start_live!`) and takes ~10s.
 
 ### MD file (example `SinOsc.md`)
 
@@ -258,9 +263,7 @@ generated tree is self-sufficient when scanned by the loader).
 `plugins/sc-discoverer/bootstrap.jl`:
 
 ```julia
-# Discovery format version. Bump this when discover.scd or the MD
-# format changes incompatibly so existing caches get rebuilt.
-const _SC_DISCOVER_VERSION = 1
+using SHA
 
 # Override-able via env var RESSAC_CACHE_DIR (e.g. for read-only
 # filesystem scenarios). Defaults to ~/.cache/ressac.
@@ -269,7 +272,10 @@ _sc_cache_dir() = joinpath(
     "plugins", "sc-autodiscover",
 )
 
-function _sc_cache_valid(cache_dir)
+_sc_script_sha256(scd_path) =
+    bytes2hex(SHA.sha256(read(scd_path, String)))
+
+function _sc_cache_valid(cache_dir, scd_path)
     meta_path = joinpath(cache_dir, "cache_meta.json")
     isfile(meta_path) || return false
     meta = try
@@ -278,7 +284,11 @@ function _sc_cache_valid(cache_dir)
         @warn "sc-autodiscover: cache_meta.json corrupted, will rediscover"
         return false
     end
-    get(meta, "ressac_discover_version", 0) == _SC_DISCOVER_VERSION || return false
+    # Auto-invalidate when the SC script content changes — frees us
+    # from maintaining a manual version constant. Cosmetic edits do
+    # trigger re-discovery; acceptable since it's only at start_live!.
+    current_sha = _sc_script_sha256(scd_path)
+    get(meta, "discover_script_sha256", "") == current_sha || return false
     # Roundtrip /ressac/sc-meta to compare against live SC state.
     sc_version, sc_ugen_count = _sc_meta_roundtrip(; timeout = 3.0)
     sc_version === nothing && return false   # SC unreachable, assume invalid
@@ -288,7 +298,8 @@ end
 
 function _handle_sc_discover(plugin_dir, data, plugin_name)
     cache_dir = _sc_cache_dir()
-    if _sc_cache_valid(cache_dir)
+    scd_path = joinpath(plugin_dir, "discover.scd")
+    if _sc_cache_valid(cache_dir, scd_path)
         @info "sc-autodiscover: cache fresh, skipping discovery"
         return nothing
     end
@@ -386,12 +397,18 @@ They require an active live session; on no-session, log an error.
 **Unit tests (`test/test_sc_autodiscover.jl`)**, no SC required:
 
 - `_sc_cache_valid`:
-  - Mock `cache_meta.json` with matching version + count → true.
-  - Version mismatch → false.
-  - Count mismatch → false.
+  - Mock `cache_meta.json` with matching SC version + UGen count +
+    script SHA → true.
+  - SC version mismatch → false.
+  - UGen count mismatch → false.
   - Missing file → false.
   - Corrupted JSON → false + warning.
-  - `ressac_discover_version` mismatch → false.
+  - SC script SHA mismatch (simulate by writing a modified
+    `discover.scd` to a tmp path) → false.
+
+- `_sc_script_sha256`:
+  - Identical content → identical hash.
+  - One-byte edit → different hash.
 
 - Loader integration with a synthetic cache:
   - Fixture cache dir with 3 pre-written MD files (no SC involved).
