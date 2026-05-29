@@ -37,6 +37,9 @@ include("synth_library.jl")      # _SYNTH_LIBRARY entries (uses SynthDSL)
 # ─── Extension registry — plugin-contributed docs + snippets ──────
 include("extension_registry.jl")
 
+# ─── Pane interface — sub-project 9 foundation ─────────────────────
+include("pane_interface.jl")
+
 # ─── Static docs / starter packs / scope state ────────────────────
 include("tui_docs.jl")           # stub — content now lives in plugins/{core,…}/
 include("tui_livedoc.jl")        # _GUIDE_LINES, _SYNTH_GUIDE_LINES,
