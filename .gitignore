@@ -26,3 +26,6 @@ ressac.dll
 sessions/*.txt
 !sessions/.keep
 tachikoma_*.tach
+
+# Superpowers brainstorming companion (HTML mockups + state)
+.superpowers/
