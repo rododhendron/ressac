@@ -158,7 +158,53 @@ scDocToMd = { |helpPath|
     };
 };
 
-// writeUgenMd is filled by Task 10.
+// Build the TOML frontmatter string (between +++ fences) plus the
+// Signatures section + parsed body, write to docs/<ClassName>.md.
+// `parsed` is the IdentityDictionary returned by scDocToMd.
+writeUgenMd = { |class, sigs, parsed, outPath|
+    var allKwargs, fm, kwargsToml, tagsToml;
+
+    // Collect all distinct kwarg names across rates.
+    allKwargs = Set.new;
+    sigs.keysValuesDo { |rate, pairs|
+        pairs.do { |p| allKwargs.add(p[\name]) };
+    };
+
+    kwargsToml = "["
+        ++ allKwargs.asArray.collect { |n| "\"" ++ n.asString ++ "\"" }.join(", ")
+        ++ "]";
+    tagsToml = "[\"sc-ugen\"";
+    if (parsed[\category].notNil and: { parsed[\category].notEmpty }) {
+        tagsToml = tagsToml ++ ", \"" ++ parsed[\category] ++ "\"";
+    };
+    tagsToml = tagsToml ++ "]";
+
+    fm = "+++\n";
+    fm = fm ++ "name = \"" ++ class.name.asString ++ "\"\n";
+    fm = fm ++ "short = \"" ++ parsed[\short].replace("\"", "'") ++ "\"\n";
+    fm = fm ++ "tags = " ++ tagsToml ++ "\n";
+    fm = fm ++ "kwargs = " ++ kwargsToml ++ "\n";
+    fm = fm ++ "aliases = []\n";
+    fm = fm ++ "examples = []\n";
+    fm = fm ++ "+++\n\n";
+    fm = fm ++ "# " ++ class.name.asString ++ "\n\n";
+
+    // Signature section — one bullet per rate the UGen responds to.
+    fm = fm ++ "## Signatures\n\n";
+    sigs.keysValuesDo { |rate, pairs|
+        var pieces = pairs.collect { |p|
+            p[\name].asString ++ "=" ++ p[\default].asString
+        };
+        fm = fm ++ "- `" ++ class.name.asString ++ "." ++ rate.asString
+                ++ "(" ++ pieces.join(", ") ++ ")`\n";
+    };
+    fm = fm ++ "\n";
+
+    // Body from SCDoc (may be empty if no HelpFile was found).
+    fm = fm ++ parsed[\body];
+
+    File.use(outPath, "w", { |f| f.write(fm) });
+};
 
 count = 0;
 ugens.do { |class|
