@@ -39,6 +39,7 @@ include("extension_registry.jl")
 
 # ─── Pane interface — sub-project 9 foundation ─────────────────────
 include("pane_interface.jl")
+include("workspace_manager.jl")
 
 # ─── Static docs / starter packs / scope state ────────────────────
 include("tui_docs.jl")           # stub — content now lives in plugins/{core,…}/
