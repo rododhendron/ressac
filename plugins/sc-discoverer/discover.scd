@@ -206,9 +206,21 @@ writeUgenMd = { |class, sigs, parsed, outPath|
     File.use(outPath, "w", { |f| f.write(fm) });
 };
 
+// Clean stale MD files before regenerating. Keeps the docs dir
+// in sync with the current UGen list (drops files for UGens that
+// vanished after a sc3-plugins uninstall, etc.).
+File.deleteAll(docsDir);
+File.mkdir(docsDir);
+
 count = 0;
 ugens.do { |class|
-    // Per-UGen processing wired in Task 11.
+    var sigs, helpPath, parsed, outPath;
+    sigs     = signaturesFor.value(class);
+    helpPath = SCDoc.helpTargetDir +/+ "Classes"
+               +/+ class.name.asString ++ ".schelp";
+    parsed   = scDocToMd.value(helpPath);
+    outPath  = docsDir +/+ class.name.asString ++ ".md";
+    writeUgenMd.value(class, sigs, parsed, outPath);
     count = count + 1;
 };
 
