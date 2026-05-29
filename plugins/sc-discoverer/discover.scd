@@ -37,10 +37,27 @@ ugens = UGen.allSubclasses.select { |class|
 };
 ("[sc-discover] " ++ ugens.size.asString ++ " UGen classes to process").postln;
 
-// Helper definitions go here (Tasks 8-10):
-//   signaturesFor — per-rate (.ar/.kr/.ir) arg name + default extraction
-//   scDocToMd     — SCDoc HelpFile → Markdown converter
-//   writeUgenMd   — frontmatter + body + signatures section, write to disk
+// Per-rate signature extraction. Returns an IdentityDictionary keyed
+// by rate symbol (\ar, \kr, \ir) whose values are arrays of
+// (name: symbol, default: any) IdentityDictionaries. Drops the
+// implicit `this` argument at index 0 of the method's argNames.
+signaturesFor = { |class|
+    var out = IdentityDictionary.new;
+    [\ar, \kr, \ir].do { |rate|
+        var m = class.class.findRespondingMethodFor(rate);
+        if (m.notNil) {
+            var argNames = m.argNames;
+            var defaults = m.prototypeFrame;
+            var pairs = (1 .. (argNames.size - 1)).collect { |i|
+                IdentityDictionary[\name -> argNames[i], \default -> defaults[i]]
+            };
+            out[rate] = pairs;
+        };
+    };
+    out
+};
+
+// scDocToMd and writeUgenMd are filled by Tasks 9-10.
 
 count = 0;
 ugens.do { |class|
