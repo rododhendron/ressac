@@ -1,0 +1,10 @@
+name        = "sc-discoverer"
+version     = "0.1.0"
+description = "Discovers SuperCollider UGens at first boot + caches their docs"
+
+[julia]
+files = ["./bootstrap.jl"]
+
+[sc_discover]
+# Handler defined in bootstrap.jl. Empty section — the [sc_discover]
+# block exists purely as a marker so the loader invokes our handler.
