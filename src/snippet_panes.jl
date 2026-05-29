@@ -50,6 +50,17 @@ function apply_snippet_panes!(wm::WorkspaceManager, panes_spec::AbstractVector,
     ws = current_workspace(wm)
     ws === nothing && return
 
+    # User config override: if ~/.config/ressac/config.toml (loaded
+    # into _RESSAC_CONFIG) defines [panes.snippets."<name>"].panes,
+    # that spec wins over the plugin's. Last-wins, matching the
+    # sub-project 7 convention.
+    if !isempty(snippet_name)
+        cfg = _RESSAC_CONFIG[]
+        if haskey(cfg.panes_overrides, snippet_name)
+            panes_spec = cfg.panes_overrides[snippet_name]
+        end
+    end
+
     primary_idx = findfirst(p -> String(get(p, "role", "")) == "primary",
                              panes_spec)
     if primary_idx === nothing

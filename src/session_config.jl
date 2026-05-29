@@ -24,6 +24,14 @@ using TOML
     # ── Scope ────────────────────────────────────────────────────────
     scope_zoom_step::Float64 = 1.5
     scope_zoom_max::Float64  = 32.0
+    # ── Sub-project 9: per-snippet panes overrides + per-kind defaults
+    # Populated from [panes.snippets."<name>"].panes and [panes.kinds.<name>]
+    # sections of ./ressac.toml. User config wins over plugin snippet
+    # spec via apply_snippet_panes!'s lookup.
+    panes_overrides::Dict{String,Vector{Dict{String,Any}}} =
+        Dict{String,Vector{Dict{String,Any}}}()
+    panes_kind_defaults::Dict{Symbol,Dict{String,Any}} =
+        Dict{Symbol,Dict{String,Any}}()
 end
 
 _RESSAC_CONFIG = Ref{RessacConfig}(RessacConfig())
@@ -57,6 +65,7 @@ function _load_ressac_config!()
                  :nudge_float_small=>Float64, :nudge_float_big=>Float64))
             _overlay_section!(cfg, data, "scope",
                 (:scope_zoom_step=>Float64, :scope_zoom_max=>Float64))
+            _overlay_panes_section!(cfg, data)
         catch err
             @warn "Failed to parse $path: $(sprint(showerror, err)). Using defaults."
         end
@@ -84,3 +93,46 @@ function _overlay_section!(cfg::RessacConfig, data::AbstractDict,
 end
 
 ressac_config() = _RESSAC_CONFIG[]
+
+"""
+    _overlay_panes_section!(cfg, data)
+
+Parse the `[panes]` section into `cfg.panes_overrides` (per-snippet)
+and `cfg.panes_kind_defaults` (per-kind). Sub-project 9.
+
+Expected TOML shape:
+
+    [panes.snippets."reservoir-pop5"]
+    panes = [
+      { kind = "editor", role = "primary" },
+      { kind = "scope", target = "wave", role = "side", side = "right" },
+    ]
+
+    [panes.kinds.doc]
+    default_mode = "float"
+"""
+function _overlay_panes_section!(cfg::RessacConfig, data::AbstractDict)
+    panes = get(data, "panes", Dict())
+    panes isa AbstractDict || return
+    snippets = get(panes, "snippets", Dict())
+    if snippets isa AbstractDict
+        for (snippet_name, body) in snippets
+            body isa AbstractDict || continue
+            spec = get(body, "panes", nothing)
+            spec isa AbstractVector || continue
+            cfg.panes_overrides[String(snippet_name)] =
+                Dict{String,Any}[Dict{String,Any}(String(k) => v
+                                                   for (k, v) in entry)
+                                  for entry in spec
+                                  if entry isa AbstractDict]
+        end
+    end
+    kinds = get(panes, "kinds", Dict())
+    if kinds isa AbstractDict
+        for (kind_name, body) in kinds
+            body isa AbstractDict || continue
+            cfg.panes_kind_defaults[Symbol(kind_name)] =
+                Dict{String,Any}(String(k) => v for (k, v) in body)
+        end
+    end
+end

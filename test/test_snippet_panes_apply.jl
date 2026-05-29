@@ -72,3 +72,47 @@ using Ressac
         @test ws.tree === tree_before
     end
 end
+
+@testset "snippet panes — user config overrides" begin
+    @testset "config override replaces snippet's panes spec" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        ws = Ressac.current_workspace(wm)
+        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
+        ws.tree.current_tab = 1
+
+        cfg = Ressac.RessacConfig()
+        cfg.panes_overrides["test-snip"] = [
+            Dict{String,Any}("kind" => "editor", "role" => "primary"),
+            Dict{String,Any}("kind" => "doc", "role" => "side",
+                              "side" => "right", "ref" => "gain"),
+        ]
+        prev = Ressac._RESSAC_CONFIG[]
+        Ressac._RESSAC_CONFIG[] = cfg
+        try
+            # Snippet's own spec has only an editor primary; override
+            # adds a side doc pane.
+            snippet_panes = [Dict("kind" => "editor", "role" => "primary")]
+            Ressac.apply_snippet_panes!(wm, snippet_panes, :starter;
+                                        snippet_name = "test-snip")
+            leaves = Ressac._all_leaves(Ressac.current_workspace(wm).tree)
+            @test length(leaves) == 2   # editor + doc from override
+        finally
+            Ressac._RESSAC_CONFIG[] = prev
+        end
+    end
+
+    @testset "empty snippet_name skips override lookup" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        push!(Ressac.current_workspace(wm).tree.tabs,
+              Ressac._pane_new(:editor, Dict{String,Any}()))
+        Ressac.current_workspace(wm).tree.current_tab = 1
+        # Even if the config has an override for "" key (it won't), we
+        # don't look it up when the snippet has no name.
+        snippet_panes = [Dict("kind" => "editor", "role" => "primary")]
+        Ressac.apply_snippet_panes!(wm, snippet_panes, :starter; snippet_name = "")
+        leaves = Ressac._all_leaves(Ressac.current_workspace(wm).tree)
+        @test length(leaves) == 1
+    end
+end
