@@ -380,4 +380,21 @@ using Ressac
             empty!(Ressac._SYNTH_REGISTRY)
         end
     end
+
+    @testset "default_plugin_path includes ~/.cache/ressac/plugins" begin
+        prev = get(ENV, "RESSAC_PLUGIN_PATH", nothing)
+        delete!(ENV, "RESSAC_PLUGIN_PATH")
+        try
+            path = Ressac.default_plugin_path()
+            cache_entry = joinpath(homedir(), ".cache", "ressac", "plugins")
+            @test cache_entry in path
+            # Order: project > config > cache
+            config_entry = joinpath(homedir(), ".config", "ressac", "plugins")
+            config_idx = findfirst(==(config_entry), path)
+            cache_idx = findfirst(==(cache_entry), path)
+            @test config_idx < cache_idx
+        finally
+            prev !== nothing && (ENV["RESSAC_PLUGIN_PATH"] = prev)
+        end
+    end
 end

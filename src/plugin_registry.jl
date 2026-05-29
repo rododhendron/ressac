@@ -220,9 +220,13 @@ end
     default_plugin_path() -> Vector{String}
 
 Plugin search path used by default at session start. Order:
-1. `\$PWD/plugins`
-2. `~/.config/ressac/plugins`
-3. Entries from `\$RESSAC_PLUGIN_PATH` (`:`-separated).
+1. `\$PWD/plugins`                        — project tree
+2. `~/.config/ressac/plugins`             — user overrides
+3. `~/.cache/ressac/plugins`              — auto-generated (e.g. sc-autodiscover)
+4. Entries from `\$RESSAC_PLUGIN_PATH` (`:`-separated).
+
+The cache path is third so user overrides (config) win over the
+auto-generated content via the registry's last-wins on conflict.
 
 Non-existent entries are kept in the list and silently skipped by
 `discover_plugins`.
@@ -230,6 +234,7 @@ Non-existent entries are kept in the list and silently skipped by
 function default_plugin_path()
     path = String[joinpath(pwd(), "plugins")]
     push!(path, joinpath(homedir(), ".config", "ressac", "plugins"))
+    push!(path, joinpath(homedir(), ".cache",  "ressac", "plugins"))
     extra = get(ENV, "RESSAC_PLUGIN_PATH", "")
     if !isempty(extra)
         for entry in split(extra, ':')
