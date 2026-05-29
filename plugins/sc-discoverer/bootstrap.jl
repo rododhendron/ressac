@@ -66,3 +66,57 @@ function _sc_cache_valid(cache_dir::AbstractString, scd_path::AbstractString;
     get(meta, "sc_version", "")  == sc_version  &&
     get(meta, "ugen_count", -1)  == sc_ugen_count
 end
+
+"""
+    _take_with_timeout(ch::Channel, timeout::Real) -> Union{T, Nothing}
+
+Try to take a value from `ch` within `timeout` seconds. Returns the
+value, or `nothing` on timeout. Used to bound the wait time on OSC
+acks from SC.
+"""
+function _take_with_timeout(ch::Channel{T}, timeout::Real) where T
+    timer = Timer(timeout) do _
+        close(ch)
+    end
+    try
+        try
+            return take!(ch)
+        catch
+            return nothing   # channel closed by timeout
+        end
+    finally
+        close(timer)
+    end
+end
+
+"""
+    _sc_meta_roundtrip(; timeout = 3.0) -> Union{Tuple{String,Int}, Nothing}
+
+Ship `/ressac/sc-meta` to SC, listen for
+`/ressac/sc-meta-reply <version> <count>` on the OSC dispatch loop.
+Returns `(version, ugen_count)` on success or `nothing` if the live
+scheduler isn't running, or if SC doesn't reply within `timeout`
+seconds.
+
+The listener is installed into `Ressac._OSC_AD_HOC_HANDLERS` (a
+process-wide table consumed by `tui_scope.jl`'s listener loop) and
+removed in the `finally`.
+"""
+function _sc_meta_roundtrip(; timeout::Real = 3.0)
+    sched = Ressac._LIVE_SCHEDULER[]
+    sched === nothing && return nothing
+    ch = Channel{Tuple{String,Int}}(1)
+    Ressac._OSC_AD_HOC_HANDLERS["/ressac/sc-meta-reply"] = (args) -> begin
+        length(args) >= 2 || return
+        v = String(args[1])
+        c = Int(args[2])
+        try; put!(ch, (v, c)); catch; end
+    end
+    try
+        Ressac.send_osc(sched.osc,
+            Ressac.encode(Ressac.OSCMessage("/ressac/sc-meta", Any[])))
+        _take_with_timeout(ch, timeout)
+    finally
+        delete!(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-meta-reply")
+    end
+end

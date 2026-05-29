@@ -118,6 +118,20 @@ const _SCOPE_RESERVOIR_CAPACITY = 4000
 # Rolling history for the waterfall spectrogram. Each entry is a
 # 32-band magnitude snapshot; oldest at front, newest at back.
 const _APP_SPECTROGRAM_HISTORY = Ref{Vector{Vector{Float32}}}(Vector{Float32}[])
+
+"""
+    _OSC_AD_HOC_HANDLERS
+
+Ephemeral OSC address → callback table. Installed by callers who
+need a one-off response (e.g. `_sc_meta_roundtrip` waiting for
+`/ressac/sc-meta-reply`, or `_handle_sc_discover` waiting for
+`/ressac/sc-discovery-done`). The callback receives the message
+args and is typically expected to put a value into a caller-owned
+Channel. Caller is responsible for installing the entry before
+sending and removing it after (use a `finally`).
+"""
+const _OSC_AD_HOC_HANDLERS = Dict{String,Function}()
+
 const _SCOPE_LISTENER_TASK = Ref{Union{Task,Nothing}}(nothing)
 const _SCOPE_LISTENER_SOCKET = Ref{Union{UDPSocket,Nothing}}(nothing)
 const _SCOPE_LISTENER_RUNNING = Threads.Atomic{Bool}(false)
@@ -203,6 +217,17 @@ function _app_scope_listener_loop()
                 continue
             elseif addr == "/ressac/audio_in"
                 _handle_audio_in!(msg.args)
+                continue
+            elseif haskey(_OSC_AD_HOC_HANDLERS, addr)
+                # Ephemeral handler installed by short-lived callers
+                # (sc-discoverer waiting on /ressac/sc-meta-reply or
+                # /ressac/sc-discovery-done, etc.). Last in the chain
+                # so it can never override a built-in handler.
+                try
+                    _OSC_AD_HOC_HANDLERS[addr](msg.args)
+                catch err
+                    @warn "OSC ad-hoc handler '$addr' threw: $(sprint(showerror, err))"
+                end
                 continue
             end
             # Otherwise: scope data frame.

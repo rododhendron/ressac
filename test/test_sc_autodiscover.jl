@@ -175,4 +175,27 @@ using Ressac
             rm(tmpdir; recursive=true, force=true)
         end
     end
+
+    @testset "_take_with_timeout — fires when value arrives" begin
+        ch = Channel{Int}(1)
+        @async (sleep(0.05); put!(ch, 42))
+        @test Main._take_with_timeout(ch, 1.0) == 42
+    end
+
+    @testset "_take_with_timeout — returns nothing on timeout" begin
+        ch = Channel{Int}(1)
+        @test Main._take_with_timeout(ch, 0.1) === nothing
+    end
+
+    @testset "_sc_meta_roundtrip returns nothing when no scheduler" begin
+        # When _LIVE_SCHEDULER[] is nothing, the function must not throw —
+        # it returns nothing so _sc_cache_valid treats it as "assume invalid".
+        prev = Ressac._LIVE_SCHEDULER[]
+        Ressac._LIVE_SCHEDULER[] = nothing
+        try
+            @test Main._sc_meta_roundtrip(timeout = 0.5) === nothing
+        finally
+            Ressac._LIVE_SCHEDULER[] = prev
+        end
+    end
 end
