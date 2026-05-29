@@ -133,3 +133,27 @@ end
         )
     end
 end
+
+@testset "pane_scope — :scope kind" begin
+    _reload_core_pane_kinds()
+
+    @testset "registered with default subtype :wave" begin
+        sp = Ressac._pane_new(:scope, Dict{String,Any}())
+        @test sp isa Ressac.ScopePane
+        @test sp.subtype === :wave
+        @test Ressac.title(sp) == "scope:wave"
+    end
+
+    @testset "respects target arg" begin
+        sp = Ressac._pane_new(:scope, Dict{String,Any}("target" => "reservoir-graph"))
+        @test sp.subtype === Symbol("reservoir-graph")
+        @test Ressac.title(sp) == "scope:reservoir-graph"
+    end
+
+    @testset "serialize captures subtype" begin
+        sp = Ressac._pane_new(:scope, Dict{String,Any}("target" => "spectrum"))
+        @test Ressac.serialize(sp) == Dict{String,Any}(
+            "subtype" => "spectrum",
+        )
+    end
+end
