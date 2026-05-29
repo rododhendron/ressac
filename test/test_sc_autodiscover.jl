@@ -1,5 +1,17 @@
 using Test
+using TOML
 using Ressac
+
+# Same mock used by test_scheduler.jl — captures OSC bytes in a vector
+# so tests don't actually open a UDP socket. Redefining locally here
+# rather than depending on test_scheduler.jl's load order.
+if !isdefined(Main, :MockOSCClient)
+    mutable struct MockOSCClient
+        sent::Vector{Vector{UInt8}}
+    end
+    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
+    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
+end
 
 @testset "sc-autodiscover" begin
     @testset "_sc_cache_dir defaults to ~/.cache/ressac/plugins/sc-autodiscover" begin
@@ -196,6 +208,76 @@ using Ressac
             @test Main._sc_meta_roundtrip(timeout = 0.5) === nothing
         finally
             Ressac._LIVE_SCHEDULER[] = prev
+        end
+    end
+
+    @testset "_handle_sc_discover — no live session → warn + return" begin
+        prev = Ressac._LIVE_SCHEDULER[]
+        Ressac._LIVE_SCHEDULER[] = nothing
+        try
+            @test_logs (:warn, r"no live session") begin
+                @test Main._handle_sc_discover("/nonexistent", Dict{String,Any}(),
+                                                "sc-discoverer") === nothing
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = prev
+        end
+    end
+
+    @testset "_handle_sc_discover — cache valid → skip discovery" begin
+        tmp_root = mktempdir()
+        cache_dir = joinpath(tmp_root, "plugins", "sc-autodiscover")
+        mkpath(cache_dir)
+        ENV["RESSAC_CACHE_DIR"] = tmp_root
+
+        plugin_dir = mktempdir()
+        scd_path = joinpath(plugin_dir, "discover.scd")
+        write(scd_path, "// fixture content\n")
+        sha = Main._sc_script_sha256(scd_path)
+
+        open(joinpath(cache_dir, "cache_meta.toml"), "w") do io
+            println(io, """
+            sc_version             = "3.13.0"
+            ugen_count             = 587
+            generated_at           = "2026-05-29T14:23:11Z"
+            discover_script_sha256 = "$sha"
+            """)
+        end
+
+        # Need a non-nothing scheduler so the no-session early return
+        # doesn't fire. We don't reach the send_osc call because the
+        # cache is valid → early return after the cache check.
+        mock = MockOSCClient()
+        mock_sched = Ressac.Scheduler(mock; cps = 0.5)
+        prev = Ressac._LIVE_SCHEDULER[]
+        Ressac._LIVE_SCHEDULER[] = mock_sched
+        try
+            @test_logs (:info, r"cache fresh") begin
+                @test Main._handle_sc_discover(plugin_dir, Dict{String,Any}(),
+                    "sc-discoverer";
+                    sc_meta_override = ("3.13.0", 587)) === nothing
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = prev
+            delete!(ENV, "RESSAC_CACHE_DIR")
+            rm(tmp_root; recursive=true, force=true)
+            rm(plugin_dir; recursive=true, force=true)
+        end
+    end
+
+    @testset "_write_cache_meta produces a parseable TOML" begin
+        tmpdir = mktempdir()
+        try
+            scd = joinpath(tmpdir, "discover.scd")
+            write(scd, "// payload\n")
+            Main._write_cache_meta(tmpdir, scd, ("3.13.1", 612))
+            meta = TOML.parsefile(joinpath(tmpdir, "cache_meta.toml"))
+            @test meta["sc_version"] == "3.13.1"
+            @test meta["ugen_count"] == 612
+            @test meta["discover_script_sha256"] == Main._sc_script_sha256(scd)
+            @test haskey(meta, "generated_at")
+        finally
+            rm(tmpdir; recursive=true, force=true)
         end
     end
 end

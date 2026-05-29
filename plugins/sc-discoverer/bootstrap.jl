@@ -120,3 +120,91 @@ function _sc_meta_roundtrip(; timeout::Real = 3.0)
         delete!(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-meta-reply")
     end
 end
+
+"""
+    _handle_sc_discover(plugin_dir, data, plugin_name;
+                        sc_meta_override = nothing,
+                        discovery_timeout = 30.0)
+
+Section handler for the `[sc_discover]` block in
+`plugins/sc-discoverer/plugin.toml`.
+
+Flow:
+  1. If no live session is up, log a warning and return (deferred to next boot).
+  2. Roundtrip `/ressac/sc-meta` to learn SC's current state. The
+     `sc_meta_override` kwarg lets tests inject a mocked value.
+  3. If `_sc_cache_valid` reports the cache as fresh, log + return.
+  4. Otherwise ship `discover.scd` via `/dirt/evalSC`, install an ack
+     listener on `/ressac/sc-discovery-done`, and block until the ack
+     arrives or `discovery_timeout` seconds elapse.
+  5. After ack, write `cache_meta.toml` capturing the current SC version,
+     UGen count, generation timestamp, and the SHA of discover.scd.
+"""
+function _handle_sc_discover(plugin_dir, data, plugin_name;
+                             sc_meta_override::Union{Tuple{AbstractString,Integer},Nothing} = nothing,
+                             discovery_timeout::Real = 30.0)
+    sched = Ressac._LIVE_SCHEDULER[]
+    if sched === nothing
+        @warn "sc-autodiscover: no live session, discovery deferred"
+        return nothing
+    end
+    cache_dir = _sc_cache_dir()
+    scd_path = joinpath(plugin_dir, "discover.scd")
+    sc_meta = sc_meta_override === nothing ?
+              _sc_meta_roundtrip(timeout = 3.0) :
+              sc_meta_override
+    if _sc_cache_valid(cache_dir, scd_path; sc_meta = sc_meta)
+        @info "sc-autodiscover: cache fresh, skipping discovery"
+        return nothing
+    end
+    @info "sc-autodiscover: cache invalid, running discovery (may take ~10s)"
+    mkpath(joinpath(cache_dir, "docs"))
+    script = read(scd_path, String)
+    # Install ack listener BEFORE sending eval, to avoid a race.
+    ack_ch = Channel{Int}(1)
+    Ressac._OSC_AD_HOC_HANDLERS["/ressac/sc-discovery-done"] = (args) -> begin
+        count = isempty(args) ? -1 : Int(args[1])
+        try; put!(ack_ch, count); catch; end
+    end
+    try
+        Ressac.send_osc(sched.osc,
+            Ressac.encode(Ressac.OSCMessage("/dirt/evalSC", Any[script])))
+        result = _take_with_timeout(ack_ch, discovery_timeout)
+        if result === nothing
+            @error "sc-autodiscover: discovery timed out after $(discovery_timeout)s"
+            return nothing
+        end
+        @info "sc-autodiscover: discovered $result UGens"
+        sc_meta_post = sc_meta_override === nothing ?
+                       _sc_meta_roundtrip(timeout = 3.0) :
+                       sc_meta_override
+        if sc_meta_post !== nothing
+            _write_cache_meta(cache_dir, scd_path, sc_meta_post)
+        end
+    finally
+        delete!(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-discovery-done")
+    end
+    return nothing
+end
+
+"""
+    _write_cache_meta(cache_dir, scd_path, sc_meta)
+
+Write `cache_meta.toml` capturing the SHA of `scd_path` plus the
+SC version + UGen count from `sc_meta`. Called after a successful
+discovery so subsequent boots can short-circuit.
+"""
+function _write_cache_meta(cache_dir::AbstractString, scd_path::AbstractString,
+                           sc_meta::Tuple{AbstractString,Integer})
+    sc_version, sc_ugen_count = sc_meta
+    sha = _sc_script_sha256(scd_path)
+    ts = Dates.format(Dates.now(Dates.UTC), "yyyy-mm-ddTHH:MM:SSZ")
+    open(joinpath(cache_dir, "cache_meta.toml"), "w") do io
+        println(io, "sc_version             = \"$sc_version\"")
+        println(io, "ugen_count             = $sc_ugen_count")
+        println(io, "generated_at           = \"$ts\"")
+        println(io, "discover_script_sha256 = \"$sha\"")
+    end
+end
+
+Ressac.register_section_handler!(:sc_discover, _handle_sc_discover)
