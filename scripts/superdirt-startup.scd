@@ -151,11 +151,15 @@ s.waitForBoot({
 
     // Roundtrip used by sc-autodiscover (sub-project 8) to decide
     // whether the on-disk cache is still in sync with the live SC.
+    // Reply via ~ressacScopeAddr (127.0.0.1:57121) — Ressac's actual
+    // listen port. The `addr` argument here is the SENDER's ephemeral
+    // outbound port, not where Ressac is listening, so replying to
+    // it drops the packet on a closed socket.
     OSCdef(\ressacScMeta, { |msg, time, addr|
         ("[ressac] sc-meta requested").postln;
-        addr.sendMsg("/ressac/sc-meta-reply",
-                     Main.version.asString,
-                     UGen.allSubclasses.size);
+        ~ressacScopeAddr.sendMsg("/ressac/sc-meta-reply",
+                                 Main.version.asString,
+                                 UGen.allSubclasses.size);
     }, '/ressac/sc-meta');
 
     // Bypass SuperDirt for live SynthDef previewing — fires a Synth
