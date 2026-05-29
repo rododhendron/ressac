@@ -44,3 +44,52 @@ Ressac.title(::_NullPane) = "null"
         @test Ressac.on_close!(p) === nothing
     end
 end
+
+# Reload the core pane kind files to restore registrations that the
+# testsets above wiped via `empty!(Ressac._PANE_KINDS)`. Idempotent —
+# include only the files that exist (the 4 core kinds land in 4
+# separate Tasks 4-7; earlier tasks have fewer files on disk).
+function _reload_core_pane_kinds()
+    for f in ("pane_editor.jl", "pane_log.jl", "pane_doc.jl", "pane_scope.jl")
+        path = joinpath(@__DIR__, "..", "src", f)
+        isfile(path) && Base.include(Ressac, path)
+    end
+end
+
+@testset "pane_editor — :editor kind" begin
+    _reload_core_pane_kinds()
+
+    @testset "registered + constructible from args" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}(
+            "buffer_role" => "patterns",
+            "name"        => "main",
+        ))
+        @test ep isa Ressac.EditorPane
+        @test length(ep.tabs) == 1
+        @test ep.tabs[1].role === :patterns
+        @test ep.tabs[1].name == "main"
+        @test Ressac.title(ep) == "main"
+    end
+
+    @testset "default_mode === :tile" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}())
+        @test Ressac.default_mode(ep) === :tile
+    end
+
+    @testset "buffer_role defaults to :patterns" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}())
+        @test ep.tabs[1].role === :patterns
+    end
+
+    @testset "serialize captures tab list + current_tab + roles" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}(
+            "buffer_role" => "synth", "name" => "wob1",
+        ))
+        s = Ressac.serialize(ep)
+        @test haskey(s, "tabs")
+        @test length(s["tabs"]) == 1
+        @test s["tabs"][1]["role"] == "synth"
+        @test s["tabs"][1]["name"] == "wob1"
+        @test s["current_tab"] == 1
+    end
+end
