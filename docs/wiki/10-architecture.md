@@ -197,10 +197,39 @@ Incoming (UDP 57121, listened by osc_listen.jl):
 /ressac/scope/wave       braille waveform sample buffer (60 Hz)
 /ressac/scope/spectrum   FFT magnitudes (45 Hz)
 /ressac/scope/{xy,goni,spectrogram,peak,pitch,onset,hist,corr}
+/ressac/rms              per-orbit RMS (Amplitude.kr taps)
+/ressac/audio_in         input bus RMS + bands (audio_in scope)
+/ressac/sc-meta-reply    SC version + UGen count (sc-autodiscover)
+/ressac/sc-discovery-done   discovery ack with UGen count
 ```
 
-These land in `_APP_SCOPE_DATA[]` and the per-frame `view()` reads
-the global to render the scope pane.
+These land in `_APP_SCOPE_DATA[]` (or the appropriate `_APP_*` ref)
+and the per-frame `view()` reads the global to render the scope pane.
+
+### Convention: SC → Ressac replies must use `~ressacScopeAddr`
+
+The OSCdef callback's `addr` argument is the SENDER's ephemeral
+outbound port, NOT Ressac's listen port. Replying via
+`addr.sendMsg(...)` drops the packet on a closed socket — the live
+session looks fine until you wait for a response that never lands.
+
+Every SC handler that needs to reply to Ressac uses the global
+`~ressacScopeAddr` (= `NetAddr("127.0.0.1", 57121)`, declared near
+the top of `scripts/superdirt-startup.scd`). See `/ressac/rms`,
+`/ressac/audio_in`, `/ressac/sc-meta` in that file for the canonical
+pattern.
+
+Common symptom of getting this wrong: a Julia roundtrip helper
+(`_sc_meta_roundtrip`, `_handle_sc_discover`, …) times out every
+time despite the SC log showing the handler ran.
+
+### Listener is lazy-started
+
+`_ensure_app_scope_listener!()` is what binds the receive socket and
+spawns the dispatch loop. It's called on demand — first `:scope`,
+first `:audio-in`, first sc-autodiscover handler invocation. Code
+that ships an OSC packet expecting a reply must call this helper
+first; otherwise the reply arrives at a port nobody is listening on.
 
 ## Render flow
 
