@@ -109,3 +109,27 @@ end
         @test Ressac.serialize(lp) == Dict{String,Any}()
     end
 end
+
+@testset "pane_doc — :doc kind" begin
+    _reload_core_pane_kinds()
+
+    @testset "registered + constructible with ref" begin
+        dp = Ressac._pane_new(:doc, Dict{String,Any}("ref" => "gain"))
+        @test dp isa Ressac.DocPane
+        @test dp.name == "gain"
+        @test Ressac.title(dp) == "doc:gain"
+    end
+
+    @testset "default ref is empty when not specified" begin
+        dp = Ressac._pane_new(:doc, Dict{String,Any}())
+        @test dp.name == ""
+        @test Ressac.title(dp) == "doc"
+    end
+
+    @testset "serialize captures the ref name" begin
+        dp = Ressac._pane_new(:doc, Dict{String,Any}("ref" => "SinOsc"))
+        @test Ressac.serialize(dp) == Dict{String,Any}(
+            "name" => "SinOsc", "scroll" => 0,
+        )
+    end
+end
