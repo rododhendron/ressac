@@ -10,7 +10,7 @@
 
 (
 var cacheDir, docsDir, manifestPath, ugens, count;
-var writeUgenMd, scDocToMd, signaturesFor;
+var writeUgenMd, scDocToMd, signaturesFor, findHelpSource;
 
 cacheDir     = (Platform.userHomeDir +/+ ".cache" +/+ "ressac"
                 +/+ "plugins" +/+ "sc-autodiscover").asString;
@@ -80,15 +80,20 @@ scDocToMd = { |helpPath|
         mdParts = List.new;
         descPara = "";
 
-        // First pass: extract `categories::` line if present.
-        // SCDoc convention: `categories::UGens>Generators>Deterministic`.
-        // We pick the second segment ("Generators") and lowercase it.
+        // First pass: extract `categories::` line + `summary::` line.
+        // SCDoc convention:
+        //   `categories::UGens>Generators>Deterministic` → category
+        //   `summary:: Interpolating sine wavetable…`  → short
         lines.do { |ln|
             if (ln.beginsWith("categories::")) {
-                var cats = ln.drop(12).trim.split($\>);
+                var cats = ln.drop(12).stripWhiteSpace.split($\>);
                 if (cats.size >= 2) {
-                    category = cats[1].trim.toLower;
+                    category = cats[1].stripWhiteSpace.toLower;
                 };
+            };
+            if (ln.beginsWith("summary::")) {
+                short = ln.drop(9).stripWhiteSpace
+                    .copyRange(0, min(ln.drop(9).stripWhiteSpace.size - 1, 199));
             };
         };
 
@@ -96,31 +101,34 @@ scDocToMd = { |helpPath|
         // `keyword::[arg]` and terminated by a `::` on its own line
         // OR by the next top-level keyword. We only track the blocks
         // we care about: description, classmethods.method::ar/kr/ir,
-        // argument::name, examples.
+        // argument::name, examples. SCDoc keywords are case-sensitive
+        // in the SCDoc syntax but authors vary (Description:: vs
+        // description::), so we test against a lowercased copy.
         lines.do { |ln|
-            var stripped = ln.trim;
+            var stripped = ln.stripWhiteSpace;
+            var lower = stripped.toLower;
             if (stripped == "::") {
                 currentBlock = "";
                 currentArg = nil;
             } {
                 case
-                { stripped.beginsWith("description::") } {
+                { lower.beginsWith("description::") } {
                     currentBlock = "description";
                     mdParts.add("## Description\n\n");
                 }
-                { stripped.beginsWith("argument::") } {
-                    currentArg = stripped.drop(10).trim;
+                { lower.beginsWith("argument::") } {
+                    currentArg = stripped.drop(10).stripWhiteSpace;
                     currentBlock = "argument";
                     mdParts.add("- **" ++ currentArg ++ "** — ");
                 }
-                { stripped.beginsWith("method::") } {
-                    var name = stripped.drop(8).trim;
+                { lower.beginsWith("method::") } {
+                    var name = stripped.drop(8).stripWhiteSpace;
                     if (#[\ar, \kr, \ir].includes(name.asSymbol)) {
                         currentBlock = "method";
                         mdParts.add("### ." ++ name ++ "\n\n");
                     };
                 }
-                { stripped.beginsWith("examples::") } {
+                { lower.beginsWith("examples::") } {
                     hadExamples = true;
                     currentBlock = "examples";
                     mdParts.add("## Examples\n\n```sclang\n");
@@ -137,7 +145,7 @@ scDocToMd = { |helpPath|
                         };
                     };
                     if (currentBlock == "argument") {
-                        mdParts.add(ln.trim ++ "\n");
+                        mdParts.add(ln.stripWhiteSpace ++ "\n");
                     };
                     if (currentBlock == "method") {
                         mdParts.add(ln ++ "\n");
@@ -151,8 +159,12 @@ scDocToMd = { |helpPath|
 
         if (hadExamples) { mdParts.add("```\n") };
 
-        body  = mdParts.join("");
-        short = descPara.copyRange(0, min(descPara.size - 1, 199));
+        body = mdParts.join("");
+        // Fallback: if there's no `summary::` line, use the first
+        // non-blank line of `description::` as the tooltip text.
+        if (short.isEmpty and: { descPara.notEmpty }) {
+            short = descPara.copyRange(0, min(descPara.size - 1, 199));
+        };
 
         IdentityDictionary[\short -> short, \body -> body, \category -> category];
     };
@@ -164,10 +176,14 @@ scDocToMd = { |helpPath|
 writeUgenMd = { |class, sigs, parsed, outPath|
     var allKwargs, fm, kwargsToml, tagsToml;
 
-    // Collect all distinct kwarg names across rates.
+    // Collect all distinct kwarg names across rates. Some methods'
+    // argNames can contain nil entries (default-only args without
+    // explicit names); Set.add chokes on nil, so we filter.
     allKwargs = Set.new;
     sigs.keysValuesDo { |rate, pairs|
-        pairs.do { |p| allKwargs.add(p[\name]) };
+        pairs.do { |p|
+            if (p[\name].notNil) { allKwargs.add(p[\name]) };
+        };
     };
 
     kwargsToml = "["
@@ -192,7 +208,7 @@ writeUgenMd = { |class, sigs, parsed, outPath|
     // Signature section — one bullet per rate the UGen responds to.
     fm = fm ++ "## Signatures\n\n";
     sigs.keysValuesDo { |rate, pairs|
-        var pieces = pairs.collect { |p|
+        var pieces = pairs.select { |p| p[\name].notNil }.collect { |p|
             p[\name].asString ++ "=" ++ p[\default].asString
         };
         fm = fm ++ "- `" ++ class.name.asString ++ "." ++ rate.asString
@@ -212,13 +228,30 @@ writeUgenMd = { |class, sigs, parsed, outPath|
 File.deleteAll(docsDir);
 File.mkdir(docsDir);
 
+// Resolve a class name to its .schelp source path by checking each
+// of SCDoc's source directories (core SC + every sc3-plugin's
+// HelpSource). Returns nil if no match.
+findHelpSource = { |className|
+    var found = nil;
+    SCDoc.helpSourceDirs.do { |dir|
+        var candidate = dir +/+ "Classes" +/+ className ++ ".schelp";
+        if (found.isNil and: { File.exists(candidate) }) {
+            found = candidate;
+        };
+    };
+    found
+};
+
 count = 0;
 ugens.do { |class|
     var sigs, helpPath, parsed, outPath;
     sigs     = signaturesFor.value(class);
-    helpPath = SCDoc.helpTargetDir +/+ "Classes"
-               +/+ class.name.asString ++ ".schelp";
-    parsed   = scDocToMd.value(helpPath);
+    helpPath = findHelpSource.value(class.name.asString);
+    parsed   = if (helpPath.notNil) {
+        scDocToMd.value(helpPath)
+    } {
+        IdentityDictionary[\short -> "", \body -> "", \category -> ""]
+    };
     outPath  = docsDir +/+ class.name.asString ++ ".md";
     writeUgenMd.value(class, sigs, parsed, outPath);
     count = count + 1;
