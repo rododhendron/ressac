@@ -73,3 +73,45 @@ end
         @test rects[2] == (x=60, y=0, w=40, h=20)
     end
 end
+
+@testset "workspace_manager — workspace ops" begin
+    @testset "create_workspace! adds workspace + switches focus" begin
+        wm = Ressac.WorkspaceManager()
+        ws_id = Ressac.create_workspace!(wm, "live")
+        @test length(wm.workspaces) == 1
+        @test wm.current_idx == 1
+        @test wm.workspaces[1].name == "live"
+        @test wm.workspaces[1].id == ws_id
+    end
+
+    @testset "close_workspace! removes + reassigns current_idx" begin
+        wm = Ressac.WorkspaceManager()
+        a = Ressac.create_workspace!(wm, "a")
+        b = Ressac.create_workspace!(wm, "b")
+        @test wm.current_idx == 2
+        Ressac.close_workspace!(wm, b)
+        @test length(wm.workspaces) == 1
+        @test wm.current_idx == 1
+        @test wm.workspaces[1].name == "a"
+    end
+
+    @testset "switch_workspace! by index" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "a")
+        Ressac.create_workspace!(wm, "b")
+        Ressac.create_workspace!(wm, "c")
+        Ressac.switch_workspace!(wm, 1)
+        @test wm.current_idx == 1
+        Ressac.switch_workspace!(wm, 3)
+        @test wm.current_idx == 3
+        @test_throws BoundsError Ressac.switch_workspace!(wm, 99)
+    end
+
+    @testset "current_workspace returns the focused one" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "a")
+        Ressac.create_workspace!(wm, "b")
+        Ressac.switch_workspace!(wm, 1)
+        @test Ressac.current_workspace(wm).name == "a"
+    end
+end

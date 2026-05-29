@@ -230,3 +230,61 @@ function _fill_rects!(node::LayoutNode, area::NamedTuple, out::Dict)
         end
     end
 end
+
+# ── Workspace lifecycle ────────────────────────────────────────────
+
+"""
+    create_workspace!(wm, name="") -> Int
+
+Create a new workspace with a single empty `PaneLeaf` (no tabs,
+no pane content). Returns the workspace's id. Switches focus to
+the new workspace.
+
+The empty leaf is a placeholder; the caller is expected to install
+a pane via the snippet `panes = [...]` application or a manual
+`:split` command.
+"""
+function create_workspace!(wm::WorkspaceManager, name::AbstractString = "")
+    ws_id = wm.next_workspace_id
+    leaf_id = wm.next_pane_id
+    wm.next_workspace_id += 1
+    wm.next_pane_id += 1
+    leaf = PaneLeaf(leaf_id, PaneImpl[], 0)
+    ws = Workspace(ws_id, String(name), leaf, FloatingPane[], leaf_id)
+    push!(wm.workspaces, ws)
+    wm.current_idx = length(wm.workspaces)
+    return ws_id
+end
+
+"""
+    close_workspace!(wm, ws_id)
+
+Remove the workspace identified by `ws_id`. If it was the current
+one, focus the previous (or first if it was first).
+"""
+function close_workspace!(wm::WorkspaceManager, ws_id::Int)
+    idx = findfirst(ws -> ws.id == ws_id, wm.workspaces)
+    idx === nothing && return
+    deleteat!(wm.workspaces, idx)
+    if isempty(wm.workspaces)
+        wm.current_idx = 0
+    else
+        wm.current_idx = clamp(idx == 1 ? 1 : idx - 1, 1, length(wm.workspaces))
+    end
+    return nothing
+end
+
+"""
+    switch_workspace!(wm, idx)
+
+Focus workspace at `idx` (1-based). Throws `BoundsError` if out of
+range.
+"""
+function switch_workspace!(wm::WorkspaceManager, idx::Int)
+    1 <= idx <= length(wm.workspaces) || throw(BoundsError(wm.workspaces, idx))
+    wm.current_idx = idx
+    return nothing
+end
+
+current_workspace(wm::WorkspaceManager) =
+    wm.current_idx == 0 ? nothing : wm.workspaces[wm.current_idx]
