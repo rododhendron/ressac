@@ -221,6 +221,11 @@ non-empty), and the focus toggle for keystroke routing.
     layout_synth_tabs::Union{Nothing,TK.Rect} = nothing
     layout_scope::Union{Nothing,TK.Rect}    = nothing
     layout_logs::Union{Nothing,TK.Rect}     = nothing
+    # Sub-project 9: WorkspaceManager subsumes m.layout_*. Populated
+    # via _ensure_default_workspace!. The legacy layout_* fields are
+    # kept temporarily — Task 15 (cleanup) swaps view() to dispatch
+    # through workspaces and removes them.
+    workspaces::WorkspaceManager            = WorkspaceManager()
     # Per-modal row → entry-index mapping built during render so the
     # mouse handler can resolve "click row N" → "select entry K".
     modal_rows::Vector{Tuple{Int,Int}}   = Tuple{Int,Int}[]  # (screen_y, entry_idx)
@@ -5078,5 +5083,28 @@ function _align_synthdef_name(src::AbstractString, target::AbstractString)
     current = m.captures[2]
     current == target && return src
     return replace(src, r"(SynthDef\s*\(\s*\\)(\w+)" => SubstitutionString("\\1$(target)"); count=1)
+end
+
+# ── Sub-project 9 — WorkspaceManager bootstrap ─────────────────────
+
+"""
+    _ensure_default_workspace!(m::RessacApp)
+
+Make sure the workspace manager has at least one workspace with a
+:editor pane. Idempotent — safe to call multiple times.
+
+In Task 8 of the sub-project 9 implementation, this is invoked by
+start_live! (and on first access) so the workspace tree exists for
+later tasks (split commands, persistence). The legacy view() path
+still drives the visible UI; Task 15 swaps view to dispatch through
+the workspace manager and removes the legacy m.layout_* fields.
+"""
+function _ensure_default_workspace!(m::RessacApp)
+    isempty(m.workspaces.workspaces) || return
+    create_workspace!(m.workspaces, "")
+    ws = current_workspace(m.workspaces)
+    leaf = ws.tree::PaneLeaf
+    push!(leaf.tabs, _pane_new(:editor, Dict{String,Any}()))
+    leaf.current_tab = 1
 end
 
