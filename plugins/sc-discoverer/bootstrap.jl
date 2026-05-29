@@ -142,7 +142,7 @@ Flow:
 """
 function _handle_sc_discover(plugin_dir, data, plugin_name;
                              sc_meta_override::Union{Tuple{AbstractString,Integer},Nothing} = nothing,
-                             discovery_timeout::Real = 30.0)
+                             discovery_timeout::Real = 120.0)
     sched = Ressac._LIVE_SCHEDULER[]
     if sched === nothing
         @warn "sc-autodiscover: no live session, discovery deferred"

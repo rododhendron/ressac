@@ -257,6 +257,11 @@ ugens.do { |class|
     count = count + 1;
 };
 
-NetAddr.localAddr.sendMsg("/ressac/sc-discovery-done", count);
+// Ack: Ressac's listener binds 127.0.0.1:57121 (see
+// src/tui_scope.jl:_SCOPE_LISTEN_PORT). NetAddr.localAddr would
+// resolve to SC's own UDP port (usually 57120), which Ressac doesn't
+// listen on — the ack would silently disappear, the discovery
+// handler would time out at 30s waiting for it.
+NetAddr("127.0.0.1", 57121).sendMsg("/ressac/sc-discovery-done", count);
 "[sc-discover] done".postln;
 )
