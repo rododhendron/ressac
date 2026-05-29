@@ -149,6 +149,15 @@ s.waitForBoot({
         src.interpret;
     }, '/dirt/evalSC');
 
+    // Roundtrip used by sc-autodiscover (sub-project 8) to decide
+    // whether the on-disk cache is still in sync with the live SC.
+    OSCdef(\ressacScMeta, { |msg, time, addr|
+        ("[ressac] sc-meta requested").postln;
+        addr.sendMsg("/ressac/sc-meta-reply",
+                     Main.version.asString,
+                     UGen.allSubclasses.size);
+    }, '/ressac/sc-meta');
+
     // Bypass SuperDirt for live SynthDef previewing — fires a Synth
     // directly so the SynthDef's parameter DEFAULTS take effect.
     // SuperDirt's /dirt/play overrides freq/gain/sustain with computed
@@ -505,6 +514,6 @@ s.waitForBoot({
     "================================================".postln;
     "SuperDirt listening on UDP 57120 (12 orbits).".postln;
     ("Sample sets: " ++ ~dirt.soundLibrary.buffers.size.asString).postln;
-    "Ressac OSC responders installed: /dirt/loadSampleFolder, /dirt/evalSC, /dirt/registerSample".postln;
+    "Ressac OSC responders installed: /dirt/loadSampleFolder, /dirt/evalSC, /dirt/registerSample, /ressac/sc-meta".postln;
     "================================================".postln;
 });
