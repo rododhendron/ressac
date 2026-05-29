@@ -1,0 +1,12 @@
+current_idx = 1
+
+[workspaces.0]
+name = "live"
+focused_pane = 1
+
+[workspaces.0.tree]
+type = "pane"
+kind = "editor"
+id = 1
+current_tab = 1
+state = { tabs = [{ role = "patterns", name = "main", content = "@d1 :bd\n", cursor_row = 1, cursor_col = 0, scroll_offset = 0 }], current_tab = 1 }

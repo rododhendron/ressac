@@ -46,6 +46,7 @@ include("pane_doc.jl")
 include("pane_scope.jl")
 include("workspace_commands.jl")
 include("workspace_keymap.jl")
+include("workspace_persistence.jl")
 
 # ─── Static docs / starter packs / scope state ────────────────────
 include("tui_docs.jl")           # stub — content now lives in plugins/{core,…}/
