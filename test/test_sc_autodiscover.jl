@@ -280,4 +280,69 @@ end
             rm(tmpdir; recursive=true, force=true)
         end
     end
+
+    @testset "_handle_sc_discover full flow — writes cache_meta after ack" begin
+        # End-to-end with mocks. We simulate:
+        #   * scheduler present (so we don't bail at the no-session check)
+        #   * cache_meta.toml absent (cache invalid → discovery runs)
+        #   * SC's /ressac/sc-discovery-done ack arriving in-band via a
+        #     side task that puts the count into the channel installed
+        #     by _handle_sc_discover
+        # Expected: cache_meta.toml is written with the sc_meta_override
+        # values, and a second invocation short-circuits as "cache fresh".
+        tmp_root = mktempdir()
+        cache_dir = joinpath(tmp_root, "plugins", "sc-autodiscover")
+        mkpath(cache_dir)
+        ENV["RESSAC_CACHE_DIR"] = tmp_root
+
+        plugin_dir = mktempdir()
+        scd_path = joinpath(plugin_dir, "discover.scd")
+        write(scd_path, "// payload\n")
+
+        mock = MockOSCClient()
+        mock_sched = Ressac.Scheduler(mock; cps = 0.5)
+        prev = Ressac._LIVE_SCHEDULER[]
+        Ressac._LIVE_SCHEDULER[] = mock_sched
+
+        # Trigger the ack from a side task as soon as the handler
+        # installs its channel. Poll the handler dict; when present,
+        # invoke it with [664].
+        ack_task = @async begin
+            for _ in 1:200
+                h = get(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-discovery-done", nothing)
+                if h !== nothing
+                    h([Int32(664)])
+                    return
+                end
+                sleep(0.01)
+            end
+        end
+
+        try
+            Main._handle_sc_discover(plugin_dir, Dict{String,Any}(),
+                "sc-discoverer";
+                sc_meta_override = ("3.13.1", 664),
+                discovery_timeout = 5.0)
+            wait(ack_task)
+
+            meta_path = joinpath(cache_dir, "cache_meta.toml")
+            @test isfile(meta_path)
+            meta = TOML.parsefile(meta_path)
+            @test meta["sc_version"] == "3.13.1"
+            @test meta["ugen_count"] == 664
+            @test meta["discover_script_sha256"] == Main._sc_script_sha256(scd_path)
+
+            # Second invocation: cache is now valid → must short-circuit.
+            @test_logs (:info, r"cache fresh") begin
+                Main._handle_sc_discover(plugin_dir, Dict{String,Any}(),
+                    "sc-discoverer";
+                    sc_meta_override = ("3.13.1", 664))
+            end
+        finally
+            Ressac._LIVE_SCHEDULER[] = prev
+            delete!(ENV, "RESSAC_CACHE_DIR")
+            rm(tmp_root; recursive=true, force=true)
+            rm(plugin_dir; recursive=true, force=true)
+        end
+    end
 end

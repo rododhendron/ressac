@@ -181,11 +181,26 @@ function _handle_sc_discover(plugin_dir, data, plugin_name;
             return nothing
         end
         @info "sc-autodiscover: discovered $result UGens"
-        sc_meta_post = sc_meta_override === nothing ?
-                       _sc_meta_roundtrip(timeout = 3.0) :
-                       sc_meta_override
-        if sc_meta_post !== nothing
-            _write_cache_meta(cache_dir, scd_path, sc_meta_post)
+        # Capture SC state for cache_meta. Prefer in this order:
+        #   1. sc_meta_override (tests)
+        #   2. the sc_meta we already obtained at the top (it's the
+        #      same SC state, just measured a few seconds earlier)
+        #   3. a fresh post-discovery roundtrip (last resort, can fail
+        #      if SC is still settling after the heavy discovery work)
+        # Without this fallback, the cache_meta isn't written when the
+        # post-roundtrip times out, and every boot re-runs discovery.
+        sc_meta_for_cache = if sc_meta_override !== nothing
+            sc_meta_override
+        elseif sc_meta !== nothing
+            sc_meta
+        else
+            _sc_meta_roundtrip(timeout = 3.0)
+        end
+        if sc_meta_for_cache !== nothing
+            _write_cache_meta(cache_dir, scd_path, sc_meta_for_cache)
+            @info "sc-autodiscover: wrote cache_meta.toml"
+        else
+            @warn "sc-autodiscover: could not determine SC state — cache_meta not written, next boot will re-discover"
         end
     finally
         delete!(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-discovery-done")

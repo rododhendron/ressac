@@ -10,7 +10,7 @@
 
 (
 var cacheDir, docsDir, manifestPath, ugens, count;
-var writeUgenMd, scDocToMd, signaturesFor, findHelpSource;
+var writeUgenMd, scDocToMd, signaturesFor, findHelpSource, camelToSnake;
 
 cacheDir     = (Platform.userHomeDir +/+ ".cache" +/+ "ressac"
                 +/+ "plugins" +/+ "sc-autodiscover").asString;
@@ -36,6 +36,39 @@ ugens = UGen.allSubclasses.select { |class|
     class.class.findRespondingMethodFor(\ar).notNil
 };
 ("[sc-discover] " ++ ugens.size.asString ++ " UGen classes to process").postln;
+
+// CamelCase → snake_case converter, used to emit each UGen's
+// snake_case alias (so the Julia DSL wrapper names like `sin_osc`,
+// `lf_noise0`, `env_gen` resolve via the same DocEntry as their
+// CamelCase SC originals).
+//
+// Conversion rules:
+//   * Insert _ when current is uppercase AND prev is lowercase
+//     (sin|Osc → sin_osc).
+//   * Insert _ when current is uppercase AND prev is uppercase
+//     AND next is lowercase — splits acronym from name body
+//     (LF|Noise → lf_noise; FSin|Osc → f_sin_osc).
+//   * Digits and lowercase pass through unchanged
+//     (LFNoise0 → lf_noise0).
+camelToSnake = { |s|
+    var out = "";
+    s.do { |c, i|
+        if (c.isUpper) {
+            if (i > 0) {
+                var prev = s[i - 1];
+                var nextIsLower =
+                    (i + 1 < s.size) and: { s[i + 1].isLower };
+                if (prev.isLower or: { prev.isUpper and: nextIsLower }) {
+                    out = out ++ "_";
+                };
+            };
+            out = out ++ c.toLower.asString;
+        } {
+            out = out ++ c.asString;
+        };
+    };
+    out
+};
 
 // Per-rate signature extraction. Returns an IdentityDictionary keyed
 // by rate symbol (\ar, \kr, \ir) whose values are arrays of
@@ -200,7 +233,18 @@ writeUgenMd = { |class, sigs, parsed, outPath|
     fm = fm ++ "short = \"" ++ parsed[\short].replace("\"", "'") ++ "\"\n";
     fm = fm ++ "tags = " ++ tagsToml ++ "\n";
     fm = fm ++ "kwargs = " ++ kwargsToml ++ "\n";
-    fm = fm ++ "aliases = []\n";
+    // Snake_case alias so the Julia DSL wrapper name resolves to the
+    // same DocEntry (`:doc sin_osc` finds the SinOsc entry). Skip the
+    // alias when the conversion would be identical to the class name
+    // (degenerate cases like a hypothetical all-lowercase name).
+    block { |emit|
+        var snake = camelToSnake.value(class.name.asString);
+        if (snake == class.name.asString) {
+            fm = fm ++ "aliases = []\n";
+        } {
+            fm = fm ++ "aliases = [\"" ++ snake ++ "\"]\n";
+        };
+    };
     fm = fm ++ "examples = []\n";
     fm = fm ++ "+++\n\n";
     fm = fm ++ "# " ++ class.name.asString ++ "\n\n";
