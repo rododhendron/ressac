@@ -109,3 +109,57 @@ end
         Ressac._PANE_MODE.active = false
     end
 end
+
+@testset "workspace switching commands" begin
+    @testset "cmd_workspace_switch! by number" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "a")
+        Ressac.create_workspace!(wm, "b")
+        Ressac.create_workspace!(wm, "c")
+        Ressac.cmd_workspace_switch!(wm, 1)
+        @test wm.current_idx == 1
+        Ressac.cmd_workspace_switch!(wm, 3)
+        @test wm.current_idx == 3
+    end
+
+    @testset "cmd_workspace_switch! ignores out-of-range index" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "a")
+        Ressac.cmd_workspace_switch!(wm, 99)
+        @test wm.current_idx == 1   # unchanged
+        Ressac.cmd_workspace_switch!(wm, 0)
+        @test wm.current_idx == 1
+    end
+
+    @testset "cmd_workspace_named! by name" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "live")
+        Ressac.create_workspace!(wm, "synth")
+        Ressac.cmd_workspace_named!(wm, "live")
+        @test Ressac.current_workspace(wm).name == "live"
+    end
+
+    @testset "cmd_workspace_named! noop when name doesn't exist" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "live")
+        prev = wm.current_idx
+        Ressac.cmd_workspace_named!(wm, "ghost")
+        @test wm.current_idx == prev
+    end
+
+    @testset "cmd_workspace! :next/:prev cycles" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "a")
+        Ressac.create_workspace!(wm, "b")
+        Ressac.create_workspace!(wm, "c")
+        Ressac.cmd_workspace_switch!(wm, 1)
+        Ressac.cmd_workspace!(wm, :next)
+        @test wm.current_idx == 2
+        Ressac.cmd_workspace!(wm, :next)
+        @test wm.current_idx == 3
+        Ressac.cmd_workspace!(wm, :next)
+        @test wm.current_idx == 1   # wraps
+        Ressac.cmd_workspace!(wm, :prev)
+        @test wm.current_idx == 3
+    end
+end

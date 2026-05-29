@@ -55,3 +55,26 @@ function cmd_workspace!(wm::WorkspaceManager, op::Symbol; name::AbstractString =
     end
     return
 end
+
+"""
+    cmd_workspace_switch!(wm, idx)
+
+Jump to workspace at `idx` (1-based). No-op if out of range. Bound
+to Ctrl-1..9 in Task 15.
+"""
+function cmd_workspace_switch!(wm::WorkspaceManager, idx::Int)
+    1 <= idx <= length(wm.workspaces) || return
+    wm.current_idx = idx
+end
+
+"""
+    cmd_workspace_named!(wm, name)
+
+Jump to workspace by name. No-op if the name doesn't match any
+workspace. Useful for `:workspace <name>` ex command.
+"""
+function cmd_workspace_named!(wm::WorkspaceManager, name::AbstractString)
+    idx = findfirst(ws -> ws.name == name, wm.workspaces)
+    idx === nothing && return
+    wm.current_idx = idx
+end
