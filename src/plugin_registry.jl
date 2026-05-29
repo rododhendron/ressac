@@ -208,7 +208,11 @@ function load_plugin(m::PluginManifest)
             continue
         end
         try
-            h(m.dir, m.sections[sec_str], m.name)
+            # invokelatest dispatches at the current world-age. Without
+            # it, a section handler that was registered by an earlier
+            # section's [julia] include (within the SAME plugin load)
+            # is "too new" to be called from this loop's world.
+            Base.invokelatest(h, m.dir, m.sections[sec_str], m.name)
         catch err
             @error "handler ':$sec_str' for plugin '$(m.name)' raised: $(sprint(showerror, err))"
         end
