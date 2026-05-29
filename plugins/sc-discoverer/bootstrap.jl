@@ -148,6 +148,12 @@ function _handle_sc_discover(plugin_dir, data, plugin_name;
         @warn "sc-autodiscover: no live session, discovery deferred"
         return nothing
     end
+    # Ressac's UDP listener on 127.0.0.1:57121 starts lazily — first
+    # :scope / :audio-in / etc. activation. At plugin-load time it's
+    # not running yet, so any ack from SC would hit a closed port and
+    # be dropped. Force it on now so our OSC roundtrip + discovery
+    # ack can actually land.
+    Ressac._ensure_app_scope_listener!()
     cache_dir = _sc_cache_dir()
     scd_path = joinpath(plugin_dir, "discover.scd")
     sc_meta = sc_meta_override === nothing ?
