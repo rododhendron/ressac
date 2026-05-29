@@ -1988,6 +1988,66 @@ _register_literal!(m -> _push_app_log!(m,
     "starter")
 _register_regex!(r"^starter\s+([\w.-]+)$",
     (m, mt) -> _starter_command!(m, mt.captures[1]))
+
+# ── SC autodiscover commands (sub-project 8) ────────────────────────
+_register_literal!(m -> _sc_rediscover_command!(m), "sc-rediscover")
+_register_literal!(m -> _sc_cache_info_command!(m), "sc-cache-info")
+
+"""
+    _sc_rediscover_command!(m)
+
+Force re-discovery of SC UGen docs. Deletes `cache_meta.toml` so the
+next `_handle_sc_discover` invocation treats the cache as invalid,
+then calls the handler synchronously. The docs/*.md files stay in
+place during the delete — if discovery fails halfway, the user
+still has the old docs to fall back on.
+"""
+function _sc_rediscover_command!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        _push_app_log!(m,
+            "[ERROR] :sc-rediscover requires an active SC session — start the live first")
+        return
+    end
+    cache_dir = Main._sc_cache_dir()
+    meta_path = joinpath(cache_dir, "cache_meta.toml")
+    if isfile(meta_path)
+        rm(meta_path)
+        _push_app_log!(m, "[INFO] :sc-rediscover — cleared cache meta, re-running discovery")
+    end
+    plugin_dir = joinpath(pwd(), "plugins", "sc-discoverer")
+    try
+        Main._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
+        _push_app_log!(m, "[INFO] :sc-rediscover — done. Restart the live to reload _DOCS.")
+    catch err
+        _push_app_log!(m, "[ERROR] :sc-rediscover failed: $(sprint(showerror, err))")
+    end
+end
+
+"""
+    _sc_cache_info_command!(m)
+
+Print the contents of `cache_meta.toml` + cache dir path to the log.
+Useful for debugging stale caches or verifying SC version matches.
+"""
+function _sc_cache_info_command!(m::RessacApp)
+    cache_dir = Main._sc_cache_dir()
+    _push_app_log!(m, "[INFO] :sc-cache-info — cache dir: $cache_dir")
+    meta_path = joinpath(cache_dir, "cache_meta.toml")
+    if !isfile(meta_path)
+        _push_app_log!(m, "[INFO] :sc-cache-info — no cache_meta.toml yet (never discovered)")
+        return
+    end
+    for line in eachline(meta_path)
+        _push_app_log!(m, "[INFO]   $line")
+    end
+    docs_dir = joinpath(cache_dir, "docs")
+    if isdir(docs_dir)
+        n = count(f -> endswith(f, ".md"), readdir(docs_dir))
+        _push_app_log!(m, "[INFO] :sc-cache-info — $n MD files in cache")
+    end
+end
+
 # :import path  →  copies a .wav into plugins/user-samples/<basename>/
 #                  and registers it so it's usable as a sample name.
 # :import path as name  → same but rename to `name`.
