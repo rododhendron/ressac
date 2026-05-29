@@ -93,3 +93,19 @@ end
         @test s["current_tab"] == 1
     end
 end
+
+@testset "pane_log — :log kind" begin
+    _reload_core_pane_kinds()
+
+    @testset "registered + constructible" begin
+        lp = Ressac._pane_new(:log, Dict{String,Any}())
+        @test lp isa Ressac.LogPane
+        @test Ressac.title(lp) == "log"
+        @test Ressac.default_mode(lp) === :tile
+    end
+
+    @testset "serialize returns empty (global log is shared state)" begin
+        lp = Ressac._pane_new(:log, Dict{String,Any}())
+        @test Ressac.serialize(lp) == Dict{String,Any}()
+    end
+end
