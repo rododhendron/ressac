@@ -57,7 +57,108 @@ signaturesFor = { |class|
     out
 };
 
-// scDocToMd and writeUgenMd are filled by Tasks 9-10.
+// Parse a .schelp file's content into (short, body, category) where:
+//   short    = first non-blank line of the description:: block, max 200 chars
+//   body     = SCDoc reformatted to Markdown (## Description, ### .ar,
+//              - **arg** — text, ```sclang …``` examples)
+//   category = first segment after `UGens>` in `categories::`, lowercased
+//
+// Missing HelpFile → all three fields are empty strings; the caller
+// still emits a signature-only frontmatter entry.
+scDocToMd = { |helpPath|
+    var src, lines, mdParts, descPara;
+    var short = "", body = "", category = "";
+    var currentBlock = "", currentArg = nil;
+    var hadExamples = false;
+
+    if (File.exists(helpPath).not) {
+        // Return an IdentityDictionary with empty fields.
+        IdentityDictionary[\short -> "", \body -> "", \category -> ""];
+    } {
+        src = File.readAllString(helpPath);
+        lines = src.split($\n);
+        mdParts = List.new;
+        descPara = "";
+
+        // First pass: extract `categories::` line if present.
+        // SCDoc convention: `categories::UGens>Generators>Deterministic`.
+        // We pick the second segment ("Generators") and lowercase it.
+        lines.do { |ln|
+            if (ln.beginsWith("categories::")) {
+                var cats = ln.drop(12).trim.split($\>);
+                if (cats.size >= 2) {
+                    category = cats[1].trim.toLower;
+                };
+            };
+        };
+
+        // Second pass: walk blocks. SCDoc blocks are introduced by
+        // `keyword::[arg]` and terminated by a `::` on its own line
+        // OR by the next top-level keyword. We only track the blocks
+        // we care about: description, classmethods.method::ar/kr/ir,
+        // argument::name, examples.
+        lines.do { |ln|
+            var stripped = ln.trim;
+            if (stripped == "::") {
+                currentBlock = "";
+                currentArg = nil;
+            } {
+                case
+                { stripped.beginsWith("description::") } {
+                    currentBlock = "description";
+                    mdParts.add("## Description\n\n");
+                }
+                { stripped.beginsWith("argument::") } {
+                    currentArg = stripped.drop(10).trim;
+                    currentBlock = "argument";
+                    mdParts.add("- **" ++ currentArg ++ "** — ");
+                }
+                { stripped.beginsWith("method::") } {
+                    var name = stripped.drop(8).trim;
+                    if (#[\ar, \kr, \ir].includes(name.asSymbol)) {
+                        currentBlock = "method";
+                        mdParts.add("### ." ++ name ++ "\n\n");
+                    };
+                }
+                { stripped.beginsWith("examples::") } {
+                    hadExamples = true;
+                    currentBlock = "examples";
+                    mdParts.add("## Examples\n\n```sclang\n");
+                }
+                // Block body line — anything not introducing a new block.
+                // We test for ":" anywhere because SCDoc keywords always
+                // contain "::".
+                { stripped.contains("::").not } {
+                    if (currentBlock == "description") {
+                        mdParts.add(ln ++ "\n");
+                        // First non-blank line goes into descPara for `short`.
+                        if (descPara.isEmpty and: { stripped.notEmpty }) {
+                            descPara = stripped;
+                        };
+                    };
+                    if (currentBlock == "argument") {
+                        mdParts.add(ln.trim ++ "\n");
+                    };
+                    if (currentBlock == "method") {
+                        mdParts.add(ln ++ "\n");
+                    };
+                    if (currentBlock == "examples") {
+                        mdParts.add(ln ++ "\n");
+                    };
+                };
+            };
+        };
+
+        if (hadExamples) { mdParts.add("```\n") };
+
+        body  = mdParts.join("");
+        short = descPara.copyRange(0, min(descPara.size - 1, 199));
+
+        IdentityDictionary[\short -> short, \body -> body, \category -> category];
+    };
+};
+
+// writeUgenMd is filled by Task 10.
 
 count = 0;
 ugens.do { |class|
