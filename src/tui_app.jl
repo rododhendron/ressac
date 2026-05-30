@@ -3754,6 +3754,34 @@ function _active_slots_summary(m::RessacApp)
     join(("@" * String(s) for s in slots), " ")
 end
 
+"""
+    _render_global_log_tail!(m, area, buf)
+
+Render the global log tail (or the completion picker when active)
+into `area`. Extracted from `view()` so the new workspace dispatcher
+(sub-project 10) can call it as a chrome row independently of the
+workspace area. Behavior-preserving extraction — no visible change.
+"""
+function _render_global_log_tail!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    if _completion_picker_active(m)
+        title       = "COMPLETIONS"
+        title_right = "$(m.completion_idx)/$(length(m.completion_candidates)) · Tab next · any other key cancels"
+    else
+        title       = "LOG"
+        title_right = "$(length(m.logs))" *
+                      (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
+    end
+    _render_pane_block!(m, area, buf;
+        title = title, title_right = title_right, focused = false)
+    log_inner = _inner_rect(area)
+    m.layout_logs = log_inner
+    if _completion_picker_active(m)
+        _render_completion_picker!(m, log_inner, buf)
+    else
+        _render_logs(m, log_inner, buf)
+    end
+end
+
 function TK.view(m::RessacApp, f::TK.Frame)
     # Paused: skip the whole draw so the terminal's last frame stays put
     # and the user can shift-drag-select + copy without our next render
@@ -3909,15 +3937,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
         title_right = "$(length(m.logs))" *
                       (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
     end
-    _render_pane_block!(m, logs_area, buf;
-        title = title, title_right = title_right, focused = false)
-    log_inner = _inner_rect(logs_area)
-    m.layout_logs = log_inner
-    if _completion_picker_active(m)
-        _render_completion_picker!(m, log_inner, buf)
-    else
-        _render_logs(m, log_inner, buf)
-    end
+    _render_global_log_tail!(m, logs_area, buf)
 
     # Modal overlay (after everything else so it sits on top).
     if m.modal === :browse
