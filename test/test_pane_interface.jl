@@ -205,6 +205,24 @@ end
             "name" => "SinOsc", "scroll" => 0,
         )
     end
+
+    @testset "render! shows fallback for unknown ref" begin
+        dp = Ressac._pane_new(:doc, Dict{String,Any}(
+            "ref" => "totally_nonexistent_doc_zzz"))
+        tb = Tachikoma.TestBackend(40, 5)
+        Ressac.render!(dp, Tachikoma.Rect(1, 1, 40, 5), tb.buf)
+        # Body starts at y=2 (just below top border)
+        @test occursin("no entry", Tachikoma.row_text(tb, 2))
+    end
+
+    @testset "handle_key! j/k adjust scroll" begin
+        dp = Ressac._pane_new(:doc, Dict{String,Any}())
+        @test Ressac.handle_key!(dp, Tachikoma.KeyEvent('j')) == true
+        @test dp.scroll == 1
+        @test Ressac.handle_key!(dp, Tachikoma.KeyEvent('k')) == true
+        @test dp.scroll == 0
+        @test Ressac.handle_key!(dp, Tachikoma.KeyEvent('k')) == false
+    end
 end
 
 @testset "pane_scope — :scope kind" begin
