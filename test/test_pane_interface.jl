@@ -247,4 +247,13 @@ end
             "subtype" => "spectrum",
         )
     end
+
+    @testset "render! draws SCOPE title with subtype" begin
+        sp = Ressac._pane_new(:scope, Dict{String,Any}("target" => "wave"))
+        tb = Tachikoma.TestBackend(40, 5)
+        Ressac.render!(sp, Tachikoma.Rect(1, 1, 40, 5), tb.buf)
+        top = Tachikoma.row_text(tb, 1)
+        @test occursin("SCOPE", top)
+        @test occursin("wave", top)
+    end
 end
