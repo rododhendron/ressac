@@ -368,6 +368,14 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     (leaf === nothing || isempty(leaf.tabs)) && return false
     1 <= leaf.current_tab <= length(leaf.tabs) || return false
     pane = leaf.tabs[leaf.current_tab]
+    # `:` is a global shortcut — always opens command mode on
+    # m.editor regardless of which pane has focus. Without this, the
+    # user couldn't reach ex commands from a focused log / doc /
+    # scope pane.
+    if evt.key === :char && evt.char == ':' &&
+       m.editor.mode === :normal
+        return false
+    end
     # Patterns pane uses m.editor — legacy path owns it.
     if pane isa EditorPane &&
        1 <= pane.current_tab <= length(pane.tabs) &&
@@ -2038,6 +2046,36 @@ _register_regex!(r"^load\s+(\S+)$",
     (m, mt) -> _load_session_app!(m, mt.captures[1]))
 _register_literal!(m -> _list_sessions_app!(m),
                    "sessions", "ls-sessions")
+
+# ── Workspace + pane ex commands (sub-project 10) ──────────────────
+_register_regex!(r"^workspace\s+new(?:\s+(\S+))?$",
+    (m, mt) -> begin
+        nm = mt.captures[1] === nothing ? "" : String(mt.captures[1])
+        cmd_workspace!(m.workspaces, :new; name = nm)
+    end)
+_register_literal!(m -> cmd_workspace!(m.workspaces, :close),
+                   "workspace close")
+_register_literal!(m -> cmd_workspace!(m.workspaces, :next),
+                   "workspace next", "wsnext")
+_register_literal!(m -> cmd_workspace!(m.workspaces, :prev),
+                   "workspace prev", "wsprev")
+_register_regex!(r"^workspace\s+(\S+)$",
+    (m, mt) -> cmd_workspace_named!(m.workspaces, mt.captures[1]))
+
+_register_regex!(r"^vsplit(?:\s+(\S+))?$",
+    (m, mt) -> begin
+        kind = mt.captures[1] === nothing ? "editor" : String(mt.captures[1])
+        cmd_vsplit!(m.workspaces, kind, Dict{String,Any}())
+    end)
+_register_regex!(r"^hsplit(?:\s+(\S+))?$",
+    (m, mt) -> begin
+        kind = mt.captures[1] === nothing ? "editor" : String(mt.captures[1])
+        cmd_hsplit!(m.workspaces, kind, Dict{String,Any}())
+    end)
+_register_literal!(m -> cmd_close!(m.workspaces),
+                   "pclose", "paneclose")
+_register_literal!(m -> cmd_float!(m.workspaces),  "float")
+_register_literal!(m -> cmd_tile!(m.workspaces),   "tile")
 
 # ── Workspace layouts (sub-project 10) ──────────────────────────────
 _register_regex!(r"^layout\s+save\s+([\w-]+)$", (m, mt) -> _layout_save!(m, mt.captures[1]))

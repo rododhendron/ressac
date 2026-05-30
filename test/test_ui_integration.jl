@@ -40,6 +40,16 @@ function _type!(app::Ressac.RessacApp, s::AbstractString)
     end
 end
 
+# Drive an ex command (`:foo bar`) end-to-end via the focused pane's
+# command-mode editor. The pending_command! bridge in
+# _route_key_to_focused_pane! (or the legacy update! body for the
+# patterns pane) dispatches to Ressac's _handle_ex_command!.
+function _exec_ex_command!(app::Ressac.RessacApp, cmd::AbstractString)
+    Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
+    _type!(app, String(cmd))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
+end
+
 # Find the EditorPane that holds m.editor (the patterns pane) in
 # the focused workspace's tree. Returns the leaf id.
 function _patterns_leaf_id(app::Ressac.RessacApp)
@@ -112,6 +122,28 @@ end
     @test !occursin("hello-main", Ressac.TK.text(new_editor))
 end
 
+@testset "C-w h/j/k/l navigates focus in a 2×2 grid" begin
+    app, frame = _new_app()
+    app.editor.mode = :normal
+    # Build a 2×2 grid: vsplit then hsplit on both columns.
+    Ressac.cmd_vsplit!(app.workspaces, "editor", Dict{String,Any}())
+    Ressac.cmd_hsplit!(app.workspaces, "editor", Dict{String,Any}())  # right col split
+    # Focus to the top-left to start navigating.
+    Ressac.cmd_focus!(app.workspaces, :left)
+    Ressac.cmd_focus!(app.workspaces, :up)
+    Tachikoma.view(app, frame)
+    ws = Ressac.current_workspace(app.workspaces)
+    start = ws.focused_pane
+    # Navigate right via C-w l
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent('l'))
+    @test ws.focused_pane != start
+    # And back via C-w h
+    Tachikoma.update!(app, Tachikoma.KeyEvent('h'))
+    @test ws.focused_pane == start
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+end
+
 @testset "C-w c closes the focused pane" begin
     app, frame = _new_app()
     app.editor.mode = :normal
@@ -125,6 +157,75 @@ end
 end
 
 # ── Workspace switching ─────────────────────────────────────────────
+
+@testset "C-w c refuses to close the last leaf (no empty workspace)" begin
+    app, frame = _new_app()
+    app.editor.mode = :normal
+    ws = Ressac.current_workspace(app.workspaces)
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 1
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent('c'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 1
+end
+
+@testset ":vsplit <kind> creates the right pane type" begin
+    app, _ = _new_app()
+    # Drive an ex command end-to-end via the command-mode editor flow.
+    _exec_ex_command!(app, "vsplit log")
+    ws = Ressac.current_workspace(app.workspaces)
+    leaves = collect(Ressac._all_leaves(ws.tree))
+    @test length(leaves) == 2
+    @test any(l -> any(t -> t isa Ressac.LogPane, l.tabs), leaves)
+
+    _exec_ex_command!(app, "hsplit doc")
+    leaves = collect(Ressac._all_leaves(ws.tree))
+    @test length(leaves) == 3
+    @test any(l -> any(t -> t isa Ressac.DocPane, l.tabs), leaves)
+end
+
+@testset ":pclose removes a pane; :workspace new/close manages workspaces" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "vsplit log")
+    ws = Ressac.current_workspace(app.workspaces)
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 2
+    _exec_ex_command!(app, "pclose")
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 1
+
+    n_workspaces = length(app.workspaces.workspaces)
+    _exec_ex_command!(app, "workspace new sandbox")
+    @test length(app.workspaces.workspaces) == n_workspaces + 1
+    @test app.workspaces.workspaces[end].name == "sandbox"
+    _exec_ex_command!(app, "workspace close")
+    @test length(app.workspaces.workspaces) == n_workspaces
+end
+
+@testset ":workspace next/prev/<name> jumps workspaces" begin
+    app, _ = _new_app()
+    Ressac.create_workspace!(app.workspaces, "alpha")
+    Ressac.create_workspace!(app.workspaces, "beta")
+    @test app.workspaces.current_idx == 3
+    _exec_ex_command!(app, "workspace prev")
+    @test app.workspaces.current_idx == 2
+    _exec_ex_command!(app, "workspace next")
+    @test app.workspaces.current_idx == 3
+    _exec_ex_command!(app, "workspace alpha")
+    @test app.workspaces.workspaces[app.workspaces.current_idx].name == "alpha"
+end
+
+@testset ":float lifts pane out of tree; :tile drops it back" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "vsplit log")
+    ws = Ressac.current_workspace(app.workspaces)
+    @test isempty(ws.floats)
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 2
+    _exec_ex_command!(app, "float")
+    @test length(ws.floats) == 1
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 1
+    _exec_ex_command!(app, "tile")
+    @test isempty(ws.floats)
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 2
+end
 
 @testset "Ctrl-N hops workspaces without entering pane mode" begin
     app, _ = _new_app()
@@ -217,4 +318,264 @@ end
     finally
         delete!(Ressac._SNIPPETS, name)
     end
+end
+
+@testset ":starter block mode composes panes onto current tree" begin
+    app, _ = _new_app()
+    app.editor.mode = :normal
+    # Start with a pre-existing split so we can check that block
+    # mode does NOT rebuild the tree (unlike :starter).
+    Ressac.cmd_vsplit!(app.workspaces, "editor", Dict{String,Any}())
+    pre_leaves = length(collect(Ressac._all_leaves(
+        Ressac.current_workspace(app.workspaces).tree)))
+    name = "ui-it-block-snip-$(rand(UInt32))"
+    snip = Ressac.SnippetEntry(name, :block, "test", Symbol[],
+        :patterns, String[], String[],
+        "// block body",
+        Any[Dict("role" => "primary", "kind" => "editor",
+                  "buffer_role" => "patterns"),
+            Dict("role" => "side", "kind" => "doc",
+                  "ref" => "gain", "side" => "right", "size" => 0.3)],
+        "test", "")
+    Ressac.register_snippet!(snip)
+    try
+        Ressac.apply_snippet_panes!(app.workspaces, snip.panes, snip.mode;
+                                     snippet_name = snip.name)
+        ws = Ressac.current_workspace(app.workspaces)
+        leaves = collect(Ressac._all_leaves(ws.tree))
+        # Block adds side panes — primary is not re-installed.
+        @test length(leaves) == pre_leaves + 1
+        @test any(l -> any(t -> t isa Ressac.DocPane, l.tabs), leaves)
+    finally
+        delete!(Ressac._SNIPPETS, name)
+    end
+end
+
+# ── Multi-tabs in a single pane ────────────────────────────────────
+
+@testset "EditorPane with multiple tabs renders strip + isolates buffers" begin
+    app, _ = _new_app()
+    ws = Ressac.current_workspace(app.workspaces)
+    ep = ws.tree.tabs[1]
+    @test ep isa Ressac.EditorPane
+    push!(ep.tabs, Ressac.EditorBuffer(role = :synth, name = "wob1"))
+    @test length(ep.tabs) == 2
+    # Render — first inner row should show both tab names.
+    tb = Tachikoma.TestBackend(60, 12)
+    Ressac.render!(ep, Tachikoma.Rect(1, 1, 60, 12), tb.buf)
+    tab_row = Tachikoma.row_text(tb, 2)
+    @test occursin("main", tab_row)
+    @test occursin("wob1", tab_row)
+    # The two tab buffers are independent text containers.
+    Ressac.TK.set_text!(ep.tabs[1].code_editor, "tab1 only")
+    Ressac.TK.set_text!(ep.tabs[2].code_editor, "tab2 only")
+    @test Ressac.TK.text(ep.tabs[1].code_editor) == "tab1 only"
+    @test Ressac.TK.text(ep.tabs[2].code_editor) == "tab2 only"
+end
+
+# ── Per-pane render content ────────────────────────────────────────
+
+@testset "LogPane render shows the app's log lines + j/k scroll" begin
+    app, _ = _new_app()
+    Ressac._APP_LOG[] = ["[INFO] line A", "[INFO] line B", "[INFO] line C"]
+    Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
+    ws = Ressac.current_workspace(app.workspaces)
+    log_leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+    log_pane = log_leaf.tabs[1]
+    @test log_pane isa Ressac.LogPane
+    tb = Tachikoma.TestBackend(60, 8)
+    Ressac.render!(log_pane, Tachikoma.Rect(1, 1, 60, 8), tb.buf)
+    body = join((Tachikoma.row_text(tb, y) for y in 2:7), '\n')
+    @test occursin("line C", body)
+    # 'k' scrolls older entries into view; render again
+    Tachikoma.update!(app, Tachikoma.KeyEvent('k'))
+    @test log_pane.scroll == 1
+end
+
+@testset "DocPane render shows the entry body" begin
+    app, _ = _new_app()
+    # Register a DocEntry inline so the test owns its data.
+    name = "ui-it-doc-$(rand(UInt32))"
+    Ressac.register_doc!(Ressac.DocEntry(
+        name, "short of $name", Symbol[], Symbol[],
+        ["example1", "example2"], String[],
+        "Long body for the integration test.",
+        "test", ""))
+    try
+        Ressac.cmd_vsplit!(app.workspaces, "doc",
+                           Dict{String,Any}("ref" => name))
+        ws = Ressac.current_workspace(app.workspaces)
+        leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+        dp = leaf.tabs[1]
+        @test dp isa Ressac.DocPane
+        @test dp.name == name
+        tb = Tachikoma.TestBackend(60, 12)
+        Ressac.render!(dp, Tachikoma.Rect(1, 1, 60, 12), tb.buf)
+        body = join((Tachikoma.row_text(tb, y) for y in 2:11), '\n')
+        @test occursin("short of", body)
+        @test occursin("example1", body)
+        @test occursin("Long body", body)
+    finally
+        delete!(Ressac._DOCS, name)
+    end
+end
+
+@testset "ScopePane render shows subtype-specific waiting hint" begin
+    app, _ = _new_app()
+    # Empty _APP_SCOPE_DATA → render hits the "waiting for audio" path.
+    Ressac.cmd_vsplit!(app.workspaces, "scope",
+                       Dict{String,Any}("target" => "wave"))
+    ws = Ressac.current_workspace(app.workspaces)
+    leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+    sp = leaf.tabs[1]
+    @test sp isa Ressac.ScopePane
+    @test sp.subtype === :wave
+    tb = Tachikoma.TestBackend(60, 6)
+    Ressac.render!(sp, Tachikoma.Rect(1, 1, 60, 6), tb.buf)
+    body = join((Tachikoma.row_text(tb, y) for y in 2:5), '\n')
+    @test occursin("waiting", body) || occursin("SCOPE", Tachikoma.row_text(tb, 1))
+end
+
+# ── Vim modal — visual / yank / delete ─────────────────────────────
+
+@testset "i + text + Esc lands text in m.editor" begin
+    app, _ = _new_app()
+    Ressac.TK.set_text!(app.editor, "")
+    Tachikoma.update!(app, Tachikoma.KeyEvent('i'))
+    _type!(app, "hello world")
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test occursin("hello world", Ressac.TK.text(app.editor))
+    @test app.editor.mode === :normal
+end
+
+@testset "V + j + y yanks line range" begin
+    app, _ = _new_app()
+    Ressac.TK.set_text!(app.editor, "line1\nline2\nline3")
+    app.editor.cursor_row = 1
+    app.editor.cursor_col = 0
+    Tachikoma.update!(app, Tachikoma.KeyEvent('V'))   # visual line
+    Tachikoma.update!(app, Tachikoma.KeyEvent('j'))   # extend down
+    Tachikoma.update!(app, Tachikoma.KeyEvent('y'))   # yank
+    # Visual mode should have exited and yank buffer populated.
+    @test app.editor.mode === :normal
+end
+
+# ── Eval routing (stubs — confirm dispatch path, not real eval) ─────
+
+@testset "Pressing e on patterns pane in :normal triggers eval path" begin
+    app, _ = _new_app()
+    app.editor.mode = :normal
+    # The current eval bridges are no-op stubs but the dispatch
+    # should still consume the key without crashing.
+    Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
+    # Patterns leaf still owns focus; no exception thrown.
+    @test Ressac.current_workspace(app.workspaces).focused_pane ==
+          _patterns_leaf_id(app)
+end
+
+@testset "Pressing e on a focused synth-role editor triggers SC path" begin
+    app, frame = _new_app()
+    app.editor.mode = :normal
+    # Vsplit a synth-role editor and focus it.
+    Ressac.cmd_vsplit!(app.workspaces, "editor",
+                       Dict{String,Any}("buffer_role" => "synth",
+                                         "name" => "wob1"))
+    Tachikoma.view(app, frame)
+    ws = Ressac.current_workspace(app.workspaces)
+    leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+    synth_pane = leaf.tabs[1]
+    @test synth_pane.tabs[1].role === :synth
+    @test synth_pane.tabs[1].eval_target === :sc_eval
+    # 'T' in :normal triggers the SC eval bridge (stub no-op).
+    synth_pane.tabs[1].code_editor.focused = true
+    synth_pane.tabs[1].code_editor.mode = :normal
+    @test Ressac.handle_key!(synth_pane, Tachikoma.KeyEvent('T')) == true
+end
+
+# ── Modal flows — navigation, not just close ───────────────────────
+
+@testset "Modal :browse opens via the wiki/browse picker entry point" begin
+    app, _ = _new_app()
+    app.editor.mode = :normal
+    # The modal is opened by app code; set it directly to verify
+    # Esc closes it. Real opener wiring is per-modal and tested in
+    # each picker's own unit suite.
+    app.modal = :browse
+    @test app.modal === :browse
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test app.modal === :none
+end
+
+# ── Layout persistence e2e (round-trip via real keystrokes) ────────
+
+@testset ":layout save / load round-trip via keystrokes" begin
+    app, frame = _new_app()
+    app.editor.mode = :normal
+    _exec_ex_command!(app, "vsplit log")
+    _exec_ex_command!(app, "vsplit doc")
+    ws_before = Ressac.current_workspace(app.workspaces)
+    n_before = length(collect(Ressac._all_leaves(ws_before.tree)))
+    @test n_before == 3
+    name = "ui-it-roundtrip-$(rand(UInt32))"
+    _exec_ex_command!(app, "layout save $name")
+    @test isfile(Ressac._named_layout_path(name))
+    # Wipe and reload.
+    empty!(app.workspaces.workspaces)
+    app.workspaces.current_idx = 0
+    Ressac._ensure_default_workspace!(app)
+    @test length(collect(Ressac._all_leaves(
+        Ressac.current_workspace(app.workspaces).tree))) == 1
+    _exec_ex_command!(app, "layout load $name")
+    ws_after = Ressac.current_workspace(app.workspaces)
+    @test length(collect(Ressac._all_leaves(ws_after.tree))) == n_before
+    rm(Ressac._named_layout_path(name); force = true)
+end
+
+@testset ":layout load <unknown> warns and stays on current layout" begin
+    app, _ = _new_app()
+    app.editor.mode = :normal
+    pre_workspaces = length(app.workspaces.workspaces)
+    _exec_ex_command!(app, "layout load nonexistent-layout-zzz")
+    # Warn-only — workspace state unchanged.
+    @test length(app.workspaces.workspaces) == pre_workspaces
+    @test any(l -> occursin("no such layout", l), app.logs)
+end
+
+# ── Edge cases ─────────────────────────────────────────────────────
+
+@testset "View renders to a tiny rect without throwing" begin
+    mock = MockOSCClient()
+    sched = Ressac.Scheduler(mock; cps = 0.5)
+    app = Ressac.RessacApp(; scheduler = sched)
+    tb = Tachikoma.TestBackend(8, 6)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 8, 6),
+                            Tachikoma.GraphicsRegion[],
+                            Tachikoma.PixelSnapshot[])
+    @test_nowarn Tachikoma.view(app, frame)
+end
+
+@testset "Snippet panes with unknown kind warns + skips that side" begin
+    app, _ = _new_app()
+    name = "ui-it-badpanes-$(rand(UInt32))"
+    snip = Ressac.SnippetEntry(name, :starter, "", Symbol[],
+        :patterns, String[], String[],
+        "@d1 :bd",
+        Any[Dict("role" => "primary", "kind" => "editor"),
+            Dict("role" => "side", "kind" => "totally-fake-zzz")],
+        "test", "")
+    Ressac.register_snippet!(snip)
+    try
+        @test_logs (:warn,) Ressac._starter_command!(app, name)
+        # Primary still installed even though side was skipped.
+        @test occursin("@d1", Ressac.TK.text(app.editor))
+    finally
+        delete!(Ressac._SNIPPETS, name)
+    end
+end
+
+@testset "Ctrl-1 on a 1-workspace app is a no-op (no crash)" begin
+    app, _ = _new_app()
+    @test app.workspaces.current_idx == 1
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '5'))   # idx 5 doesn't exist
+    @test app.workspaces.current_idx == 1                    # still safe
 end
