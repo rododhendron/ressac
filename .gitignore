@@ -29,3 +29,4 @@ tachikoma_*.tach
 
 # Superpowers brainstorming companion (HTML mockups + state)
 .superpowers/
+/test/sessions/

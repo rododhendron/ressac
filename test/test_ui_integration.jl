@@ -801,9 +801,8 @@ end
     Ressac.TK.set_text!(app.editor, sentinel)
     name = "ui-it-session-$(rand(UInt32))"
     _exec_ex_command!(app, "save-session $name")
-    # Wherever sessions land, the file must exist.
-    sess_dir = expanduser("~/.config/ressac/sessions")
-    path = joinpath(sess_dir, "$name.toml")
+    # _save_session_app! writes ./sessions/<name>.txt relative to pwd.
+    path = joinpath(pwd(), "sessions", "$name.txt")
     @test isfile(path)
     rm(path; force = true)
 end
