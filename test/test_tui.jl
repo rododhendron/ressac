@@ -153,6 +153,37 @@ end
     @test Ressac._PANE_MODE.sticky == false
 end
 
+@testset "key routing — focused non-patterns pane receives keys" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    # Split into a log pane; focus moves to the new leaf.
+    Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
+    ws = Ressac.current_workspace(app.workspaces)
+    leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+    @test leaf.tabs[1] isa Ressac.LogPane
+    log_pane = leaf.tabs[1]
+    @test log_pane.scroll == 0
+    # 'k' is bound to "scroll log up" inside LogPane.handle_key!.
+    # When the focused pane is the log, _route_key_to_focused_pane!
+    # should return true and the log's scroll should bump.
+    Tachikoma.update!(app, Tachikoma.KeyEvent('k'))
+    @test log_pane.scroll == 1
+end
+
+@testset "key routing — patterns pane stays on legacy m.editor path" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    ws = Ressac.current_workspace(app.workspaces)
+    # Focused pane is the default editor (m.editor).
+    @test ws.focused_pane == ws.tree.id
+    # _route_key_to_focused_pane! returns false → legacy path runs.
+    @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('i')) == false
+end
+
 @testset "_render_workspace_strip! shows pane mode badge when active" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)

@@ -349,6 +349,33 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
 end
 
 """
+    _route_key_to_focused_pane!(m, evt) -> Bool
+
+Forward a KeyEvent to the focused workspace pane's PaneImpl
+`handle_key!` when the focused pane is NOT the legacy patterns
+editor. Returns `true` if the event was consumed by a non-patterns
+pane (the caller must early-return); returns `false` for the
+patterns pane so the legacy update! body keeps handling cursor
+moves, autocomplete, etc.
+"""
+function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return false
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    (leaf === nothing || isempty(leaf.tabs)) && return false
+    1 <= leaf.current_tab <= length(leaf.tabs) || return false
+    pane = leaf.tabs[leaf.current_tab]
+    # Patterns pane uses m.editor — legacy path owns it.
+    if pane isa EditorPane &&
+       1 <= pane.current_tab <= length(pane.tabs) &&
+       pane.tabs[pane.current_tab].code_editor === m.editor
+        return false
+    end
+    handle_key!(pane, evt)
+    return true
+end
+
+"""
     _workspace_mouse_dispatch!(m, evt) -> Bool
 
 Hit-test floats (top z wins) then tile leaves via `_compute_rects`.
@@ -996,6 +1023,17 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             _PANE_MODE.active = true
             return
         end
+    end
+    # ── Sub-project 10: focus-driven key routing ──────────────────────
+    # When the focused workspace pane is NOT the legacy patterns editor
+    # (m.editor), its keystrokes must go to that pane's own TK.CodeEditor
+    # via PaneImpl.handle_key!, not into the global m.editor flow that
+    # follows below. The patterns pane still goes through the legacy
+    # path because m.editor IS that pane's tabs[1].code_editor — letting
+    # the legacy update! body run keeps cursor moves / autocomplete /
+    # eval flash / playhead intact.
+    if _route_key_to_focused_pane!(m, evt)
+        return
     end
     # Piano mode: letter keys → semitones → fire the current synth at
     # that pitch. Octave shift via `[` and `]`. Enter commits the
@@ -3995,6 +4033,15 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
         rect = _nt_to_rect(r_nt)
         if 1 <= node.current_tab <= length(node.tabs)
             pane = node.tabs[node.current_tab]
+            # Sync per-pane editor focus + tick so cursor blink /
+            # mode-aware rendering matches the workspace focus.
+            if pane isa EditorPane
+                for (i, tab) in enumerate(pane.tabs)
+                    tab.code_editor.tick = m.tick
+                    tab.code_editor.focused =
+                        (node.id == focused_id && i == pane.current_tab)
+                end
+            end
             render!(pane, rect, buf)
             # Bridge to legacy overlay paths.
             if pane isa EditorPane &&
