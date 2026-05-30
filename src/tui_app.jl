@@ -3755,6 +3755,30 @@ function _active_slots_summary(m::RessacApp)
 end
 
 """
+    _render_workspace_strip!(m, area, buf)
+
+Render workspace tabs at `area` (typically a single-row band at the
+very top). The current workspace renders with the accent style,
+others with text_dim. Untitled workspaces show as `[N]`.
+
+Used by the workspace dispatcher in Task 5 — not yet called from
+`view()` so this is a pure addition.
+"""
+function _render_workspace_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    x = area.x
+    for (i, ws) in enumerate(m.workspaces.workspaces)
+        is_current = i == m.workspaces.current_idx
+        label = isempty(ws.name) ? "[$i]" : "[$i: $(ws.name)]"
+        style = is_current ?
+            TK.tstyle(:accent, bold = true) :
+            TK.tstyle(:text_dim)
+        x + textwidth(label) > area.x + area.width && break
+        TK.set_string!(buf, x, area.y, label, style)
+        x += textwidth(label) + 1
+    end
+end
+
+"""
     _render_global_log_tail!(m, area, buf)
 
 Render the global log tail (or the completion picker when active)
