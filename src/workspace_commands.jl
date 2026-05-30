@@ -78,3 +78,58 @@ function cmd_workspace_named!(wm::WorkspaceManager, name::AbstractString)
     idx === nothing && return
     wm.current_idx = idx
 end
+
+"""
+    cmd_float!(wm)
+
+Lift the focused pane out of the tile tree into the floats vector.
+The pane's current tab becomes a single-pane FloatingPane with
+default geometry (10, 5, 60×20). Refuses when the focused leaf is
+the only one in the tree (would leave the workspace empty).
+"""
+function cmd_float!(wm::WorkspaceManager)
+    ws = current_workspace(wm)
+    ws === nothing && return
+    # Resolve focused leaf — either the root itself or via parent
+    # lookup.
+    leaf = if ws.tree isa PaneLeaf && ws.tree.id == ws.focused_pane
+        # Single-leaf root — refuse, can't leave the workspace empty.
+        return
+    else
+        hit = _find_leaf_parent(ws.tree, ws.focused_pane)
+        hit === nothing && return
+        parent, idx = hit
+        parent.children[idx]
+    end
+    leaf isa PaneLeaf || return
+    isempty(leaf.tabs) && return
+    pane = leaf.tabs[leaf.current_tab]
+    z = isempty(ws.floats) ? 1 : maximum(f.z_order for f in ws.floats) + 1
+    push!(ws.floats, FloatingPane(pane, 10, 5, 60, 20, z))
+    new_tree = _close_at(ws.tree, leaf.id)
+    new_tree === nothing && return   # safety: shouldn't happen given the guard above
+    ws.tree = new_tree
+    ws.focused_pane = _first_leaf_id(ws.tree)
+    return
+end
+
+"""
+    cmd_tile!(wm)
+
+Move the topmost float (highest z_order) back into the tree as a
+right-split of the currently focused tile pane. Reverse operation
+of `cmd_float!`. No-op when there are no floats.
+"""
+function cmd_tile!(wm::WorkspaceManager)
+    ws = current_workspace(wm)
+    ws === nothing && return
+    isempty(ws.floats) && return
+    idx = argmax([f.z_order for f in ws.floats])
+    top = ws.floats[idx]
+    deleteat!(ws.floats, idx)
+    new_leaf = PaneLeaf(wm.next_pane_id, PaneImpl[top.pane], 1)
+    wm.next_pane_id += 1
+    ws.tree = _split_root(ws.tree, ws.focused_pane, :h, new_leaf)
+    ws.focused_pane = new_leaf.id
+    return
+end

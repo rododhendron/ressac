@@ -163,3 +163,60 @@ end
         @test wm.current_idx == 3
     end
 end
+
+@testset "tile/float toggle" begin
+    @testset "cmd_float! moves focused leaf to floats vector" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        ws = Ressac.current_workspace(wm)
+        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
+        ws.tree.current_tab = 1
+        Ressac.cmd_vsplit!(wm, "log", Dict{String,Any}())
+        # focused is now the new log leaf
+        Ressac.cmd_float!(wm)
+        @test length(ws.floats) == 1
+        @test ws.floats[1].pane isa Ressac.LogPane
+        @test ws.tree isa Ressac.PaneLeaf   # collapsed back to single editor leaf
+    end
+
+    @testset "cmd_tile! moves topmost float back into the tree" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        ws = Ressac.current_workspace(wm)
+        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
+        ws.tree.current_tab = 1
+        Ressac.cmd_vsplit!(wm, "log", Dict{String,Any}())
+        Ressac.cmd_float!(wm)
+        @test length(ws.floats) == 1
+        Ressac.cmd_tile!(wm)
+        @test isempty(ws.floats)
+        @test ws.tree isa Ressac.Container
+    end
+
+    @testset "cmd_float! refuses when only one leaf left" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        ws = Ressac.current_workspace(wm)
+        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
+        ws.tree.current_tab = 1
+        tree_before = ws.tree
+        Ressac.cmd_float!(wm)
+        @test ws.tree === tree_before
+        @test isempty(ws.floats)
+    end
+
+    @testset "z_order increments on each cmd_float!" begin
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        ws = Ressac.current_workspace(wm)
+        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
+        ws.tree.current_tab = 1
+        Ressac.cmd_vsplit!(wm, "log", Dict{String,Any}())
+        Ressac.cmd_float!(wm)
+        # focus is back on editor; vsplit + float again
+        Ressac.cmd_vsplit!(wm, "doc", Dict{String,Any}())
+        Ressac.cmd_float!(wm)
+        @test length(ws.floats) == 2
+        @test ws.floats[2].z_order > ws.floats[1].z_order
+    end
+end
