@@ -368,10 +368,16 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     (leaf === nothing || isempty(leaf.tabs)) && return false
     1 <= leaf.current_tab <= length(leaf.tabs) || return false
     pane = leaf.tabs[leaf.current_tab]
-    # `:` is a global shortcut — always opens command mode on
-    # m.editor regardless of which pane has focus. Without this, the
-    # user couldn't reach ex commands from a focused log / doc /
-    # scope pane.
+    # While m.editor is in ex command mode, ALL keys belong to it —
+    # otherwise typed chars after ':' would land in the focused side
+    # pane instead of the ex command buffer. Same for :search.
+    if m.editor.mode === :command || m.editor.mode === :search
+        return false
+    end
+    # Global shortcuts that always belong to m.editor regardless of
+    # which workspace pane has focus. ':' opens ex command mode;
+    # without this fall-through, ex commands wouldn't be reachable
+    # from a focused log / doc / scope side pane.
     if evt.key === :char && evt.char == ':' &&
        m.editor.mode === :normal
         return false
@@ -1083,6 +1089,15 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if _route_key_to_focused_pane!(m, evt)
         return
     end
+    # Cause A fix: the legacy update! body below calls
+    # `TK.handle_key!(_active_editor(m), evt)`, which short-circuits
+    # when `.focused == false`. _render_tree_inner! clears that flag
+    # whenever ws.focused_pane is on a different leaf (a side log /
+    # doc / scope pane, a synth-role editor, etc.). Without forcing
+    # it back to true here, any global keystroke (':', text, vim
+    # motions on m.editor) routed past the workspace pane gets
+    # silently dropped. Per-frame view() will re-sync from the tree.
+    _active_editor(m).focused = true
     # Piano mode: letter keys → semitones → fire the current synth at
     # that pitch. Octave shift via `[` and `]`. Enter commits the
     # recording (if piano_rec is on), Esc exits.
@@ -2062,14 +2077,17 @@ _register_literal!(m -> cmd_workspace!(m.workspaces, :prev),
 _register_regex!(r"^workspace\s+(\S+)$",
     (m, mt) -> cmd_workspace_named!(m.workspaces, mt.captures[1]))
 
-_register_regex!(r"^vsplit(?:\s+(\S+))?$",
+# Shape `^vsplit\s*(\S*)$` — leading literal + \s matches the third
+# extraction shape so the verb surfaces in Tab completion. Empty
+# capture means "editor" kind.
+_register_regex!(r"^vsplit\s*(\S*)$",
     (m, mt) -> begin
-        kind = mt.captures[1] === nothing ? "editor" : String(mt.captures[1])
+        kind = isempty(mt.captures[1]) ? "editor" : String(mt.captures[1])
         cmd_vsplit!(m.workspaces, kind, Dict{String,Any}())
     end)
-_register_regex!(r"^hsplit(?:\s+(\S+))?$",
+_register_regex!(r"^hsplit\s*(\S*)$",
     (m, mt) -> begin
-        kind = mt.captures[1] === nothing ? "editor" : String(mt.captures[1])
+        kind = isempty(mt.captures[1]) ? "editor" : String(mt.captures[1])
         cmd_hsplit!(m.workspaces, kind, Dict{String,Any}())
     end)
 _register_literal!(m -> cmd_close!(m.workspaces),
