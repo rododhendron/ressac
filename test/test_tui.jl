@@ -93,6 +93,66 @@ end
     @test app.layout_patterns !== nothing
 end
 
+@testset "Ctrl-N jumps workspaces and Ctrl-Shift-F toggles floats" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    Ressac.create_workspace!(app.workspaces, "live")
+    Ressac.create_workspace!(app.workspaces, "synth")
+    Ressac._PANE_MODE.active = false
+    @test app.workspaces.current_idx == 3
+    # Ctrl-1 → workspace 1
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '1'))
+    @test app.workspaces.current_idx == 1
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '3'))
+    @test app.workspaces.current_idx == 3
+    # Ctrl-Shift-F (sent as :ctrl 'F') toggles floats_hidden
+    @test app.floats_hidden == false
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'F'))
+    @test app.floats_hidden == true
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'F'))
+    @test app.floats_hidden == false
+end
+
+@testset "Ctrl-W in editor normal mode enters pane mode; v splits" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    app.editor.mode = :normal
+    Ressac._PANE_MODE.active = false
+    Ressac._PANE_MODE.sticky = false
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    @test Ressac._PANE_MODE.active == true
+    # 'v' in pane mode splits vertically with an editor pane.
+    ws = Ressac.current_workspace(app.workspaces)
+    nleaves_before = length(collect(Ressac._all_leaves(ws.tree)))
+    Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
+    @test length(collect(Ressac._all_leaves(ws.tree))) == nleaves_before + 1
+    # Single-shot: pane mode auto-exits after a consumed key.
+    @test Ressac._PANE_MODE.active == false
+end
+
+@testset "Tab inside pane mode toggles sticky" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    app.editor.mode = :normal
+    Ressac._PANE_MODE.active = false
+    Ressac._PANE_MODE.sticky = false
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:tab))
+    @test Ressac._PANE_MODE.sticky == true
+    # Now sticky: 'v' splits but mode stays active.
+    Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
+    @test Ressac._PANE_MODE.active == true
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test Ressac._PANE_MODE.active == false
+    @test Ressac._PANE_MODE.sticky == false
+end
+
 @testset "_workspace_mouse_dispatch! focuses the clicked leaf" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)

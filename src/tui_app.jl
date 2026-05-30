@@ -960,6 +960,43 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
     end
+    # ── Sub-project 10: workspace globals + pane mode ────────────────
+    # These fire BEFORE any existing dispatch so live-coding shortcuts
+    # don't get swallowed by editor modes.
+    if evt.action === TK.key_press
+        if evt.key === :ctrl && evt.char in '1':'9'
+            cmd_workspace_switch!(m.workspaces, Int(evt.char - '0'))
+            return
+        end
+        if evt.key === :ctrl && evt.char == 'F'
+            m.floats_hidden = !m.floats_hidden
+            return
+        end
+        # Pane mode dispatch — sticky toggleable via Tab.
+        if _PANE_MODE.active
+            if evt.key === :escape
+                _PANE_MODE.active = false
+                _PANE_MODE.sticky = false
+                return
+            elseif evt.key === :tab
+                _PANE_MODE.sticky = !_PANE_MODE.sticky
+                return
+            elseif evt.key === :char
+                # _dispatch_pane_mode_key handles its own sticky-exit
+                # logic. Unknown keys still return so we stay sticky.
+                _dispatch_pane_mode_key(m.workspaces, evt.char)
+                return
+            end
+            return  # eat any key while in pane mode
+        end
+        # Pane mode entry — only from editor normal mode so insert-mode
+        # word-delete (Ctrl-W) keeps working.
+        if m.editor.mode === :normal &&
+           evt.key === :ctrl && evt.char == 'w'
+            _PANE_MODE.active = true
+            return
+        end
+    end
     # Piano mode: letter keys → semitones → fire the current synth at
     # that pitch. Octave shift via `[` and `]`. Enter commits the
     # recording (if piano_rec is on), Esc exits.
