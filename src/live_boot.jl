@@ -68,8 +68,18 @@ function live(; host::AbstractString = "127.0.0.1",
         Core.eval(Main, :(using Ressac.SynthDSL))
     catch
     end
+    app = RessacApp(; scheduler=sched)
+    # Sub-project 10: restore the last persisted workspace layout if
+    # any. Wrapped so a corrupted file doesn't block boot — the
+    # default workspace fallback handles the empty/error case.
     try
-        Tachikoma.app(RessacApp(; scheduler=sched); fps=cfg.fps)
+        load_layout!(app.workspaces, _default_layout_path())
+    catch err
+        @warn "Failed to load layout" exception=err
+    end
+    _ensure_default_workspace!(app)
+    try
+        Tachikoma.app(app; fps=cfg.fps)
     finally
         # Always free SC voices on exit — drones with auto_env=false
         # would otherwise keep playing after Ressac closes. Cheap nuke

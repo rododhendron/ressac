@@ -1919,7 +1919,19 @@ _all_ex_verbs() = sort!(collect(union(keys(_LITERAL_DISPATCH),
 # Bodies wrapped in `m -> fn(m)` instead of bare `fn` so the function
 # names resolve at CALL time, not at registration time — most helpers
 # are defined later in the same file.
-_register_literal!(m -> (m.quit = true),         "q", "quit", "q!", "qa", "qa!")
+_register_literal!(m -> _quit!(m),               "q", "quit", "q!", "qa", "qa!")
+
+# Sub-project 10: save the workspace layout before exit so the next
+# session restores it. Errors are logged and swallowed — refusing
+# to quit because of a serializer bug would be hostile.
+function _quit!(m::RessacApp)
+    try
+        save_layout(m.workspaces, _default_layout_path())
+    catch err
+        _push_app_log!(m, "[WARN] save layout failed: $(sprint(showerror, err))")
+    end
+    m.quit = true
+end
 _register_literal!(m -> _panic!(m),              "panic")
 _register_literal!(m -> _hush!(m),               "hush", "stop", "silence")
 
