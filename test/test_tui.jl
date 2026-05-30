@@ -115,42 +115,43 @@ end
     @test app.floats_hidden == false
 end
 
-@testset "Ctrl-W in editor normal mode enters pane mode; v splits" begin
+@testset "Ctrl-W enters pane mode; persistent across splits; Esc exits" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
     app.editor.mode = :normal
     Ressac._PANE_MODE.active = false
-    Ressac._PANE_MODE.sticky = false
+    # Enter pane mode
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     @test Ressac._PANE_MODE.active == true
-    # 'v' in pane mode splits vertically with an editor pane.
+    # Two splits in a row — mode stays active.
     ws = Ressac.current_workspace(app.workspaces)
-    nleaves_before = length(collect(Ressac._all_leaves(ws.tree)))
+    n0 = length(collect(Ressac._all_leaves(ws.tree)))
     Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
-    @test length(collect(Ressac._all_leaves(ws.tree))) == nleaves_before + 1
-    # Single-shot: pane mode auto-exits after a consumed key.
+    @test Ressac._PANE_MODE.active == true
+    Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
+    @test Ressac._PANE_MODE.active == true
+    @test length(collect(Ressac._all_leaves(ws.tree))) == n0 + 2
+    # Esc exits
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
     @test Ressac._PANE_MODE.active == false
 end
 
-@testset "Tab inside pane mode toggles sticky" begin
+@testset "Enter and Ctrl-W also exit pane mode" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
     app.editor.mode = :normal
-    Ressac._PANE_MODE.active = false
-    Ressac._PANE_MODE.sticky = false
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:tab))
-    @test Ressac._PANE_MODE.sticky == true
-    # Now sticky: 'v' splits but mode stays active.
-    Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
-    @test Ressac._PANE_MODE.active == true
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+
+    Ressac._PANE_MODE.active = true
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
     @test Ressac._PANE_MODE.active == false
-    @test Ressac._PANE_MODE.sticky == false
+
+    Ressac._PANE_MODE.active = true
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    @test Ressac._PANE_MODE.active == false
 end
 
 @testset "key routing — focused non-patterns pane receives keys" begin
@@ -184,30 +185,60 @@ end
     @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('i')) == false
 end
 
-@testset "_render_workspace_strip! shows pane mode badge when active" begin
+@testset "_render_workspace_strip! shows pane mode cheat sheet when active" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac.create_workspace!(app.workspaces, "live")
     Ressac._PANE_MODE.active = false
-    Ressac._PANE_MODE.sticky = false
     tb = Tachikoma.TestBackend(80, 5)
     Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb.buf)
-    @test !occursin("PANE", _row_to_string(tb.buf, 1))
+    @test !occursin("split", _row_to_string(tb.buf, 1))
 
     Ressac._PANE_MODE.active = true
     tb2 = Tachikoma.TestBackend(80, 5)
     Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb2.buf)
-    @test occursin("PANE", _row_to_string(tb2.buf, 1))
-    @test occursin("single-shot", _row_to_string(tb2.buf, 1))
-
-    Ressac._PANE_MODE.sticky = true
-    tb3 = Tachikoma.TestBackend(80, 5)
-    Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb3.buf)
-    @test occursin("STICKY", _row_to_string(tb3.buf, 1))
-
+    row = _row_to_string(tb2.buf, 1)
+    @test occursin("split", row)
+    @test occursin("focus", row)
+    @test occursin("exit",  row)
     Ressac._PANE_MODE.active = false
-    Ressac._PANE_MODE.sticky = false
+end
+
+@testset "status bar shows PANE badge when pane mode active" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    app.editor.mode = :normal
+    Ressac._PANE_MODE.active = false
+    tb = Tachikoma.TestBackend(120, 5)
+    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
+    @test occursin("NORMAL", _row_to_string(tb.buf, 1))
+    Ressac._PANE_MODE.active = true
+    tb2 = Tachikoma.TestBackend(120, 5)
+    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb2.buf)
+    @test occursin("PANE", _row_to_string(tb2.buf, 1))
+    Ressac._PANE_MODE.active = false
+end
+
+# UI-level integration test: simulate the keystrokes ":q" against a
+# live RessacApp and assert m.quit flips. Catches regressions like
+# "pane mode swallows ':' so the user can never quit".
+@testset "UI integration — :q flips m.quit, even after exiting pane mode" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    app.editor.mode = :normal
+    Ressac._PANE_MODE.active = false
+    # Enter and exit pane mode to make sure no residual state lingers.
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test Ressac._PANE_MODE.active == false
+    # Now :q — Tachikoma sends ':' to enter command mode, 'q', then enter.
+    Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent('q'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
+    @test app.quit == true
 end
 
 @testset ":layout save / :layout load round-trip" begin

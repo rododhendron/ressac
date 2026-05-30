@@ -1,17 +1,13 @@
 # src/workspace_keymap.jl
-# C-w pane mode + resize mode state machine. Single-shot by default;
-# Tab toggles sticky.
-#
-# This file ships the pure state machine + dispatch table. The
-# integration into update! lives in tui_app.jl and is wired in
-# Task 15 (alongside the view() swap) — having the keymap intercept
-# C-w without visible feedback would just confuse users.
+# C-w pane mode state machine. Pane mode is persistent: it stays
+# active until the user explicitly exits with Esc / Enter / Ctrl-W.
+# Splits, navigation, close all preserve the mode so a quick run of
+# ops doesn't need a Ctrl-W between each.
 
 mutable struct PaneModeState
     active::Bool
-    sticky::Bool
 end
-PaneModeState() = PaneModeState(false, false)
+PaneModeState() = PaneModeState(false)
 
 const _PANE_MODE = PaneModeState()
 
@@ -26,11 +22,10 @@ was a recognized op (consumed), `false` if not. Recognized keys:
   h/j/k/l — navigate left/down/up/right
   c — close focused pane
 
-Single-shot mode auto-exits after a consumed key. Sticky mode
-(toggled by Tab in the caller) stays active.
+The caller is responsible for exit handling (Esc / Enter / Ctrl-W
+turn pane mode off). Recognized ops do NOT auto-exit.
 """
 function _dispatch_pane_mode_key(wm::WorkspaceManager, char::Char)
-    handled = true
     if char == 's'
         cmd_hsplit!(wm, "editor", Dict{String,Any}())
     elseif char == 'v'
@@ -46,10 +41,7 @@ function _dispatch_pane_mode_key(wm::WorkspaceManager, char::Char)
     elseif char == 'c'
         cmd_close!(wm)
     else
-        handled = false
+        return false
     end
-    if handled && !_PANE_MODE.sticky
-        _PANE_MODE.active = false
-    end
-    return handled
+    return true
 end

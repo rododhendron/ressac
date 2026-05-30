@@ -999,22 +999,19 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             m.floats_hidden = !m.floats_hidden
             return
         end
-        # Pane mode dispatch — sticky toggleable via Tab.
+        # Pane mode dispatch — persistent. Exits: Esc, Enter, Ctrl-W.
+        # Recognized ops (s/v/h/j/k/l/c) keep pane mode active so a
+        # quick sequence doesn't need a Ctrl-W between each command.
         if _PANE_MODE.active
-            if evt.key === :escape
+            if evt.key === :escape || evt.key === :enter ||
+               (evt.key === :ctrl && evt.char == 'w')
                 _PANE_MODE.active = false
-                _PANE_MODE.sticky = false
-                return
-            elseif evt.key === :tab
-                _PANE_MODE.sticky = !_PANE_MODE.sticky
                 return
             elseif evt.key === :char
-                # _dispatch_pane_mode_key handles its own sticky-exit
-                # logic. Unknown keys still return so we stay sticky.
                 _dispatch_pane_mode_key(m.workspaces, evt.char)
                 return
             end
-            return  # eat any key while in pane mode
+            return  # eat any other key while in pane mode
         end
         # Pane mode entry — only from editor normal mode so insert-mode
         # word-delete (Ctrl-W) keeps working.
@@ -3957,13 +3954,13 @@ function _render_workspace_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         TK.set_string!(buf, x, area.y, label, style)
         x += textwidth(label) + 1
     end
-    # Pane mode badge — visible only while in pane mode so the user
-    # knows their next keystroke is a workspace op, not editor text.
+    # Pane mode hint — visible only while in pane mode. Spells out the
+    # exit keys + the recognized ops so the user has a cheat sheet on
+    # the strip itself.
     if _PANE_MODE.active
-        badge = _PANE_MODE.sticky ? " [PANE STICKY · Esc to exit]" :
-                                    " [PANE · single-shot]"
-        if x + textwidth(badge) <= area.x + area.width
-            TK.set_string!(buf, x, area.y, badge,
+        hint = " · s/v split · h/j/k/l focus · c close · Esc/Enter/C-w exit"
+        if x + textwidth(hint) <= area.x + area.width
+            TK.set_string!(buf, x, area.y, hint,
                            TK.tstyle(:warning, bold = true))
         end
     end
@@ -4428,7 +4425,9 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     cycle_bar = "█" ^ full * partial * "░" ^ max(0, rest)
 
     ed = _active_editor(m)
-    badge = "⟪ $(uppercase(String(ed.mode))) @ $(m.focus) ⟫"
+    badge = _PANE_MODE.active ?
+        "⟪ PANE ⟫" :
+        "⟪ $(uppercase(String(ed.mode))) @ $(m.focus) ⟫"
 
     # Sections — each is a tuple of (text, style). They get joined with
     # ` │ ` separators rendered in :text_dim so the eye groups them.

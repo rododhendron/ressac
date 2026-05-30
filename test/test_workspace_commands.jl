@@ -72,13 +72,13 @@ end
         ws.tree.current_tab = 1
 
         Ressac._PANE_MODE.active = true
-        Ressac._PANE_MODE.sticky = false
         @test Ressac._dispatch_pane_mode_key(wm, 'v') == true
-        @test Ressac._PANE_MODE.active == false   # auto-exit
+        @test Ressac._PANE_MODE.active == true     # persistent — no auto-exit
         @test ws.tree isa Ressac.Container         # vsplit took effect
+        Ressac._PANE_MODE.active = false
     end
 
-    @testset "pane mode sticky stays active after ops" begin
+    @testset "pane mode is persistent across multiple ops" begin
         wm = Ressac.WorkspaceManager()
         Ressac.create_workspace!(wm, "")
         ws = Ressac.current_workspace(wm)
@@ -86,15 +86,12 @@ end
         ws.tree.current_tab = 1
 
         Ressac._PANE_MODE.active = true
-        Ressac._PANE_MODE.sticky = true
         Ressac._dispatch_pane_mode_key(wm, 'v')
         @test Ressac._PANE_MODE.active == true
         Ressac._dispatch_pane_mode_key(wm, 'h')
         @test Ressac._PANE_MODE.active == true
 
-        # Reset for downstream tests.
         Ressac._PANE_MODE.active = false
-        Ressac._PANE_MODE.sticky = false
     end
 
     @testset "unknown char returns false, doesn't exit mode" begin
@@ -103,7 +100,6 @@ end
         push!(Ressac.current_workspace(wm).tree.tabs,
               Ressac._pane_new(:editor, Dict{String,Any}()))
         Ressac._PANE_MODE.active = true
-        Ressac._PANE_MODE.sticky = false
         @test Ressac._dispatch_pane_mode_key(wm, 'z') == false
         @test Ressac._PANE_MODE.active == true     # not auto-exited
         Ressac._PANE_MODE.active = false
