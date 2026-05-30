@@ -111,6 +111,18 @@ end
         @test occursin("SYNTH", Tachikoma.row_text(tb, 1))
         @test occursin("wob1", Tachikoma.row_text(tb, 1))
     end
+
+    @testset "render! shows tab strip with ≥ 2 tabs" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}(
+            "buffer_role" => "patterns", "name" => "main"))
+        push!(ep.tabs, Ressac.EditorBuffer(role = :synth, name = "wob1"))
+        tb = Tachikoma.TestBackend(40, 10)
+        Ressac.render!(ep, Tachikoma.Rect(1, 1, 40, 10), tb.buf)
+        # Inner first row = y=2 (just below the top border)
+        tab_row = Tachikoma.row_text(tb, 2)
+        @test occursin("main", tab_row)
+        @test occursin("wob1", tab_row)
+    end
 end
 
 @testset "pane_log — :log kind" begin

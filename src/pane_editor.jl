@@ -57,8 +57,29 @@ function render!(p::EditorPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
     _render_pane_block_simple!(rect, title_str, buf)
     inner = _inner_rect_simple(rect)
-    TK.render(tab.code_editor, inner, buf)
+    if length(p.tabs) > 1 && inner.height >= 2
+        tab_row = TK.Rect(inner.x, inner.y, inner.width, 1)
+        body    = TK.Rect(inner.x, inner.y + 1, inner.width, inner.height - 1)
+        _render_editor_tab_strip!(p, tab_row, buf)
+        TK.render(tab.code_editor, body, buf)
+    else
+        TK.render(tab.code_editor, inner, buf)
+    end
     return nothing
+end
+
+function _render_editor_tab_strip!(p::EditorPane, area::TK.Rect, buf::TK.Buffer)
+    x = area.x
+    for (i, t) in enumerate(p.tabs)
+        is_current = i == p.current_tab
+        label = " $(t.name) "
+        style = is_current ?
+            TK.tstyle(:accent, bold = true) :
+            TK.tstyle(:text_dim)
+        x + textwidth(label) > area.x + area.width && break
+        TK.set_string!(buf, x, area.y, label, style)
+        x += textwidth(label)
+    end
 end
 
 handle_key!(::EditorPane, evt) = false           # filled in Task 3c
