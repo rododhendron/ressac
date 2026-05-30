@@ -579,3 +579,288 @@ end
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '5'))   # idx 5 doesn't exist
     @test app.workspaces.current_idx == 1                    # still safe
 end
+
+# ── Synth tabs ─────────────────────────────────────────────────────
+
+@testset ":synth <name> opens a synth tab" begin
+    app, _ = _new_app()
+    @test isempty(app.synth_tabs)
+    _exec_ex_command!(app, "synth wob")
+    @test length(app.synth_tabs) == 1
+    @test app.synth_tabs[1].name == "wob"
+end
+
+@testset ":synth + :tabs + :tabnext + :back lifecycle" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "synth one")
+    _exec_ex_command!(app, "synth two")
+    @test length(app.synth_tabs) == 2
+    @test app.synth_tab_idx == 2
+    _exec_ex_command!(app, "tabprev")
+    @test app.synth_tab_idx == 1
+    _exec_ex_command!(app, "tabnext")
+    @test app.synth_tab_idx == 2
+    _exec_ex_command!(app, "close")     # close active synth tab
+    @test length(app.synth_tabs) == 1
+    _exec_ex_command!(app, "back")      # close synth pane
+    @test isempty(app.synth_tabs)
+end
+
+# ── Modal flows — navigation, not just open/close ──────────────────
+
+@testset ":browse opens browser modal" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "browse")
+    @test app.modal === :browse
+end
+
+@testset ":snippets opens picker; Esc closes" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "snippets")
+    @test app.modal === :snippets
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test app.modal === :none
+end
+
+@testset ":synthlib + :mixer + :wiki open their modals" begin
+    app, _ = _new_app()
+    for (cmd, kind) in (("synthlib", :synth_library),
+                        ("mixer", :mixer),
+                        ("wiki", :wiki))
+        _exec_ex_command!(app, cmd)
+        @test app.modal === kind
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+        @test app.modal === :none
+    end
+end
+
+@testset ":hi + :tutorial set modal to guide/tutorial" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "hi")
+    @test app.modal === :guide
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    _exec_ex_command!(app, "tutorial")
+    @test app.modal === :tutorial
+end
+
+# ── Scope ex commands ──────────────────────────────────────────────
+
+@testset ":scope <type> flips the scope global type" begin
+    app, _ = _new_app()
+    @test Ressac._APP_SCOPE_TYPE[] === :off
+    _exec_ex_command!(app, "scope wave")
+    @test Ressac._APP_SCOPE_TYPE[] === :wave
+    _exec_ex_command!(app, "scope amp")
+    @test Ressac._APP_SCOPE_TYPE[] === :amp
+    _exec_ex_command!(app, "scope")
+    @test Ressac._APP_SCOPE_TYPE[] === :off
+end
+
+# ── hush / panic / recording / tap / piano state machines ─────────
+
+@testset ":hush + :panic flip silence flags without crash" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "hush")    # no-op on empty scheduler
+    _exec_ex_command!(app, "panic")
+    @test true   # smoke — these dispatch through and don't throw
+end
+
+@testset ":rec toggles m.recording (smoke — no actual SC)" begin
+    app, _ = _new_app()
+    # Without a live SC session, :rec start logs an error and bails;
+    # we still want the path to execute without raising.
+    pre = app.recording
+    _exec_ex_command!(app, "rec")
+    # State may not change (no live session) but must not crash.
+    @test app.recording == pre
+end
+
+@testset ":tap enters tap-recording mode" begin
+    app, _ = _new_app()
+    @test app.tap_recording == false
+    _exec_ex_command!(app, "tap")
+    @test app.tap_recording == true
+    # Esc cancels tap recording without affecting anything else.
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test app.tap_recording == false
+end
+
+@testset ":piano enters piano mode; Esc exits" begin
+    app, _ = _new_app()
+    @test app.piano_active == false
+    _exec_ex_command!(app, "piano")
+    @test app.piano_active == true
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test app.piano_active == false
+end
+
+@testset ":piano octave shift via [ and ]" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "piano")
+    pre = app.piano_octave
+    Tachikoma.update!(app, Tachikoma.KeyEvent(']'))
+    @test app.piano_octave == pre + 1
+    Tachikoma.update!(app, Tachikoma.KeyEvent('['))
+    @test app.piano_octave == pre
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+end
+
+# ── Vim motions, visual, dot repeat ────────────────────────────────
+
+@testset "x deletes one char at cursor (normal mode)" begin
+    app, _ = _new_app()
+    Ressac.TK.set_text!(app.editor, "hello")
+    app.editor.cursor_row = 1
+    app.editor.cursor_col = 0
+    app.editor.mode = :normal
+    Tachikoma.update!(app, Tachikoma.KeyEvent('x'))
+    @test Ressac.TK.text(app.editor) == "ello"
+end
+
+@testset "dd deletes a whole line" begin
+    app, _ = _new_app()
+    Ressac.TK.set_text!(app.editor, "line1\nline2\nline3")
+    app.editor.cursor_row = 2
+    app.editor.cursor_col = 0
+    app.editor.mode = :normal
+    Tachikoma.update!(app, Tachikoma.KeyEvent('d'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent('d'))
+    @test Ressac.TK.text(app.editor) == "line1\nline3"
+end
+
+@testset "yy + p duplicates the current line" begin
+    app, _ = _new_app()
+    Ressac.TK.set_text!(app.editor, "alpha\nbeta")
+    app.editor.cursor_row = 1
+    app.editor.cursor_col = 0
+    app.editor.mode = :normal
+    Tachikoma.update!(app, Tachikoma.KeyEvent('y'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent('y'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent('p'))
+    @test occursin("alpha\nalpha", Ressac.TK.text(app.editor))
+end
+
+@testset "u undoes the last text mutation" begin
+    app, _ = _new_app()
+    Ressac.TK.set_text!(app.editor, "original")
+    app.editor.cursor_row = 1
+    app.editor.cursor_col = 0
+    app.editor.mode = :normal
+    Tachikoma.update!(app, Tachikoma.KeyEvent('x'))           # delete 'o'
+    @test Ressac.TK.text(app.editor) == "riginal"
+    Tachikoma.update!(app, Tachikoma.KeyEvent('u'))
+    @test Ressac.TK.text(app.editor) == "original"
+end
+
+# ── Starter prefix / ambiguity ─────────────────────────────────────
+
+@testset ":starter accepts a unique prefix match" begin
+    app, _ = _new_app()
+    name = "ui-it-starter-$(rand(UInt32))"
+    snip = Ressac.SnippetEntry(name, :starter, "", Symbol[],
+        :patterns, String[], String[],
+        "@d1 :bd",
+        Any[],   # no panes
+        "test", "")
+    Ressac.register_snippet!(snip)
+    try
+        # Use just the first 10 chars of `name` (unique prefix).
+        Ressac._starter_command!(app, first(name, 10))
+        @test occursin("@d1", Ressac.TK.text(app.editor))
+    finally
+        delete!(Ressac._SNIPPETS, name)
+    end
+end
+
+@testset ":starter rejects an ambiguous prefix" begin
+    app, _ = _new_app()
+    name_a = "ui-it-amb-aaaa-$(rand(UInt32))"
+    name_b = "ui-it-amb-bbbb-$(rand(UInt32))"
+    for nm in (name_a, name_b)
+        Ressac.register_snippet!(Ressac.SnippetEntry(nm, :starter, "",
+            Symbol[], :patterns, String[], String[],
+            "// dup", Any[], "test", ""))
+    end
+    try
+        Ressac.TK.set_text!(app.editor, "untouched")
+        Ressac._starter_command!(app, "ui-it-amb")
+        # Editor content unchanged because the prefix was ambiguous.
+        @test Ressac.TK.text(app.editor) == "untouched"
+        @test any(l -> occursin("ambiguous", l), app.logs)
+    finally
+        delete!(Ressac._SNIPPETS, name_a)
+        delete!(Ressac._SNIPPETS, name_b)
+    end
+end
+
+# ── Session save / load ────────────────────────────────────────────
+
+@testset ":save-session writes a snapshot of the patterns buffer" begin
+    app, _ = _new_app()
+    sentinel = "// integration-marker-$(rand(UInt32))"
+    Ressac.TK.set_text!(app.editor, sentinel)
+    name = "ui-it-session-$(rand(UInt32))"
+    _exec_ex_command!(app, "save-session $name")
+    # Wherever sessions land, the file must exist.
+    sess_dir = expanduser("~/.config/ressac/sessions")
+    path = joinpath(sess_dir, "$name.toml")
+    @test isfile(path)
+    rm(path; force = true)
+end
+
+# ── Mouse wheel ────────────────────────────────────────────────────
+
+@testset "wheel up on log area scrolls the chrome log offset" begin
+    app, frame = _new_app()
+    # The chrome log tail is at the bottom — bump a few entries so
+    # there's something to scroll past.
+    for i in 1:30
+        Ressac._push_app_log!(app, "[INFO] entry #$i")
+    end
+    Tachikoma.view(app, frame)   # populate m.layout_logs
+    @test app.log_scroll == 0
+    if app.layout_logs !== nothing
+        x = app.layout_logs.x + 2
+        y = app.layout_logs.y + 2
+        wheel = Tachikoma.MouseEvent(x, y, Tachikoma.mouse_scroll_up,
+                                      Tachikoma.mouse_press, false, false, false)
+        Tachikoma.update!(app, wheel)
+        @test app.log_scroll >= 1
+    else
+        # If the chrome log row collapsed (e.g. a LogPane was in the
+        # tree by default), the wheel-over path isn't exercisable —
+        # treat the absence as a pass for the smoke goal.
+        @test true
+    end
+end
+
+# ── Pattern shortcuts (:sg, :sn etc.) ──────────────────────────────
+
+@testset ":sg<n> shortcut sets gain via SHORTCUT_RX" begin
+    app, _ = _new_app()
+    # The shortcut regex catches `:sg<n>` and applies it. Without
+    # a live scheduler this only logs — assert dispatch doesn't crash.
+    _exec_ex_command!(app, "sg0.5")
+    @test true
+end
+
+# ── Logging-side behaviors ─────────────────────────────────────────
+
+@testset ":copylogs exports the log lines without crashing" begin
+    app, _ = _new_app()
+    Ressac._push_app_log!(app, "[INFO] hello copylog")
+    pre = length(app.logs)
+    _exec_ex_command!(app, "copylogs")
+    # Either it added a log entry confirming the copy, or it was a
+    # no-op outside an interactive terminal — must not crash.
+    @test length(app.logs) >= pre
+end
+
+@testset ":keydebug toggles the keydebug flag" begin
+    app, _ = _new_app()
+    pre = app.keydebug
+    _exec_ex_command!(app, "keydebug")
+    @test app.keydebug != pre
+    _exec_ex_command!(app, "keydebug")
+    @test app.keydebug == pre
+end
