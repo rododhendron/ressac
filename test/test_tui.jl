@@ -69,3 +69,37 @@ end
     @test occursin("[1: live]", row)
     @test occursin("[2: synth]", row)
 end
+
+@testset "TK.view dispatches through WorkspaceManager (smoke)" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    tb = Tachikoma.TestBackend(80, 30)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 80, 30),
+                            Tachikoma.GraphicsRegion[],
+                            Tachikoma.PixelSnapshot[])
+    # First view triggers _ensure_default_workspace! and binds the
+    # workspace's default EditorPane to m.editor.
+    Tachikoma.view(app, frame)
+    ws = Ressac.current_workspace(app.workspaces)
+    @test ws !== nothing
+    leaf = ws.tree
+    @test leaf isa Ressac.PaneLeaf
+    @test length(leaf.tabs) == 1
+    @test leaf.tabs[1] isa Ressac.EditorPane
+    @test leaf.tabs[1].tabs[1].code_editor === app.editor
+    # After the first frame, m.layout_patterns is populated from the
+    # leaf rect so legacy overlay paths still work.
+    @test app.layout_patterns !== nothing
+end
+
+@testset "_global_log_tail_height collapses when a :log pane exists" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    @test Ressac._global_log_tail_height(app) == 10
+    ws = Ressac.current_workspace(app.workspaces)
+    push!(ws.tree.tabs, Ressac._pane_new(:log, Dict{String,Any}()))
+    @test Ressac._global_log_tail_height(app) == 0
+end

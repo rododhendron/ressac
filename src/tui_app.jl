@@ -227,6 +227,9 @@ non-empty), and the focus toggle for keystroke routing.
     # kept temporarily — Task 15 (cleanup) swaps view() to dispatch
     # through workspaces and removes them.
     workspaces::WorkspaceManager            = WorkspaceManager()
+    # Sub-project 10: Ctrl-Shift-F toggles every floating pane's
+    # visibility globally (Zellij-style "hide UI" affordance).
+    floats_hidden::Bool                     = false
     # Per-modal row → entry-index mapping built during render so the
     # mouse handler can resolve "click row N" → "select entry K".
     modal_rows::Vector{Tuple{Int,Int}}   = Tuple{Int,Int}[]  # (screen_y, entry_idx)
@@ -3807,6 +3810,75 @@ function _render_global_log_tail!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     end
 end
 
+"""
+    _nt_to_rect(nt) -> TK.Rect
+
+Convert a workspace-manager NamedTuple `(x, y, w, h)` rect to a
+`TK.Rect`. `_compute_rects` returns NamedTuples (no Tachikoma dep
+in workspace_manager.jl); pane render! consumes Rect via `.width` /
+`.height` accessors.
+"""
+_nt_to_rect(nt::NamedTuple) = TK.Rect(nt.x, nt.y, nt.w, nt.h)
+_rect_to_nt(r::TK.Rect)     = (x = r.x, y = r.y, w = r.width, h = r.height)
+
+"""
+    _render_tree!(node, rects, buf, m)
+
+Walk the workspace tree and call each leaf's render! against its
+computed rect. Containers recurse. As a side effect, populates
+`m.layout_patterns` from the leaf currently holding `m.editor`
+(via its EditorPane wrapper) so legacy overlay paths (eval flash,
+playhead, ghost) and the mouse handler keep working until Task 6
+rewires them through `_compute_rects` directly.
+"""
+function _render_tree!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
+                       m::RessacApp)
+    if node isa PaneLeaf
+        r_nt = get(rects, node.id, nothing)
+        r_nt === nothing && return
+        rect = _nt_to_rect(r_nt)
+        if 1 <= node.current_tab <= length(node.tabs)
+            pane = node.tabs[node.current_tab]
+            render!(pane, rect, buf)
+            # Bridge to legacy overlay paths.
+            if pane isa EditorPane &&
+               1 <= pane.current_tab <= length(pane.tabs) &&
+               pane.tabs[pane.current_tab].code_editor === m.editor
+                m.layout_patterns = _inner_rect_simple(rect)
+            end
+        end
+        return
+    end
+    for child in node.children
+        _render_tree!(child, rects, buf, m)
+    end
+end
+
+function _render_floats!(floats::Vector{FloatingPane}, buf::TK.Buffer,
+                         m::RessacApp)
+    for f in sort(floats; by = x -> x.z_order)
+        render!(f.pane, TK.Rect(f.x, f.y, f.w, f.h), buf)
+    end
+end
+
+"""
+    _global_log_tail_height(m) -> Int
+
+Number of rows reserved for the global log tail chrome at the
+bottom of the screen. Collapses to 0 when any workspace tree leaf
+holds a LogPane (avoid duplicate rendering).
+"""
+function _global_log_tail_height(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return 10
+    for leaf in _all_leaves(ws.tree)
+        for t in leaf.tabs
+            t isa LogPane && return 0
+        end
+    end
+    return 10
+end
+
 function TK.view(m::RessacApp, f::TK.Frame)
     # Paused: skip the whole draw so the terminal's last frame stays put
     # and the user can shift-drag-select + copy without our next render
@@ -3819,168 +3891,82 @@ function TK.view(m::RessacApp, f::TK.Frame)
     for tab in m.synth_tabs
         tab.editor.tick = m.tick
     end
+    _ensure_default_workspace!(m)
     buf = f.buffer
 
-    scope_active = _APP_SCOPE_TYPE[] !== :off
-    scope_height = scope_active ? 14 : 0
-    # Layout rows: status / editor (fill) / [scope] / livedoc / footer / logs.
-    # Each major pane (patterns, synth, scope, logs) gets wrapped in a
-    # TK.Block which consumes 2 rows / 2 cols of border, so the visible
-    # body is `inner_area(block, outer)`. Heights stay the same — borders
-    # eat into the fill, not into adjacent rows.
-    constraints = scope_active ?
-        [TK.Fixed(1), TK.Fill(), TK.Fixed(scope_height), TK.Fixed(1), TK.Fixed(1), TK.Fixed(10)] :
-        [TK.Fixed(1), TK.Fill(), TK.Fixed(1), TK.Fixed(1), TK.Fixed(10)]
-    rows = TK.split_layout(TK.Layout(TK.Vertical, constraints), f.area)
-    length(rows) < 5 && return
-    if scope_active
-        status_area, body_area, scope_area, livedoc_area, footer_area, logs_area =
-            rows[1], rows[2], rows[3], rows[4], rows[5], rows[6]
-    else
-        status_area, body_area, livedoc_area, footer_area, logs_area =
-            rows[1], rows[2], rows[3], rows[4], rows[5]
-        scope_area = nothing
-    end
-
-    # Status bar — left: app badge + tempo + cycle progress + counters,
-    # right: mode + focus. Icons stay ASCII-safe (no emoji) so any
-    # monospace font renders them aligned.
-    _render_status_bar(m, status_area, buf)
-
-    # Editor body — split horizontally when at least one synth tab open.
-    # Record each pane's INNER rect (post-border) so the mouse handler
-    # routes clicks / hovers to the editor area, not the border chars.
-    m.layout_synth = nothing
+    # Reset layout_* — _render_tree! refills patterns when it finds
+    # m.editor's leaf. synth/scope follow in Task 6 polish.
+    m.layout_patterns   = nothing
+    m.layout_synth      = nothing
     m.layout_synth_tabs = nothing
-    pat_focused = (m.focus === :patterns)
-    n_playing = length(pattern_keys(m.scheduler))
-    pat_right = n_playing == 0 ? "" :
-                "● $(n_playing) playing  $(_active_slots_summary(m))"
-    if !_synth_pane_open(m)
-        _render_pane_block!(m, body_area, buf;
-            title = "PATTERNS",
-            title_right = pat_right,
-            focused = pat_focused,
-            title_right_accent = n_playing > 0)
-        inner = _inner_rect(body_area)
-        m.layout_patterns = inner
-        _sync_cursor_style!(m.editor)
-        TK.render(m.editor, inner, buf)
-    else
-        cols = TK.split_layout(TK.Layout(TK.Horizontal, [TK.Fill(), TK.Fill()]), body_area)
-        if length(cols) >= 2
-            _render_pane_block!(m, cols[1], buf;
-                title = "PATTERNS",
-                title_right = pat_right,
-                focused = pat_focused,
-                title_right_accent = n_playing > 0)
-            pat_inner = _inner_rect(cols[1])
-            m.layout_patterns = pat_inner
-            _sync_cursor_style!(m.editor)
-        TK.render(m.editor, pat_inner, buf)
+    m.layout_scope      = nothing
 
-            synth_focused = (m.focus === :synth)
-            tab = _current_synth_tab(m)
-            ext = tab.mode === :dsl ? ".jl" : ".scd"
-            synth_title = "SYNTH · $(tab.name)$ext [$(tab.mode)]"
-            synth_right = length(m.synth_tabs) > 1 ?
-                "$(m.synth_tab_idx)/$(length(m.synth_tabs))" : ""
-            _render_pane_block!(m, cols[2], buf;
-                title = synth_title,
-                title_right = synth_right,
-                focused = synth_focused)
-            synth_inner = _inner_rect(cols[2])
-            if length(m.synth_tabs) > 1
-                synth_rows = TK.split_layout(
-                    TK.Layout(TK.Vertical, [TK.Fixed(1), TK.Fill()]), synth_inner)
-                if length(synth_rows) >= 2
-                    bar = TK.TabBar([tab.name for tab in m.synth_tabs];
-                                    active  = m.synth_tab_idx,
-                                    focused = synth_focused)
-                    TK.render(bar, synth_rows[1], buf)
-                    _sync_cursor_style!(_current_synth_tab(m).editor)
-                    TK.render(_current_synth_tab(m).editor, synth_rows[2], buf)
-                    m.layout_synth_tabs = synth_rows[1]
-                    m.layout_synth = synth_rows[2]
-                end
-            else
-                m.layout_synth = synth_inner
-                _sync_cursor_style!(_current_synth_tab(m).editor)
-                TK.render(_current_synth_tab(m).editor, synth_inner, buf)
-            end
+    area = f.area
+    log_h     = _global_log_tail_height(m)
+    footer_h  = 1
+    livedoc_h = 1
+    ws_top_h  = 2  # workspace strip + status bar
+    ws_top    = area.y
+    status_y  = ws_top + 1
+    ws_y      = ws_top + ws_top_h
+    log_y     = area.y + area.height - log_h
+    footer_y  = log_y - footer_h
+    livedoc_y = footer_y - livedoc_h
+    ws_height = max(0, livedoc_y - ws_y)
+
+    # Top chrome — workspace tabs + status bar.
+    _render_workspace_strip!(m, TK.Rect(area.x, ws_top, area.width, 1), buf)
+    _render_status_bar(m, TK.Rect(area.x, status_y, area.width, 1), buf)
+
+    # Workspace area — dispatched through _compute_rects.
+    if ws_height > 0
+        ws = current_workspace(m.workspaces)
+        if ws !== nothing
+            ws_nt = (x = area.x, y = ws_y, w = area.width, h = ws_height)
+            rects = _compute_rects(ws.tree, ws_nt)
+            _render_tree!(ws.tree, rects, buf, m)
+            m.floats_hidden || _render_floats!(ws.floats, buf, m)
         end
     end
 
-    # Scope panel (if any) — wrapped in its own block so the mode is
-    # visible in the title and zoom info on the right.
-    m.layout_scope = scope_area
-    if scope_area !== nothing
-        scope_mode = String(_APP_SCOPE_TYPE[])
-        _render_pane_block!(m, scope_area, buf;
-            title = "SCOPE · $scope_mode",
-            title_right = scope_mode == "wave" ? "zoom ×$(round(m.scope_zoom_x; digits=1))" : "",
-            focused = false)
-        _render_app_scope(m, _inner_rect(scope_area), buf)
-    end
-
-    # Post-eval flash — green pulse on the lines just successfully
-    # evaluated. Paints BEFORE the playhead so the playhead's accent
-    # still wins on the active token.
+    # Overlays — only painted when the patterns editor is visible in
+    # the workspace tree (m.layout_patterns is set by _render_tree!).
     if m.layout_patterns !== nothing
         _render_eval_flash!(m, m.layout_patterns, buf)
         _render_visual_selection!(m, m.layout_patterns, buf)
-    end
-
-    # Playhead — highlights the active token in every @dN p"..." line
-    # that's currently shipping events. Overlays AFTER the editor
-    # rendered so we paint on top of the existing cells.
-    if m.layout_patterns !== nothing
         _render_playhead!(m, m.layout_patterns, buf)
     end
-
-    # Ghost autocomplete — faded suggestion at the cursor in the active
-    # editor pane. Lazy-loads usage stats on first render.
     _load_ghost_usage!()
-    if m.focus === :synth && m.layout_synth !== nothing
-        _render_ghost!(m, m.layout_synth, buf)
-    elseif m.layout_patterns !== nothing
+    if m.layout_patterns !== nothing
         _render_ghost!(m, m.layout_patterns, buf)
     end
 
-    # Live doc row — word under cursor → doc string
-    _render_livedoc_row(m, livedoc_area, buf)
-
-    # Footer (key hints) + bottom pane with per-level coloring + bordered block.
-    # Bottom pane content swaps to a completion picker while a Tab
-    # cycle is active; otherwise it's the rolling log.
-    _render_footer(m, footer_area, buf)
-    if _completion_picker_active(m)
-        title       = "COMPLETIONS"
-        title_right = "$(m.completion_idx)/$(length(m.completion_candidates)) · Tab next · any other key cancels"
-    else
-        title       = "LOG"
-        title_right = "$(length(m.logs))" *
-                      (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
+    # Bottom chrome — livedoc + footer hint + log tail.
+    _render_livedoc_row(m, TK.Rect(area.x, livedoc_y, area.width, livedoc_h), buf)
+    _render_footer(m, TK.Rect(area.x, footer_y, area.width, footer_h), buf)
+    if log_h > 0
+        _render_global_log_tail!(m,
+            TK.Rect(area.x, log_y, area.width, log_h), buf)
     end
-    _render_global_log_tail!(m, logs_area, buf)
 
-    # Modal overlay (after everything else so it sits on top).
+    # Modal overlay sits on top of everything.
     if m.modal === :browse
-        _render_browser_modal!(m, f.area, buf)
+        _render_browser_modal!(m, area, buf)
     elseif m.modal === :synth_library
-        _render_synth_library_modal!(m, f.area, buf)
+        _render_synth_library_modal!(m, area, buf)
     elseif m.modal === :sccode
-        _render_sccode_modal!(m, f.area, buf)
+        _render_sccode_modal!(m, area, buf)
     elseif m.modal === :snippets
-        _render_snippets_modal!(m, f.area, buf)
+        _render_snippets_modal!(m, area, buf)
     elseif m.modal === :wiki
-        _render_wiki_modal!(m, f.area, buf)
+        _render_wiki_modal!(m, area, buf)
     elseif m.modal === :mixer
-        _render_mixer_modal!(m, f.area, buf)
+        _render_mixer_modal!(m, area, buf)
     elseif m.modal !== :none
-        _render_modal!(m, f.area, buf)
+        _render_modal!(m, area, buf)
     end
 end
+
 
 # ---------------------------------------------------------------------
 # Recording
@@ -5145,11 +5131,24 @@ still drives the visible UI; Task 15 swaps view to dispatch through
 the workspace manager and removes the legacy m.layout_* fields.
 """
 function _ensure_default_workspace!(m::RessacApp)
-    isempty(m.workspaces.workspaces) || return
-    create_workspace!(m.workspaces, "")
+    if isempty(m.workspaces.workspaces)
+        create_workspace!(m.workspaces, "")
+    end
+    # Make sure the global log Ref points at the live app log so the
+    # LogPane and the chrome log row share storage.
+    _APP_LOG[] = m.logs
     ws = current_workspace(m.workspaces)
-    leaf = ws.tree::PaneLeaf
-    push!(leaf.tabs, _pane_new(:editor, Dict{String,Any}()))
-    leaf.current_tab = 1
+    ws === nothing && return
+    leaf = ws.tree
+    if leaf isa PaneLeaf && isempty(leaf.tabs)
+        ep = _pane_new(:editor, Dict{String,Any}())
+        # Replace the fresh pane's TK.CodeEditor with `m.editor` so
+        # the legacy paths that mutate `m.editor` (cursor moves,
+        # autocomplete, eval flash, playhead overlay…) and the new
+        # PaneImpl render path observe the same underlying buffer.
+        ep.tabs[1].code_editor = m.editor
+        push!(leaf.tabs, ep)
+        leaf.current_tab = 1
+    end
 end
 
