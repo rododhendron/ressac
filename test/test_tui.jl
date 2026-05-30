@@ -93,6 +93,28 @@ end
     @test app.layout_patterns !== nothing
 end
 
+@testset "_workspace_mouse_dispatch! focuses the clicked leaf" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    tb = Tachikoma.TestBackend(80, 30)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 80, 30),
+                            Tachikoma.GraphicsRegion[],
+                            Tachikoma.PixelSnapshot[])
+    Tachikoma.view(app, frame)
+    # Split the default pane horizontally with a log pane.
+    Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
+    Tachikoma.view(app, frame)  # repopulate _last_ws_area + rects
+    ws = Ressac.current_workspace(app.workspaces)
+    # After vsplit, the focused pane is the new (log) leaf.
+    log_leaf_id = ws.focused_pane
+    # Click far left into the patterns leaf (column 1 lands inside it).
+    evt = Tachikoma.MouseEvent(1, 5, Tachikoma.mouse_left, Tachikoma.mouse_press,
+                                false, false, false)
+    Ressac._workspace_mouse_dispatch!(app, evt)
+    @test ws.focused_pane != log_leaf_id  # focus moved off the log pane
+end
+
 @testset "_global_log_tail_height collapses when a :log pane exists" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)

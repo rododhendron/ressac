@@ -230,6 +230,10 @@ non-empty), and the focus toggle for keystroke routing.
     # Sub-project 10: Ctrl-Shift-F toggles every floating pane's
     # visibility globally (Zellij-style "hide UI" affordance).
     floats_hidden::Bool                     = false
+    # Workspace area NamedTuple captured by view() each frame so the
+    # mouse handler can re-run _compute_rects without re-deriving
+    # chrome heights.
+    _last_ws_area::Union{Nothing,NamedTuple} = nothing
     # Per-modal row → entry-index mapping built during render so the
     # mouse handler can resolve "click row N" → "select entry K".
     modal_rows::Vector{Tuple{Int,Int}}   = Tuple{Int,Int}[]  # (screen_y, entry_idx)
@@ -329,27 +333,67 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     end
     # Left-click routing.
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
-        # Tab bar?
-        if m.layout_synth_tabs !== nothing && _in_rect(m.layout_synth_tabs, evt.x, evt.y)
-            _click_tab_bar!(m, evt.x); return
-        end
-        # Synth editor?
-        if m.layout_synth !== nothing && _in_rect(m.layout_synth, evt.x, evt.y)
-            m.focus = :synth; _refresh_focus_flags!(m)
-            _click_into_editor!(_current_synth_tab(m).editor,
-                                m.layout_synth, evt.x, evt.y); return
-        end
-        # Patterns editor?
+        # Patterns editor — fast path (still the most common click).
+        # Driven by m.layout_patterns which is refilled by _render_tree!
+        # whenever the leaf holding m.editor is visible.
         if m.layout_patterns !== nothing && _in_rect(m.layout_patterns, evt.x, evt.y)
             m.focus = :patterns; _refresh_focus_flags!(m)
             _click_into_editor!(m.editor, m.layout_patterns, evt.x, evt.y)
             return
         end
-        # Scope panel click → cycle.
-        if m.layout_scope !== nothing && _in_rect(m.layout_scope, evt.x, evt.y)
-            _scope_cycle_key!(m); return
+        # Workspace tree hit-test — focuses the clicked leaf and
+        # delegates to its PaneImpl.handle_mouse!. Floats first
+        # (top of z stack wins), then tile leaves.
+        if _workspace_mouse_dispatch!(m, evt); return; end
+    end
+end
+
+"""
+    _workspace_mouse_dispatch!(m, evt) -> Bool
+
+Hit-test floats (top z wins) then tile leaves via `_compute_rects`.
+On hit, sets `ws.focused_pane` and calls `handle_mouse!` on the
+clicked pane. Returns true when a pane consumed the event.
+"""
+function _workspace_mouse_dispatch!(m::RessacApp, evt::TK.MouseEvent)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return false
+    if !m.floats_hidden
+        for f in sort(ws.floats; by = x -> -x.z_order)
+            if _in_rect_xywh(f.x, f.y, f.w, f.h, evt.x, evt.y)
+                handle_mouse!(f.pane, evt)
+                return true
+            end
         end
     end
+    m._last_ws_area === nothing && return false
+    rects = _compute_rects(ws.tree, m._last_ws_area)
+    for (leaf_id, r) in rects
+        if _in_rect_xywh(r.x, r.y, r.w, r.h, evt.x, evt.y)
+            ws.focused_pane = leaf_id
+            leaf = _find_leaf_by_id(ws.tree, leaf_id)
+            if leaf isa PaneLeaf && !isempty(leaf.tabs) &&
+               1 <= leaf.current_tab <= length(leaf.tabs)
+                handle_mouse!(leaf.tabs[leaf.current_tab], evt)
+            end
+            return true
+        end
+    end
+    return false
+end
+
+_in_rect_xywh(x::Int, y::Int, w::Int, h::Int, px::Int, py::Int) =
+    px >= x && px < x + w && py >= y && py < y + h
+
+function _find_leaf_by_id(node::LayoutNode, leaf_id::Int)
+    if node isa PaneLeaf
+        return node.id == leaf_id ? node : nothing
+    end
+    for child in node.children
+        hit = _find_leaf_by_id(child, leaf_id)
+        hit === nothing || return hit
+    end
+    return nothing
 end
 
 _in_rect(r::TK.Rect, x::Int, y::Int) =
@@ -3918,15 +3962,20 @@ function TK.view(m::RessacApp, f::TK.Frame)
     _render_workspace_strip!(m, TK.Rect(area.x, ws_top, area.width, 1), buf)
     _render_status_bar(m, TK.Rect(area.x, status_y, area.width, 1), buf)
 
-    # Workspace area — dispatched through _compute_rects.
+    # Workspace area — dispatched through _compute_rects. Cached on
+    # the model so the mouse handler can hit-test workspace leaves
+    # without re-deriving chrome heights.
     if ws_height > 0
+        ws_nt = (x = area.x, y = ws_y, w = area.width, h = ws_height)
+        m._last_ws_area = ws_nt
         ws = current_workspace(m.workspaces)
         if ws !== nothing
-            ws_nt = (x = area.x, y = ws_y, w = area.width, h = ws_height)
             rects = _compute_rects(ws.tree, ws_nt)
             _render_tree!(ws.tree, rects, buf, m)
             m.floats_hidden || _render_floats!(ws.floats, buf, m)
         end
+    else
+        m._last_ws_area = nothing
     end
 
     # Overlays — only painted when the patterns editor is visible in
