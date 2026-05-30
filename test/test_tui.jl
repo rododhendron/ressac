@@ -153,6 +153,33 @@ end
     @test Ressac._PANE_MODE.sticky == false
 end
 
+@testset ":layout save / :layout load round-trip" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    # Split so we save a non-trivial tree.
+    Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
+    n_before = length(collect(Ressac._all_leaves(
+        Ressac.current_workspace(app.workspaces).tree)))
+    @test n_before == 2
+    name = "test-layout-$(rand(UInt32))"
+    Ressac._layout_save!(app, name)
+    @test isfile(Ressac._named_layout_path(name))
+    # Reset to single pane.
+    empty!(app.workspaces.workspaces)
+    app.workspaces.current_idx = 0
+    Ressac._ensure_default_workspace!(app)
+    @test length(collect(Ressac._all_leaves(
+        Ressac.current_workspace(app.workspaces).tree))) == 1
+    # Load restores the split.
+    Ressac._layout_load!(app, name)
+    @test length(collect(Ressac._all_leaves(
+        Ressac.current_workspace(app.workspaces).tree))) == 2
+    # Cleanup the persisted file.
+    rm(Ressac._named_layout_path(name); force=true)
+end
+
 @testset "_workspace_mouse_dispatch! focuses the clicked leaf" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)

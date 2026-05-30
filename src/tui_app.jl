@@ -1961,6 +1961,40 @@ _register_regex!(r"^load\s+(\S+)$",
 _register_literal!(m -> _list_sessions_app!(m),
                    "sessions", "ls-sessions")
 
+# ── Workspace layouts (sub-project 10) ──────────────────────────────
+_register_regex!(r"^layout\s+save\s+([\w-]+)$", (m, mt) -> _layout_save!(m, mt.captures[1]))
+_register_regex!(r"^layout\s+load\s+([\w-]+)$", (m, mt) -> _layout_load!(m, mt.captures[1]))
+
+function _layout_save!(m::RessacApp, name::AbstractString)
+    try
+        save_layout(m.workspaces, _named_layout_path(name))
+        _push_app_log!(m, "[INFO] :layout save $name — saved")
+    catch err
+        _push_app_log!(m,
+            "[ERROR] :layout save $name: $(sprint(showerror, err))")
+    end
+end
+
+function _layout_load!(m::RessacApp, name::AbstractString)
+    path = _named_layout_path(name)
+    if !isfile(path)
+        _push_app_log!(m,
+            "[WARN] :layout load $name — no such layout at $path")
+        return
+    end
+    empty!(m.workspaces.workspaces)
+    m.workspaces.current_idx = 0
+    try
+        load_layout!(m.workspaces, path)
+        _ensure_default_workspace!(m)
+        _push_app_log!(m, "[INFO] :layout load $name — loaded")
+    catch err
+        _push_app_log!(m,
+            "[ERROR] :layout load $name: $(sprint(showerror, err))")
+        _ensure_default_workspace!(m)
+    end
+end
+
 # ── Test ────────────────────────────────────────────────────────────
 _register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m),
                    "test", "t")
