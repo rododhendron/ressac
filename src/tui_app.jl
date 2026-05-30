@@ -3919,6 +3919,16 @@ function _render_workspace_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         TK.set_string!(buf, x, area.y, label, style)
         x += textwidth(label) + 1
     end
+    # Pane mode badge — visible only while in pane mode so the user
+    # knows their next keystroke is a workspace op, not editor text.
+    if _PANE_MODE.active
+        badge = _PANE_MODE.sticky ? " [PANE STICKY · Esc to exit]" :
+                                    " [PANE · single-shot]"
+        if x + textwidth(badge) <= area.x + area.width
+            TK.set_string!(buf, x, area.y, badge,
+                           TK.tstyle(:warning, bold = true))
+        end
+    end
 end
 
 """
@@ -3972,6 +3982,13 @@ rewires them through `_compute_rects` directly.
 """
 function _render_tree!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
                        m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    focused_id = ws === nothing ? 0 : ws.focused_pane
+    _render_tree_inner!(node, rects, buf, m, focused_id)
+end
+
+function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
+                             m::RessacApp, focused_id::Int)
     if node isa PaneLeaf
         r_nt = get(rects, node.id, nothing)
         r_nt === nothing && return
@@ -3985,12 +4002,42 @@ function _render_tree!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
                pane.tabs[pane.current_tab].code_editor === m.editor
                 m.layout_patterns = _inner_rect_simple(rect)
             end
+            # Focus indicator — repaint the border in :accent so the
+            # active pane stands out against the dim defaults that
+            # _render_pane_block_simple! draws.
+            node.id == focused_id && _repaint_border_focused!(rect, buf)
         end
         return
     end
     for child in node.children
-        _render_tree!(child, rects, buf, m)
+        _render_tree_inner!(child, rects, buf, m, focused_id)
     end
+end
+
+"""
+    _repaint_border_focused!(rect, buf)
+
+Redraw the box-drawing characters of `rect`'s outline in `:accent`
+style on top of the dim border that `_render_pane_block_simple!`
+already drew. Chars stay the same — only the style attribute
+changes — so the focus highlight survives any subsequent overlay
+that respects existing chars.
+"""
+function _repaint_border_focused!(rect::TK.Rect, buf::TK.Buffer)
+    (rect.width < 2 || rect.height < 2) && return
+    style = TK.tstyle(:accent, bold = true)
+    # Skip the top row — it carries the pane title which would be
+    # erased if we overwrote here. Sides + bottom are enough signal.
+    for y in 1:(rect.height - 2)
+        TK.set_string!(buf, rect.x, rect.y + y, "│", style)
+        TK.set_string!(buf, rect.x + rect.width - 1, rect.y + y, "│", style)
+    end
+    TK.set_string!(buf, rect.x, rect.y + rect.height - 1,
+                   "└" * "─"^(rect.width - 2) * "┘", style)
+    # Repaint corner pieces on the top to bridge sides → top border.
+    TK.set_string!(buf, rect.x, rect.y, "┌", style)
+    TK.set_string!(buf, rect.x + rect.width - 1, rect.y, "┐", style)
+    return nothing
 end
 
 function _render_floats!(floats::Vector{FloatingPane}, buf::TK.Buffer,

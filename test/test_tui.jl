@@ -153,6 +153,32 @@ end
     @test Ressac._PANE_MODE.sticky == false
 end
 
+@testset "_render_workspace_strip! shows pane mode badge when active" begin
+    mock = MockOSCClient()
+    sched = Scheduler(mock; cps=0.5)
+    app = Ressac.RessacApp(; scheduler=sched)
+    Ressac.create_workspace!(app.workspaces, "live")
+    Ressac._PANE_MODE.active = false
+    Ressac._PANE_MODE.sticky = false
+    tb = Tachikoma.TestBackend(80, 5)
+    Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb.buf)
+    @test !occursin("PANE", _row_to_string(tb.buf, 1))
+
+    Ressac._PANE_MODE.active = true
+    tb2 = Tachikoma.TestBackend(80, 5)
+    Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb2.buf)
+    @test occursin("PANE", _row_to_string(tb2.buf, 1))
+    @test occursin("single-shot", _row_to_string(tb2.buf, 1))
+
+    Ressac._PANE_MODE.sticky = true
+    tb3 = Tachikoma.TestBackend(80, 5)
+    Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb3.buf)
+    @test occursin("STICKY", _row_to_string(tb3.buf, 1))
+
+    Ressac._PANE_MODE.active = false
+    Ressac._PANE_MODE.sticky = false
+end
+
 @testset ":layout save / :layout load round-trip" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
