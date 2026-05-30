@@ -2402,6 +2402,18 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
     TK.set_text!(m.editor, snip.resolved_content)
     m.editor.cursor_row = 1
     m.editor.cursor_col = 0
+    # Sub-project 10: if the snippet declares panes = [...], rebuild
+    # the focused workspace from that spec. Errors are logged so a
+    # malformed spec doesn't kill the :starter command outright.
+    if !isempty(snip.panes)
+        try
+            apply_snippet_panes!(m.workspaces, snip.panes, snip.mode;
+                                 snippet_name = snip.name)
+        catch err
+            _push_app_log!(m,
+                "[ERROR] :starter — apply panes failed: $(sprint(showerror, err))")
+        end
+    end
     _push_app_log!(m, "[INFO] loaded :starter $key — eval each @dN with e")
 end
 
