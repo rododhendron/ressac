@@ -85,7 +85,10 @@ end
 function handle_key!(p::EditorPane, evt)
     1 <= p.current_tab <= length(p.tabs) || return false
     tab = p.tabs[p.current_tab]
-    if evt isa TK.KeyEvent && evt.key === :char
+    # Eval shortcuts only fire from :normal — otherwise 'e' in
+    # insert mode would never reach the buffer (the original bug).
+    if evt isa TK.KeyEvent && evt.key === :char &&
+       tab.code_editor.mode === :normal
         if evt.char == 'e' && tab.eval_target === :slot
             _eval_focused_buffer_to_slot!(tab)
             return true

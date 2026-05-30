@@ -335,10 +335,13 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
         # Patterns editor — fast path (still the most common click).
         # Driven by m.layout_patterns which is refilled by _render_tree!
-        # whenever the leaf holding m.editor is visible.
+        # whenever the leaf holding m.editor is visible. Updates the
+        # workspace focus too so the focus border and key routing
+        # match the legacy editor focus.
         if m.layout_patterns !== nothing && _in_rect(m.layout_patterns, evt.x, evt.y)
             m.focus = :patterns; _refresh_focus_flags!(m)
             _click_into_editor!(m.editor, m.layout_patterns, evt.x, evt.y)
+            _focus_patterns_leaf!(m)
             return
         end
         # Workspace tree hit-test — focuses the clicked leaf and
@@ -371,7 +374,24 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
        pane.tabs[pane.current_tab].code_editor === m.editor
         return false
     end
+    # TK.CodeEditor.handle_key! short-circuits to `false` when
+    # `.focused` is false — its keymap is gated on focus. Make sure
+    # the target editor sees itself as focused before delegating; the
+    # next view() refresh keeps it in sync.
+    if pane isa EditorPane &&
+       1 <= pane.current_tab <= length(pane.tabs)
+        pane.tabs[pane.current_tab].code_editor.focused = true
+    end
     handle_key!(pane, evt)
+    # Ex-command bridge: when an EditorPane finishes a `:foo` command
+    # via its own TK.CodeEditor command mode, drain it and dispatch
+    # through Ressac's ex command pipeline. Without this, `:q` typed
+    # in a focused side pane would never quit the app.
+    if pane isa EditorPane &&
+       1 <= pane.current_tab <= length(pane.tabs)
+        cmd = TK.pending_command!(pane.tabs[pane.current_tab].code_editor)
+        isempty(cmd) || _handle_ex_command!(m, cmd)
+    end
     return true
 end
 
@@ -411,6 +431,29 @@ end
 
 _in_rect_xywh(x::Int, y::Int, w::Int, h::Int, px::Int, py::Int) =
     px >= x && px < x + w && py >= y && py < y + h
+
+"""
+    _focus_patterns_leaf!(m)
+
+Resolve which workspace leaf currently holds `m.editor` and set it
+as the focused leaf. Called from the patterns mouse fast path so
+the focus border and the workspace's `focused_pane` stay in sync
+with the legacy `m.focus = :patterns` flag.
+"""
+function _focus_patterns_leaf!(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    for leaf in _all_leaves(ws.tree)
+        for tab in leaf.tabs
+            if tab isa EditorPane &&
+               1 <= tab.current_tab <= length(tab.tabs) &&
+               tab.tabs[tab.current_tab].code_editor === m.editor
+                ws.focused_pane = leaf.id
+                return
+            end
+        end
+    end
+end
 
 function _find_leaf_by_id(node::LayoutNode, leaf_id::Int)
     if node isa PaneLeaf
