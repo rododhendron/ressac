@@ -112,6 +112,26 @@ end
         @test occursin("wob1", Tachikoma.row_text(tb, 1))
     end
 
+    @testset "handle_key! routes 'e' for patterns role" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}(
+            "buffer_role" => "patterns"))
+        @test Ressac.handle_key!(ep, Tachikoma.KeyEvent('e')) == true
+    end
+
+    @testset "handle_key! routes 'T' for synth role" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}(
+            "buffer_role" => "synth"))
+        @test Ressac.handle_key!(ep, Tachikoma.KeyEvent('T')) == true
+    end
+
+    @testset "handle_key! delegates other chars to CodeEditor" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}())
+        # 'x' in :normal mode isn't a slot-eval trigger — delegation
+        # should be observable as a non-error call (return is editor-
+        # mode-dependent so we don't pin the bool).
+        @test Ressac.handle_key!(ep, Tachikoma.KeyEvent('x')) isa Bool
+    end
+
     @testset "render! shows tab strip with ≥ 2 tabs" begin
         ep = Ressac._pane_new(:editor, Dict{String,Any}(
             "buffer_role" => "patterns", "name" => "main"))

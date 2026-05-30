@@ -82,7 +82,26 @@ function _render_editor_tab_strip!(p::EditorPane, area::TK.Rect, buf::TK.Buffer)
     end
 end
 
-handle_key!(::EditorPane, evt) = false           # filled in Task 3c
+function handle_key!(p::EditorPane, evt)
+    1 <= p.current_tab <= length(p.tabs) || return false
+    tab = p.tabs[p.current_tab]
+    if evt isa TK.KeyEvent && evt.key === :char
+        if evt.char == 'e' && tab.eval_target === :slot
+            _eval_focused_buffer_to_slot!(tab)
+            return true
+        elseif evt.char == 'T' && tab.eval_target === :sc_eval
+            _eval_focused_buffer_to_sc!(tab)
+            return true
+        end
+    end
+    return TK.handle_key!(tab.code_editor, evt)
+end
+
+# Eval bridges. T8b wires these to the existing slot push and SC
+# eval flows in tui_app.jl; for now they're no-ops so dispatch is
+# observable in tests without firing a real eval.
+_eval_focused_buffer_to_slot!(::EditorBuffer) = nothing
+_eval_focused_buffer_to_sc!(::EditorBuffer)   = nothing
 
 function title(p::EditorPane)
     1 <= p.current_tab <= length(p.tabs) || return "(empty editor)"
