@@ -6,9 +6,10 @@
 # Architecture: Elm (Model/update!/view). The Ressac scheduler + audio
 # layer is unchanged — only the editor + viz layer is being replaced.
 
-using Tachikoma
 using Dates
-const TK = Tachikoma
+# `using Tachikoma` and `const TK = Tachikoma` now live at the top
+# of Ressac.jl so pane impls (loaded before this file) can reference
+# TK types directly.
 
 """
     SynthTab

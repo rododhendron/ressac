@@ -104,3 +104,35 @@ function _pane_new(kind::Symbol, args::AbstractDict)
 end
 
 list_pane_kinds() = sort!(collect(keys(_PANE_KINDS)))
+
+# ── Shared chrome helpers for PaneImpl render! ─────────────────────
+# `_render_pane_block!` in tui_app.jl wants an `m::RessacApp` to read
+# theme/focus state. PaneImpl render! receives only (pane, area, buf)
+# — no app reference. These simpler variants draw a neutral border so
+# every pane kind looks consistent inside a workspace tile.
+
+function _render_pane_block_simple!(rect::TK.Rect, title::AbstractString,
+                                    buf::TK.Buffer)
+    rect.width < 2 || rect.height < 2 && return
+    style = TK.tstyle(:text_dim)
+    text_style = TK.tstyle(:text)
+    TK.set_string!(buf, rect.x, rect.y,
+                   "┌" * "─"^(rect.width - 2) * "┐", style)
+    label = " " * String(title) * " "
+    label_x = rect.x + 2
+    if label_x + textwidth(label) < rect.x + rect.width
+        TK.set_string!(buf, label_x, rect.y, label, text_style)
+    end
+    for y in 1:(rect.height - 2)
+        TK.set_string!(buf, rect.x, rect.y + y, "│", style)
+        TK.set_string!(buf, rect.x + rect.width - 1, rect.y + y, "│", style)
+    end
+    TK.set_string!(buf, rect.x, rect.y + rect.height - 1,
+                   "└" * "─"^(rect.width - 2) * "┘", style)
+    return nothing
+end
+
+function _inner_rect_simple(rect::TK.Rect)
+    TK.Rect(rect.x + 1, rect.y + 1,
+            max(0, rect.width - 2), max(0, rect.height - 2))
+end

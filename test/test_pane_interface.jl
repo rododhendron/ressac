@@ -1,5 +1,6 @@
 using Test
 using Ressac
+import Tachikoma
 
 # Minimal kind used to exercise the contract from outside Main.
 struct _NullPane <: Ressac.PaneImpl end
@@ -91,6 +92,24 @@ end
         @test s["tabs"][1]["role"] == "synth"
         @test s["tabs"][1]["name"] == "wob1"
         @test s["current_tab"] == 1
+    end
+
+    @testset "render! draws PATTERNS title in top border" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}(
+            "buffer_role" => "patterns", "name" => "main"))
+        Tachikoma.set_text!(ep.tabs[1].code_editor, "hello world\n@d1 :bd")
+        tb = Tachikoma.TestBackend(40, 10)
+        Ressac.render!(ep, Tachikoma.Rect(1, 1, 40, 10), tb.buf)
+        @test occursin("PATTERNS", Tachikoma.row_text(tb, 1))
+    end
+
+    @testset "render! draws SYNTH title for :synth role" begin
+        ep = Ressac._pane_new(:editor, Dict{String,Any}(
+            "buffer_role" => "synth", "name" => "wob1"))
+        tb = Tachikoma.TestBackend(40, 10)
+        Ressac.render!(ep, Tachikoma.Rect(1, 1, 40, 10), tb.buf)
+        @test occursin("SYNTH", Tachikoma.row_text(tb, 1))
+        @test occursin("wob1", Tachikoma.row_text(tb, 1))
     end
 end
 

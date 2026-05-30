@@ -8,6 +8,11 @@ The full design is in `docs/journal/20260518_plan_dev.md`.
 """
 module Ressac
 
+# Module-wide Tachikoma alias — hoisted here so pane impls loaded
+# before tui_app.jl can reference TK.CodeEditor / TK.Rect.
+using Tachikoma
+const TK = Tachikoma
+
 # ─── Core domain — pure pattern types + algebra, no I/O ───────────
 include("core_patterns.jl")      # Pattern{T}, Event{T}, query
 include("core_mininotation.jl")  # the p"…" / "…" parser

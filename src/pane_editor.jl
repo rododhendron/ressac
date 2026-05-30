@@ -6,18 +6,9 @@
 #   * eval target (slot scheduler vs SC eval)
 #   * completion context (patterns DSL vs UGens/SynthDSL)
 #   * which key bindings dispatch (`e` vs `T`)
-#
-# Sub-project 9 ships the pane skeleton + 4 contract fns + role
-# routing. The actual editor cursor / autocomplete / vim modal logic
-# reuses the existing code in tui_app.jl (Tachikoma text buffer).
-# Step 7 of the migration plan (= Task 8) swaps the m.editor field
-# out for an EditorPane wrapper.
 
-struct EditorBuffer
-    content::String
-    cursor_row::Int
-    cursor_col::Int
-    scroll_offset::Int
+mutable struct EditorBuffer
+    code_editor::TK.CodeEditor
     role::Symbol            # :patterns | :synth
     name::String
     eval_target::Symbol     # :slot | :sc_eval
@@ -32,7 +23,11 @@ function EditorBuffer(; role::Symbol = :patterns,
     else
         (:slot, :patterns_dsl)
     end
-    return EditorBuffer(String(content), 1, 0, 0, role, String(name),
+    ed = TK.CodeEditor(; text = String(content),
+                         focused = false,
+                         tick = 0,
+                         mode = :normal)
+    return EditorBuffer(ed, role, String(name),
                         eval_target, completion_ctx)
 end
 
@@ -53,12 +48,20 @@ end
 
 # ── PaneImpl contract ──────────────────────────────────────────────
 
-# Mandatory: render!, handle_key!, title.
-# Task 8 will wire render! to the existing Tachikoma text buffer
-# rendering. For Task 4, we provide stubs that satisfy the contract.
+function render!(p::EditorPane, area, buf)
+    1 <= p.current_tab <= length(p.tabs) || return
+    tab = p.tabs[p.current_tab]
+    title_str = tab.role === :synth ?
+        "SYNTH · $(tab.name)" :
+        "PATTERNS"
+    rect = TK.Rect(area.x, area.y, area.width, area.height)
+    _render_pane_block_simple!(rect, title_str, buf)
+    inner = _inner_rect_simple(rect)
+    TK.render(tab.code_editor, inner, buf)
+    return nothing
+end
 
-render!(::EditorPane, area, buf) = nothing       # filled in Task 8
-handle_key!(::EditorPane, evt) = false           # filled in Task 8
+handle_key!(::EditorPane, evt) = false           # filled in Task 3c
 
 function title(p::EditorPane)
     1 <= p.current_tab <= length(p.tabs) || return "(empty editor)"
@@ -73,10 +76,10 @@ function serialize(p::EditorPane)
         "tabs" => [Dict{String,Any}(
             "role" => String(t.role),
             "name" => t.name,
-            "content" => t.content,
-            "cursor_row" => t.cursor_row,
-            "cursor_col" => t.cursor_col,
-            "scroll_offset" => t.scroll_offset,
+            "content" => TK.text(t.code_editor),
+            "cursor_row" => t.code_editor.cursor_row,
+            "cursor_col" => t.code_editor.cursor_col,
+            "scroll_offset" => t.code_editor.scroll_offset,
         ) for t in p.tabs],
         "current_tab" => p.current_tab,
     )
