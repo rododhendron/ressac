@@ -159,6 +159,28 @@ end
         lp = Ressac._pane_new(:log, Dict{String,Any}())
         @test Ressac.serialize(lp) == Dict{String,Any}()
     end
+
+    @testset "render! draws LOGS border and log lines" begin
+        lp = Ressac._pane_new(:log, Dict{String,Any}())
+        Ressac._APP_LOG[] = ["[INFO] line A", "[INFO] line B"]
+        tb = Tachikoma.TestBackend(40, 6)
+        Ressac.render!(lp, Tachikoma.Rect(1, 1, 40, 6), tb.buf)
+        @test occursin("LOGS", Tachikoma.row_text(tb, 1))
+        # Body rows show the lines (tail = last 4 of 2 -> both visible)
+        body = join((Tachikoma.row_text(tb, y) for y in 2:5), '\n')
+        @test occursin("line A", body)
+        @test occursin("line B", body)
+    end
+
+    @testset "handle_key! j/k adjust scroll" begin
+        lp = Ressac._pane_new(:log, Dict{String,Any}())
+        @test Ressac.handle_key!(lp, Tachikoma.KeyEvent('k')) == true
+        @test lp.scroll == 1
+        @test Ressac.handle_key!(lp, Tachikoma.KeyEvent('j')) == true
+        @test lp.scroll == 0
+        # j at scroll=0 is a no-op (returns false)
+        @test Ressac.handle_key!(lp, Tachikoma.KeyEvent('j')) == false
+    end
 end
 
 @testset "pane_doc — :doc kind" begin
