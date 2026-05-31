@@ -8,7 +8,7 @@
 #       _pat_at_cursor, _pat_replace_body!,
 #       _pat_zoom!, _pat_shift!, _pat_silence!, _pat_subdivide!
 #
-# All of these operate on m.editor + m.scheduler.patterns; they're
+# All of these operate on _active_editor(m) + m.scheduler.patterns; they're
 # pulled out of app.jl to make navigation easier without disturbing
 # load order (everything they reference — RessacApp, _char_split,
 # _push_app_log!, _LIVE_SCHEDULER — is already in scope by the time
@@ -42,25 +42,25 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     isempty(sched.patterns) && return
     phase = ((time() - sched.t_start) * sched.cps) % 1.0
     phase = clamp(phase, 0.0, 0.9999)
-    has_block = m.editor.block !== nothing
+    has_block = _active_editor(m).block !== nothing
     inset_top = has_block ? 1 : 0
     inset_bot = has_block ? 1 : 0   # the block has a bottom border too
     inset_left = has_block ? 1 : 0
-    gw = m.editor.show_line_numbers ? ndigits(max(length(m.editor.lines), 1)) + 1 : 0
+    gw = _active_editor(m).show_line_numbers ? ndigits(max(length(_active_editor(m).lines), 1)) + 1 : 0
     # Iterate only the visible window — bounded by scroll_offset above
     # and rect.height-borders below. Avoids both the "highlight bleeds
     # onto the bottom border" jump and the O(n) scan over hidden lines.
     body_h = rect.height - inset_top - inset_bot
-    first_row = m.editor.scroll_offset + 1
-    last_row  = min(length(m.editor.lines), first_row + body_h - 1)
+    first_row = _active_editor(m).scroll_offset + 1
+    last_row  = min(length(_active_editor(m).lines), first_row + body_h - 1)
     # Prune cache entries outside the visible window so it stays bounded
     # to ~rect.height rows even if the user scrolls a large buffer.
     for k in keys(m.playhead_cache)
         (k < first_row || k > last_row) && delete!(m.playhead_cache, k)
     end
     for i in first_row:last_row
-        screen_row = rect.y + inset_top + (i - 1 - m.editor.scroll_offset)
-        line_chars = m.editor.lines[i]
+        screen_row = rect.y + inset_top + (i - 1 - _active_editor(m).scroll_offset)
+        line_chars = _active_editor(m).lines[i]
         # Cache key = hash(line content). Cheap to compute and avoids
         # the regex + body split when the line hasn't changed between
         # frames. nothing-valued cache entries are kept so we don't
@@ -81,7 +81,7 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
         # highlight kicks in. Inactive @dN lines (slot not in
         # sched.patterns) skip this branch entirely.
         slot_screen_x_start = rect.x + inset_left + gw +
-                              parsed.slot_start_col - ed_h_scroll(m.editor)
+                              parsed.slot_start_col - ed_h_scroll(_active_editor(m))
         for k in 0:(parsed.slot_str_len - 1)
             sx = slot_screen_x_start + k
             sx < rect.x + inset_left + gw && continue
@@ -97,7 +97,7 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
         tok_start_in_body, tok_stop_in_body = parsed.tokens[active]
         for body_col in tok_start_in_body:tok_stop_in_body
             screen_x = rect.x + inset_left + gw + parsed.body_start_col +
-                       body_col - ed_h_scroll(m.editor)
+                       body_col - ed_h_scroll(_active_editor(m))
             screen_x < rect.x + inset_left + gw && continue
             screen_x >= rect.x + rect.width && break
             buf_col = parsed.body_start_col + body_col + 1
@@ -152,19 +152,19 @@ function _render_eval_flash!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     style = age < _EVAL_FLASH_DURATION / 2 ?
         TK.tstyle(:success, bold = true) :
         TK.tstyle(:success)
-    gw = m.editor.show_line_numbers ?
-         ndigits(max(length(m.editor.lines), 1)) + 1 : 0
-    first_row = m.editor.scroll_offset + 1
+    gw = _active_editor(m).show_line_numbers ?
+         ndigits(max(length(_active_editor(m).lines), 1)) + 1 : 0
+    first_row = _active_editor(m).scroll_offset + 1
     last_row  = first_row + rect.height - 1
     for row in m.eval_flash_rows
         (row < first_row || row > last_row) && continue
         screen_y = rect.y + (row - first_row)
-        row <= length(m.editor.lines) || continue
-        line_chars = m.editor.lines[row]
+        row <= length(_active_editor(m).lines) || continue
+        line_chars = _active_editor(m).lines[row]
         # Repaint each char on the row in the flash style, preserving
         # the source char. Skip the line-number gutter.
         for (col_in_line, ch) in enumerate(line_chars)
-            screen_x = rect.x + gw + col_in_line - 1 - m.editor.h_scroll
+            screen_x = rect.x + gw + col_in_line - 1 - _active_editor(m).h_scroll
             screen_x < rect.x + gw && continue
             screen_x >= rect.x + rect.width && break
             TK.set_char!(buf, screen_x, screen_y, ch, style)
@@ -182,7 +182,7 @@ style so the underlying text stays readable.
 """
 function _render_visual_selection!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     m.visual_active || return
-    ed = m.editor
+    ed = _active_editor(m)
     th = TK.theme()
     sel_style = TK.Style(; fg = th.text_bright, bg = th.secondary, bold = true)
 

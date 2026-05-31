@@ -50,7 +50,7 @@ function _exec_ex_command!(app::Ressac.RessacApp, cmd::AbstractString)
     Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
 end
 
-# Find the EditorPane that holds m.editor (the patterns pane) in
+# Find the EditorPane that holds Ressac._active_editor(m) (the patterns pane) in
 # the focused workspace's tree. Returns the leaf id.
 function _patterns_leaf_id(app::Ressac.RessacApp)
     ws = Ressac.current_workspace(app.workspaces)
@@ -58,7 +58,7 @@ function _patterns_leaf_id(app::Ressac.RessacApp)
         for tab in leaf.tabs
             if tab isa Ressac.EditorPane &&
                !isempty(tab.tabs) &&
-               tab.tabs[tab.current_tab].code_editor === app.editor
+               tab.tabs[tab.current_tab].code_editor === Ressac._active_editor(app)
                 return leaf.id
             end
         end
@@ -70,7 +70,7 @@ end
 
 @testset "C-w v creates a new pane and persists pane mode" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     @test Ressac._PANE_MODE.active == true
     Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
@@ -85,8 +85,11 @@ end
 
 @testset "typing isolation — split, type, switch, type" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
-    Ressac.TK.set_text!(app.editor, "")
+    # Snapshot the original (patterns) editor BEFORE the split so we
+    # can compare buffers per-pane.
+    Ressac._active_editor(app).mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "")
+    original_editor = Ressac._active_editor(app)
     # Split off a new editor pane and focus it.
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
@@ -94,37 +97,32 @@ end
     Tachikoma.view(app, frame)  # refresh focus flags + rects
 
     ws = Ressac.current_workspace(app.workspaces)
-    new_leaf_id = ws.focused_pane
-    new_pane = Ressac._find_leaf_by_id(ws.tree, new_leaf_id).tabs[1]
-    @test new_pane isa Ressac.EditorPane
-    new_editor = new_pane.tabs[1].code_editor
-    @test new_editor !== app.editor
+    new_editor = Ressac._active_editor(app)  # focused = the new pane
+    @test new_editor !== original_editor
 
-    # Type in the new pane via _route_key_to_focused_pane! — must
-    # enter insert mode first.
+    # Type in the focused (new) pane.
     Tachikoma.update!(app, Tachikoma.KeyEvent('i'))
     _type!(app, "hello-new")
     @test occursin("hello-new", Ressac.TK.text(new_editor))
-    @test !occursin("hello-new", Ressac.TK.text(app.editor))
+    @test !occursin("hello-new", Ressac.TK.text(original_editor))
 
-    # Switch focus to the patterns pane and type — must land in
-    # m.editor, not the new pane.
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))     # back to normal
+    # Switch focus back to the original pane (h = focus left).
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
-    Tachikoma.update!(app, Tachikoma.KeyEvent('h'))          # focus left
+    Tachikoma.update!(app, Tachikoma.KeyEvent('h'))
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
     Tachikoma.view(app, frame)
-    @test ws.focused_pane == _patterns_leaf_id(app)
+    @test Ressac._active_editor(app) === original_editor
 
     Tachikoma.update!(app, Tachikoma.KeyEvent('i'))
     _type!(app, "hello-main")
-    @test occursin("hello-main", Ressac.TK.text(app.editor))
+    @test occursin("hello-main", Ressac.TK.text(original_editor))
     @test !occursin("hello-main", Ressac.TK.text(new_editor))
 end
 
 @testset "C-w h/j/k/l navigates focus in a 2×2 grid" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     # Build a 2×2 grid: vsplit then hsplit on both columns.
     Ressac.cmd_vsplit!(app.workspaces, "editor", Dict{String,Any}())
     Ressac.cmd_hsplit!(app.workspaces, "editor", Dict{String,Any}())  # right col split
@@ -146,7 +144,7 @@ end
 
 @testset "C-w c closes the focused pane" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
     ws = Ressac.current_workspace(app.workspaces)
@@ -160,7 +158,7 @@ end
 
 @testset "C-w c refuses to close the last leaf (no empty workspace)" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     ws = Ressac.current_workspace(app.workspaces)
     @test length(collect(Ressac._all_leaves(ws.tree))) == 1
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
@@ -243,7 +241,7 @@ end
 
 @testset "left-click on a non-focused pane changes focus" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
     Tachikoma.view(app, frame)   # populate _last_ws_area + rects
     ws = Ressac.current_workspace(app.workspaces)
@@ -260,7 +258,7 @@ end
 
 @testset ":q from a multi-pane workspace saves layout and flips quit" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     # Build a non-trivial tree so save_layout has something to write.
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
@@ -281,7 +279,7 @@ end
 
 @testset "Esc closes any open modal back to :none" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     for kind in (:guide, :browse, :synth_library, :snippets, :wiki, :mixer)
         app.modal = kind
         Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
@@ -293,7 +291,7 @@ end
 
 @testset ":starter snippet with panes = [...] rebuilds workspace" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     # Synthesize a minimal snippet entry with panes and register it.
     name = "ui-integration-test-snip-$(rand(UInt32))"
     snip = Ressac.SnippetEntry(name, :starter, "test", Symbol[],
@@ -314,7 +312,7 @@ end
         @test Ressac.EditorPane in kinds
         @test Ressac.LogPane    in kinds
         # Buffer text seeded from the snippet.
-        @test occursin("@d1", Ressac.TK.text(app.editor))
+        @test occursin("@d1", Ressac.TK.text(Ressac._active_editor(app)))
     finally
         delete!(Ressac._SNIPPETS, name)
     end
@@ -322,7 +320,7 @@ end
 
 @testset ":starter block mode composes panes onto current tree" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     # Start with a pre-existing split so we can check that block
     # mode does NOT rebuild the tree (unlike :starter).
     Ressac.cmd_vsplit!(app.workspaces, "editor", Dict{String,Any}())
@@ -438,33 +436,33 @@ end
 
 # ── Vim modal — visual / yank / delete ─────────────────────────────
 
-@testset "i + text + Esc lands text in m.editor" begin
+@testset "i + text + Esc lands text in Ressac._active_editor(m)" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "")
+    Ressac.TK.set_text!(Ressac._active_editor(app), "")
     Tachikoma.update!(app, Tachikoma.KeyEvent('i'))
     _type!(app, "hello world")
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
-    @test occursin("hello world", Ressac.TK.text(app.editor))
-    @test app.editor.mode === :normal
+    @test occursin("hello world", Ressac.TK.text(Ressac._active_editor(app)))
+    @test Ressac._active_editor(app).mode === :normal
 end
 
 @testset "V + j + y yanks line range" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "line1\nline2\nline3")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 0
+    Ressac.TK.set_text!(Ressac._active_editor(app), "line1\nline2\nline3")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 0
     Tachikoma.update!(app, Tachikoma.KeyEvent('V'))   # visual line
     Tachikoma.update!(app, Tachikoma.KeyEvent('j'))   # extend down
     Tachikoma.update!(app, Tachikoma.KeyEvent('y'))   # yank
     # Visual mode should have exited and yank buffer populated.
-    @test app.editor.mode === :normal
+    @test Ressac._active_editor(app).mode === :normal
 end
 
 # ── Eval routing (stubs — confirm dispatch path, not real eval) ─────
 
 @testset "Pressing e on patterns pane in :normal triggers eval path" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     # The current eval bridges are no-op stubs but the dispatch
     # should still consume the key without crashing.
     Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
@@ -475,7 +473,7 @@ end
 
 @testset "Pressing e on a focused synth-role editor triggers SC path" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     # Vsplit a synth-role editor and focus it.
     Ressac.cmd_vsplit!(app.workspaces, "editor",
                        Dict{String,Any}("buffer_role" => "synth",
@@ -496,7 +494,7 @@ end
 
 @testset "Modal :browse opens via the wiki/browse picker entry point" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     # The modal is opened by app code; set it directly to verify
     # Esc closes it. Real opener wiring is per-modal and tested in
     # each picker's own unit suite.
@@ -510,7 +508,7 @@ end
 
 @testset ":layout save / load round-trip via keystrokes" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     _exec_ex_command!(app, "vsplit log")
     _exec_ex_command!(app, "vsplit doc")
     ws_before = Ressac.current_workspace(app.workspaces)
@@ -533,7 +531,7 @@ end
 
 @testset ":layout load <unknown> warns and stays on current layout" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     pre_workspaces = length(app.workspaces.workspaces)
     _exec_ex_command!(app, "layout load nonexistent-layout-zzz")
     # Warn-only — workspace state unchanged.
@@ -567,7 +565,7 @@ end
     try
         @test_logs (:warn,) Ressac._starter_command!(app, name)
         # Primary still installed even though side was skipped.
-        @test occursin("@d1", Ressac.TK.text(app.editor))
+        @test occursin("@d1", Ressac.TK.text(Ressac._active_editor(app)))
     finally
         delete!(Ressac._SNIPPETS, name)
     end
@@ -723,47 +721,47 @@ end
 
 @testset "x deletes one char at cursor (normal mode)" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "hello")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 0
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "hello")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 0
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('x'))
-    @test Ressac.TK.text(app.editor) == "ello"
+    @test Ressac.TK.text(Ressac._active_editor(app)) == "ello"
 end
 
 @testset "dd deletes a whole line" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "line1\nline2\nline3")
-    app.editor.cursor_row = 2
-    app.editor.cursor_col = 0
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "line1\nline2\nline3")
+    Ressac._active_editor(app).cursor_row = 2
+    Ressac._active_editor(app).cursor_col = 0
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('d'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('d'))
-    @test Ressac.TK.text(app.editor) == "line1\nline3"
+    @test Ressac.TK.text(Ressac._active_editor(app)) == "line1\nline3"
 end
 
 @testset "yy + p duplicates the current line" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "alpha\nbeta")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 0
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "alpha\nbeta")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 0
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('y'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('y'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('p'))
-    @test occursin("alpha\nalpha", Ressac.TK.text(app.editor))
+    @test occursin("alpha\nalpha", Ressac.TK.text(Ressac._active_editor(app)))
 end
 
 @testset "u undoes the last text mutation" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "original")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 0
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "original")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 0
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('x'))           # delete 'o'
-    @test Ressac.TK.text(app.editor) == "riginal"
+    @test Ressac.TK.text(Ressac._active_editor(app)) == "riginal"
     Tachikoma.update!(app, Tachikoma.KeyEvent('u'))
-    @test Ressac.TK.text(app.editor) == "original"
+    @test Ressac.TK.text(Ressac._active_editor(app)) == "original"
 end
 
 # ── Starter prefix / ambiguity ─────────────────────────────────────
@@ -780,7 +778,7 @@ end
     try
         # Use just the first 10 chars of `name` (unique prefix).
         Ressac._starter_command!(app, first(name, 10))
-        @test occursin("@d1", Ressac.TK.text(app.editor))
+        @test occursin("@d1", Ressac.TK.text(Ressac._active_editor(app)))
     finally
         delete!(Ressac._SNIPPETS, name)
     end
@@ -796,10 +794,10 @@ end
             "// dup", Any[], "test", ""))
     end
     try
-        Ressac.TK.set_text!(app.editor, "untouched")
+        Ressac.TK.set_text!(Ressac._active_editor(app), "untouched")
         Ressac._starter_command!(app, "ui-it-amb")
         # Editor content unchanged because the prefix was ambiguous.
-        @test Ressac.TK.text(app.editor) == "untouched"
+        @test Ressac.TK.text(Ressac._active_editor(app)) == "untouched"
         @test any(l -> occursin("ambiguous", l), app.logs)
     finally
         delete!(Ressac._SNIPPETS, name_a)
@@ -812,7 +810,7 @@ end
 @testset ":save-session writes a snapshot of the patterns buffer" begin
     app, _ = _new_app()
     sentinel = "// integration-marker-$(rand(UInt32))"
-    Ressac.TK.set_text!(app.editor, sentinel)
+    Ressac.TK.set_text!(Ressac._active_editor(app), sentinel)
     name = "ui-it-session-$(rand(UInt32))"
     _exec_ex_command!(app, "save-session $name")
     # _save_session_app! writes ./sessions/<name>.txt relative to pwd.
@@ -915,7 +913,7 @@ end
 @testset ":w <name> snapshots the buffer to sessions/<name>.txt" begin
     app, _ = _new_app()
     payload = "// :w smoke $(rand(UInt32))"
-    Ressac.TK.set_text!(app.editor, payload)
+    Ressac.TK.set_text!(Ressac._active_editor(app), payload)
     name = "ui-it-w-$(rand(UInt32))"
     path = joinpath(pwd(), "sessions", "$name.txt")
     try
@@ -983,7 +981,7 @@ end
 
 @testset "Up arrow in CommandLine pulls last command from history" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     _exec_ex_command!(app, "hush")          # populates history
     Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
     @test app.command_line.mode === :command
@@ -995,7 +993,7 @@ end
 
 @testset "Tab in CommandLine cycles completion candidates" begin
     app, _ = _new_app()
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
     _type!(app, "hus")
     Tachikoma.update!(app, Tachikoma.KeyEvent(:tab))
@@ -1009,8 +1007,8 @@ end
 
 @testset "left-click on patterns area moves the cursor there" begin
     app, frame = _new_app()
-    app.editor.mode = :normal
-    Ressac.TK.set_text!(app.editor,
+    Ressac._active_editor(app).mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app),
         "abcdefghij\n" * "ABCDEFGHIJ\n" * "0123456789")
     Tachikoma.view(app, frame)
     @test app.layout_patterns !== nothing
@@ -1029,10 +1027,10 @@ end
 
 @testset "Ctrl-F enters editor :search mode" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "find me here")
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "find me here")
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'f'))
-    @test app.editor.mode === :search
+    @test Ressac._active_editor(app).mode === :search
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
 end
 
@@ -1040,48 +1038,48 @@ end
 
 @testset "dw deletes word forward" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "alpha beta gamma")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 0
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "alpha beta gamma")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 0
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('d'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('w'))
-    @test occursin("beta gamma", Ressac.TK.text(app.editor))
-    @test !startswith(Ressac.TK.text(app.editor), "alpha")
+    @test occursin("beta gamma", Ressac.TK.text(Ressac._active_editor(app)))
+    @test !startswith(Ressac.TK.text(Ressac._active_editor(app)), "alpha")
 end
 
 @testset "w moves cursor to start of next word" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "alpha beta")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 0
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "alpha beta")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 0
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('w'))
-    @test app.editor.cursor_col >= 5   # past "alpha "
+    @test Ressac._active_editor(app).cursor_col >= 5   # past "alpha "
 end
 
 @testset "b moves cursor to start of previous word" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "alpha beta")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 7   # somewhere inside "beta"
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "alpha beta")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 7   # somewhere inside "beta"
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('b'))
-    @test app.editor.cursor_col <= 6
+    @test Ressac._active_editor(app).cursor_col <= 6
 end
 
 # ── Dot-repeat ──────────────────────────────────────────────────────
 
 @testset ". repeats the last text-mutating command" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(app.editor, "abcdef")
-    app.editor.cursor_row = 1
-    app.editor.cursor_col = 0
-    app.editor.mode = :normal
+    Ressac.TK.set_text!(Ressac._active_editor(app), "abcdef")
+    Ressac._active_editor(app).cursor_row = 1
+    Ressac._active_editor(app).cursor_col = 0
+    Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent('x'))   # delete 'a'
-    @test Ressac.TK.text(app.editor) == "bcdef"
+    @test Ressac.TK.text(Ressac._active_editor(app)) == "bcdef"
     Tachikoma.update!(app, Tachikoma.KeyEvent('.'))   # repeat delete
-    @test Ressac.TK.text(app.editor) == "cdef"
+    @test Ressac.TK.text(Ressac._active_editor(app)) == "cdef"
 end
 
 # ── Pattern :sg / :sn shortcuts ────────────────────────────────────

@@ -310,21 +310,21 @@
         mock = MockOSCClient()
         sched = Scheduler(mock; cps=0.5)
         app = Ressac.RessacApp(; scheduler = sched)
-        app.editor.mode = :command
-        empty!(app.editor.command_buffer)
-        append!(app.editor.command_buffer, collect("starter "))
+        Ressac._active_editor(app).mode = :command
+        empty!(Ressac._active_editor(app).command_buffer)
+        append!(Ressac._active_editor(app).command_buffer, collect("starter "))
         # First Tab: opens session, splices best candidate.
-        @test Ressac._try_ex_autocomplete!(app, app.editor) == true
+        @test Ressac._try_ex_autocomplete!(app, Ressac._active_editor(app)) == true
         @test Ressac._completion_picker_active(app) == true
         @test startswith(app.completion_label, "ex:")
         @test length(app.completion_candidates) > 1   # multiple starters
-        first_buf = String(app.editor.command_buffer)
+        first_buf = String(Ressac._active_editor(app).command_buffer)
         @test startswith(first_buf, "starter ")
         # Second Tab: advances to next, buffer changes.
-        Ressac._try_ex_autocomplete!(app, app.editor)
+        Ressac._try_ex_autocomplete!(app, Ressac._active_editor(app))
         @test app.completion_idx == 2
-        @test String(app.editor.command_buffer) != first_buf
-        @test startswith(String(app.editor.command_buffer), "starter ")
+        @test String(Ressac._active_editor(app).command_buffer) != first_buf
+        @test startswith(String(Ressac._active_editor(app).command_buffer), "starter ")
     end
 
     @testset "ex-command Tab on bare verb prefix (no space)" begin
@@ -332,14 +332,14 @@
         mock = MockOSCClient()
         sched = Scheduler(mock; cps=0.5)
         app = Ressac.RessacApp(; scheduler = sched)
-        app.editor.mode = :command
-        empty!(app.editor.command_buffer)
-        append!(app.editor.command_buffer, collect("sta"))
-        @test Ressac._try_ex_autocomplete!(app, app.editor) == true
+        Ressac._active_editor(app).mode = :command
+        empty!(Ressac._active_editor(app).command_buffer)
+        append!(Ressac._active_editor(app).command_buffer, collect("sta"))
+        @test Ressac._try_ex_autocomplete!(app, Ressac._active_editor(app)) == true
         @test app.completion_label == "ex:verb"
         @test !isempty(app.completion_candidates)
         # Buffer is just the chosen verb (no leading "sta " prefix).
-        @test String(app.editor.command_buffer) == app.completion_candidates[1]
+        @test String(Ressac._active_editor(app).command_buffer) == app.completion_candidates[1]
     end
 
     @testset "_completion_picker_active reflects Tab-cycle state" begin

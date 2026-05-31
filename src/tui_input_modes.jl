@@ -113,9 +113,9 @@ function _piano_commit!(m::RessacApp)
         idx = clamp(round(Int, (t - first_t) / bar * (N - 1)) + 1, 1, N)
         cells[idx] = string(semi)
     end
-    slot = _next_free_d_slot(m.editor)
+    slot = _next_free_d_slot(_active_editor(m))
     line = "@d$(slot) :$(m.piano_synth) |> n(p\"" * join(cells, " ") * "\")"
-    _insert_line_after_cursor!(m.editor, line)
+    _insert_line_after_cursor!(_active_editor(m), line)
     empty!(m.piano_events)
     m.piano_rec = false
     _push_app_log!(m, "[INFO] piano committed → $(line)")
@@ -418,7 +418,7 @@ function _tap_commit_auto!(m::RessacApp)
     target_cps = round(1.0 / bar_dur; digits = 3)
     # Always emit + apply. If the new cps equals the current, set_cps!
     # is a cheap no-op and the user still sees the value reflected.
-    _insert_line_after_cursor!(m.editor, "cps!($(target_cps))")
+    _insert_line_after_cursor!(_active_editor(m), "cps!($(target_cps))")
     sched !== nothing && set_cps!(sched, target_cps)
     slot = _tap_emit_line!(m, cells, suffix)
     # Eval the inserted @dN block — the user shouldn't have to press e.
@@ -426,9 +426,9 @@ function _tap_commit_auto!(m::RessacApp)
 end
 
 function _tap_emit_line!(m::RessacApp, cells, suffix)
-    slot = _next_free_d_slot(m.editor)
+    slot = _next_free_d_slot(_active_editor(m))
     line = "@d$(slot) p\"" * join(cells, " ") * "\""
-    _insert_line_after_cursor!(m.editor, line)
+    _insert_line_after_cursor!(_active_editor(m), line)
     empty!(m.tap_events)
     _push_app_log!(m, "[INFO] tap → $(line)   $(suffix)")
     return slot

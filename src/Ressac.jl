@@ -433,7 +433,7 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         Tachikoma.view(app, frame)
         # Tab cycle.
         app.completion_idx = 0
-        ed = app.editor
+        ed = _active_editor(app)
         ed.mode = :insert
         Tachikoma.set_text!(ed, "@d1 p\"bd\" |> gai")
         ed.cursor_row = 1
@@ -451,14 +451,14 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         ed.mode = :normal
 
         # Nudge on int + float.
-        Tachikoma.set_text!(app.editor, "rate = 4.5\ncount = 200")
-        app.editor.cursor_row = 1
-        app.editor.cursor_col = 8
-        _nudge_number_under_cursor!(app, app.editor, 1)
-        _nudge_number_under_cursor!(app, app.editor, 10)
-        app.editor.cursor_row = 2
-        app.editor.cursor_col = 10
-        _nudge_number_under_cursor!(app, app.editor, -1)
+        Tachikoma.set_text!(_active_editor(app), "rate = 4.5\ncount = 200")
+        _active_editor(app).cursor_row = 1
+        _active_editor(app).cursor_col = 8
+        _nudge_number_under_cursor!(app, _active_editor(app), 1)
+        _nudge_number_under_cursor!(app, _active_editor(app), 10)
+        _active_editor(app).cursor_row = 2
+        _active_editor(app).cursor_col = 10
+        _nudge_number_under_cursor!(app, _active_editor(app), -1)
 
         # Synth library: list, preview, instantiate paths.
         _open_synth_library!(app)

@@ -227,7 +227,7 @@ function _visual_apply_line!(m::RessacApp, ed::TK.CodeEditor, op::Char)
             ed.mode = :insert
         end
         _push_app_log!(m, "[INFO] V — $(op == 'c' ? "changed" : "deleted") $(length(selected)) line(s)")
-        ed === m.editor && _unschedule_removed_slots!(m, txt, new_txt)
+        ed === _active_editor(m) && _unschedule_removed_slots!(m, txt, new_txt)
     end
 end
 
@@ -285,7 +285,7 @@ function _visual_apply_char!(m::RessacApp, ed::TK.CodeEditor, op::Char)
         ed.mode = :insert
     end
     _push_app_log!(m, "[INFO] v — $(op == 'c' ? "changed" : "deleted") $(length(yanked)) char(s)")
-    ed === m.editor && _unschedule_removed_slots!(m, txt, new_txt)
+    ed === _active_editor(m) && _unschedule_removed_slots!(m, txt, new_txt)
 end
 
 # ---------------------------------------------------------------------
@@ -409,7 +409,7 @@ function _vim_post_normal!(m::RessacApp, ed::TK.CodeEditor,
         # Pattern lines that just vanished from the buffer should
         # stop playing. Only meaningful in the patterns pane —
         # synth-pane edits don't drive the scheduler directly.
-        ed === m.editor &&
+        ed === _active_editor(m) &&
             _unschedule_removed_slots!(m, pre_text, post_text)
     end
 end

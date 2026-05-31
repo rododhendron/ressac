@@ -10,16 +10,16 @@
 
     @testset "w traverses every char + wraps lines" begin
         m = Ressac.RessacApp(scheduler = sched)
-        TK.set_text!(m.editor, "Reservoir.adex(N=24)\n    dt=1.0")
-        m.editor.mode = :normal
-        m.editor.cursor_row = 1; m.editor.cursor_col = 0
-        cols_visited = Int[m.editor.cursor_col]
-        rows_visited = Set([m.editor.cursor_row])
+        TK.set_text!(Ressac._active_editor(m), "Reservoir.adex(N=24)\n    dt=1.0")
+        Ressac._active_editor(m).mode = :normal
+        Ressac._active_editor(m).cursor_row = 1; Ressac._active_editor(m).cursor_col = 0
+        cols_visited = Int[Ressac._active_editor(m).cursor_col]
+        rows_visited = Set([Ressac._active_editor(m).cursor_row])
         w_evt = TK.KeyEvent(:char, 'w', TK.key_press)
-        last = (m.editor.cursor_row, m.editor.cursor_col)
+        last = (Ressac._active_editor(m).cursor_row, Ressac._active_editor(m).cursor_col)
         for _ in 1:30
             TK.update!(m, w_evt)
-            cur = (m.editor.cursor_row, m.editor.cursor_col)
+            cur = (Ressac._active_editor(m).cursor_row, Ressac._active_editor(m).cursor_col)
             push!(rows_visited, cur[1])
             cur == last && break
             last = cur
@@ -30,60 +30,60 @@
 
     @testset "cw preserves scroll_offset" begin
         m = Ressac.RessacApp(scheduler = sched)
-        TK.set_text!(m.editor,
+        TK.set_text!(Ressac._active_editor(m),
             join(["line " * string(i) for i in 1:80], "\n"))
-        m.editor.mode = :normal
-        m.editor.cursor_row = 50
-        m.editor.cursor_col = 0
-        m.editor.scroll_offset = 45
+        Ressac._active_editor(m).mode = :normal
+        Ressac._active_editor(m).cursor_row = 50
+        Ressac._active_editor(m).cursor_col = 0
+        Ressac._active_editor(m).scroll_offset = 45
         TK.update!(m, TK.KeyEvent(:char, 'c', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'w', TK.key_press))
-        @test m.editor.scroll_offset == 45
-        @test m.editor.mode === :insert
-        @test String(m.editor.lines[50]) == " 50"   # "line" deleted, " 50" left
+        @test Ressac._active_editor(m).scroll_offset == 45
+        @test Ressac._active_editor(m).mode === :insert
+        @test String(Ressac._active_editor(m).lines[50]) == " 50"   # "line" deleted, " 50" left
     end
 
     @testset "dw preserves scroll + deletes word + trailing space" begin
         m = Ressac.RessacApp(scheduler = sched)
-        TK.set_text!(m.editor,
+        TK.set_text!(Ressac._active_editor(m),
             join(["foo bar baz line $i" for i in 1:80], "\n"))
-        m.editor.mode = :normal
-        m.editor.cursor_row = 50
-        m.editor.cursor_col = 0
-        m.editor.scroll_offset = 45
+        Ressac._active_editor(m).mode = :normal
+        Ressac._active_editor(m).cursor_row = 50
+        Ressac._active_editor(m).cursor_col = 0
+        Ressac._active_editor(m).scroll_offset = 45
         TK.update!(m, TK.KeyEvent(:char, 'd', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'w', TK.key_press))
-        @test m.editor.scroll_offset == 45
-        @test startswith(String(m.editor.lines[50]), "bar")
+        @test Ressac._active_editor(m).scroll_offset == 45
+        @test startswith(String(Ressac._active_editor(m).lines[50]), "bar")
     end
 
     @testset "V multi-line yank captures all selected lines" begin
         m = Ressac.RessacApp(scheduler = sched)
-        TK.set_text!(m.editor, "line one\nline two\nline three\nline four")
-        m.editor.mode = :normal
-        m.editor.cursor_row = 1; m.editor.cursor_col = 0
+        TK.set_text!(Ressac._active_editor(m), "line one\nline two\nline three\nline four")
+        Ressac._active_editor(m).mode = :normal
+        Ressac._active_editor(m).cursor_row = 1; Ressac._active_editor(m).cursor_col = 0
         TK.update!(m, TK.KeyEvent(:char, 'V', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'j', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'j', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'y', TK.key_press))
-        @test length(m.editor.yank_buffer) == 3
-        @test String(m.editor.yank_buffer[1]) == "line one"
-        @test String(m.editor.yank_buffer[3]) == "line three"
-        @test m.editor.yank_is_linewise
+        @test length(Ressac._active_editor(m).yank_buffer) == 3
+        @test String(Ressac._active_editor(m).yank_buffer[1]) == "line one"
+        @test String(Ressac._active_editor(m).yank_buffer[3]) == "line three"
+        @test Ressac._active_editor(m).yank_is_linewise
     end
 
     @testset "v char-wise multi-line yank stores the right text" begin
         m = Ressac.RessacApp(scheduler = sched)
-        TK.set_text!(m.editor, "hello world\nfoo bar baz")
-        m.editor.mode = :normal
-        m.editor.cursor_row = 1; m.editor.cursor_col = 6
+        TK.set_text!(Ressac._active_editor(m), "hello world\nfoo bar baz")
+        Ressac._active_editor(m).mode = :normal
+        Ressac._active_editor(m).cursor_row = 1; Ressac._active_editor(m).cursor_col = 6
         TK.update!(m, TK.KeyEvent(:char, 'v', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'j', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'l', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'l', TK.key_press))
         TK.update!(m, TK.KeyEvent(:char, 'y', TK.key_press))
-        @test length(m.editor.yank_buffer) == 2
-        @test String(m.editor.yank_buffer[1]) == "world"
-        @test !m.editor.yank_is_linewise
+        @test length(Ressac._active_editor(m).yank_buffer) == 2
+        @test String(Ressac._active_editor(m).yank_buffer[1]) == "world"
+        @test !Ressac._active_editor(m).yank_is_linewise
     end
 end

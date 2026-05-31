@@ -59,15 +59,10 @@ non-empty), and the focus toggle for keystroke routing.
 
 @kwdef mutable struct RessacApp <: TK.Model
     scheduler::Scheduler
-    editor::TK.CodeEditor = TK.CodeEditor(;
-        text     = _STARTER_BUFFER,
-        # No `block=` here — view() wraps the patterns pane in its own
-        # focus-aware Block (see _render_pane_block!) so adding one on
-        # the editor itself would draw nested borders.
-        focused  = true,
-        tick     = 0,
-        mode     = :normal,
-    )
+    # No m.editor field — the patterns editor lives inside the
+    # workspace tree's default EditorPane (created lazily by
+    # _ensure_default_workspace!). Resolve dynamically via
+    # `_active_editor(m)` whenever code needs "the current editor".
     synth_tabs::Vector{SynthTab} = SynthTab[]
     synth_tab_idx::Int           = 0      # 1-based; 0 when no tabs open
     focus::Symbol                = :patterns
@@ -295,13 +290,48 @@ end
 """
     _active_editor(m) -> CodeEditor
 
-The currently-focused editor (patterns OR active synth tab).
+The editor the user is currently editing. Resolution order:
+
+  1. If `m.focus === :synth` and a synth tab is open → that synth
+     tab's TK.CodeEditor (synth side panel is a legacy code path
+     not yet folded into the workspace tree).
+  2. Otherwise → the `TK.CodeEditor` of the EditorPane currently
+     focused in the active workspace.
+  3. Otherwise → the first EditorPane found anywhere in the
+     workspace tree.
+  4. Otherwise (no workspace, no editor pane) → throw.
+
+This function is the single source of truth for "where typed text
+goes" and "where the cursor lives". There is no longer a separate
+`_active_editor(m)` field — the editor is owned by the workspace tree.
 """
 function _active_editor(m::RessacApp)
     if m.focus === :synth && !isempty(m.synth_tabs)
         return m.synth_tabs[m.synth_tab_idx].editor
     end
-    return m.editor
+    # Lazy init — every accessor path through _active_editor needs an
+    # editor pane to exist. Cheaper than asking every callsite to
+    # call _ensure_default_workspace! defensively.
+    _ensure_default_workspace!(m)
+    ws = current_workspace(m.workspaces)
+    if ws !== nothing
+        leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+        if leaf isa PaneLeaf && 1 <= leaf.current_tab <= length(leaf.tabs)
+            pane = leaf.tabs[leaf.current_tab]
+            if pane isa EditorPane && !isempty(pane.tabs) &&
+               1 <= pane.current_tab <= length(pane.tabs)
+                return pane.tabs[pane.current_tab].code_editor
+            end
+        end
+        for any_leaf in _all_leaves(ws.tree)
+            for tab in any_leaf.tabs
+                if tab isa EditorPane && !isempty(tab.tabs)
+                    return tab.tabs[tab.current_tab].code_editor
+                end
+            end
+        end
+    end
+    throw(ErrorException("_active_editor: no editor pane available"))
 end
 
 _synth_pane_open(m::RessacApp) = !isempty(m.synth_tabs)
@@ -340,12 +370,12 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
         # Patterns editor — fast path (still the most common click).
         # Driven by m.layout_patterns which is refilled by _render_tree!
-        # whenever the leaf holding m.editor is visible. Updates the
+        # whenever the leaf holding _active_editor(m) is visible. Updates the
         # workspace focus too so the focus border and key routing
         # match the legacy editor focus.
         if m.layout_patterns !== nothing && _in_rect(m.layout_patterns, evt.x, evt.y)
             m.focus = :patterns; _refresh_focus_flags!(m)
-            _click_into_editor!(m.editor, m.layout_patterns, evt.x, evt.y)
+            _click_into_editor!(_active_editor(m), m.layout_patterns, evt.x, evt.y)
             _focus_patterns_leaf!(m)
             return
         end
@@ -373,24 +403,24 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     (leaf === nothing || isempty(leaf.tabs)) && return false
     1 <= leaf.current_tab <= length(leaf.tabs) || return false
     pane = leaf.tabs[leaf.current_tab]
-    # While m.editor is in ex command mode, ALL keys belong to it —
+    # While _active_editor(m) is in ex command mode, ALL keys belong to it —
     # otherwise typed chars after ':' would land in the focused side
     # pane instead of the ex command buffer. Same for :search.
-    if m.editor.mode === :command || m.editor.mode === :search
+    if _active_editor(m).mode === :command || _active_editor(m).mode === :search
         return false
     end
-    # Global shortcuts that always belong to m.editor regardless of
+    # Global shortcuts that always belong to _active_editor(m) regardless of
     # which workspace pane has focus. ':' opens ex command mode;
     # without this fall-through, ex commands wouldn't be reachable
     # from a focused log / doc / scope side pane.
     if evt.key === :char && evt.char == ':' &&
-       m.editor.mode === :normal
+       _active_editor(m).mode === :normal
         return false
     end
-    # Patterns pane uses m.editor — legacy path owns it.
+    # Patterns pane uses _active_editor(m) — legacy path owns it.
     if pane isa EditorPane &&
        1 <= pane.current_tab <= length(pane.tabs) &&
-       pane.tabs[pane.current_tab].code_editor === m.editor
+       pane.tabs[pane.current_tab].code_editor === _active_editor(m)
         return false
     end
     # TK.CodeEditor.handle_key! short-circuits to `false` when
@@ -454,7 +484,7 @@ _in_rect_xywh(x::Int, y::Int, w::Int, h::Int, px::Int, py::Int) =
 """
     _focus_patterns_leaf!(m)
 
-Resolve which workspace leaf currently holds `m.editor` and set it
+Resolve which workspace leaf currently holds `_active_editor(m)` and set it
 as the focused leaf. Called from the patterns mouse fast path so
 the focus border and the workspace's `focused_pane` stay in sync
 with the legacy `m.focus = :patterns` flag.
@@ -466,7 +496,7 @@ function _focus_patterns_leaf!(m::RessacApp)
         for tab in leaf.tabs
             if tab isa EditorPane &&
                1 <= tab.current_tab <= length(tab.tabs) &&
-               tab.tabs[tab.current_tab].code_editor === m.editor
+               tab.tabs[tab.current_tab].code_editor === _active_editor(m)
                 ws.focused_pane = leaf.id
                 return
             end
@@ -500,7 +530,7 @@ function _mouse_wheel!(m::RessacApp, evt::TK.MouseEvent)
     sign = evt.button === TK.mouse_scroll_up ? 1 : -1
     mag  = evt.shift ? 10 : 1
     # 1. Hover wheel-nudge in any editor.
-    for (rect, ed) in ((m.layout_patterns, m.editor),
+    for (rect, ed) in ((m.layout_patterns, _active_editor(m)),
                        (m.layout_synth, _synth_pane_open(m) ?
                                         _current_synth_tab(m).editor : nothing))
         rect === nothing && continue
@@ -638,7 +668,7 @@ Visible-line height of the pane currently hosting `ed`. Falls back to
 a conservative 20 if no layout has been recorded yet (first frame).
 """
 function _viewport_h(m::RessacApp, ed::TK.CodeEditor)
-    rect = ed === m.editor ? m.layout_patterns : m.layout_synth
+    rect = ed === _active_editor(m) ? m.layout_patterns : m.layout_synth
     rect === nothing && return 20
     return max(1, rect.height)
 end
@@ -1097,7 +1127,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         end
         # Pane mode entry — only from editor normal mode so insert-mode
         # word-delete (Ctrl-W) keeps working.
-        if m.editor.mode === :normal &&
+        if _active_editor(m).mode === :normal &&
            evt.key === :ctrl && evt.char == 'w'
             _PANE_MODE.active = true
             return
@@ -1107,7 +1137,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         # typed during insert is a literal char). Replaces TK.CodeEditor's
         # built-in :command/:search mode entry, which we never want to
         # trigger anymore.
-        if m.editor.mode === :normal && evt.key === :char
+        if _active_editor(m).mode === :normal && evt.key === :char
             if evt.char == ':'
                 enter!(m.command_line, :command)
                 return
@@ -1119,10 +1149,10 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     end
     # ── Sub-project 10: focus-driven key routing ──────────────────────
     # When the focused workspace pane is NOT the legacy patterns editor
-    # (m.editor), its keystrokes must go to that pane's own TK.CodeEditor
-    # via PaneImpl.handle_key!, not into the global m.editor flow that
+    # (_active_editor(m)), its keystrokes must go to that pane's own TK.CodeEditor
+    # via PaneImpl.handle_key!, not into the global _active_editor(m) flow that
     # follows below. The patterns pane still goes through the legacy
-    # path because m.editor IS that pane's tabs[1].code_editor — letting
+    # path because _active_editor(m) IS that pane's tabs[1].code_editor — letting
     # the legacy update! body run keeps cursor moves / autocomplete /
     # eval flash / playhead intact.
     if _route_key_to_focused_pane!(m, evt)
@@ -1134,7 +1164,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # whenever ws.focused_pane is on a different leaf (a side log /
     # doc / scope pane, a synth-role editor, etc.). Without forcing
     # it back to true here, any global keystroke (':', text, vim
-    # motions on m.editor) routed past the workspace pane gets
+    # motions on _active_editor(m)) routed past the workspace pane gets
     # silently dropped. Per-frame view() will re-sync from the tree.
     _active_editor(m).focused = true
     # Piano mode: letter keys → semitones → fire the current synth at
@@ -1778,10 +1808,10 @@ uncommented `@dN ...` slot def → prefix it with `# ` and call
 and re-eval so the pattern comes back. Other lines log a warning.
 """
 function _toggle_mute_current_line!(m::RessacApp)
-    txt = TK.text(m.editor)
+    txt = TK.text(_active_editor(m))
     lines = collect(split(txt, '\n'; keepempty=true))
-    row = m.editor.cursor_row
-    col = m.editor.cursor_col
+    row = _active_editor(m).cursor_row
+    col = _active_editor(m).cursor_col
     1 <= row <= length(lines) || return
     # Detect the logical block the cursor is on, then mute/unmute its
     # ROOT line — the @dN call sits there. For multi-line blocks we
@@ -1797,9 +1827,9 @@ function _toggle_mute_current_line!(m::RessacApp)
         for r in root_row:end_row
             lines[r] = "# " * lines[r]
         end
-        TK.set_text!(m.editor, join(lines, '\n'))
-        m.editor.cursor_row = row
-        m.editor.cursor_col = col + 2
+        TK.set_text!(_active_editor(m), join(lines, '\n'))
+        _active_editor(m).cursor_row = row
+        _active_editor(m).cursor_col = col + 2
         unset_pattern!(m.scheduler, slot)
         # Best-effort voice kill: free any drones on the SC side that
         # would otherwise hang now that the pattern stopped scheduling.
@@ -1817,9 +1847,9 @@ function _toggle_mute_current_line!(m::RessacApp)
                 lines[r] = s[2:end]
             end
         end
-        TK.set_text!(m.editor, join(lines, '\n'))
-        m.editor.cursor_row = row
-        m.editor.cursor_col = max(0, col - 2)
+        TK.set_text!(_active_editor(m), join(lines, '\n'))
+        _active_editor(m).cursor_row = row
+        _active_editor(m).cursor_col = max(0, col - 2)
         # Re-eval so the slot comes back live — `_eval_current_line!`
         # uses the same block detection, so multi-line blocks evaluate
         # correctly from any cursor row inside them.
@@ -2641,12 +2671,11 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
             return
         end
     end
-    TK.set_text!(m.editor, snip.resolved_content)
-    m.editor.cursor_row = 1
-    m.editor.cursor_col = 0
-    # Sub-project 10: if the snippet declares panes = [...], rebuild
-    # the focused workspace from that spec. Errors are logged so a
-    # malformed spec doesn't kill the :starter command outright.
+    # If the snippet declares panes = [...], rebuild the focused
+    # workspace BEFORE seeding the buffer so the text lands in the
+    # newly-installed primary editor pane (not the about-to-be-replaced
+    # one). Errors are logged so a malformed spec doesn't kill the
+    # :starter command outright.
     if !isempty(snip.panes)
         try
             apply_snippet_panes!(m.workspaces, snip.panes, snip.mode;
@@ -2656,6 +2685,10 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
                 "[ERROR] :starter — apply panes failed: $(sprint(showerror, err))")
         end
     end
+    ed = _active_editor(m)
+    TK.set_text!(ed, snip.resolved_content)
+    ed.cursor_row = 1
+    ed.cursor_col = 0
     _push_app_log!(m, "[INFO] loaded :starter $key — eval each @dN with e")
 end
 
@@ -2757,7 +2790,7 @@ function _save_session_app!(m::RessacApp, name::AbstractString)
     isdir(dir) || mkpath(dir)
     path = joinpath(dir, String(name) * ".txt")
     try
-        write(path, TK.text(m.editor))
+        write(path, TK.text(_active_editor(m)))
         _push_app_log!(m, "[INFO] saved session → $path")
     catch err
         _push_app_log!(m, "[ERROR] save-session: $(sprint(showerror, err))")
@@ -2771,8 +2804,8 @@ function _load_session_app!(m::RessacApp, name::AbstractString)
         return
     end
     try
-        TK.set_text!(m.editor, read(path, String))
-        m.editor.cursor_row = 1; m.editor.cursor_col = 0
+        TK.set_text!(_active_editor(m), read(path, String))
+        _active_editor(m).cursor_row = 1; _active_editor(m).cursor_col = 0
         _push_app_log!(m, "[INFO] loaded session '$name' — press E to eval all blocks")
     catch err
         _push_app_log!(m, "[ERROR] load-session: $(sprint(showerror, err))")
@@ -4183,7 +4216,7 @@ _rect_to_nt(r::TK.Rect)     = (x = r.x, y = r.y, w = r.width, h = r.height)
 
 Walk the workspace tree and call each leaf's render! against its
 computed rect. Containers recurse. As a side effect, populates
-`m.layout_patterns` from the leaf currently holding `m.editor`
+`m.layout_patterns` from the leaf currently holding `_active_editor(m)`
 (via its EditorPane wrapper) so legacy overlay paths (eval flash,
 playhead, ghost) and the mouse handler keep working until Task 6
 rewires them through `_compute_rects` directly.
@@ -4216,7 +4249,7 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
             # Bridge to legacy overlay paths.
             if pane isa EditorPane &&
                1 <= pane.current_tab <= length(pane.tabs) &&
-               pane.tabs[pane.current_tab].code_editor === m.editor
+               pane.tabs[pane.current_tab].code_editor === _active_editor(m)
                 m.layout_patterns = _inner_rect_simple(rect)
             end
             # Focus indicator — repaint the border in :accent so the
@@ -4290,7 +4323,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # selection to clear — by then the user has already copied.
     m.paused && return
     m.tick += 1
-    m.editor.tick = m.tick
+    _active_editor(m).tick = m.tick
     for tab in m.synth_tabs
         tab.editor.tick = m.tick
     end
@@ -4298,7 +4331,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
     buf = f.buffer
 
     # Reset layout_* — _render_tree! refills patterns when it finds
-    # m.editor's leaf. synth/scope follow in Task 6 polish.
+    # _active_editor(m)'s leaf. synth/scope follow in Task 6 polish.
     m.layout_patterns   = nothing
     m.layout_synth      = nothing
     m.layout_synth_tabs = nothing
@@ -4676,12 +4709,12 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
              TK.tstyle(:warning, bold = true)))
     end
     if m.visual_active
-        r1 = min(m.visual_anchor_row, m.editor.cursor_row)
-        r2 = max(m.visual_anchor_row, m.editor.cursor_row)
+        r1 = min(m.visual_anchor_row, _active_editor(m).cursor_row)
+        r2 = max(m.visual_anchor_row, _active_editor(m).cursor_row)
         n = r2 - r1 + 1
         if m.visual_kind === :char
             push!(state_parts,
-                ("▌ VISUAL CHAR $(m.visual_anchor_row):$(m.visual_anchor_col)→$(m.editor.cursor_row):$(m.editor.cursor_col)",
+                ("▌ VISUAL CHAR $(m.visual_anchor_row):$(m.visual_anchor_col)→$(_active_editor(m).cursor_row):$(_active_editor(m).cursor_col)",
                  TK.tstyle(:accent, bold = true)))
         else
             push!(state_parts,
@@ -4957,7 +4990,7 @@ wins. Then eval each block whose slot is in `target` (or all of
 them when `target === :all`). Logs a one-line summary.
 """
 function _eval_pattern_blocks!(m::RessacApp, target)
-    txt = TK.text(m.editor)
+    txt = TK.text(_active_editor(m))
     lines = collect(split(txt, '\n'; keepempty=true))
     blocks = Dict{Symbol,String}()
     i = 1
@@ -5343,7 +5376,7 @@ side effects which made the caret invisible the first time
 the user opened a synth pane.
 """
 function _refresh_focus_flags!(m::RessacApp)
-    m.editor.focused = (m.focus === :patterns)
+    _active_editor(m).focused = (m.focus === :patterns)
     for (i, tab) in enumerate(m.synth_tabs)
         tab.editor.focused = (m.focus === :synth && i == m.synth_tab_idx)
     end
@@ -5360,7 +5393,7 @@ function _close_synth_pane!(m::RessacApp)
     empty!(m.synth_tabs)
     m.synth_tab_idx = 0
     m.focus = :patterns
-    m.editor.focused = true
+    _active_editor(m).focused = true
     _push_app_log!(m, "[INFO] closed synth pane")
 end
 
@@ -5377,7 +5410,7 @@ function _close_active_synth_tab!(m::RessacApp)
     if isempty(m.synth_tabs)
         m.synth_tab_idx = 0
         m.focus = :patterns
-        m.editor.focused = true
+        _active_editor(m).focused = true
         _push_app_log!(m, "[INFO] closed last synth tab '$name'")
     else
         m.synth_tab_idx = clamp(m.synth_tab_idx - 1, 1, length(m.synth_tabs))
@@ -5569,11 +5602,11 @@ function _ensure_default_workspace!(m::RessacApp)
     leaf = ws.tree
     if leaf isa PaneLeaf && isempty(leaf.tabs)
         ep = _pane_new(:editor, Dict{String,Any}())
-        # Replace the fresh pane's TK.CodeEditor with `m.editor` so
-        # the legacy paths that mutate `m.editor` (cursor moves,
-        # autocomplete, eval flash, playhead overlay…) and the new
-        # PaneImpl render path observe the same underlying buffer.
-        ep.tabs[1].code_editor = m.editor
+        # Seed the fresh editor with the starter buffer so the user
+        # sees the welcome + sample patterns on first boot. No-op for
+        # the load-layout path since that path replaces the workspace
+        # before this branch runs.
+        TK.set_text!(ep.tabs[1].code_editor, _STARTER_BUFFER)
         push!(leaf.tabs, ep)
         leaf.current_tab = 1
     end

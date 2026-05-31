@@ -79,7 +79,7 @@ end
                             Tachikoma.GraphicsRegion[],
                             Tachikoma.PixelSnapshot[])
     # First view triggers _ensure_default_workspace! and binds the
-    # workspace's default EditorPane to m.editor.
+    # workspace's default EditorPane to Ressac._active_editor(m).
     Tachikoma.view(app, frame)
     ws = Ressac.current_workspace(app.workspaces)
     @test ws !== nothing
@@ -87,7 +87,7 @@ end
     @test leaf isa Ressac.PaneLeaf
     @test length(leaf.tabs) == 1
     @test leaf.tabs[1] isa Ressac.EditorPane
-    @test leaf.tabs[1].tabs[1].code_editor === app.editor
+    @test leaf.tabs[1].tabs[1].code_editor === Ressac._active_editor(app)
     # After the first frame, m.layout_patterns is populated from the
     # leaf rect so legacy overlay paths still work.
     @test app.layout_patterns !== nothing
@@ -120,7 +120,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
     # Enter pane mode
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
@@ -143,7 +143,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
 
     Ressac._PANE_MODE.active = true
     Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
@@ -173,13 +173,13 @@ end
     @test log_pane.scroll == 1
 end
 
-@testset "key routing — patterns pane stays on legacy m.editor path" begin
+@testset "key routing — patterns pane stays on legacy Ressac._active_editor(m) path" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
     ws = Ressac.current_workspace(app.workspaces)
-    # Focused pane is the default editor (m.editor).
+    # Focused pane is the default editor (Ressac._active_editor(m)).
     @test ws.focused_pane == ws.tree.id
     # _route_key_to_focused_pane! returns false → legacy path runs.
     @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('i')) == false
@@ -209,7 +209,7 @@ end
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
     tb = Tachikoma.TestBackend(120, 5)
     Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
@@ -228,7 +228,7 @@ end
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
-    app.editor.mode = :normal
+    Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
     # Enter and exit pane mode to make sure no residual state lingers.
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
