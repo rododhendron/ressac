@@ -209,19 +209,12 @@ non-empty), and the focus toggle for keystroke routing.
     recording::Bool              = false
     recording_path::String       = ""
     recording_start_ts::Float64  = 0.0
-    # Layout rects refreshed every frame in view(). The mouse handler
-    # uses these to map (x, y) → which pane was clicked and where.
-    # nothing = the pane wasn't on screen on the last frame.
-    layout_patterns::Union{Nothing,TK.Rect} = nothing
-    layout_synth::Union{Nothing,TK.Rect}    = nothing
-    layout_synth_tabs::Union{Nothing,TK.Rect} = nothing
-    layout_scope::Union{Nothing,TK.Rect}    = nothing
-    layout_logs::Union{Nothing,TK.Rect}     = nothing
-    # Sub-project 9: WorkspaceManager subsumes m.layout_*. Populated
-    # via _ensure_default_workspace!. The legacy layout_* fields are
-    # kept temporarily — Task 15 (cleanup) swaps view() to dispatch
-    # through workspaces and removes them.
     workspaces::WorkspaceManager            = WorkspaceManager()
+    # Layout rects published by view() each frame for the mouse
+    # handler and overlay paths. These caches avoid re-deriving chrome
+    # heights from area in dispatch code. They mirror what view()
+    # would compute again; readers should treat them as best-effort.
+    _last_log_rect::Union{Nothing,TK.Rect}  = nothing
     # Sub-project 10: Ctrl-Shift-F toggles every floating pane's
     # visibility globally (Zellij-style "hide UI" affordance).
     floats_hidden::Bool                     = false
@@ -301,9 +294,8 @@ The editor the user is currently editing. Resolution order:
      workspace tree.
   4. Otherwise (no workspace, no editor pane) → throw.
 
-This function is the single source of truth for "where typed text
-goes" and "where the cursor lives". There is no longer a separate
-`_active_editor(m)` field — the editor is owned by the workspace tree.
+Single source of truth for "where typed text goes" and "where the
+cursor lives" — the editor is owned by the workspace tree.
 """
 function _active_editor(m::RessacApp)
     if m.focus === :synth && !isempty(m.synth_tabs)
@@ -337,6 +329,34 @@ end
 _synth_pane_open(m::RessacApp) = !isempty(m.synth_tabs)
 _current_synth_tab(m::RessacApp) = m.synth_tabs[m.synth_tab_idx]
 
+"""
+    _focused_editor_rect(m) -> Union{Nothing,TK.Rect}
+
+Inner rect of the workspace leaf currently holding the focused
+EditorPane — i.e. the on-screen area where `_active_editor(m)` is
+rendered. Computed on demand from `m._last_ws_area` +
+`_compute_rects`; returns `nothing` if the workspace area hasn't
+been published yet (pre-first-view) or if the focused leaf isn't
+an editor pane.
+
+Used by mouse hit-tests (click-into-editor) and overlay paths
+(eval flash, playhead, visual selection, ghost autocomplete).
+"""
+function _focused_editor_rect(m::RessacApp)
+    m._last_ws_area === nothing && return nothing
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return nothing
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    leaf isa PaneLeaf || return nothing
+    (1 <= leaf.current_tab <= length(leaf.tabs)) || return nothing
+    pane = leaf.tabs[leaf.current_tab]
+    pane isa EditorPane || return nothing
+    rects = _compute_rects(ws.tree, m._last_ws_area)
+    r_nt = get(rects, leaf.id, nothing)
+    r_nt === nothing && return nothing
+    return _inner_rect_simple(_nt_to_rect(r_nt))
+end
+
 TK.should_quit(m::RessacApp) = m.quit
 
 """
@@ -369,13 +389,13 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     # Left-click routing.
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
         # Patterns editor — fast path (still the most common click).
-        # Driven by m.layout_patterns which is refilled by _render_tree!
+        # Driven by _focused_editor_rect(m) which is refilled by _render_tree!
         # whenever the leaf holding _active_editor(m) is visible. Updates the
         # workspace focus too so the focus border and key routing
         # match the legacy editor focus.
-        if m.layout_patterns !== nothing && _in_rect(m.layout_patterns, evt.x, evt.y)
+        if _focused_editor_rect(m) !== nothing && _in_rect(_focused_editor_rect(m), evt.x, evt.y)
             m.focus = :patterns; _refresh_focus_flags!(m)
-            _click_into_editor!(_active_editor(m), m.layout_patterns, evt.x, evt.y)
+            _click_into_editor!(_active_editor(m), _focused_editor_rect(m), evt.x, evt.y)
             _focus_patterns_leaf!(m)
             return
         end
@@ -529,29 +549,19 @@ over the log pane, scope cycle for wheels over the scope panel.
 function _mouse_wheel!(m::RessacApp, evt::TK.MouseEvent)
     sign = evt.button === TK.mouse_scroll_up ? 1 : -1
     mag  = evt.shift ? 10 : 1
-    # 1. Hover wheel-nudge in any editor.
-    for (rect, ed) in ((m.layout_patterns, _active_editor(m)),
-                       (m.layout_synth, _synth_pane_open(m) ?
-                                        _current_synth_tab(m).editor : nothing))
-        rect === nothing && continue
-        ed === nothing && continue
-        _in_rect(rect, evt.x, evt.y) || continue
+    # 1. Hover wheel-nudge in the focused editor.
+    rect = _focused_editor_rect(m)
+    ed = _active_editor(m)
+    if rect !== nothing && _in_rect(rect, evt.x, evt.y)
         rc = _screen_to_editor_pos(ed, rect, evt.x, evt.y)
         rc === nothing && return
         row, col = rc
-        if _try_nudge_at!(m, ed, row, col, sign * mag)
-            return
-        end
-        return  # over editor but no number → don't fall through
+        _try_nudge_at!(m, ed, row, col, sign * mag)
+        return  # over editor — don't fall through even if no number
     end
     # 2. Wheel over log pane → scroll log.
-    if m.layout_logs !== nothing && _in_rect(m.layout_logs, evt.x, evt.y)
+    if m._last_log_rect !== nothing && _in_rect(m._last_log_rect, evt.x, evt.y)
         m.log_scroll = max(0, m.log_scroll + sign)
-        return
-    end
-    # 3. Wheel over scope → cycle.
-    if m.layout_scope !== nothing && _in_rect(m.layout_scope, evt.x, evt.y)
-        _scope_cycle_key!(m; dir = sign > 0 ? +1 : -1)
         return
     end
 end
@@ -668,7 +678,7 @@ Visible-line height of the pane currently hosting `ed`. Falls back to
 a conservative 20 if no layout has been recorded yet (first frame).
 """
 function _viewport_h(m::RessacApp, ed::TK.CodeEditor)
-    rect = ed === _active_editor(m) ? m.layout_patterns : m.layout_synth
+    rect = _focused_editor_rect(m)
     rect === nothing && return 20
     return max(1, rect.height)
 end
@@ -1041,15 +1051,12 @@ padding, so we approximate by dividing the x offset by the average
 tab width.
 """
 function _click_tab_bar!(m::RessacApp, x::Int)
-    isempty(m.synth_tabs) && return
-    rect = m.layout_synth_tabs
-    rect === nothing && return
-    rel = clamp(x - rect.x, 0, rect.width - 1)
-    slot_w = max(4, rect.width ÷ length(m.synth_tabs))
-    idx = clamp(rel ÷ slot_w + 1, 1, length(m.synth_tabs))
-    m.synth_tab_idx = idx
-    m.focus = :synth
-    _refresh_focus_flags!(m)
+    # Synth tab strip was rendered inside the legacy view layout that
+    # sub-projet 10 removed. The strip will come back when the synth
+    # side panel is folded into the workspace tree as a pane kind;
+    # until then, this handler is a no-op so the mouse handler
+    # doesn't crash if a stale code path still calls it.
+    return
 end
 
 """
@@ -4192,7 +4199,7 @@ function _render_global_log_tail!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     _render_pane_block!(m, area, buf;
         title = title, title_right = title_right, focused = false)
     log_inner = _inner_rect(area)
-    m.layout_logs = log_inner
+    m._last_log_rect = log_inner
     if _completion_picker_active(m)
         _render_completion_picker!(m, log_inner, buf)
     else
@@ -4216,7 +4223,7 @@ _rect_to_nt(r::TK.Rect)     = (x = r.x, y = r.y, w = r.width, h = r.height)
 
 Walk the workspace tree and call each leaf's render! against its
 computed rect. Containers recurse. As a side effect, populates
-`m.layout_patterns` from the leaf currently holding `_active_editor(m)`
+`_focused_editor_rect(m)` from the leaf currently holding `_active_editor(m)`
 (via its EditorPane wrapper) so legacy overlay paths (eval flash,
 playhead, ghost) and the mouse handler keep working until Task 6
 rewires them through `_compute_rects` directly.
@@ -4246,15 +4253,11 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
                 end
             end
             render!(pane, rect, buf)
-            # Bridge to legacy overlay paths.
-            if pane isa EditorPane &&
-               1 <= pane.current_tab <= length(pane.tabs) &&
-               pane.tabs[pane.current_tab].code_editor === _active_editor(m)
-                m.layout_patterns = _inner_rect_simple(rect)
-            end
             # Focus indicator — repaint the border in :accent so the
             # active pane stands out against the dim defaults that
-            # _render_pane_block_simple! draws.
+            # _render_pane_block_simple! draws. Overlay paths look up
+            # the focused leaf's rect on demand via
+            # _focused_editor_rect(m) — no caching needed.
             node.id == focused_id && _repaint_border_focused!(rect, buf)
         end
         return
@@ -4330,13 +4333,6 @@ function TK.view(m::RessacApp, f::TK.Frame)
     _ensure_default_workspace!(m)
     buf = f.buffer
 
-    # Reset layout_* — _render_tree! refills patterns when it finds
-    # _active_editor(m)'s leaf. synth/scope follow in Task 6 polish.
-    m.layout_patterns   = nothing
-    m.layout_synth      = nothing
-    m.layout_synth_tabs = nothing
-    m.layout_scope      = nothing
-
     area = f.area
     cmdline_active = is_active(m.command_line)
     cmdline_h = cmdline_active ? 1 : 0
@@ -4374,15 +4370,15 @@ function TK.view(m::RessacApp, f::TK.Frame)
     end
 
     # Overlays — only painted when the patterns editor is visible in
-    # the workspace tree (m.layout_patterns is set by _render_tree!).
-    if m.layout_patterns !== nothing
-        _render_eval_flash!(m, m.layout_patterns, buf)
-        _render_visual_selection!(m, m.layout_patterns, buf)
-        _render_playhead!(m, m.layout_patterns, buf)
+    # the workspace tree (_focused_editor_rect(m) is set by _render_tree!).
+    if _focused_editor_rect(m) !== nothing
+        _render_eval_flash!(m, _focused_editor_rect(m), buf)
+        _render_visual_selection!(m, _focused_editor_rect(m), buf)
+        _render_playhead!(m, _focused_editor_rect(m), buf)
     end
     _load_ghost_usage!()
-    if m.layout_patterns !== nothing
-        _render_ghost!(m, m.layout_patterns, buf)
+    if _focused_editor_rect(m) !== nothing
+        _render_ghost!(m, _focused_editor_rect(m), buf)
     end
 
     # Bottom chrome — livedoc + command bar (if active) + footer + log.

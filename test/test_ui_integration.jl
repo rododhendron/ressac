@@ -830,9 +830,9 @@ end
     end
     Tachikoma.view(app, frame)   # populate m.layout_logs
     @test app.log_scroll == 0
-    if app.layout_logs !== nothing
-        x = app.layout_logs.x + 2
-        y = app.layout_logs.y + 2
+    if app._last_log_rect !== nothing
+        x = app._last_log_rect.x + 2
+        y = app._last_log_rect.y + 2
         wheel = Tachikoma.MouseEvent(x, y, Tachikoma.mouse_scroll_up,
                                       Tachikoma.mouse_press, false, false, false)
         Tachikoma.update!(app, wheel)
@@ -1011,9 +1011,9 @@ end
     Ressac.TK.set_text!(Ressac._active_editor(app),
         "abcdefghij\n" * "ABCDEFGHIJ\n" * "0123456789")
     Tachikoma.view(app, frame)
-    @test app.layout_patterns !== nothing
+    @test Ressac._focused_editor_rect(app) !== nothing
     # Click somewhere comfortably inside the patterns inner area.
-    rect = app.layout_patterns
+    rect = Ressac._focused_editor_rect(app)
     target_y = rect.y + 1
     target_x = rect.x + 3
     evt = Tachikoma.MouseEvent(target_x, target_y,

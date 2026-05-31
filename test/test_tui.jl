@@ -90,7 +90,7 @@ end
     @test leaf.tabs[1].tabs[1].code_editor === Ressac._active_editor(app)
     # After the first frame, m.layout_patterns is populated from the
     # leaf rect so legacy overlay paths still work.
-    @test app.layout_patterns !== nothing
+    @test Ressac._focused_editor_rect(app) !== nothing
 end
 
 @testset "Ctrl-N jumps workspaces and Ctrl-Shift-F toggles floats" begin
