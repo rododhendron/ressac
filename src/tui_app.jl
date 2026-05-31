@@ -2889,6 +2889,10 @@ look it up via `_lookup_livedoc`, render one line of doc in green.
 Empty when no entry found.
 """
 function _render_livedoc_row(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    # Always blank the row first so previous-frame content (e.g. an
+    # ex command bar that's no longer active) doesn't leak through.
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
+                   TK.tstyle(:text))
     ed = _active_editor(m)
     1 <= ed.cursor_row <= length(ed.lines) || return
     line_chars = ed.lines[ed.cursor_row]
@@ -4644,9 +4648,15 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     cycle_bar = "█" ^ full * partial * "░" ^ max(0, rest)
 
     ed = _active_editor(m)
-    badge = _PANE_MODE.active ?
-        "⟪ PANE ⟫" :
+    badge = if _PANE_MODE.active
+        "⟪ PANE ⟫"
+    elseif m.command_line.mode === :command
+        "⟪ COMMAND ⟫"
+    elseif m.command_line.mode === :search
+        "⟪ SEARCH ⟫"
+    else
         "⟪ $(uppercase(String(ed.mode))) @ $(m.focus) ⟫"
+    end
 
     # Sections — each is a tuple of (text, style). They get joined with
     # ` │ ` separators rendered in :text_dim so the eye groups them.
