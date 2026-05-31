@@ -53,6 +53,7 @@ include("workspace_commands.jl")
 include("workspace_keymap.jl")
 include("workspace_persistence.jl")
 include("snippet_panes.jl")
+include("command_line.jl")       # CommandLine widget — ':' / '/' chrome
 
 # ─── Static docs / starter packs / scope state ────────────────────
 include("tui_docs.jl")           # stub — content now lives in plugins/{core,…}/

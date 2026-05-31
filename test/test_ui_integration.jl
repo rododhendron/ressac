@@ -981,31 +981,27 @@ end
 
 # ── Ex command history navigation ──────────────────────────────────
 
-@testset "Up arrow in command mode pulls last command" begin
+@testset "Up arrow in CommandLine pulls last command from history" begin
     app, _ = _new_app()
     app.editor.mode = :normal
     _exec_ex_command!(app, "hush")          # populates history
-    # Enter command mode again and press Up.
     Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
-    @test app.editor.mode === :command
+    @test app.command_line.mode === :command
     Tachikoma.update!(app, Tachikoma.KeyEvent(:up))
-    # The buffer should now contain "hush" (or the last command).
-    buf = String(app.editor.command_buffer)
-    @test occursin("hush", buf) || isempty(buf)   # graceful if history disabled
+    @test Ressac.current_text(app.command_line) == "hush"
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test app.command_line.mode === :idle
 end
 
-# ── Tab completion in command mode ─────────────────────────────────
-
-@testset "Tab in command mode triggers completion cycle" begin
+@testset "Tab in CommandLine cycles completion candidates" begin
     app, _ = _new_app()
     app.editor.mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
     _type!(app, "hus")
     Tachikoma.update!(app, Tachikoma.KeyEvent(:tab))
-    # Either completion landed (buffer becomes "hush") or no candidate
-    # was found — both states are non-crashing.
-    @test app.editor.mode === :command
+    # First Tab should pull in a match — "hush" is in the literal verbs.
+    @test occursin("hush", Ressac.current_text(app.command_line))
+    @test Ressac.completion_active(app.command_line)
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
 end
 

@@ -230,6 +230,11 @@ non-empty), and the focus toggle for keystroke routing.
     # Sub-project 10: Ctrl-Shift-F toggles every floating pane's
     # visibility globally (Zellij-style "hide UI" affordance).
     floats_hidden::Bool                     = false
+    # Autonomous command + search bar — owns ':' / '/' input. Lives
+    # at the app level so it's reachable regardless of which workspace
+    # pane has focus. Activated by the global interceptor at the top
+    # of update!(KeyEvent).
+    command_line::CommandLine               = CommandLine()
     # Workspace area NamedTuple captured by view() each frame so the
     # mouse handler can re-run _compute_rects without re-deriving
     # chrome heights.
@@ -1044,6 +1049,26 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
     end
+    # ── CommandLine ── absolute priority when active ─────────────────
+    # While the command/search bar is active, EVERY key belongs to it.
+    # Nothing else (workspace globals, pane mode, panes) sees the
+    # event. Decoupled from any editor — works no matter which pane
+    # is focused.
+    if is_active(m.command_line)
+        outcome = handle_key!(m.command_line, evt;
+                              complete_fn = q -> _command_completion_candidates(m, q))
+        if outcome === :dispatched
+            cmd = m.command_line.last_dispatched
+            if !isempty(cmd)
+                if m.command_line.last_dispatched_mode === :search
+                    _ex_search!(m, cmd)
+                else
+                    _handle_ex_command!(m, cmd)
+                end
+            end
+        end
+        return
+    end
     # ── Sub-project 10: workspace globals + pane mode ────────────────
     # These fire BEFORE any existing dispatch so live-coding shortcuts
     # don't get swallowed by editor modes.
@@ -1076,6 +1101,20 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
            evt.key === :ctrl && evt.char == 'w'
             _PANE_MODE.active = true
             return
+        end
+        # CommandLine entry — ':' opens ex command, '/' opens search.
+        # Only when the legacy patterns editor is in :normal (so ':'
+        # typed during insert is a literal char). Replaces TK.CodeEditor's
+        # built-in :command/:search mode entry, which we never want to
+        # trigger anymore.
+        if m.editor.mode === :normal && evt.key === :char
+            if evt.char == ':'
+                enter!(m.command_line, :command)
+                return
+            elseif evt.char == '/'
+                enter!(m.command_line, :search)
+                return
+            end
         end
     end
     # ── Sub-project 10: focus-driven key routing ──────────────────────
@@ -2015,6 +2054,41 @@ Tab-completion candidate set in sync with the dispatch tables.
 _all_ex_verbs() = sort!(collect(union(keys(_LITERAL_DISPATCH),
                                        _REGEX_VERBS,
                                        _SPECIAL_VERBS)))
+
+"""
+    _command_completion_candidates(m, query) -> Vector{String}
+
+Build the Tab-completion candidate list for the autonomous
+`CommandLine`. Returns FULL command strings (verb + optional space
++ arg) so the completion step can directly swap the buffer.
+"""
+function _command_completion_candidates(m::RessacApp, query::AbstractString)
+    q = String(query)
+    sp = findfirst(' ', q)
+    if sp === nothing
+        return first(_fuzzy_rank(q, _all_ex_verbs()), 200)
+    end
+    verb = q[1:sp-1]
+    rest = q[sp+1:end]
+    toks = String.(split(rest, ' '; keepempty = true))
+    partial = isempty(toks) ? "" : toks[end]
+    args = _ex_arg_candidates(verb)
+    isempty(args) && return String[]
+    ranked = first(_fuzzy_rank(partial, args), 200)
+    head = isempty(toks) || length(toks) == 1 ? "" :
+           join(toks[1:end-1], ' ') * " "
+    return ["$verb " * head * a for a in ranked]
+end
+
+"""
+    _ex_search!(m, query)
+
+Forward search for `query` in the currently active editor's buffer.
+Placeholder for sub-projet 11 — for now just logs the request.
+"""
+function _ex_search!(m::RessacApp, query::AbstractString)
+    _push_app_log!(m, "[INFO] /$(query)  (search wiring TODO)")
+end
 
 # ── Lifecycle ────────────────────────────────────────────────────────
 # Bodies wrapped in `m -> fn(m)` instead of bare `fn` so the function
@@ -4231,6 +4305,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
     m.layout_scope      = nothing
 
     area = f.area
+    cmdline_active = is_active(m.command_line)
+    cmdline_h = cmdline_active ? 1 : 0
     log_h     = _global_log_tail_height(m)
     footer_h  = 1
     livedoc_h = 1
@@ -4240,7 +4316,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
     ws_y      = ws_top + ws_top_h
     log_y     = area.y + area.height - log_h
     footer_y  = log_y - footer_h
-    livedoc_y = footer_y - livedoc_h
+    cmdline_y = footer_y - cmdline_h
+    livedoc_y = cmdline_y - livedoc_h
     ws_height = max(0, livedoc_y - ws_y)
 
     # Top chrome — workspace tabs + status bar.
@@ -4275,12 +4352,26 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_ghost!(m, m.layout_patterns, buf)
     end
 
-    # Bottom chrome — livedoc + footer hint + log tail.
+    # Bottom chrome — livedoc + command bar (if active) + footer + log.
     _render_livedoc_row(m, TK.Rect(area.x, livedoc_y, area.width, livedoc_h), buf)
+    if cmdline_active
+        render_bar!(m.command_line,
+                    TK.Rect(area.x, cmdline_y, area.width, cmdline_h), buf)
+    end
     _render_footer(m, TK.Rect(area.x, footer_y, area.width, footer_h), buf)
     if log_h > 0
-        _render_global_log_tail!(m,
-            TK.Rect(area.x, log_y, area.width, log_h), buf)
+        log_rect = TK.Rect(area.x, log_y, area.width, log_h)
+        # When the CommandLine is showing completion candidates, the
+        # log tail area becomes a picker — same chrome row, different
+        # content. The user gets the candidate list right where the
+        # log used to be, with no extra layout shift.
+        if completion_active(m.command_line)
+            _render_pane_block_simple!(log_rect, "COMPLETIONS", buf)
+            render_picker!(m.command_line,
+                           _inner_rect_simple(log_rect), buf)
+        else
+            _render_global_log_tail!(m, log_rect, buf)
+        end
     end
 
     # Modal overlay sits on top of everything.
