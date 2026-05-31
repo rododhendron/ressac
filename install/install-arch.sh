@@ -22,11 +22,19 @@ $SUDO pacman -S --needed --noconfirm curl git base-devel
 
 if ! command -v sclang >/dev/null; then
     say "Installing SuperCollider + sc3-plugins…"
-    # sc3-plugins is in the official repos.
-    $SUDO pacman -S --needed --noconfirm supercollider supercollider-sc3-plugins || \
-        warn "sc3-plugins might be in AUR depending on your repo set."
+    # Both packages live in the official `extra` repo. The plugin
+    # package is `sc3-plugins`, NOT `supercollider-sc3-plugins`.
+    $SUDO pacman -S --needed --noconfirm supercollider sc3-plugins || \
+        warn "Failed to install sc3-plugins — SuperDirt still works for the base sample set."
 else
     say "SuperCollider already installed."
+    # Top up sc3-plugins separately in case the user installed
+    # supercollider without it.
+    if ! pacman -Qi sc3-plugins >/dev/null 2>&1; then
+        say "Adding sc3-plugins…"
+        $SUDO pacman -S --needed --noconfirm sc3-plugins || \
+            warn "sc3-plugins install failed — continuing without."
+    fi
 fi
 
 if ! command -v julia >/dev/null; then

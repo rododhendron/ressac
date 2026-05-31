@@ -25,9 +25,15 @@ if ! command -v sclang >/dev/null; then
       https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm \
       2>/dev/null || warn "RPM Fusion already enabled or not needed."
 
-    say "Installing SuperCollider + sc3-plugins…"
-    $SUDO dnf install -y supercollider supercollider-sc3-plugins || \
-        warn "sc3-plugins package may not exist on your Fedora version. SuperDirt still works for most uses."
+    say "Installing SuperCollider…"
+    $SUDO dnf install -y supercollider
+    # sc3-plugins is NOT packaged for Fedora (neither in Fedora nor
+    # RPM Fusion as of 2026). Users who need MdaPiano / Vowel / etc.
+    # must build it from source — see:
+    #     https://github.com/supercollider/sc3-plugins
+    # Stock SuperDirt patterns (`:bd`, `:cp`, `:hh`, etc.) don't need
+    # sc3-plugins, so most users can skip this step entirely.
+    warn "sc3-plugins is not packaged for Fedora; build from source if you need MdaPiano / Vowel / etc."
 else
     say "SuperCollider already installed."
 fi

@@ -39,7 +39,13 @@ fi
 # 2. SuperCollider + sc3-plugins from the distro packages.
 if ! command -v sclang >/dev/null; then
     say "Installing SuperCollider + sc3-plugins…"
-    $SUDO apt-get install -y supercollider supercollider-sc3-plugins || \
+    # Debian's source package is `supercollider-sc3-plugins` but it
+    # ships TWO binary packages: `sc3-plugins` (the scsynth UGen
+    # .so's) and `sc3-plugins-language` (the sclang class files).
+    # Both are needed for SuperDirt's extra UGens (Vowel, mi-UGens,
+    # MdaPiano, etc.). Older guides referenced the source name —
+    # that doesn't resolve via apt-get install.
+    $SUDO apt-get install -y supercollider sc3-plugins sc3-plugins-language || \
         warn "sc3-plugins might not be in your distro. SuperDirt will still work for most uses."
 else
     say "SuperCollider already installed: $(sclang -v 2>&1 | head -1 || true)"
