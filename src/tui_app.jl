@@ -5453,12 +5453,13 @@ push it onto the stack.
 """
 function _open_synth_tab!(m::RessacApp, name::AbstractString)
     name = String(name)
+    # Already open as a SynthTab → just refocus its workspace pane.
     existing = findfirst(t -> t.name == name, m.synth_tabs)
     if existing !== nothing
         m.synth_tab_idx = existing
         m.focus = :synth
-        _refresh_focus_flags!(m)
-        _push_app_log!(m, "[INFO] switched to tab '$name'")
+        _focus_pane_holding_editor!(m, m.synth_tabs[existing].editor)
+        _push_app_log!(m, "[INFO] switched to synth '$name'")
         return
     end
     # Mode detection: prefer existing `.jl` (DSL) on disk; fall back to
@@ -5473,20 +5474,41 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     else
         (_STARTER_DSL(name), :dsl)
     end
-    ext = mode === :dsl ? ".jl" : ".scd"
-    editor = TK.CodeEditor(;
-        text  = src,
-        # No `block=` — the outer SYNTH pane wrapper provides the border
-        # and shows name/ext/mode in its title_right (see view()).
-        focused = true,
-        tick    = m.tick,
-        mode    = :normal,
-    )
-    push!(m.synth_tabs, SynthTab(name, editor; mode = mode))
+    # Open the synth as a workspace EditorPane (synth-role). The
+    # pane's TK.CodeEditor IS what we hand to SynthTab — they share
+    # state so legacy paths that read tab.editor.X still observe the
+    # workspace pane's buffer.
+    cmd_vsplit!(m.workspaces, "editor", Dict{String,Any}(
+        "buffer_role" => "synth",
+        "name"        => name,
+    ))
+    ws = current_workspace(m.workspaces)
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    pane = leaf.tabs[1]
+    code_editor = pane.tabs[1].code_editor
+    TK.set_text!(code_editor, src)
+    code_editor.mode = :normal
+    code_editor.focused = true
+    push!(m.synth_tabs, SynthTab(name, code_editor; mode = mode))
     m.synth_tab_idx = length(m.synth_tabs)
     m.focus = :synth
-    _refresh_focus_flags!(m)
-    _push_app_log!(m, "[INFO] opened synth '$name' [$mode] — T test, :w save, Tab swap")
+    _push_app_log!(m, "[INFO] opened synth '$name' [$mode] — T test, :w save")
+end
+
+# Refocus the workspace leaf whose EditorPane currently holds `ed`.
+# No-op when the editor isn't reachable from the workspace tree.
+function _focus_pane_holding_editor!(m::RessacApp, ed::TK.CodeEditor)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    for leaf in _all_leaves(ws.tree)
+        for tab in leaf.tabs
+            if tab isa EditorPane && !isempty(tab.tabs) &&
+               tab.tabs[1].code_editor === ed
+                ws.focused_pane = leaf.id
+                return
+            end
+        end
+    end
 end
 
 """
