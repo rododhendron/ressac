@@ -259,6 +259,71 @@ room(x)  = _control_op(:room,  _overwrite, x)
 delay(x) = _control_op(:delay, _overwrite, x)
 shape(x) = _control_op(:shape, _overwrite, x)
 
+# Direct chromatic pitch in semitones. SuperDirt's `:note` accepts
+# Float64 — `note(60.5)` plays a quarter-tone sharp middle C.
+# Overwrite semantics like `n`.
+note(x)  = _control_op(:note,  _overwrite, x)
+
+"""
+    scale(s) — apply a `Scale` to a degree pattern, producing :note
+
+`s` is either a `Scale` value or a Symbol that resolves via
+`lookup_scale`. The input pattern's values are interpreted as
+scale degrees (Integer or Float), mapped through
+`scale_to_semitones(s, v)`, and written as `:note` in the output
+ControlMap.
+
+```julia
+"0 2 4 7" |> scale(:major)            # by symbol → registry
+myscale = edo(:n19, 19)
+"0 2 4 7" |> scale(myscale)            # by value
+"0 2 4 7" |> scale(myscale) |> gain(0.5)
+```
+
+When the input value isn't numeric (e.g. `:bd` from a sample
+pattern), no `:note` is set — the event passes through. When the
+input was originally a numeric symbol parsed into the `:s` field
+by an earlier `_lift_to_control` step, `:s` is stripped (it was
+a degree marker, not a sample name).
+"""
+function scale(s::Scale)
+    return function (p)
+        p = _as_pattern(p)
+        Pattern{ControlMap}((start::Rational, stop::Rational) -> begin
+            evs = p(start, stop)
+            out = Vector{Event{ControlMap}}(undef, length(evs))
+            for (i, ev) in enumerate(evs)
+                cm, deg_src = if ev.value isa ControlMap
+                    cm_copy = copy(ev.value)
+                    src = get(cm_copy, :degree, nothing)
+                    if src === nothing
+                        src = get(cm_copy, :s, nothing)
+                    end
+                    (cm_copy, src)
+                else
+                    (Dict{Symbol,Any}(), ev.value)
+                end
+                v = _resolve_value(deg_src)
+                if v isa Real
+                    cm[:note] = scale_to_semitones(s, Float64(v))
+                    if haskey(cm, :s) && _resolve_value(cm[:s]) isa Real
+                        delete!(cm, :s)
+                    end
+                end
+                delete!(cm, :degree)
+                out[i] = Event{ControlMap}(ev.start, ev.stop, cm)
+            end
+            out
+        end)
+    end
+end
+
+function scale(name::Symbol)
+    s = lookup_scale(name)
+    s === nothing && throw(ArgumentError("scale($name): unknown scale — try Ressac.list_scales()"))
+    return scale(s)
+end
+
 """
     nrun(count) -> (Pattern -> ControlPattern)
 

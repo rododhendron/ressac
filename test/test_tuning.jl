@@ -101,3 +101,77 @@ end
     s = Ressac.Scale(:five, [0.0, 200.0, 400.0, 700.0, 900.0], 1200.0)
     @test length(s) == 5
 end
+
+# ── note() control — direct chromatic pitch ─────────────────────────
+
+@testset "note(x) sets :note as overwrite control" begin
+    p = pure(:saw) |> note(60.5)
+    evs = p(0//1, 1//1)
+    @test length(evs) == 1
+    cm = evs[1].value
+    @test cm[:note] == 60.5
+end
+
+@testset "note() composes — second wins, last-wins semantics" begin
+    p = pure(:saw) |> note(60) |> note(72)
+    cm = p(0//1, 1//1)[1].value
+    @test cm[:note] == 72
+end
+
+# ── scale() control — degree → :note ────────────────────────────────
+
+@testset "scale(s) maps degree pattern to :note semitones" begin
+    s = Ressac.lookup_scale(:major)
+    p = "0 2 4 7" |> Ressac.scale(s)
+    evs = p(0//1, 1//1)
+    @test length(evs) == 4
+    notes = [ev.value[:note] for ev in evs]
+    @test notes ≈ [0.0, 4.0, 7.0, 12.0]   # major scale degrees in semitones
+end
+
+@testset "scale(:symbol) resolves via registry" begin
+    p = "0 2 4 7" |> Ressac.scale(:major)
+    notes = [ev.value[:note] for ev in p(0//1, 1//1)]
+    @test notes ≈ [0.0, 4.0, 7.0, 12.0]
+end
+
+@testset "scale() throws on unknown symbol" begin
+    @test_throws ArgumentError Ressac.scale(:totally_made_up_scale_zzz)
+end
+
+@testset "scale() composes with gain — preserves controls" begin
+    p = "0 2 4" |> Ressac.scale(:major) |> gain(0.5)
+    evs = p(0//1, 1//1)
+    @test all(ev.value[:gain] == 0.5 for ev in evs)
+    @test [ev.value[:note] for ev in evs] ≈ [0.0, 4.0, 7.0]
+end
+
+@testset "scale() strips :s when value was actually a degree symbol" begin
+    # When gain() lifts "0 2 4" through _lift_to_control, :s gets
+    # set to :0/:2/:4 — those are not sample names, they were
+    # degree markers. scale() must clean them up.
+    p = "0 2 4" |> gain(0.5) |> Ressac.scale(:major)
+    evs = p(0//1, 1//1)
+    @test all(!haskey(ev.value, :s) for ev in evs)
+    @test [ev.value[:note] for ev in evs] ≈ [0.0, 4.0, 7.0]
+end
+
+@testset "scale() leaves non-numeric :s alone (real sample names)" begin
+    # When :s carries a true sample name (not a numeric-string), the
+    # value isn't a degree — scale() must NOT strip it nor set :note.
+    p = pure(:bd) |> gain(0.5) |> Ressac.scale(:major)
+    evs = p(0//1, 1//1)
+    @test evs[1].value[:s] === :bd
+    @test evs[1].value[:gain] == 0.5
+    @test !haskey(evs[1].value, :note)
+end
+
+@testset "scale() supports xenharmonic — Bohlen-Pierce period" begin
+    bp = Ressac.bohlen_pierce(:bp_lambda_test; variant = :lambda)
+    p = "0 9" |> Ressac.scale(bp)
+    notes = [ev.value[:note] for ev in p(0//1, 1//1)]
+    # Degree 0 = root (0 semitones); degree 9 = one tritave up
+    # = period_cents / 100 = log2(3) * 12 ≈ 19.02 semitones
+    @test notes[1] ≈ 0.0
+    @test notes[2] ≈ bp.period_cents / 100 atol = 1e-6
+end
