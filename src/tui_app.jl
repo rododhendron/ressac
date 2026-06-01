@@ -1126,6 +1126,14 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
                (evt.key === :ctrl && evt.char == 'w')
                 _PANE_MODE.active = false
                 return
+            elseif evt.key === :left
+                cmd_focus!(m.workspaces, :left);  return
+            elseif evt.key === :down
+                cmd_focus!(m.workspaces, :down);  return
+            elseif evt.key === :up
+                cmd_focus!(m.workspaces, :up);    return
+            elseif evt.key === :right
+                cmd_focus!(m.workspaces, :right); return
             elseif evt.key === :char
                 _dispatch_pane_mode_key(m.workspaces, evt.char)
                 return
@@ -4283,7 +4291,7 @@ function _render_workspace_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # exit keys + the recognized ops so the user has a cheat sheet on
     # the strip itself.
     if _PANE_MODE.active
-        hint = " · s/v split · h/j/k/l focus · c close · Esc/Enter/C-w exit"
+        hint = " · s/v split · hjkl or ←↓↑→ focus · c close · Esc/Enter/C-w exit"
         if x + textwidth(hint) <= area.x + area.width
             TK.set_string!(buf, x, area.y, hint,
                            TK.tstyle(:warning, bold = true))

@@ -120,6 +120,22 @@ end
     @test !occursin("hello-main", Ressac.TK.text(new_editor))
 end
 
+@testset "C-w + arrow keys navigate focus (same as hjkl)" begin
+    app, frame = _new_app()
+    Ressac._active_editor(app).mode = :normal
+    Ressac.cmd_vsplit!(app.workspaces, "editor", Dict{String,Any}())
+    Ressac.cmd_focus!(app.workspaces, :left)
+    Tachikoma.view(app, frame)
+    ws = Ressac.current_workspace(app.workspaces)
+    start = ws.focused_pane
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:right))
+    @test ws.focused_pane != start
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:left))
+    @test ws.focused_pane == start
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+end
+
 @testset "C-w h/j/k/l navigates focus in a 2×2 grid" begin
     app, frame = _new_app()
     Ressac._active_editor(app).mode = :normal
