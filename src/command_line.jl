@@ -245,29 +245,56 @@ end
 """
     render_picker!(cl, area, buf)
 
-Render the completion picker into `area` (multi-row). Each candidate
-gets its own row (truncated to width); the selected one is prefixed
-with `▶ ` and styled with `:accent`. No-op if the picker is inactive.
+Render the completion picker as a row-major grid into `area`. Cell
+width = longest candidate + marker (2) + trailing gutter (2),
+column count derived from the pane width. Selected cell is prefixed
+with `▶ ` and styled with `:accent`. Auto-scrolls vertically when
+the grid is taller than the pane. No-op if the picker is inactive.
 """
 function render_picker!(cl::CommandLine, area::TK.Rect, buf::TK.Buffer)
     completion_active(cl) || return
-    area.height < 1 && return
-    sel_style = TK.tstyle(:accent, bold = true)
-    rest_style = TK.tstyle(:text_dim)
+    (area.height < 1 || area.width < 4) && return
+    sel_style  = TK.tstyle(:accent, bold = true)
+    rest_style = TK.tstyle(:text)
+    blank_style = TK.tstyle(:text)
+
+    # Blank the whole picker area first so a shrinking candidate
+    # list doesn't leak through previous-frame chars (or log content
+    # if the picker overlays the log).
+    blank = repeat(' ', area.width)
+    for y in area.y : area.y + area.height - 1
+        TK.set_string!(buf, area.x, y, blank, blank_style)
+    end
+
     n = length(cl.completion_candidates)
-    # Auto-scroll: keep selected within the visible window.
-    visible = area.height
-    first_i = max(1, min(cl.completion_idx - visible ÷ 2,
-                          n - visible + 1))
-    first_i = max(1, first_i)
-    last_i = min(n, first_i + visible - 1)
-    for (offset, i) in enumerate(first_i:last_i)
-        y = area.y + offset - 1
-        y >= area.y + area.height && break
-        prefix = i == cl.completion_idx ? "▶ " : "  "
-        text = prefix * cl.completion_candidates[i]
-        chunk = first(text, area.width)
-        style = i == cl.completion_idx ? sel_style : rest_style
-        TK.set_string!(buf, area.x, y, rpad(chunk, area.width), style)
+    longest = maximum(textwidth, cl.completion_candidates)
+    cell_w  = max(longest + 4, 18)              # ▶  + label + 2 gutter
+    cols    = max(1, area.width ÷ cell_w)
+    rows    = ceil(Int, n / cols)
+    cell_h  = 1
+
+    # Auto-scroll: keep the row containing the selected cell visible.
+    sel_row = div(cl.completion_idx - 1, cols)
+    visible_rows = area.height
+    first_row = max(0, min(sel_row - visible_rows ÷ 2,
+                            rows - visible_rows))
+    first_row = max(0, first_row)
+    last_row  = min(rows - 1, first_row + visible_rows - 1)
+
+    for r in first_row:last_row
+        screen_y = area.y + (r - first_row) * cell_h
+        screen_y >= area.y + area.height && break
+        for c in 0:(cols - 1)
+            i = r * cols + c + 1
+            i > n && break
+            cell_x = area.x + c * cell_w
+            cell_x + cell_w > area.x + area.width && break
+            is_sel = i == cl.completion_idx
+            marker = is_sel ? "▶ " : "  "
+            text   = marker * cl.completion_candidates[i]
+            chunk  = first(rpad(text, cell_w), cell_w)
+            style  = is_sel ? sel_style : rest_style
+            TK.set_string!(buf, cell_x, screen_y, chunk, style)
+        end
     end
 end

@@ -2217,6 +2217,11 @@ _register_literal!(m -> cmd_tile!(m.workspaces),   "tile")
 # ── Workspace layouts (sub-project 10) ──────────────────────────────
 _register_regex!(r"^layout\s+save\s+([\w-]+)$", (m, mt) -> _layout_save!(m, mt.captures[1]))
 _register_regex!(r"^layout\s+load\s+([\w-]+)$", (m, mt) -> _layout_load!(m, mt.captures[1]))
+# No-arg shortcuts: `:layout save` → save to "last", `:layout load`
+# → load "last". Useful as a quick checkpoint when the user can't
+# come up with a name on the fly.
+_register_literal!(m -> _layout_save!(m, "last"), "layout save")
+_register_literal!(m -> _layout_load!(m, "last"), "layout load")
 
 function _layout_save!(m::RessacApp, name::AbstractString)
     try
@@ -5179,6 +5184,7 @@ wins. Then eval each block whose slot is in `target` (or all of
 them when `target === :all`). Logs a one-line summary.
 """
 function _eval_pattern_blocks!(m::RessacApp, target)
+    _guard_patterns_only!(m, "E (eval all blocks)") || return
     txt = TK.text(_active_editor(m))
     lines = collect(split(txt, '\n'; keepempty=true))
     blocks = Dict{Symbol,String}()
@@ -5338,7 +5344,30 @@ function _logical_block_range(lines::AbstractVector, row::Int)
     return (start_row, end_row)
 end
 
+# Return true when the focused workspace pane is an EditorPane with
+# role `:patterns` — Julia eval is safe. Return false + log a hint
+# when called from any other context (synth pane, doc/log/scope
+# pane, no workspace). Prevents Meta.parse from being handed
+# SuperCollider source it can't read.
+function _guard_patterns_only!(m::RessacApp, action::AbstractString)
+    ws = current_workspace(m.workspaces)
+    if ws !== nothing
+        leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+        if leaf isa PaneLeaf && 1 <= leaf.current_tab <= length(leaf.tabs)
+            pane = leaf.tabs[leaf.current_tab]
+            if pane isa EditorPane && !isempty(pane.tabs) &&
+               pane.tabs[pane.current_tab].role === :patterns
+                return true
+            end
+        end
+    end
+    _push_app_log!(m,
+        "[WARN] $action only runs on a patterns pane — focus one with C-w h/j/k/l first")
+    return false
+end
+
 function _eval_current_line!(m::RessacApp)
+    _guard_patterns_only!(m, "e (eval current line)") || return
     ce = _active_editor(m)
     txt = TK.text(ce)
     lines = collect(split(txt, '\n'; keepempty=true))
