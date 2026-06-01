@@ -4884,10 +4884,10 @@ on the mode first.
 """
 function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     ed = _active_editor(m)
-    mode_label = uppercase(String(ed.mode))
     # Context-aware hint sets — leader pending / placeholder active
     # win over the default key cheatsheet so the user sees what's
-    # available at the moment they need it.
+    # available at the moment they need it. Mode label is NOT
+    # prefixed here — the status bar already shows ⟪ <MODE> @ … ⟫.
     hints = if m.pending_leader
         [(string(k), v) for (k, v) in _LEADER_LABELS]
     elseif m.placeholder_active
@@ -4908,11 +4908,7 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         [("e", "eval"), ("T", "test"), ("Tab", "swap"),
          (":w", "save"), (":back", "close"), (":q", "quit")]
     end
-    x = area.x
-    # Mode chip
-    chip = " $mode_label "
-    TK.set_string!(buf, x, area.y, chip, TK.tstyle(:accent, bold = true))
-    x += textwidth(chip) + 1
+    x = area.x + 1
     sep_style = TK.tstyle(:text_dim)
     key_style = TK.tstyle(:title, bold = true)
     txt_style = TK.tstyle(:text_dim)
