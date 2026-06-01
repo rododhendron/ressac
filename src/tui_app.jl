@@ -437,6 +437,24 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
        _active_editor(m).mode === :normal
         return false
     end
+    # Synth-role pane: route T/t/Space (in :normal mode) to the
+    # legacy _test_current_synth! path so DSL eval / SC ship still
+    # fires. Without this, the EditorPane handle_key! stub is a
+    # no-op and pressing T appears to do nothing.
+    if pane isa EditorPane &&
+       1 <= pane.current_tab <= length(pane.tabs) &&
+       pane.tabs[pane.current_tab].role === :synth &&
+       pane.tabs[pane.current_tab].code_editor.mode === :normal &&
+       evt.key === :char && (evt.char == 'T' || evt.char == 't' ||
+                              evt.char == ' ')
+        # Make sure the SynthTab index points at this pane's editor
+        # so _test_current_synth! grabs the right source.
+        ed = pane.tabs[pane.current_tab].code_editor
+        idx = findfirst(t -> t.editor === ed, m.synth_tabs)
+        idx === nothing || (m.synth_tab_idx = idx; m.focus = :synth)
+        _test_current_synth!(m)
+        return true
+    end
     # Patterns pane uses _active_editor(m) — legacy path owns it.
     if pane isa EditorPane &&
        1 <= pane.current_tab <= length(pane.tabs) &&
