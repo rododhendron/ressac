@@ -480,6 +480,31 @@ Base.:/(a::Sig, b::Sig)    = Sig("($(a.code) / $(b.code))")
 amp(x)    = (s::Sig) -> s * x
 offset(x) = (s::Sig) -> s + x
 
+# Make Sig scalar-broadcastable so `[:freq, :freq + 1] .+ sin_osc(35)`
+# treats the Sig modulator as a single value to add to every channel,
+# matching SC's multichannel expansion (`[a, b] + mod` adds the mod
+# to each element). Without this, broadcast tries to iterate the Sig
+# and crashes on `length`.
+Base.broadcastable(s::Sig) = Ref(s)
+
+"""
+    chan(elems...) -> Sig
+
+Multichannel expansion — emit an SC array `[a, b, c, …]` as a single
+`Sig`. Each element can be a Sig, Symbol, Real, or any combination;
+they get rendered via `sc_arg`. The returned Sig composes with the
+normal arithmetic operators so `chan(:freq, :freq + 1) + 32` reads
+naturally and produces `[freq, (freq + 1)] + 32` in SC — which SC
+expands across channels.
+
+```julia
+sin_osc(chan(:freq, :freq + 1) + 32 + 33 * sin_osc(35))
+# → SinOsc.ar([freq, (freq + 1)] + 32 + (33 * SinOsc.ar(35)))
+```
+"""
+chan(elems...) = Sig("[" * join(sc_arg.(elems), ", ") * "]")
+export chan
+
 # Symbol arithmetic — so `:freq * 2` reads naturally inside a DSL
 # expression. These didn't have methods before (Julia's Symbol doesn't
 # define arithmetic), so this is purely additive — no surprise on
