@@ -334,6 +334,13 @@ function _step!(s::Scheduler, now::Float64)
                     send_osc(s.osc, encode(bundle))
                     Threads.atomic_add!(s.events_shipped, 1)
                     push!(fired_at_local, slot => time())
+                    # Feed the TuningPane's recently-played highlight.
+                    # Late-bound: pane_tuning.jl is included after this
+                    # file, but the call resolves at run time. Skip if
+                    # the event has no :note.
+                    if ev.value isa ControlMap && haskey(ev.value, :note)
+                        push_played_note!(ev.value[:note])
+                    end
                 end
             end
         end

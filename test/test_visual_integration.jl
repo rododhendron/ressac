@@ -28,6 +28,10 @@ function _vis_app()
     frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, _VIS_W, _VIS_H),
                             Tachikoma.GraphicsRegion[],
                             Tachikoma.PixelSnapshot[])
+    # First view triggers _ensure_default_workspace! so subsequent
+    # cmd_vsplit / cmd_focus / etc. operate on a real workspace
+    # instead of no-op'ing on an empty manager.
+    Tachikoma.view(app, frame)
     Ressac._PANE_MODE.active = false
     return app, tb, frame
 end
@@ -204,6 +208,59 @@ end
     @test footer_y > 0
     row = Tachikoma.row_text(tb, footer_y)
     @test !isempty(strip(row))   # the footer has SOME hint visible
+end
+
+@testset "TuningPane renders title with scale name + footer with period" begin
+    app, tb, frame = _vis_app()
+    Ressac.cmd_vsplit!(app.workspaces, "tuning",
+                       Dict{String,Any}("name" => "major"))
+    Tachikoma.view(app, frame)
+    # Title bar carries "TUNING · :major" somewhere
+    @test _find_row(tb, "TUNING") > 0
+    @test _find_row(tb, "major") > 0
+    # Footer line shows period in cents
+    @test _find_row(tb, "1200") > 0
+end
+
+@testset "TuningPane footer shows label mode + 'press r to toggle'" begin
+    app, tb, frame = _vis_app()
+    Ressac.cmd_vsplit!(app.workspaces, "tuning",
+                       Dict{String,Any}("name" => "major"))
+    Tachikoma.view(app, frame)
+    @test _find_row(tb, "press r to toggle") > 0
+    @test _find_row(tb, "cents") > 0
+end
+
+@testset "TuningPane 'r' key toggles label mode" begin
+    app, tb, frame = _vis_app()
+    Ressac.cmd_vsplit!(app.workspaces, "tuning",
+                       Dict{String,Any}("name" => "major"))
+    ws = Ressac.current_workspace(app.workspaces)
+    pane = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane).tabs[1]
+    @test pane.label_mode === :cents
+    Tachikoma.update!(app, Tachikoma.KeyEvent('r'))
+    @test pane.label_mode === :ratio
+    Tachikoma.update!(app, Tachikoma.KeyEvent('r'))
+    @test pane.label_mode === :cents
+end
+
+@testset "TuningPane handles unknown scale name gracefully" begin
+    app, tb, frame = _vis_app()
+    Ressac.cmd_vsplit!(app.workspaces, "tuning",
+                       Dict{String,Any}("name" => "nonexistent-zzz"))
+    Tachikoma.view(app, frame)
+    @test _find_row(tb, "not found") > 0 || _find_row(tb, "unknown") > 0
+end
+
+@testset "push_played_note! decays after TTL" begin
+    Ressac._LAST_NOTES[] = Tuple{Float64,Float64}[]
+    Ressac.push_played_note!(60.0)
+    @test length(Ressac._LAST_NOTES[]) == 1
+    # Force an old entry to land — push one beyond the TTL.
+    push!(Ressac._LAST_NOTES[], (72.0, time() - 10.0))
+    Ressac.push_played_note!(64.0)
+    # The old one should have been pruned.
+    @test all((time() - t) <= Ressac._LAST_NOTES_TTL for (_, t) in Ressac._LAST_NOTES[])
 end
 
 @testset "global log tail collapses when a LogPane is in the tree" begin

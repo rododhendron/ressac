@@ -51,7 +51,8 @@ end
 # include only the files that exist (the 4 core kinds land in 4
 # separate Tasks 4-7; earlier tasks have fewer files on disk).
 function _reload_core_pane_kinds()
-    for f in ("pane_editor.jl", "pane_log.jl", "pane_doc.jl", "pane_scope.jl")
+    for f in ("pane_editor.jl", "pane_log.jl", "pane_doc.jl",
+              "pane_scope.jl", "pane_tuning.jl")
         path = joinpath(@__DIR__, "..", "src", f)
         isfile(path) && Base.include(Ressac, path)
     end
