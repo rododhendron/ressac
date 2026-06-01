@@ -5534,11 +5534,13 @@ by `:back`. To drop just the active tab, see `_close_active_synth_tab!`.
 """
 function _close_synth_pane!(m::RessacApp)
     isempty(m.synth_tabs) && return
+    for tab in m.synth_tabs
+        _close_pane_holding_editor!(m, tab.editor)
+    end
     empty!(m.synth_tabs)
     m.synth_tab_idx = 0
     m.focus = :patterns
-    _active_editor(m).focused = true
-    _push_app_log!(m, "[INFO] closed synth pane")
+    _push_app_log!(m, "[INFO] closed all synth panes")
 end
 
 """
@@ -5549,16 +5551,18 @@ Drop the active tab. If it was the last one, falls through to
 """
 function _close_active_synth_tab!(m::RessacApp)
     isempty(m.synth_tabs) && return
-    name = _current_synth_tab(m).name
+    tab = _current_synth_tab(m)
+    name = tab.name
+    _close_pane_holding_editor!(m, tab.editor)
     deleteat!(m.synth_tabs, m.synth_tab_idx)
     if isempty(m.synth_tabs)
         m.synth_tab_idx = 0
         m.focus = :patterns
-        _active_editor(m).focused = true
         _push_app_log!(m, "[INFO] closed last synth tab '$name'")
     else
         m.synth_tab_idx = clamp(m.synth_tab_idx - 1, 1, length(m.synth_tabs))
-        m.focus = :synth; _refresh_focus_flags!(m)
+        m.focus = :synth
+        _focus_pane_holding_editor!(m, _current_synth_tab(m).editor)
         _push_app_log!(m, "[INFO] closed '$name' — now on '$(_current_synth_tab(m).name)'")
     end
 end
@@ -5567,7 +5571,26 @@ function _cycle_synth_tab!(m::RessacApp; dir::Int = +1)
     length(m.synth_tabs) <= 1 && return
     n = length(m.synth_tabs)
     m.synth_tab_idx = mod(m.synth_tab_idx + dir - 1, n) + 1
-    m.focus = :synth; _refresh_focus_flags!(m)
+    m.focus = :synth
+    _focus_pane_holding_editor!(m, _current_synth_tab(m).editor)
+end
+
+# Close the workspace leaf whose EditorPane currently holds `ed`.
+# No-op when the editor isn't reachable from the workspace tree
+# (e.g. user already closed the pane manually via C-w c).
+function _close_pane_holding_editor!(m::RessacApp, ed::TK.CodeEditor)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    for leaf in collect(_all_leaves(ws.tree))
+        for tab in leaf.tabs
+            if tab isa EditorPane && !isempty(tab.tabs) &&
+               tab.tabs[1].code_editor === ed
+                ws.focused_pane = leaf.id
+                cmd_close!(m.workspaces)
+                return
+            end
+        end
+    end
 end
 
 function _list_synth_tabs!(m::RessacApp)
