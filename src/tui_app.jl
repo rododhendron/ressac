@@ -4451,19 +4451,19 @@ function TK.view(m::RessacApp, f::TK.Frame)
     log_h     = _global_log_tail_height(m)
     footer_h  = 1
     livedoc_h = 1
-    ws_top_h  = 2  # workspace strip + status bar
-    ws_top    = area.y
-    status_y  = ws_top + 1
-    ws_y      = ws_top + ws_top_h
-    log_y     = area.y + area.height - log_h
-    footer_y  = log_y - footer_h
-    cmdline_y = footer_y - cmdline_h
-    livedoc_y = cmdline_y - livedoc_h
-    ws_height = max(0, livedoc_y - ws_y)
-
-    # Top chrome — workspace tabs + status bar.
-    _render_workspace_strip!(m, TK.Rect(area.x, ws_top, area.width, 1), buf)
-    _render_status_bar(m, TK.Rect(area.x, status_y, area.width, 1), buf)
+    status_h  = 1
+    strip_h   = 1
+    # Bottom chrome stack (top → bottom):
+    #   workspace_strip · status_bar · livedoc · command_bar? · footer · log
+    # Workspace area fills everything above this stack.
+    log_y       = area.y + area.height - log_h
+    footer_y    = log_y - footer_h
+    cmdline_y   = footer_y - cmdline_h
+    livedoc_y   = cmdline_y - livedoc_h
+    status_y    = livedoc_y - status_h
+    strip_y     = status_y - strip_h
+    ws_y        = area.y
+    ws_height   = max(0, strip_y - ws_y)
 
     # Workspace area — dispatched through _compute_rects. Cached on
     # the model so the mouse handler can hit-test workspace leaves
@@ -4493,8 +4493,12 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_ghost!(m, _focused_editor_rect(m), buf)
     end
 
-    # Bottom chrome — livedoc + command bar (if active) + footer + log.
-    _render_livedoc_row(m, TK.Rect(area.x, livedoc_y, area.width, livedoc_h), buf)
+    # Bottom chrome — workspace strip + status bar above the existing
+    # livedoc / command bar / footer / log stack. All navigation /
+    # mode info lives in the same eye-zone now (vim convention).
+    _render_workspace_strip!(m, TK.Rect(area.x, strip_y,   area.width, strip_h),   buf)
+    _render_status_bar(m,     TK.Rect(area.x, status_y,  area.width, status_h),  buf)
+    _render_livedoc_row(m,    TK.Rect(area.x, livedoc_y, area.width, livedoc_h), buf)
     if cmdline_active
         render_bar!(m.command_line,
                     TK.Rect(area.x, cmdline_y, area.width, cmdline_h), buf)

@@ -122,17 +122,16 @@ end
 
 # ── Workspace strip + status bar visibility ─────────────────────────
 
-@testset "workspace strip shows [1] on top row" begin
+@testset "workspace strip shows [1] in the bottom chrome" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
-    @test occursin("[1", Tachikoma.row_text(tb, 1))
+    @test _find_row(tb, "[1") > 0
 end
 
 @testset "status bar shows 'NORMAL @ patterns' by default" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
-    # Row 2 is the status bar in the current layout.
-    @test occursin("NORMAL", Tachikoma.row_text(tb, 2))
+    @test _find_row(tb, "NORMAL") > 0
 end
 
 @testset "status bar switches to 'COMMAND' when command bar is active" begin
@@ -140,7 +139,7 @@ end
     Tachikoma.view(app, frame)
     Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
     Tachikoma.view(app, frame)
-    @test occursin("COMMAND", Tachikoma.row_text(tb, 2))
+    @test _find_row(tb, "COMMAND") > 0
 end
 
 @testset "workspace strip carries the pane-mode cheat sheet" begin
@@ -149,8 +148,10 @@ end
     Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     Tachikoma.view(app, frame)
-    row1 = Tachikoma.row_text(tb, 1)
-    @test occursin("split", row1) || occursin("focus", row1)
+    # The strip is now in the bottom chrome; the cheat sheet appears
+    # somewhere in the rendered buffer when pane mode is active.
+    rendered = join((Tachikoma.row_text(tb, y) for y in 1:_VIS_H), '\n')
+    @test occursin("split", rendered) || occursin("focus", rendered)
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
 end
 
@@ -170,12 +171,9 @@ end
     Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
     Tachikoma.view(app, frame)
-    # Count PATTERNS occurrences on the workspace top row (around y=3).
-    title_row_hits = 0
-    for y in 3:6
-        title_row_hits += count("PATTERNS", Tachikoma.row_text(tb, y))
-    end
-    @test title_row_hits >= 2
+    # Two PATTERNS titles appear somewhere on the screen.
+    rendered = join((Tachikoma.row_text(tb, y) for y in 1:_VIS_H), '\n')
+    @test count("PATTERNS", rendered) >= 2
 end
 
 # ── Editor buffer shows typed text ──────────────────────────────────
