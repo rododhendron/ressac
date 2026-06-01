@@ -4373,12 +4373,12 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
                 end
             end
             render!(pane, rect, buf)
-            # Focus indicator — repaint the border in :accent so the
-            # active pane stands out against the dim defaults that
-            # _render_pane_block_simple! draws. Overlay paths look up
-            # the focused leaf's rect on demand via
-            # _focused_editor_rect(m) — no caching needed.
-            node.id == focused_id && _repaint_border_focused!(rect, buf)
+            # Focus indicator — repaint the border in the current
+            # mode's colour so the accent + the mode strip stay in
+            # sync. Overlay paths look up the focused leaf's rect on
+            # demand via _focused_editor_rect(m) — no caching needed.
+            node.id == focused_id &&
+                _repaint_border_focused!(rect, buf, _mode_style(_current_mode_symbol(m); bold = true))
         end
         return
     end
@@ -4396,9 +4396,9 @@ already drew. Chars stay the same — only the style attribute
 changes — so the focus highlight survives any subsequent overlay
 that respects existing chars.
 """
-function _repaint_border_focused!(rect::TK.Rect, buf::TK.Buffer)
+function _repaint_border_focused!(rect::TK.Rect, buf::TK.Buffer,
+                                  style::TK.Style = TK.tstyle(:accent, bold = true))
     (rect.width < 2 || rect.height < 2) && return
-    style = TK.tstyle(:accent, bold = true)
     # Skip the top row — it carries the pane title which would be
     # erased if we overwrote here. Sides + bottom are enough signal.
     for y in 1:(rect.height - 2)
@@ -4459,18 +4459,20 @@ function TK.view(m::RessacApp, f::TK.Frame)
     log_h     = _global_log_tail_height(m)
     footer_h  = 1
     livedoc_h = 1
-    status_h  = 1
+    mode_h    = 1
     strip_h   = 1
+    status_h  = 1
+    # Top chrome: tempo / state status bar.
     # Bottom chrome stack (top → bottom):
-    #   workspace_strip · status_bar · livedoc · command_bar? · footer · log
-    # Workspace area fills everything above this stack.
+    #   workspace_strip · mode_strip · livedoc · command_bar? · footer · log
+    status_y    = area.y
     log_y       = area.y + area.height - log_h
     footer_y    = log_y - footer_h
     cmdline_y   = footer_y - cmdline_h
     livedoc_y   = cmdline_y - livedoc_h
-    status_y    = livedoc_y - status_h
-    strip_y     = status_y - strip_h
-    ws_y        = area.y
+    mode_y      = livedoc_y - mode_h
+    strip_y     = mode_y - strip_h
+    ws_y        = status_y + status_h
     ws_height   = max(0, strip_y - ws_y)
 
     # Workspace area — dispatched through _compute_rects. Cached on
@@ -4501,12 +4503,12 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_ghost!(m, _focused_editor_rect(m), buf)
     end
 
-    # Bottom chrome — workspace strip + status bar above the existing
-    # livedoc / command bar / footer / log stack. All navigation /
-    # mode info lives in the same eye-zone now (vim convention).
+    # Top chrome — tempo + state status bar.
+    _render_status_bar(m, TK.Rect(area.x, status_y, area.width, status_h), buf)
+    # Bottom chrome — workspace tabs + mode strip + livedoc + cmd + footer + log.
     _render_workspace_strip!(m, TK.Rect(area.x, strip_y,   area.width, strip_h),   buf)
-    _render_status_bar(m,     TK.Rect(area.x, status_y,  area.width, status_h),  buf)
-    _render_livedoc_row(m,    TK.Rect(area.x, livedoc_y, area.width, livedoc_h), buf)
+    _render_mode_strip!(m,      TK.Rect(area.x, mode_y,    area.width, mode_h),    buf)
+    _render_livedoc_row(m,      TK.Rect(area.x, livedoc_y, area.width, livedoc_h), buf)
     if cmdline_active
         render_bar!(m.command_line,
                     TK.Rect(area.x, cmdline_y, area.width, cmdline_h), buf)
@@ -4767,16 +4769,8 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     rest = bar_w - full - (isempty(partial) ? 0 : 1)
     cycle_bar = "█" ^ full * partial * "░" ^ max(0, rest)
 
-    ed = _active_editor(m)
-    badge = if _PANE_MODE.active
-        "⟪ PANE ⟫"
-    elseif m.command_line.mode === :command
-        "⟪ COMMAND ⟫"
-    elseif m.command_line.mode === :search
-        "⟪ SEARCH ⟫"
-    else
-        "⟪ $(uppercase(String(ed.mode))) @ $(m.focus) ⟫"
-    end
+    # Mode info moved to its own strip — status bar is pure
+    # tempo + state info now.
 
     # Sections — each is a tuple of (text, style). They get joined with
     # ` │ ` separators rendered in :text_dim so the eye groups them.
@@ -4851,36 +4845,109 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     isempty(state_parts) || push!(sections, state_parts)
 
     # ── Render —— left to right ────────────────────────────────────
-    # Compute total length first, truncate sections that don't fit
-    # rather than overflow into the right badge.
+    # Blank the row first so we don't leak previous-frame content
+    # when sections shrink (e.g. recording stops).
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
+                   TK.tstyle(:text))
     sep = " │ "
     sep_style = TK.tstyle(:text_dim)
-    available = area.width - textwidth(badge) - 1  # 1 col for right pad
     x = area.x
     for (i, sec) in enumerate(sections)
         if i > 1
-            x + textwidth(sep) > area.x + available && break
+            x + textwidth(sep) > area.x + area.width && break
             TK.set_string!(buf, x, area.y, sep, sep_style)
             x += textwidth(sep)
         end
         for (txt, sty) in sec
-            x + textwidth(txt) > area.x + available && (txt = first(txt,
-                max(0, area.x + available - x)))
+            x + textwidth(txt) > area.x + area.width && (txt = first(txt,
+                max(0, area.x + area.width - x)))
             isempty(txt) && break
             TK.set_string!(buf, x, area.y, txt, sty)
             x += textwidth(txt)
         end
     end
-    # Right badge — fill the gap with the dim border char so the status
-    # row looks intentional rather than empty.
-    fill_x = x
-    badge_x = area.x + area.width - textwidth(badge)
-    if badge_x > fill_x
-        TK.set_string!(buf, fill_x, area.y,
-            " " ^ (badge_x - fill_x), TK.tstyle(:text_dim))
+end
+
+# ── Mode info — colour-coded per-mode strip ─────────────────────────
+#
+# Every editor / global mode maps to a Tachikoma style so the mode
+# strip AND the focused-pane border share one accent colour. Picked
+# the existing semantic palette so themes carry through.
+
+const _MODE_COLORS = (
+    normal  = :primary,
+    insert  = :success,
+    visual  = :title,
+    command = :warning,
+    search  = :warning,
+    pane    = :error,
+)
+
+const _MODE_ORDER = (:normal, :insert, :visual, :command, :search, :pane)
+
+"""
+    _current_mode_symbol(m) -> Symbol
+
+Resolve the currently-active mode using the same precedence as the
+mode strip + focus border:
+
+  1. pane mode (Ctrl-W) wins (most specific gesture)
+  2. CommandLine :command / :search
+  3. editor visual mode
+  4. editor :normal / :insert
+"""
+function _current_mode_symbol(m::RessacApp)
+    _PANE_MODE.active && return :pane
+    m.command_line.mode === :command && return :command
+    m.command_line.mode === :search  && return :search
+    m.visual_active && return :visual
+    return _active_editor(m).mode
+end
+
+"""
+    _mode_style(mode; bold=false) -> TK.Style
+
+Map a mode symbol to its accent style. Unknown modes fall back to
+:accent so the UI never goes uncoloured.
+"""
+function _mode_style(mode::Symbol; bold::Bool = false)
+    palette = get(_MODE_COLORS, mode, :accent)
+    return TK.tstyle(palette, bold = bold)
+end
+
+"""
+    _render_mode_strip!(m, area, buf)
+
+Single-row horizontal mode indicator. Lists every mode in
+`_MODE_ORDER`; the current one renders in its mode colour + bold,
+the others dim. Replaces the old `⟪ MODE @ focus ⟫` badge — the
+user sees ALL modes at once with the current one highlighted.
+"""
+function _render_mode_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
+                   TK.tstyle(:text))
+    cur = _current_mode_symbol(m)
+    sep_style = TK.tstyle(:text_dim)
+    x = area.x
+    sep = " · "
+    for (i, mode) in enumerate(_MODE_ORDER)
+        label = String(mode)
+        if mode === cur
+            label = uppercase(label)
+        end
+        chunk_w = textwidth(label)
+        if i > 1
+            x + textwidth(sep) > area.x + area.width && break
+            TK.set_string!(buf, x, area.y, sep, sep_style)
+            x += textwidth(sep)
+        end
+        x + chunk_w > area.x + area.width && break
+        style = mode === cur ?
+            _mode_style(mode; bold = true) :
+            TK.tstyle(:text_dim)
+        TK.set_string!(buf, x, area.y, label, style)
+        x += chunk_w
     end
-    TK.set_string!(buf, max(area.x, badge_x), area.y,
-        first(badge, area.width), TK.tstyle(:accent, bold = true))
 end
 
 """

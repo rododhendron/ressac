@@ -205,18 +205,22 @@ end
     Ressac._PANE_MODE.active = false
 end
 
-@testset "status bar shows PANE badge when pane mode active" begin
+@testset "mode strip lists all modes; current one in caps" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
     tb = Tachikoma.TestBackend(120, 5)
-    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
-    @test occursin("NORMAL", _row_to_string(tb.buf, 1))
+    Ressac._render_mode_strip!(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
+    row = _row_to_string(tb.buf, 1)
+    @test occursin("NORMAL", row)       # current in caps
+    @test occursin("insert", row)        # others lowercase
+    @test occursin("pane", row)
+    # Pane mode active → PANE shows in caps
     Ressac._PANE_MODE.active = true
     tb2 = Tachikoma.TestBackend(120, 5)
-    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb2.buf)
+    Ressac._render_mode_strip!(app, Tachikoma.Rect(1, 1, 120, 1), tb2.buf)
     @test occursin("PANE", _row_to_string(tb2.buf, 1))
     Ressac._PANE_MODE.active = false
 end
