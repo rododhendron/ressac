@@ -325,6 +325,97 @@ function scale(name::Symbol)
 end
 
 """
+    transpose_cents(c) — shift :note by `c / 100` semitones
+
+Pattern combinator. Adds `c / 100` semitones to whatever `:note`
+value each event already carries (sets `:note = c/100` if absent).
+`c` is in cents, so 100 = one chromatic semitone, 50 = quarter
+tone, 1200 = octave.
+
+```julia
+"0 2 4" |> scale(:major) |> transpose_cents(50)    # ¼-tone sharp
+pat |> note(60) |> transpose_cents(-25)            # 25¢ flat
+```
+"""
+function transpose_cents(c::Real)
+    semis = Float64(c) / 100.0
+    return function (p)
+        p = _as_pattern(p)
+        lifted = _lift_to_control(p)
+        Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+            inner = lifted(s, e)
+            out = Vector{Event{ControlMap}}(undef, length(inner))
+            for (i, ev) in enumerate(inner)
+                cm = copy(ev.value)
+                cm[:note] = haskey(cm, :note) ? cm[:note] + semis : semis
+                out[i] = Event{ControlMap}(ev.start, ev.stop, cm)
+            end
+            out
+        end)
+    end
+end
+
+"""
+    scale_stretch(s::Scale, factor) -> Scale
+
+Scale transform. Returns a new `Scale` with every interval (cents
+and period) multiplied by `factor`. `factor < 1` compresses
+(squished octave); `factor > 1` expands (xenharmonic stretch).
+Doesn't operate on patterns — works at the `Scale` level so the
+stretched scale composes with `scale()` like any other.
+
+```julia
+squished = scale_stretch(lookup_scale(:major), 0.95)
+"0 2 4 7" |> scale(squished)
+```
+"""
+function scale_stretch(s::Scale, factor::Real)
+    f = Float64(factor)
+    f > 0 || throw(ArgumentError("scale_stretch: factor must be > 0"))
+    new_name = Symbol(string(s.name, "_stretched"))
+    return Scale(new_name, s.cents .* f, s.period_cents * f)
+end
+
+"""
+    bend(curve) — time-varying pitch bend (curve in cents)
+
+Pattern combinator. `curve` is a continuous `Pattern{Float64}` in
+cents (often built via `sine() |> range_pat(-50, 50)` or similar);
+for each event, the curve is sampled at the event's start time and
+added to `:note`. The curve doesn't need to be continuous — any
+`Pattern{<:Real}` works; non-continuous patterns produce stepped
+bend.
+
+```julia
+"60 62 64 60" |> note(p"0") |> bend(range_pat(-50, 50, sine()))
+```
+"""
+function bend(curve::Pattern)
+    return function (p)
+        p = _as_pattern(p)
+        lifted = _lift_to_control(p)
+        Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+            inner = lifted(s, e)
+            out = Vector{Event{ControlMap}}(undef, length(inner))
+            for (i, ev) in enumerate(inner)
+                cm = copy(ev.value)
+                # Sample the curve at this event's start. Continuous
+                # patterns return one event for any arc; discrete
+                # patterns may have several within (s, e) — we take
+                # the first whose arc contains the event start.
+                bend_evs = curve(ev.start, ev.start + Rational(1, 1_000_000))
+                cents = isempty(bend_evs) ? 0.0 :
+                        Float64(_resolve_value(bend_evs[1].value))
+                shift = cents / 100.0
+                cm[:note] = haskey(cm, :note) ? cm[:note] + shift : shift
+                out[i] = Event{ControlMap}(ev.start, ev.stop, cm)
+            end
+            out
+        end)
+    end
+end
+
+"""
     nrun(count) -> (Pattern -> ControlPattern)
 
 Shortcut for `p |> n(runp(count))` — iterate through `count`

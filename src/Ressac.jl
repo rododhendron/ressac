@@ -105,6 +105,7 @@ export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
 export pan, n, room, delay, shape, pump, note, scale
+export transpose_cents, scale_stretch, bend
 # Tunings — Scale type + registry + constructors.
 export Scale, scale_to_semitones, register_scale!, lookup_scale, list_scales
 export edo, from_ratios, from_cents, bohlen_pierce, golden_meantone,

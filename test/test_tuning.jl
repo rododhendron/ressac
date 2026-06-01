@@ -175,3 +175,51 @@ end
     @test notes[1] ≈ 0.0
     @test notes[2] ≈ bp.period_cents / 100 atol = 1e-6
 end
+
+# ── transpose_cents / scale_stretch / bend (Step D) ─────────────────
+
+@testset "transpose_cents shifts :note by c/100 semitones" begin
+    p = "0 2 4" |> Ressac.scale(:major) |> Ressac.transpose_cents(50)
+    notes = [ev.value[:note] for ev in p(0//1, 1//1)]
+    @test notes ≈ [0.5, 4.5, 7.5]
+end
+
+@testset "transpose_cents composes — stacks additively" begin
+    p = "0" |> Ressac.scale(:major) |>
+        Ressac.transpose_cents(100) |> Ressac.transpose_cents(200)
+    @test p(0//1, 1//1)[1].value[:note] ≈ 3.0
+end
+
+@testset "transpose_cents seeds :note when not yet set" begin
+    p = pure(:saw) |> Ressac.transpose_cents(700)
+    @test p(0//1, 1//1)[1].value[:note] ≈ 7.0
+end
+
+@testset "scale_stretch returns a stretched Scale" begin
+    major = Ressac.lookup_scale(:major)
+    big = Ressac.scale_stretch(major, 2.0)
+    @test big.period_cents ≈ 2 * major.period_cents
+    @test big.cents ≈ 2 .* major.cents
+    @test big.name === :major_stretched
+
+    small = Ressac.scale_stretch(major, 0.5)
+    @test small.period_cents ≈ 0.5 * major.period_cents
+end
+
+@testset "scale_stretch rejects non-positive factor" begin
+    major = Ressac.lookup_scale(:major)
+    @test_throws ArgumentError Ressac.scale_stretch(major, 0)
+    @test_throws ArgumentError Ressac.scale_stretch(major, -1.5)
+end
+
+@testset "bend adds cents from a continuous curve to :note" begin
+    # Curve: constant 50 cents via range_pat(50, 50, sine())
+    # — sine swings -1..1, range squashes to [50, 50], so all
+    # samples are 50¢. Trivial but verifies the wiring.
+    curve = Ressac.range_pat(50.0, 50.0, sine())
+    p = "0 2" |> Ressac.scale(:major) |> Ressac.bend(curve)
+    notes = [ev.value[:note] for ev in p(0//1, 1//1)]
+    @test all(abs.(notes .- (notes[1])) .< 4.1)   # major 3rd ≈ 4 semitones gap
+    # Both notes are :note + 0.5 semitones
+    @test notes ≈ [0.5, 4.5]
+end
