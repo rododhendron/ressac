@@ -18,6 +18,7 @@ include("core_patterns.jl")      # Pattern{T}, Event{T}, query
 include("core_mininotation.jl")  # the p"…" / "…" parser
 include("core_combinators.jl")   # fast/slow/jux/every/sometimes/…
 include("core_algebra.jl")       # stack/cat/mask
+include("core_tuning.jl")        # Scale, scale_to_semitones, registry
 include("core_controls.jl")      # gain/lpf/hpf/pan/n/set/pump/…
 
 # ─── I/O primitives ───────────────────────────────────────────────
@@ -103,7 +104,10 @@ export SampleEntry, sample_info, list_samples, register_sample!
 export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
-export pan, n, room, delay, shape, degree, pump
+export pan, n, room, delay, shape, pump
+# Tunings — Scale type + registry. The :note / :degree control
+# functions land in core_controls during Step C.
+export Scale, scale_to_semitones, register_scale!, lookup_scale, list_scales
 # Compressor params (auto-generated in controls.jl):
 export compress, compressThreshold, compressRatio
 # SuperDirt param helpers (auto-generated in controls.jl):
@@ -332,17 +336,12 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     end
 
     # Module-level hot paths still worth warming (no LiveModel needed):
-    # mouse-wheel literal bump, degree() + scale lookup, gate combinator.
+    # mouse-wheel literal bump + gate combinator. Scale-degree
+    # warming lands in Step C once `scale()` / `note()` exist.
     try
         _find_number_at("@d1 p\"bd\" |> gain(0.8)", 22)
         _bump_literal("0.8", 0.1, true)
         _bump_literal("3", 1.0, false)
-        _CURRENT_SCALE[] = :minor
-        _scale_offset(2, :minor)
-        ds = pure(:bd) |> degree(2)
-        ds_evs = ds(0//1, 1//1)
-        isempty(ds_evs) || event_to_osc(ds_evs[1])
-        _CURRENT_SCALE[] = :chromatic
         gate(:super808, parse_minino("1 0 0 1 0 0 1 0"))(0//1, 1//1)
     catch
     end

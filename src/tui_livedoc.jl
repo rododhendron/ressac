@@ -243,7 +243,7 @@ const _GUIDE_LINES = String[
     "  :sccode-tag <tag>    — browse sccode by tag",
     "  :browse              — sample / instrument / synth browser",
     "  :doc <name>          — show docstring + usage examples",
-    "  :scale <name>        — set the active scale for degree()",
+    "  :scale list          — show registered scales (use via pat |> scale(s))",
     "  :starter <genre>     — load a genre starter pack",
     "  :mute dN / :unmute dN / :solo dN",
     "  :scope amp|wave|spectrum|off",

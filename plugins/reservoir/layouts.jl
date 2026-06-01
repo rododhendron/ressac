@@ -4,11 +4,11 @@
 # A layout is just a function `(N, lo, hi; kwargs...) -> Vector{Float64}`.
 # Built-ins below; plugins add more with `register_layout!`.
 
-# The reservoir's layout :scale reuses Ressac's core `_SCALES` dict so
-# both `:scale <name>` (mini-notation) and `layout=:scale` see the same
-# library. Adding a scale in core_controls.jl makes it available here
-# without changing this file.
-const SCALES = Ressac._SCALES
+# The reservoir's layout :scale reuses Ressac's core scale registry
+# so any registered scale (built-in, plugin-contributed, or user-
+# defined) works here. Scales are `Scale` values with `cents` and
+# `period_cents`, so we stack periods (not octaves) for xenharmonic
+# correctness.
 
 "Logarithmic spread between `lo` and `hi` — perceptually even pitches."
 function _layout_logfreq(N::Int, lo::Real, hi::Real; kwargs...)
@@ -16,16 +16,18 @@ function _layout_logfreq(N::Int, lo::Real, hi::Real; kwargs...)
     [Float64(lo) * (Float64(hi) / Float64(lo))^((i - 1) / (N - 1)) for i in 1:N]
 end
 
-"Quantised to a musical scale, repeating across octaves above `root`."
+"Quantised to a musical scale, repeating across periods above `root`."
 function _layout_scale(N::Int, lo::Real, hi::Real;
                        scale::Symbol = :minor_pentatonic,
                        root::Real = 220.0, kwargs...)
-    intervals = get(SCALES, scale) do
-        throw(ArgumentError("unknown scale $scale — known: $(sort!(collect(keys(SCALES))))"))
-    end
-    k = length(intervals)
+    s = Ressac.lookup_scale(scale)
+    s === nothing &&
+        throw(ArgumentError("unknown scale $scale — known: $(Ressac.list_scales())"))
+    k = length(s.cents)
     root_f = Float64(root)
-    [root_f * 2.0^(((i - 1) ÷ k) + intervals[((i - 1) % k) + 1] / 12.0) for i in 1:N]
+    period_octaves = s.period_cents / 1200.0
+    [root_f * 2.0^(((i - 1) ÷ k) * period_octaves +
+                   s.cents[((i - 1) % k) + 1] / 1200.0) for i in 1:N]
 end
 
 "Harmonic series above `fund` (i·fund). `lo`/`hi` ignored."

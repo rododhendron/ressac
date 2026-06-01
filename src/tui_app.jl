@@ -2437,10 +2437,11 @@ _register_regex!(r"^import\s+(\S+?)\s+as\s+(\w+)$",
 _register_regex!(r"^import\s+(\S+)$",
     (m, mt) -> _import_wav!(m, mt.captures[1], nothing))
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] current scale: $(_CURRENT_SCALE[])"),
+        "[INFO] $(length(list_scales())) scale(s) registered — use `:scale list` for full list"),
     "scale")
-_register_regex!(r"^scale\s+(\w+)$",
-    (m, mt) -> _scale_set(m, mt))
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] scales: " * join(list_scales(), ", ")),
+    "scale list")
 _register_regex!(r"^cps\s+(\S+)$",
     (m, mt) -> _cps_set(m, mt))
 
@@ -2516,15 +2517,6 @@ end
 function _keydebug_toggle(m::RessacApp)
     m.keydebug = !m.keydebug
     _push_app_log!(m, "[INFO] keydebug $(m.keydebug ? "ON" : "OFF") — every keypress will be logged")
-end
-function _scale_set(m::RessacApp, mt::RegexMatch)
-    name = Symbol(mt.captures[1])
-    if haskey(_SCALES, name)
-        _CURRENT_SCALE[] = name
-        _push_app_log!(m, "[INFO] scale set to :$name (use degree(x))")
-    else
-        _push_app_log!(m, "[WARN] :scale — unknown '$name'")
-    end
 end
 function _cps_set(m::RessacApp, mt::RegexMatch)
     try
@@ -4979,7 +4971,7 @@ function _humanize_eval_error(e, src::AbstractString)
         return "bad arg: $(e.msg)"
     end
     if e isa BoundsError
-        return "out-of-range index — pattern length doesn't match `n()` / `degree()` source"
+        return "out-of-range index — pattern length doesn't match `n()` / `note()` / `scale()` source"
     end
     # Fallback: trim the raw error to one readable line.
     raw = sprint(showerror, e)
