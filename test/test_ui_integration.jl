@@ -552,6 +552,63 @@ end
     @test_nowarn Tachikoma.view(app, frame)
 end
 
+@testset ":tuning edo <N> registers a new EDO scale" begin
+    app, _ = _new_app()
+    pre = length(Ressac.list_scales())
+    _exec_ex_command!(app, "tuning edo 19")
+    @test :edo_19 in Ressac.list_scales()
+    @test Ressac.lookup_scale(:edo_19).period_cents == 1200.0
+    @test length(Ressac.lookup_scale(:edo_19).cents) == 19
+    @test length(Ressac.list_scales()) >= pre + 1
+end
+
+@testset ":tuning ratios <r1> <r2> ... registers a just-intonation scale" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "tuning ratios 1 9/8 5/4 4/3 3/2 5/3 15/8 2")
+    name = :ratios_1_9o8_5o4_4o3_3o2_5o3_15o8_2
+    @test name in Ressac.list_scales()
+    s = Ressac.lookup_scale(name)
+    # 7 step degrees within one octave
+    @test length(s.cents) == 7
+    @test s.period_cents ≈ 1200.0
+end
+
+@testset ":tuning bp registers Bohlen-Pierce lambda by default" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "tuning bp")
+    @test :bp_lambda in Ressac.list_scales()
+    bp = Ressac.lookup_scale(:bp_lambda)
+    @test bp.period_cents ≈ 1200 * log2(3) atol = 1e-6
+end
+
+@testset ":tuning bp <variant> picks the variant" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "tuning bp dur")
+    @test :bp_dur in Ressac.list_scales()
+end
+
+@testset ":tuning golden and :tuning fib and :tuning sb register" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "tuning golden")
+    _exec_ex_command!(app, "tuning fib 5")
+    _exec_ex_command!(app, "tuning sb 3")
+    @test :golden_12 in Ressac.list_scales()
+    @test :fib_5 in Ressac.list_scales()
+    @test :sb_3 in Ressac.list_scales()
+end
+
+@testset ":tuning cf <coeffs> registers a continued-fraction scale" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "tuning cf 1 2 2 2")
+    @test :cf_1_2_2_2 in Ressac.list_scales()
+end
+
+@testset ":scale list logs all registered scale names" begin
+    app, _ = _new_app()
+    _exec_ex_command!(app, "scale list")
+    @test any(l -> occursin("major", l) || occursin("minor", l), app.logs)
+end
+
 @testset "Snippet panes with unknown kind warns + skips that side" begin
     app, _ = _new_app()
     name = "ui-it-badpanes-$(rand(UInt32))"

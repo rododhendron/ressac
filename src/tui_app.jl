@@ -2240,6 +2240,100 @@ function _layout_load!(m::RessacApp, name::AbstractString)
     end
 end
 
+# ── :tuning <variant> handlers ──────────────────────────────────────
+# Each handler builds + registers a Scale and logs the resulting
+# symbol so the user can reference it via `pat |> scale(:<name>)`.
+
+function _tuning_edo!(m::RessacApp, n_str::AbstractString)
+    try
+        n = parse(Int, n_str)
+        name = Symbol("edo_$n")
+        register_scale!(edo(name, n))
+        _push_app_log!(m, "[INFO] :tuning edo $n — registered :$name (use scale(:$name))")
+    catch err
+        _push_app_log!(m, "[ERROR] :tuning edo: $(sprint(showerror, err))")
+    end
+end
+
+function _tuning_ratios!(m::RessacApp, body::AbstractString)
+    try
+        tokens = split(strip(body), r"\s+")
+        ratios = [_parse_ratio_token(t) for t in tokens]
+        name = Symbol("ratios_" * join(tokens, "_") |>
+                       s -> replace(s, "/" => "o"))   # `_` and `o` only, valid Symbol
+        register_scale!(from_ratios(name, ratios))
+        _push_app_log!(m, "[INFO] :tuning ratios — registered :$name (use scale(:$name))")
+    catch err
+        _push_app_log!(m, "[ERROR] :tuning ratios: $(sprint(showerror, err))")
+    end
+end
+
+# Parse a ratio token: "9/8" → 9/8 (Rational), "1.5" → 1.5 (Float),
+# "2" → 2 (Int).
+function _parse_ratio_token(t::AbstractString)
+    if occursin('/', t)
+        parts = split(t, '/')
+        length(parts) == 2 || throw(ArgumentError("bad ratio: $t"))
+        return parse(Int, parts[1]) // parse(Int, parts[2])
+    end
+    tryparse(Int, t) !== nothing && return parse(Int, t)
+    return parse(Float64, t)
+end
+
+function _tuning_bp!(m::RessacApp, variant_str::AbstractString)
+    try
+        variant = Symbol(variant_str)
+        name = Symbol("bp_$variant")
+        register_scale!(bohlen_pierce(name; variant = variant))
+        _push_app_log!(m, "[INFO] :tuning bp $variant — registered :$name")
+    catch err
+        _push_app_log!(m, "[ERROR] :tuning bp: $(sprint(showerror, err))")
+    end
+end
+
+function _tuning_golden!(m::RessacApp, n::Int)
+    try
+        name = Symbol("golden_$n")
+        register_scale!(golden_meantone(name; n_steps = n))
+        _push_app_log!(m, "[INFO] :tuning golden $n — registered :$name")
+    catch err
+        _push_app_log!(m, "[ERROR] :tuning golden: $(sprint(showerror, err))")
+    end
+end
+
+function _tuning_fib!(m::RessacApp, n_str)
+    try
+        n = n_str === nothing ? 7 : parse(Int, n_str)
+        name = Symbol("fib_$n")
+        register_scale!(fibonacci_scale(name; n_steps = n))
+        _push_app_log!(m, "[INFO] :tuning fib $n — registered :$name")
+    catch err
+        _push_app_log!(m, "[ERROR] :tuning fib: $(sprint(showerror, err))")
+    end
+end
+
+function _tuning_cf!(m::RessacApp, body::AbstractString)
+    try
+        coeffs = [parse(Int, t) for t in split(strip(body), r"\s+")]
+        name = Symbol("cf_" * join(coeffs, "_"))
+        register_scale!(continued_fraction_scale(name, coeffs))
+        _push_app_log!(m, "[INFO] :tuning cf $(join(coeffs, ' ')) — registered :$name")
+    catch err
+        _push_app_log!(m, "[ERROR] :tuning cf: $(sprint(showerror, err))")
+    end
+end
+
+function _tuning_sb!(m::RessacApp, depth_str)
+    try
+        depth = depth_str === nothing ? 5 : parse(Int, depth_str)
+        name = Symbol("sb_$depth")
+        register_scale!(stern_brocot(name; depth = depth))
+        _push_app_log!(m, "[INFO] :tuning sb $depth — registered :$name")
+    catch err
+        _push_app_log!(m, "[ERROR] :tuning sb: $(sprint(showerror, err))")
+    end
+end
+
 # ── Test ────────────────────────────────────────────────────────────
 _register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m),
                    "test", "t")
@@ -2442,6 +2536,28 @@ _register_literal!(m -> _push_app_log!(m,
 _register_literal!(m -> _push_app_log!(m,
         "[INFO] scales: " * join(list_scales(), ", ")),
     "scale list")
+
+# ── :tuning <variant> — build + register a new Scale ────────────────
+# Each variant builds a Scale via the constructors in core_tuning,
+# registers it under a deterministic name, and logs the name so the
+# user can reference it via `pat |> scale(:<name>)`.
+_register_regex!(r"^tuning\s+edo\s+(\d+)$",
+    (m, mt) -> _tuning_edo!(m, mt.captures[1]))
+_register_regex!(r"^tuning\s+ratios\s+(.+)$",
+    (m, mt) -> _tuning_ratios!(m, mt.captures[1]))
+_register_literal!(m -> _tuning_bp!(m, "lambda"), "tuning bp")
+_register_regex!(r"^tuning\s+bp\s+(\w+)$",
+    (m, mt) -> _tuning_bp!(m, mt.captures[1]))
+_register_literal!(m -> _tuning_golden!(m, 12), "tuning golden")
+_register_regex!(r"^tuning\s+golden\s+(\d+)$",
+    (m, mt) -> _tuning_golden!(m, parse(Int, mt.captures[1])))
+_register_regex!(r"^tuning\s+fib(?:\s+(\d+))?$",
+    (m, mt) -> _tuning_fib!(m, mt.captures[1]))
+_register_regex!(r"^tuning\s+cf\s+(.+)$",
+    (m, mt) -> _tuning_cf!(m, mt.captures[1]))
+_register_regex!(r"^tuning\s+sb(?:\s+(\d+))?$",
+    (m, mt) -> _tuning_sb!(m, mt.captures[1]))
+
 _register_regex!(r"^cps\s+(\S+)$",
     (m, mt) -> _cps_set(m, mt))
 

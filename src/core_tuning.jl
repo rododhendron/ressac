@@ -270,12 +270,20 @@ golden-ratio interval distribution as `n_steps` grows.
 """
 function fibonacci_scale(name::Symbol = :fib; n_steps::Integer = 7)
     n_steps > 0 || throw(ArgumentError("fibonacci_scale: n_steps must be positive"))
+    # Step sizes proportional to Fibonacci ratios; cumulative sum
+    # gives the cents position of each degree. Starts at 0, ends
+    # just before the period.
     fib = [1, 1]
-    while length(fib) < n_steps + 2
+    while length(fib) < n_steps + 1
         push!(fib, fib[end] + fib[end-1])
     end
-    total = Float64(fib[n_steps + 1])
-    cents = [1200.0 * Float64(fib[i]) / total for i in 1:n_steps]
+    total = Float64(sum(fib[1:n_steps]))
+    cents = Float64[0.0]
+    acc = 0.0
+    for i in 1:(n_steps - 1)
+        acc += Float64(fib[i]) / total
+        push!(cents, 1200.0 * acc)
+    end
     return Scale(name, cents, 1200.0)
 end
 
