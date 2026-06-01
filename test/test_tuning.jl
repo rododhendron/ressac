@@ -212,6 +212,60 @@ end
     @test_throws ArgumentError Ressac.scale_stretch(major, -1.5)
 end
 
+@testset "_handle_scales registers from [[scales]] data (Step G)" begin
+    name_a = Symbol("plg-test-a-$(rand(UInt32))")
+    name_b = Symbol("plg-test-b-$(rand(UInt32))")
+    data = [
+        Dict{String,Any}("name" => String(name_a),
+                         "cents" => [0, 200, 400, 700, 900]),
+        Dict{String,Any}("name" => String(name_b),
+                         "cents" => [0, 146.3, 292.6, 438.9],
+                         "period_cents" => 1901.955),
+    ]
+    Ressac._handle_scales("", data, "test")
+    @test name_a in Ressac.list_scales()
+    @test name_b in Ressac.list_scales()
+    @test Ressac.lookup_scale(name_b).period_cents ≈ 1901.955
+    delete!(Ressac._SCALES, name_a)
+    delete!(Ressac._SCALES, name_b)
+end
+
+@testset "_handle_scales accepts a single [scales] dict" begin
+    name = Symbol("plg-single-$(rand(UInt32))")
+    data = Dict{String,Any}("name" => String(name), "cents" => [0, 300, 700])
+    Ressac._handle_scales("", data, "test")
+    @test name in Ressac.list_scales()
+    delete!(Ressac._SCALES, name)
+end
+
+@testset "_handle_scales skips entries with missing name / cents" begin
+    @test_logs (:warn, r"missing 'name'") Ressac._handle_scales("",
+        [Dict{String,Any}("cents" => [0, 200])], "bad")
+    @test_logs (:warn, r"missing 'cents'") Ressac._handle_scales("",
+        [Dict{String,Any}("name" => "no-cents-test")], "bad")
+end
+
+@testset "_handle_scales catches build errors per-entry" begin
+    name = Symbol("plg-bad-$(rand(UInt32))")
+    data = [Dict{String,Any}("name" => String(name),
+                              "cents" => [100, 200])]  # doesn't start at 0
+    @test_logs (:warn, r"failed to register") Ressac._handle_scales("", data, "bad")
+    @test !(name in Ressac.list_scales())
+end
+
+@testset "Loading the withscales fixture plugin registers both scales" begin
+    fixture = joinpath(@__DIR__, "fixtures", "plugins", "withscales")
+    manifest = Ressac.parse_manifest(fixture)
+    Ressac.load_plugin(manifest)
+    @test :maqam_rast_test in Ressac.list_scales()
+    @test :bp_eq_test in Ressac.list_scales()
+    bp = Ressac.lookup_scale(:bp_eq_test)
+    @test bp.period_cents ≈ 1901.955
+    @test length(bp.cents) == 13
+    delete!(Ressac._SCALES, :maqam_rast_test)
+    delete!(Ressac._SCALES, :bp_eq_test)
+end
+
 @testset "bend adds cents from a continuous curve to :note" begin
     # Curve: constant 50 cents via range_pat(50, 50, sine())
     # — sine swings -1..1, range squashes to [50, 50], so all

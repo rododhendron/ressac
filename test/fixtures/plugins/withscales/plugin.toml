@@ -1,0 +1,12 @@
+name        = "withscales"
+version     = "0.1.0"
+description = "fixture plugin used for [[scales]] handler tests"
+
+[[scales]]
+name        = "maqam_rast_test"
+cents       = [0, 200, 350, 500, 700, 900, 1050]
+
+[[scales]]
+name        = "bp_eq_test"
+cents       = [0, 146.3, 292.6, 438.9, 585.2, 731.5, 877.8, 1024.1, 1170.4, 1316.7, 1463.0, 1609.3, 1755.6]
+period_cents = 1901.955

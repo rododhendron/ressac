@@ -471,3 +471,63 @@ function _handle_snippets(plugin_dir, data, plugin_name)
 end
 
 register_section_handler!(:snippets, _handle_snippets)
+
+"""
+    _handle_scales(plugin_dir, data, plugin_name)
+
+`[[scales]]` plugin.toml handler. Each `[[scales]]` block carries a
+`name`, a `cents` list, and an optional `period_cents` (default
+`1200.0` = octave). Builds a `Scale` and registers it under
+`Symbol(name)` via `register_scale!` — collision warning included
+(last-wins, like docs/snippets).
+
+```toml
+[[scales]]
+name = "maqam_rast"
+cents = [0, 200, 350, 500, 700, 900, 1050]
+
+[[scales]]
+name = "bp_eq_extended"
+cents = [0, 146.3, 292.6, 438.9, ...]
+period_cents = 1901.955
+```
+
+Single `[scales]` (table, not array of tables) is also accepted as
+shorthand for a single-scale plugin.
+"""
+function _handle_scales(plugin_dir, data, plugin_name)
+    entries = if data isa AbstractVector
+        data
+    elseif data isa AbstractDict
+        [data]
+    else
+        @warn "plugin '$plugin_name': [[scales]] must be a table or array of tables; got $(typeof(data))"
+        return nothing
+    end
+    for entry in entries
+        entry isa AbstractDict ||
+            (@warn "plugin '$plugin_name': scale entry must be a table; got $(typeof(entry))";
+             continue)
+        name_raw = get(entry, "name", nothing)
+        if name_raw === nothing || !(name_raw isa AbstractString) ||
+           isempty(name_raw)
+            @warn "plugin '$plugin_name': scale entry missing 'name'; skipping"
+            continue
+        end
+        cents_raw = get(entry, "cents", nothing)
+        if cents_raw === nothing || !(cents_raw isa AbstractVector)
+            @warn "plugin '$plugin_name': scale '$name_raw' missing 'cents' list; skipping"
+            continue
+        end
+        try
+            cents = Float64.(collect(cents_raw))
+            period = Float64(get(entry, "period_cents", 1200.0))
+            register_scale!(Scale(Symbol(name_raw), cents, period))
+        catch err
+            @warn "plugin '$plugin_name': scale '$name_raw' failed to register: $(sprint(showerror, err))"
+        end
+    end
+    return nothing
+end
+
+register_section_handler!(:scales, _handle_scales)

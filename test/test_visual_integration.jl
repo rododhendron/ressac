@@ -263,6 +263,54 @@ end
     @test all((time() - t) <= Ressac._LAST_NOTES_TTL for (_, t) in Ressac._LAST_NOTES[])
 end
 
+# ── Tick rendering and recently-played highlight ────────────────────
+
+@testset "TuningPane render places one tick per scale degree" begin
+    Ressac._LAST_NOTES[] = Tuple{Float64,Float64}[]
+    app, tb, frame = _vis_app()
+    Ressac.cmd_vsplit!(app.workspaces, "tuning",
+                       Dict{String,Any}("name" => "major"))
+    Tachikoma.view(app, frame)
+    # 7 degrees → at least 7 ○ ticks on the pane (some may overlap
+    # in cell space when the pane is small but normally all visible).
+    rendered = join((Tachikoma.row_text(tb, y) for y in 1:_VIS_H), '\n')
+    n_open = count("○", rendered)
+    @test n_open >= 5   # tolerate a couple of overlaps in cell rounding
+end
+
+@testset "TuningPane lights a tick after push_played_note! at root" begin
+    Ressac._LAST_NOTES[] = Tuple{Float64,Float64}[]
+    app, tb, frame = _vis_app()
+    Ressac.cmd_vsplit!(app.workspaces, "tuning",
+                       Dict{String,Any}("name" => "major"))
+    # Push a note at exactly the root → degree 0 (0 cents → 0 semitones)
+    Ressac.push_played_note!(0.0)
+    Tachikoma.view(app, frame)
+    rendered = join((Tachikoma.row_text(tb, y) for y in 1:_VIS_H), '\n')
+    # At least one ● appears (the lit root tick).
+    @test occursin("●", rendered)
+end
+
+# ── End-to-end via the scheduler — :note flows through OSC ──────────
+
+@testset "pat |> scale(s) ships :note OSC value via the scheduler" begin
+    Ressac._LAST_NOTES[] = Tuple{Float64,Float64}[]
+    mock = MockOSCClient()
+    sched = Ressac.Scheduler(mock; cps = 0.5)
+    sched.t_start = 0.0
+    # 0 2 4 in major → note semitones 0, 4, 7
+    p = "0 2 4" |> Ressac.scale(:major)
+    Ressac.set_pattern!(sched, :d1, p)
+    # Step through one cycle.
+    Ressac._step!(sched, 2.5)   # cps=0.5 → 2.5s = 1.25 cycles
+    # 3 events fired → :note pushed for each
+    @test length(Ressac._LAST_NOTES[]) >= 3
+    pushed = [v for (v, _) in Ressac._LAST_NOTES[]]
+    @test 0.0 in pushed
+    @test 4.0 in pushed
+    @test 7.0 in pushed
+end
+
 @testset "global log tail collapses when a LogPane is in the tree" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
