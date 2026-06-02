@@ -224,6 +224,9 @@ function _app_scope_listener_loop()
             elseif addr == "/ressac/audio_in"
                 _handle_audio_in!(msg.args)
                 continue
+            elseif addr == "/ressac/synthError"
+                _handle_synth_error!(msg.args)
+                continue
             elseif haskey(_OSC_AD_HOC_HANDLERS, addr)
                 # Ephemeral handler installed by short-lived callers
                 # (sc-discoverer waiting on /ressac/sc-meta-reply or
@@ -305,6 +308,23 @@ function _handle_external_trigger!(args::Vector)
     # alternating key/value pairs; we trust the caller to obey that.
     append!(out, args[2:end])
     send_osc(sched.osc, encode(OSCMessage("/dirt/play", out)))
+end
+
+"""
+    _handle_synth_error!(args)
+
+`/ressac/synthError <name> <message>` — SC failed to build a SynthDef
+and reported it back instead of silently replaying the previous synth.
+Push the failure into the shared app log (`_APP_LOG[]` is rebound to
+`m.logs`) so it's visible in the LOGS pane + chrome row.
+"""
+function _handle_synth_error!(args::Vector)
+    name = length(args) >= 1 ? string(args[1]) : "?"
+    emsg = length(args) >= 2 ? string(args[2]) : "build failed"
+    log = _APP_LOG[]
+    push!(log, "[SC ERROR] synth $name: $emsg")
+    length(log) > 200 && popfirst!(log)
+    return nothing
 end
 
 """

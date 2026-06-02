@@ -184,10 +184,23 @@ s.waitForBoot({
         var src  = msg[2].asString;
         ("[ressac] evalAndPlay (raw) " ++ name ++ " (" ++ src.size.asString ++ " chars)").postln;
         Routine {
-            src.interpret;
-            s.sync;
-            if(~ressacTestSynth.notNil) { ~ressacTestSynth.free };
-            ~ressacTestSynth = Synth(name, [\out, 0]);
+            var ok = true;
+            // Build the SynthDef inside a try so a bad def is REPORTED to
+            // Ressac (which logs it) instead of failing silently and
+            // leaving the previous synth playing.
+            try {
+                src.interpret;
+                s.sync;
+            } { |err|
+                ok = false;
+                NetAddr("127.0.0.1", 57121).sendMsg(
+                    '/ressac/synthError', name.asString, err.errorString);
+                ("[ressac] build failed " ++ name ++ ": " ++ err.errorString).postln;
+            };
+            if(ok) {
+                if(~ressacTestSynth.notNil) { ~ressacTestSynth.free };
+                ~ressacTestSynth = Synth(name, [\out, 0]);
+            };
         }.play(AppClock);
     }, '/ressac/evalAndPlay');
 

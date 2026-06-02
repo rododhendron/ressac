@@ -64,3 +64,21 @@ end
         @test length(unique(st.slot_names)) == 9
     end
 end
+
+@testset "SC synth-error feedback → app log" begin
+    @testset "_handle_synth_error! pushes a [SC ERROR] line to the log" begin
+        log = Ressac._APP_LOG[]
+        n0 = length(log)
+        Ressac._handle_synth_error!(Any["ga_slot5", "RLPF first input is not audio rate"])
+        @test length(log) == n0 + 1
+        @test occursin("[SC ERROR]", log[end])
+        @test occursin("ga_slot5", log[end])
+        @test occursin("audio rate", log[end])
+    end
+
+    @testset "tolerates missing args" begin
+        log = Ressac._APP_LOG[]
+        Ressac._handle_synth_error!(Any[])
+        @test occursin("[SC ERROR]", log[end])
+    end
+end
