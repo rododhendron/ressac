@@ -69,7 +69,63 @@ function render!(p::SynthExplorerPane, area, buf)
     return nothing
 end
 
-handle_key!(::SynthExplorerPane, evt) = false   # Task 10 remplit
+_explorer_osc() = (s = _LIVE_SCHEDULER[]; s === nothing ? nothing : s.osc)
+
+function _move_focus!(p::SynthExplorerPane, d::Int)
+    n = length(p.pop.candidates)
+    p.focus = clamp(p.focus + d, 1, n)
+    return true
+end
+
+function _explorer_play_focus!(p::SynthExplorerPane)
+    osc = _explorer_osc(); osc === nothing && return true
+    c = p.pop.candidates[p.focus]
+    audition_play!(p.audition, osc, p.focus, c.genome, 220.0, 0.6)
+    return true
+end
+
+function _explorer_next_gen!(p::SynthExplorerPane)
+    p.pop.radius = p.radius
+    next_generation!(p.pop, p.rng)
+    osc = _explorer_osc()
+    osc === nothing ||
+        enqueue_generation!(p.audition, osc,
+                            [c.genome for c in p.pop.candidates])
+    p.focus = 1
+    return true
+end
+
+function handle_key!(p::SynthExplorerPane, evt)
+    evt isa TK.KeyEvent || return false
+    if p.keyboard_mode
+        return _explorer_keyboard_key!(p, evt)    # Task 11
+    end
+    ch = evt.char
+    k  = evt.key
+    # navigation
+    (ch == 'l' || k === :right) && return _move_focus!(p, 1)
+    (ch == 'h' || k === :left)  && return _move_focus!(p, -1)
+    (ch == 'j' || k === :down)  && return _move_focus!(p, _GA_GRID_COLS)
+    (ch == 'k' || k === :up)    && return _move_focus!(p, -_GA_GRID_COLS)
+    if ch isa Char && '1' <= ch <= '9'
+        idx = Int(ch - '0')
+        idx <= length(p.pop.candidates) && (p.focus = idx)
+        return true
+    end
+    # notation
+    ch == 'f' && (favor!(p.pop, p.focus);   return true)
+    ch == 'd' && (devalue!(p.pop, p.focus); return true)
+    # génération
+    ch == 'n' && return _explorer_next_gen!(p)
+    ch == 'R' && (p.pop.radius = p.radius; reshuffle!(p.pop, p.rng);
+                  p.focus = 1; return true)
+    # divergence
+    ch == ']' && (p.radius = clamp(p.radius + 0.1, 0.0, 1.0); return true)
+    ch == '[' && (p.radius = clamp(p.radius - 0.1, 0.0, 1.0); return true)
+    # audition
+    ch == ' ' && return _explorer_play_focus!(p)
+    return false
+end
 
 function serialize(p::SynthExplorerPane)
     return Dict{String,Any}(

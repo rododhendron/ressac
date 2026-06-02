@@ -45,3 +45,78 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_synth_explorer.jl"))
         @test haskey(d, "generation")
     end
 end
+
+@testset "synth explorer pane — interactions" begin
+    mk() = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 7))
+
+    @testset "l / h move focus horizontally" begin
+        p = mk()
+        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('l')) == true
+        @test p.focus == 2
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('h'))
+        @test p.focus == 1
+    end
+
+    @testset "j / k move focus by a row (3 cols)" begin
+        p = mk()
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))
+        @test p.focus == 4
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('k'))
+        @test p.focus == 1
+    end
+
+    @testset "digit keys jump focus" begin
+        p = mk()
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('5'))
+        @test p.focus == 5
+    end
+
+    @testset "f favors, d devalues the focused candidate" begin
+        p = mk()
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('f'))
+        @test p.pop.candidates[1].weight > 0
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('5'))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('d'))
+        @test p.pop.candidates[5].weight < 0
+    end
+
+    @testset "n advances the generation" begin
+        p = mk()
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('f'))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('n'))
+        @test p.pop.generation == 1
+    end
+
+    @testset "[ / ] adjust the divergence radius" begin
+        p = mk()
+        before = p.radius
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(']'))
+        @test p.radius > before
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('['))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('['))
+        @test p.radius < before
+    end
+
+    @testset "Space plays via the live scheduler (mock)" begin
+        if !isdefined(Main, :MockOSCClient)
+            mutable struct MockOSCClient; sent::Vector{Vector{UInt8}}; end
+            MockOSCClient() = MockOSCClient(Vector{UInt8}[])
+            Ressac.send_osc(c::MockOSCClient, b::Vector{UInt8}) = push!(c.sent, b)
+        end
+        mock = MockOSCClient()
+        sched = Ressac.Scheduler(mock; cps = 0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            p = mk()
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(' '))
+            @test length(mock.sent) >= 1
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "unhandled key returns false" begin
+        p = mk()
+        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('Z')) == false
+    end
+end
