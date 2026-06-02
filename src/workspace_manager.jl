@@ -196,6 +196,40 @@ function _first_leaf_id(node::LayoutNode)
 end
 
 """
+    _leaf_by_id(node, leaf_id) -> PaneLeaf | Nothing
+
+Locate the `PaneLeaf` with `leaf_id`. Lets close handlers grab the
+panes about to be dropped so they can run `on_close!`.
+"""
+function _leaf_by_id(node::LayoutNode, leaf_id::Int)
+    if node isa PaneLeaf
+        return node.id == leaf_id ? node : nothing
+    end
+    for c in node.children
+        r = _leaf_by_id(c, leaf_id)
+        r === nothing || return r
+    end
+    return nothing
+end
+
+"""
+    _collect_panes!(acc, node) -> acc
+
+Append every `PaneImpl` in the subtree to `acc`. Used when a whole
+workspace is torn down so each pane gets its `on_close!`.
+"""
+function _collect_panes!(acc::Vector{PaneImpl}, node::LayoutNode)
+    if node isa PaneLeaf
+        append!(acc, node.tabs)
+    else
+        for c in node.children
+            _collect_panes!(acc, c)
+        end
+    end
+    return acc
+end
+
+"""
     _compute_rects(root, area) -> Dict{Int, NamedTuple}
 
 Compute a (x, y, w, h) rect for every leaf in the tree, given the
@@ -265,7 +299,15 @@ one, focus the previous (or first if it was first).
 function close_workspace!(wm::WorkspaceManager, ws_id::Int)
     idx = findfirst(ws -> ws.id == ws_id, wm.workspaces)
     idx === nothing && return
+    ws = wm.workspaces[idx]
+    closing = _collect_panes!(PaneImpl[], ws.tree)
+    for fp in ws.floats
+        push!(closing, fp.pane)
+    end
     deleteat!(wm.workspaces, idx)
+    for p in closing
+        on_close!(p)
+    end
     if isempty(wm.workspaces)
         wm.current_idx = 0
     else

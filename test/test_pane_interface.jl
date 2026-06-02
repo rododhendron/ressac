@@ -270,4 +270,59 @@ end
             Ressac._APP_SCOPE_RESERVOIR[] = prev
         end
     end
+
+    @testset "OSC scope panes register as live consumers; reservoir don't" begin
+        empty!(Ressac._LIVE_OSC_SCOPE_PANES)
+        wave = Ressac._pane_new(:scope, Dict{String,Any}("target" => "wave"))
+        @test wave in Ressac._LIVE_OSC_SCOPE_PANES
+        # Reservoir variants pull from the attached reservoir, not the
+        # OSC frame stream, so they must NOT be tracked as consumers.
+        rsv = Ressac._pane_new(:scope, Dict{String,Any}("target" => "reservoir"))
+        @test !(rsv in Ressac._LIVE_OSC_SCOPE_PANES)
+        @test length(Ressac._LIVE_OSC_SCOPE_PANES) == 1
+        empty!(Ressac._LIVE_OSC_SCOPE_PANES)
+    end
+
+    @testset "on_close! deregisters the pane (idempotently)" begin
+        empty!(Ressac._LIVE_OSC_SCOPE_PANES)
+        a = Ressac._pane_new(:scope, Dict{String,Any}("target" => "wave"))
+        b = Ressac._pane_new(:scope, Dict{String,Any}("target" => "spectrum"))
+        @test length(Ressac._LIVE_OSC_SCOPE_PANES) == 2
+        Ressac.on_close!(a)
+        @test !(a in Ressac._LIVE_OSC_SCOPE_PANES)
+        @test b in Ressac._LIVE_OSC_SCOPE_PANES
+        # Closing the same pane again is harmless.
+        Ressac.on_close!(a)
+        @test length(Ressac._LIVE_OSC_SCOPE_PANES) == 1
+        Ressac.on_close!(b)
+        @test isempty(Ressac._LIVE_OSC_SCOPE_PANES)
+    end
+
+    @testset "cmd_close! fires on_close! on the dropped leaf's panes" begin
+        empty!(Ressac._LIVE_OSC_SCOPE_PANES)
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        ws = Ressac.current_workspace(wm)
+        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
+        ws.tree.current_tab = 1
+        # Split in a scope pane, then close it — its on_close! must run,
+        # emptying the live-consumer set.
+        Ressac.cmd_vsplit!(wm, "scope", Dict{String,Any}("target" => "wave"))
+        @test length(Ressac._LIVE_OSC_SCOPE_PANES) == 1
+        Ressac.cmd_close!(wm)
+        @test isempty(Ressac._LIVE_OSC_SCOPE_PANES)
+    end
+
+    @testset "close_workspace! fires on_close! across the tree" begin
+        empty!(Ressac._LIVE_OSC_SCOPE_PANES)
+        wm = Ressac.WorkspaceManager()
+        Ressac.create_workspace!(wm, "")
+        ws = Ressac.current_workspace(wm)
+        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
+        ws.tree.current_tab = 1
+        Ressac.cmd_vsplit!(wm, "scope", Dict{String,Any}("target" => "wave"))
+        @test length(Ressac._LIVE_OSC_SCOPE_PANES) == 1
+        Ressac.close_workspace!(wm, ws.id)
+        @test isempty(Ressac._LIVE_OSC_SCOPE_PANES)
+    end
 end

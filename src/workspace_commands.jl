@@ -25,10 +25,18 @@ cmd_hsplit!(wm, kind, args) = cmd_split!(wm, kind, args; direction = :v)
 function cmd_close!(wm::WorkspaceManager)
     ws = current_workspace(wm)
     ws === nothing && return
+    closing = _leaf_by_id(ws.tree, ws.focused_pane)
     new_tree = _close_at(ws.tree, ws.focused_pane)
     new_tree === nothing && return   # refuse to close the last pane
     ws.tree = new_tree
     ws.focused_pane = _first_leaf_id(ws.tree)
+    # The leaf is gone from the tree — let its panes release resources
+    # (e.g. a scope pane tells SC to stop emitting frames).
+    if closing isa PaneLeaf
+        for p in closing.tabs
+            on_close!(p)
+        end
+    end
     return
 end
 

@@ -8,9 +8,39 @@ mutable struct ScopePane <: PaneImpl
     subtype::Symbol
 end
 
+# Live scope panes that consume the `/ressac/scope` frame stream.
+# Reservoir variants are excluded: they read the attached reservoir
+# object directly, not the OSC stream. Identity-keyed (ScopePane is
+# mutable), so two `wave` panes count as two consumers. When the set
+# empties we ask SC to stop emitting frames — but we never touch the
+# shared inbound UDP listener, which also serves /ressac/trigger,
+# /ressac/rms and /ressac/audio_in.
+const _LIVE_OSC_SCOPE_PANES = Set{ScopePane}()
+
+# A subtype that pulls from the OSC frame stream (everything except the
+# reservoir views and the off sentinel).
+_scope_is_osc(sub::Symbol) =
+    sub !== :reservoir && sub !== Symbol("reservoir-graph") && sub !== :off
+
 function _scope_pane_ctor(args::AbstractDict)
     target = String(get(args, "target", "wave"))
-    return ScopePane(Symbol(target))
+    p = ScopePane(Symbol(target))
+    _scope_is_osc(p.subtype) && _scope_pane_subscribe!(p)
+    return p
+end
+
+"""
+    _scope_pane_subscribe!(p)
+
+Register `p` as a live consumer of the OSC frame stream. If SC isn't
+already emitting any stream, start the one this pane wants so the pane
+isn't blank. When a stream is already active we leave it — there is a
+single shared stream, and `S` / `:scope <type>` retune it.
+"""
+function _scope_pane_subscribe!(p::ScopePane)
+    push!(_LIVE_OSC_SCOPE_PANES, p)
+    _APP_SCOPE_TYPE[] === :off && _app_scope_set!(p.subtype)
+    return nothing
 end
 
 function render!(p::ScopePane, area, buf)
@@ -73,7 +103,25 @@ end
 
 serialize(p::ScopePane) = Dict{String,Any}("subtype" => String(p.subtype))
 
-# on_close! placeholder — Task 8 wires in /ressac/scope cleanup.
-on_close!(::ScopePane) = nothing
+"""
+    on_close!(p::ScopePane)
+
+Drop `p` from the live-consumer set. When the last OSC scope pane
+goes away — and SC is still emitting a frame stream — tell SC to stop
+so it isn't streaming frames nobody draws. Idempotent: closing a pane
+twice (or one that never subscribed) is a no-op. The shared inbound
+listener stays up; only the SC-side emission is turned off.
+
+Reservoir panes aren't tracked here, so closing one leaves the
+attached reservoir + its history recording in place (detached
+explicitly via `:scope off`).
+"""
+function on_close!(p::ScopePane)
+    delete!(_LIVE_OSC_SCOPE_PANES, p)
+    isempty(_LIVE_OSC_SCOPE_PANES) || return nothing
+    _scope_is_osc(_APP_SCOPE_TYPE[]) || return nothing
+    _app_scope_set!(:off)   # sends `/ressac/scope off`, resets state
+    return nothing
+end
 
 register_pane_kind!(:scope, _scope_pane_ctor)
