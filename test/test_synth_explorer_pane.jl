@@ -172,3 +172,30 @@ end
         end
     end
 end
+
+@testset "synth explorer pane — details overlay" begin
+    @testset "genome_depth measures the longest signal path" begin
+        g = Ressac.archetype(:drone_grave)   # Saw -> RLPF
+        @test Ressac._genome_depth(g) >= 2
+    end
+
+    @testset "i opens the overlay, Esc closes it" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 8))
+        @test p.inspect == false
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('i'))
+        @test p.inspect == true
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.inspect == false
+    end
+
+    @testset "overlay renders the DSL + stats of the focused candidate" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}(
+            "seed" => "drone_grave", "rng" => 8))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('i'))
+        tb = Tachikoma.TestBackend(80, 24)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 80, 24), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:24))
+        @test occursin("@synth", whole)
+        @test occursin("nœuds", whole) || occursin("nodes", whole)
+    end
+end

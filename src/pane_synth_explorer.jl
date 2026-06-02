@@ -15,6 +15,7 @@ mutable struct SynthExplorerPane <: PaneImpl
     rng::MersenneTwister
     keyboard_mode::Bool
     seed_name::Symbol
+    inspect::Bool
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -25,7 +26,7 @@ function _synth_explorer_pane_ctor(args::AbstractDict)
     radius = Float64(get(args, "radius", 0.5))
     pop = init_population(base, _GA_GEN_SIZE, rng; radius = radius)
     aud = AuditionState(_GA_GEN_SIZE)
-    return SynthExplorerPane(pop, aud, 1, radius, rng, false, seed)
+    return SynthExplorerPane(pop, aud, 1, radius, rng, false, seed, false)
 end
 
 # Résumé structurel court : UGens distincts + nb de nœuds.
@@ -66,6 +67,52 @@ function render!(p::SynthExplorerPane, area, buf)
     help = "n:suiv f:fav d:dév i:détails [ ]:div m:clavier s w e:commit"
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(help, inner.width), TK.tstyle(:text_dim))
+    p.inspect && _render_inspect_overlay!(p, inner, buf)
+    return nothing
+end
+
+function _genome_depth(g::Genome, id::Int = g.output_id, seen = Set{Int}())
+    (id == 0 || !haskey(g.nodes, id) || id in seen) && return 0
+    push!(seen, id)
+    child = 0
+    for a in g.nodes[id].args
+        a isa NodeRef && (child = max(child, _genome_depth(g, a.id, seen)))
+    end
+    return 1 + child
+end
+
+function _wrap_text(s::AbstractString, w::Int)
+    w <= 0 && return String[s]
+    out = String[]
+    for i in 1:w:lastindex(s)
+        push!(out, s[i:min(i + w - 1, lastindex(s))])
+    end
+    return out
+end
+
+function _render_inspect_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
+    c = p.pop.candidates[p.focus]
+    g = c.genome
+    dsl = render_dsl(g, p.seed_name)
+    ugens = join(unique(String(n.ugen) for n in values(g.nodes)), ", ")
+    stats = "nœuds: $(length(g.nodes)) · profondeur: $(_genome_depth(g)) · UGens: $ugens"
+    blank = " "^inner.width
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
+    end
+    TK.set_string!(buf, inner.x, inner.y,
+                   first("DÉTAILS · candidat $(p.focus)", inner.width),
+                   TK.tstyle(:accent, bold = true))
+    TK.set_string!(buf, inner.x, inner.y + 1, first(stats, inner.width),
+                   TK.tstyle(:text_dim))
+    y = inner.y + 3
+    for chunk in _wrap_text(dsl, inner.width)
+        y > inner.y + inner.height - 2 && break
+        TK.set_string!(buf, inner.x, y, chunk, TK.tstyle(:text))
+        y += 1
+    end
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                   "Esc/i/q : fermer", TK.tstyle(:text_dim))
     return nothing
 end
 
@@ -97,6 +144,11 @@ end
 
 function handle_key!(p::SynthExplorerPane, evt)
     evt isa TK.KeyEvent || return false
+    if p.inspect
+        (evt.key === :escape || evt.char == 'i' || evt.char == 'q') &&
+            (p.inspect = false)
+        return true
+    end
     if p.keyboard_mode
         return _explorer_keyboard_key!(p, evt)    # Task 11
     end
@@ -126,6 +178,7 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == ' ' && return _explorer_play_focus!(p)
     ch == 'm' && (p.keyboard_mode = true; return true)
     ch == 't' && return _explorer_toggle_drone!(p)
+    ch == 'i' && (p.inspect = true; return true)
     return false
 end
 
