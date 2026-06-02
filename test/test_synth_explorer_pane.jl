@@ -120,3 +120,55 @@ end
         @test Ressac.handle_key!(p, Tachikoma.KeyEvent('Z')) == false
     end
 end
+
+@testset "synth explorer pane — keyboard + drone" begin
+    # MockOSCClient est défini au top-level par test_synth_audition.jl
+    # (inclus avant ce fichier dans runtests.jl).
+    function _with_mock(f)
+        mock = MockOSCClient()
+        sched = Ressac.Scheduler(mock; cps = 0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            f(mock)
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "m toggles keyboard sub-mode, Esc leaves it" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('m'))
+        @test p.keyboard_mode == true
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.keyboard_mode == false
+    end
+
+    @testset "in keyboard mode a note key plays (mock)" begin
+        _with_mock() do mock
+            p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('m'))
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('z'))
+            @test length(mock.sent) >= 1
+            @test p.keyboard_mode == true
+        end
+    end
+
+    @testset "t toggles drone hold (mock)" begin
+        _with_mock() do mock
+            p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('t'))
+            @test p.audition.held_active == true
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('t'))
+            @test p.audition.held_active == false
+        end
+    end
+
+    @testset "on_close! stops the drone (mock)" begin
+        _with_mock() do mock
+            p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('t'))
+            Ressac.on_close!(p)
+            @test p.audition.held_active == false
+        end
+    end
+end

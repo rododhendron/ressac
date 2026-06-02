@@ -124,7 +124,40 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == '[' && (p.radius = clamp(p.radius - 0.1, 0.0, 1.0); return true)
     # audition
     ch == ' ' && return _explorer_play_focus!(p)
+    ch == 'm' && (p.keyboard_mode = true; return true)
+    ch == 't' && return _explorer_toggle_drone!(p)
     return false
+end
+
+# Rangée de touches → décalage en demi-tons depuis la base (220 Hz).
+const _KB_ROW = ('z','x','c','v','b','n','m',',','.')
+const _KB_SEMITONES = Dict(c => i - 1 for (i, c) in enumerate(_KB_ROW))
+
+function _explorer_keyboard_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
+    if evt.key === :escape
+        p.keyboard_mode = false
+        return true
+    end
+    ch = evt.char
+    if ch isa Char && haskey(_KB_SEMITONES, ch)
+        osc = _explorer_osc(); osc === nothing && return true
+        freq = 220.0 * 2.0 ^ (_KB_SEMITONES[ch] / 12.0)
+        c = p.pop.candidates[p.focus]
+        audition_play!(p.audition, osc, p.focus, c.genome, freq, 0.6)
+        return true
+    end
+    return true   # en sous-mode clavier on consomme tout
+end
+
+function _explorer_toggle_drone!(p::SynthExplorerPane)
+    osc = _explorer_osc(); osc === nothing && return true
+    if p.audition.held_active
+        audition_stop!(p.audition, osc)
+    else
+        c = p.pop.candidates[p.focus]
+        audition_hold!(p.audition, osc, c.genome, 110.0, 8.0)
+    end
+    return true
 end
 
 function serialize(p::SynthExplorerPane)
@@ -135,6 +168,10 @@ function serialize(p::SynthExplorerPane)
     )
 end
 
-on_close!(::SynthExplorerPane) = nothing          # Task 11 complète (drone)
+function on_close!(p::SynthExplorerPane)
+    osc = _explorer_osc()
+    osc === nothing || (p.audition.held_active && audition_stop!(p.audition, osc))
+    return nothing
+end
 
 register_pane_kind!(:explorer, _synth_explorer_pane_ctor)
