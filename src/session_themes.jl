@@ -83,3 +83,47 @@ function _available_themes()
     sort!(names)
     return names
 end
+
+# ── Syntax-highlight override ───────────────────────────────────────
+# Tachikoma's default token style dims punctuation (`()[]{}.,;:`) and
+# builtins to `:text_dim`, near-invisible on a black background (the
+# kokaku default). Structural punctuation is load-bearing in Julia/SC
+# code, so we override the style map at RUNTIME — defining it at
+# module load is blocked by Julia's "no method overwriting during
+# precompilation" rule, so `_install_syntax_theme!` is called once
+# from `live()` after the theme is applied. Resolves through the
+# active theme's named colours, so it adapts to any theme.
+const _SYNTAX_THEME_INSTALLED = Ref(false)
+
+function _install_syntax_theme!()
+    _SYNTAX_THEME_INSTALLED[] && return
+    _SYNTAX_THEME_INSTALLED[] = true
+    @eval Tachikoma function _token_style(kind::TokenKind)
+        if kind == tok_keyword
+            tstyle(:primary, bold = true)
+        elseif kind == tok_type
+            tstyle(:warning)
+        elseif kind == tok_number
+            tstyle(:accent)
+        elseif kind == tok_string
+            tstyle(:success)
+        elseif kind == tok_comment
+            tstyle(:text_dim, italic = true)
+        elseif kind == tok_macro
+            tstyle(:secondary, bold = true)
+        elseif kind == tok_symbol
+            tstyle(:accent, italic = true)
+        elseif kind == tok_bool
+            tstyle(:accent, bold = true)
+        elseif kind == tok_builtin
+            tstyle(:secondary, italic = true)   # was :text_dim
+        elseif kind == tok_operator
+            tstyle(:text_bright, bold = true)
+        elseif kind == tok_punctuation
+            tstyle(:text, bold = true)           # was :text_dim
+        else
+            tstyle(:text)
+        end
+    end
+    return nothing
+end

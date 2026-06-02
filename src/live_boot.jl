@@ -61,6 +61,7 @@ function live(; host::AbstractString = "127.0.0.1",
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     cfg = _load_ressac_config!()
     _apply_theme!(cfg.theme)
+    _install_syntax_theme!()   # punctuation/builtins legible on dark bg
     # Bring the Synth DSL into Main's namespace so pattern evals can
     # use saw/rlpf/lfo/@synth/... without an explicit `using`. Done
     # once per `live()` call; idempotent.
