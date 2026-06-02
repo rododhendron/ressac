@@ -47,6 +47,40 @@ using Ressac
         @test occursin("RLPF.ar", d)
     end
 
+    @testset "audio-rate coercion: filter input never a bare scalar" begin
+        # A filter whose audio input is a constant (e.g. after repair
+        # pads a missing input) must be wrapped to audio rate, else SC
+        # rejects the SynthDef ("first input is not audio rate").
+        g = Ressac.Genome()
+        f = Ressac.add_node!(g, :RLPF, :ar,
+                Ressac.Arg[Ressac.ConstArg(0.0), Ressac.ConstArg(400.0),
+                           Ressac.ConstArg(0.3)])
+        g.output_id = f
+        s = Ressac.render_synthdef(g, :x)
+        @test occursin("RLPF.ar(DC.ar(0.0)", s)
+        @test !occursin("RLPF.ar(0.0", s)        # never a raw scalar input
+    end
+
+    @testset "audio input from a kr node is wrapped via K2A" begin
+        g = Ressac.Genome()
+        lfo = Ressac.add_node!(g, :LFNoise1, :kr, Ressac.Arg[Ressac.ConstArg(4.0)])
+        f   = Ressac.add_node!(g, :LPF, :ar,
+                Ressac.Arg[Ressac.NodeRef(lfo), Ressac.ConstArg(800.0)])
+        g.output_id = f
+        s = Ressac.render_synthdef(g, :x)
+        @test occursin("K2A.ar(LFNoise1.kr", s)
+    end
+
+    @testset "audio input from an ar node is left as-is" begin
+        g = Ressac.Genome()
+        saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f   = Ressac.add_node!(g, :LPF, :ar,
+                Ressac.Arg[Ressac.NodeRef(saw), Ressac.ConstArg(800.0)])
+        g.output_id = f
+        s = Ressac.render_synthdef(g, :x)
+        @test occursin("LPF.ar(Saw.ar(freq)", s)   # no wrapper
+    end
+
     @testset "feedback genome renders LocalIn preamble + LocalOut" begin
         g = Ressac.Genome()
         saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])

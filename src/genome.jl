@@ -62,8 +62,9 @@ catalog_by_role(role::Symbol) =
     [s for s in values(UGEN_CATALOG) if s.role === role]
 
 function _install_builtin_ugens!()
-    sig(name, def, lo, hi) = SlotSpec(name, :signal, def, lo, hi)
-    sca(name, def, lo, hi) = SlotSpec(name, :scalar, def, lo, hi)
+    sig(name, def, lo, hi) = SlotSpec(name, :signal, def, lo, hi)   # modulatable control (any rate)
+    sca(name, def, lo, hi) = SlotSpec(name, :scalar, def, lo, hi)   # fixed scalar
+    aud(name) = SlotSpec(name, :audio, 0, -1, 1)                    # MUST be audio rate
     # sources
     register_ugen!(UGenSpec(:Saw,    [:ar, :kr], [sig(:freq, 220, 20, 8000)], :source))
     register_ugen!(UGenSpec(:SinOsc, [:ar, :kr], [sig(:freq, 220, 20, 8000),
@@ -72,15 +73,15 @@ function _install_builtin_ugens!()
                                                   sca(:width, 0.5, 0.01, 0.99)], :source))
     register_ugen!(UGenSpec(:LFTri,  [:ar, :kr], [sig(:freq, 3, 0.01, 40)], :source))
     register_ugen!(UGenSpec(:WhiteNoise, [:ar], SlotSpec[], :source))
-    # filters
-    register_ugen!(UGenSpec(:RLPF, [:ar], [sig(:in, 0, -1, 1),
+    # filters — first input is a true audio-rate signal
+    register_ugen!(UGenSpec(:RLPF, [:ar], [aud(:in),
                                            sig(:freq, 1200, 40, 12000),
                                            sca(:rq, 0.5, 0.05, 1.5)], :filter))
-    register_ugen!(UGenSpec(:LPF,  [:ar], [sig(:in, 0, -1, 1),
+    register_ugen!(UGenSpec(:LPF,  [:ar], [aud(:in),
                                            sig(:freq, 1200, 40, 12000)], :filter))
-    register_ugen!(UGenSpec(:HPF,  [:ar], [sig(:in, 0, -1, 1),
+    register_ugen!(UGenSpec(:HPF,  [:ar], [aud(:in),
                                            sig(:freq, 400, 40, 12000)], :filter))
-    # math / shaping
+    # math / shaping — operator forms are scalar-safe, no audio-rate need
     register_ugen!(UGenSpec(:MulAdd, [:ar, :kr], [sig(:in, 0, -1, 1),
                                                   sca(:mul, 1, 0, 4),
                                                   sca(:add, 0, -1, 1)], :math))

@@ -64,14 +64,18 @@ end
 
 # ── Opérateurs structurels ─────────────────────────────────────────
 
+# A slot that carries a signal (audio input OR modulatable control) —
+# both are valid graft / rewire targets for structural mutation.
+_is_signalish(kind::Symbol) = kind === :signal || kind === :audio
+
 function _signal_slot_edges(g::Genome)
-    # (node_id, arg_index) où le slot est :signal.
+    # (node_id, arg_index) où le slot porte un signal.
     out = Tuple{Int,Int}[]
     for (id, n) in g.nodes
         spec = ugen_spec(n.ugen)
         spec === nothing && continue
         for (i, sp) in enumerate(spec.slots)
-            sp.kind === :signal && i <= length(n.args) && push!(out, (id, i))
+            _is_signalish(sp.kind) && i <= length(n.args) && push!(out, (id, i))
         end
     end
     return out
@@ -80,7 +84,7 @@ end
 function _new_node_from_spec!(g::Genome, spec::UGenSpec, first_input::Arg)
     args = Arg[]
     for (i, sp) in enumerate(spec.slots)
-        push!(args, (i == 1 && sp.kind === :signal) ? first_input :
+        push!(args, (i == 1 && _is_signalish(sp.kind)) ? first_input :
                     ConstArg(sp.default))
     end
     return add_node!(g, spec.name, spec.rates[1], args)
@@ -104,12 +108,14 @@ function op_remove_node!(g::Genome, rng::AbstractRNG)
     nid = rand(rng, collect(keys(g.nodes)))
     n = g.nodes[nid]
     spec = ugen_spec(n.ugen)
-    bypass = ConstArg(0.0)
-    for (i, sp) in enumerate(spec.slots)
-        if sp.kind === :signal && i <= length(n.args)
-            bypass = n.args[i]; break
-        end
-    end
+    # Bypass through the node's signal path: prefer its audio input
+    # (the real signal it processes), else any signalish slot.
+    sig_idxs = [i for (i, sp) in enumerate(spec.slots)
+                if _is_signalish(sp.kind) && i <= length(n.args)]
+    audio_pos = findfirst(i -> spec.slots[i].kind === :audio, sig_idxs)
+    pick = audio_pos !== nothing ? sig_idxs[audio_pos] :
+           isempty(sig_idxs) ? nothing : sig_idxs[1]
+    bypass = pick === nothing ? ConstArg(0.0) : n.args[pick]
     delete!(g.nodes, nid)
     for other in values(g.nodes), j in eachindex(other.args)
         other.args[j] isa NodeRef && other.args[j].id == nid &&

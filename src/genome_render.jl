@@ -27,13 +27,35 @@ end
 
 _has_feedback(g::Genome) = any(n.ugen === :FbIn for n in values(g.nodes))
 
+# An :audio slot MUST receive an audio-rate signal. Coerce anything
+# else: a constant via DC.ar, a control / kr node via K2A.ar. Without
+# this, a filter fed a scalar (e.g. after repair pads a missing input)
+# makes SC reject the SynthDef ("first input is not audio rate").
+function _coerce_audio(g::Genome, a::Arg, code::String)
+    a isa ConstArg   && return "DC.ar($code)"
+    a isa ControlRef && return "K2A.ar($code)"
+    if a isa NodeRef
+        r = haskey(g.nodes, a.id) ? g.nodes[a.id].rate : :ir
+        return r === :ar ? code : "K2A.ar($code)"
+    end
+    return code
+end
+
 function _emit_node(g::Genome, id::Int)
     n = g.nodes[id]
     sp = _emit_special(g, n)
     sp === nothing || return sp
     suffix = get(_RATE_SUFFIX, n.rate, "ar")
-    args = join((_emit_arg(g, a) for a in n.args), ", ")
-    return "$(n.ugen).$(suffix)($args)"
+    spec = ugen_spec(n.ugen)
+    parts = String[]
+    for (i, a) in enumerate(n.args)
+        code = _emit_arg(g, a)
+        if spec !== nothing && i <= length(spec.slots) && spec.slots[i].kind === :audio
+            code = _coerce_audio(g, a, code)
+        end
+        push!(parts, code)
+    end
+    return "$(n.ugen).$(suffix)($(join(parts, ", ")))"
 end
 
 # Signal expression + safety stage, shared by both renderers.
