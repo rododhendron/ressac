@@ -21,6 +21,7 @@ function op_perturb_const!(g::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
     (nid, i) = rand(rng, slots)
     n = g.nodes[nid]
     spec = ugen_spec(n.ugen)
+    i <= length(spec.slots) || return g   # arité transitoire (avant repair!)
     sp = spec.slots[i]
     span = sp.hi - sp.lo
     cur = n.args[i].value
@@ -56,7 +57,154 @@ function mutate(g0::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
         else
             op(g, rng)
         end
+        repair!(g)   # normalise entre chaque op : invariants toujours tenus
     end
-    repair!(g)
     return g
+end
+
+# ── Opérateurs structurels ─────────────────────────────────────────
+
+function _signal_slot_edges(g::Genome)
+    # (node_id, arg_index) où le slot est :signal.
+    out = Tuple{Int,Int}[]
+    for (id, n) in g.nodes
+        spec = ugen_spec(n.ugen)
+        spec === nothing && continue
+        for (i, sp) in enumerate(spec.slots)
+            sp.kind === :signal && i <= length(n.args) && push!(out, (id, i))
+        end
+    end
+    return out
+end
+
+function _new_node_from_spec!(g::Genome, spec::UGenSpec, first_input::Arg)
+    args = Arg[]
+    for (i, sp) in enumerate(spec.slots)
+        push!(args, (i == 1 && sp.kind === :signal) ? first_input :
+                    ConstArg(sp.default))
+    end
+    return add_node!(g, spec.name, spec.rates[1], args)
+end
+
+function op_insert_node!(g::Genome, rng::AbstractRNG)
+    edges = _signal_slot_edges(g)
+    isempty(edges) && return g
+    (nid, i) = rand(rng, edges)
+    cands = vcat(catalog_by_role(:filter), catalog_by_role(:math))
+    isempty(cands) && return g
+    spec = rand(rng, cands)
+    cur = g.nodes[nid].args[i]
+    new_id = _new_node_from_spec!(g, spec, cur)
+    g.nodes[nid].args[i] = NodeRef(new_id)
+    return g
+end
+
+function op_remove_node!(g::Genome, rng::AbstractRNG)
+    length(g.nodes) <= 1 && return g
+    nid = rand(rng, collect(keys(g.nodes)))
+    n = g.nodes[nid]
+    spec = ugen_spec(n.ugen)
+    bypass = ConstArg(0.0)
+    for (i, sp) in enumerate(spec.slots)
+        if sp.kind === :signal && i <= length(n.args)
+            bypass = n.args[i]; break
+        end
+    end
+    delete!(g.nodes, nid)
+    for other in values(g.nodes), j in eachindex(other.args)
+        other.args[j] isa NodeRef && other.args[j].id == nid &&
+            (other.args[j] = bypass)
+    end
+    g.output_id == nid &&
+        (g.output_id = bypass isa NodeRef ? bypass.id : 0)
+    return g
+end
+
+function op_swap_ugen!(g::Genome, rng::AbstractRNG)
+    isempty(g.nodes) && return g
+    nid = rand(rng, collect(keys(g.nodes)))
+    n = g.nodes[nid]
+    role = ugen_spec(n.ugen).role
+    cands = [s for s in catalog_by_role(role) if s.name !== n.ugen]
+    isempty(cands) && return g
+    spec = rand(rng, cands)
+    n.ugen = spec.name
+    n.rate in spec.rates || (n.rate = spec.rates[1])
+    return g   # repair! ajuste l'arité
+end
+
+function op_rewire!(g::Genome, rng::AbstractRNG)
+    edges = _signal_slot_edges(g)
+    ids = collect(keys(g.nodes))
+    (isempty(edges) || isempty(ids)) && return g
+    (nid, i) = rand(rng, edges)
+    g.nodes[nid].args[i] = NodeRef(rand(rng, ids))
+    return g   # repair! casse un éventuel cycle
+end
+
+function op_graft_mod!(g::Genome, rng::AbstractRNG)
+    slots = _const_slots(g)
+    isempty(slots) && return g
+    (nid, i) = rand(rng, slots)
+    mods = catalog_by_role(:mod)
+    isempty(mods) && return g
+    spec = rand(rng, mods)
+    mod_id = _new_node_from_spec!(g, spec, ConstArg(spec.slots[1].default))
+    g.nodes[nid].args[i] = NodeRef(mod_id)
+    return g
+end
+
+function op_add_feedback!(g::Genome, rng::AbstractRNG)
+    edges = _signal_slot_edges(g)
+    isempty(edges) && return g
+    # un seul FbIn par génome (SC n'autorise qu'un LocalIn par SynthDef).
+    fb_ids = [id for (id, n) in g.nodes if n.ugen === :FbIn]
+    fb = isempty(fb_ids) ? add_node!(g, :FbIn, :ar, Arg[]) : first(fb_ids)
+    (nid, i) = rand(rng, edges)
+    nid == fb && return g                       # ne pas auto-référencer FbIn
+    g.nodes[nid].args[i] = NodeRef(fb)
+    return g
+end
+
+append!(_STRUCT_OPS, Function[op_insert_node!, op_remove_node!,
+                              op_swap_ugen!, op_rewire!, op_graft_mod!,
+                              op_add_feedback!])
+
+# ── Croisement (swap de sous-graphe) ───────────────────────────────
+
+function _subtree_ids(g::Genome, root::Int, acc = Set{Int}())
+    (root in acc || !haskey(g.nodes, root)) && return acc
+    push!(acc, root)
+    for a in g.nodes[root].args
+        a isa NodeRef && _subtree_ids(g, a.id, acc)
+    end
+    return acc
+end
+
+function crossover(a0::Genome, b0::Genome, rng::AbstractRNG)
+    child = _copy_genome(b0)
+    isempty(a0.nodes) && (repair!(child); return child)
+    donor_root = rand(rng, collect(keys(a0.nodes)))
+    ids = collect(_subtree_ids(a0, donor_root))
+    remap = Dict{Int,Int}()
+    for old in ids
+        remap[old] = child.next_id
+        child.next_id += 1
+    end
+    for old in ids
+        dn = a0.nodes[old]
+        newargs = Arg[]
+        for arg in dn.args
+            push!(newargs, arg isa NodeRef && haskey(remap, arg.id) ?
+                           NodeRef(remap[arg.id]) : arg)
+        end
+        child.nodes[remap[old]] = UGenNode(remap[old], dn.ugen, dn.rate, newargs)
+    end
+    edges = _signal_slot_edges(child)
+    if !isempty(edges)
+        (nid, i) = rand(rng, edges)
+        child.nodes[nid].args[i] = NodeRef(remap[donor_root])
+    end
+    repair!(child)
+    return child
 end

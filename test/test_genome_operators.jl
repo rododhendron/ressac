@@ -51,3 +51,83 @@ using Random
         @test length(g.nodes) == 2     # radius 0 = paramétrique seul
     end
 end
+
+@testset "genome — structural operators + crossover" begin
+    function _g()
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(1000.0), Ressac.ConstArg(0.5)])
+        g.output_id = f
+        return g
+    end
+
+    @testset "op_insert_node! grows the graph and stays valid" begin
+        rng = MersenneTwister(11)
+        g = _g(); n0 = length(g.nodes)
+        Ressac.op_insert_node!(g, rng)
+        @test length(g.nodes) == n0 + 1
+        @test isempty(Ressac.validate(g))
+    end
+
+    @testset "op_remove_node! shrinks or no-ops, always valid" begin
+        rng = MersenneTwister(12)
+        g = _g()
+        Ressac.op_remove_node!(g, rng)
+        @test isempty(Ressac.validate(g))
+        @test length(g.nodes) >= 1
+    end
+
+    @testset "op_swap_ugen! valid after repair (op defers arity to repair!)" begin
+        rng = MersenneTwister(13)
+        g = _g()
+        Ressac.op_swap_ugen!(g, rng)
+        Ressac.repair!(g)
+        @test isempty(Ressac.validate(g))
+    end
+
+    @testset "op_rewire! valid after repair (op defers cycle-break to repair!)" begin
+        rng = MersenneTwister(14)
+        g = _g()
+        Ressac.op_rewire!(g, rng)
+        Ressac.repair!(g)
+        @test isempty(Ressac.validate(g))
+    end
+
+    @testset "op_graft_mod! keeps it valid" begin
+        rng = MersenneTwister(15)
+        g = _g()
+        Ressac.op_graft_mod!(g, rng)
+        @test isempty(Ressac.validate(g))
+    end
+
+    @testset "op_add_feedback! inserts a single FbIn, stays valid" begin
+        rng = MersenneTwister(20)
+        g = _g()
+        Ressac.op_add_feedback!(g, rng)
+        @test isempty(Ressac.validate(g))
+        fbs = count(n -> n.ugen === :FbIn, values(g.nodes))
+        @test fbs == 1
+        Ressac.op_add_feedback!(g, rng)
+        @test count(n -> n.ugen === :FbIn, values(g.nodes)) == 1
+        @test occursin("LocalIn", Ressac.render_synthdef(g, :x))
+    end
+
+    @testset "crossover yields a valid child blending both" begin
+        rng = MersenneTwister(16)
+        a = _g()
+        b = Ressac.archetype(:fm_bell)
+        child = Ressac.crossover(a, b, rng)
+        @test isempty(Ressac.validate(child))
+    end
+
+    @testset "high-radius mutate can change structure" begin
+        rng = MersenneTwister(123)
+        changed = false
+        for _ in 1:30
+            g = Ressac.mutate(_g(), rng; radius = 1.0)
+            length(g.nodes) != 2 && (changed = true)
+        end
+        @test changed
+    end
+end
