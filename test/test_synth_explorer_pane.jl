@@ -459,3 +459,50 @@ end
         @test p.show_help == false
     end
 end
+
+@testset "synth explorer pane — mouse" begin
+    # render first so cell_rects is populated, then hit-test.
+    function _rendered()
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 5))
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        return p
+    end
+    mev(x, y, btn, act = Tachikoma.mouse_press) =
+        Tachikoma.MouseEvent(x, y, btn, act, false, false, false)
+
+    @testset "left-click focuses + plays the clicked card (mock)" begin
+        mock = MockOSCClient()
+        sched = Ressac.Scheduler(mock; cps = 0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            p = _rendered()
+            (idx, (cx, cy, cw, ch)) = p.cell_rects[5]
+            Ressac.handle_mouse!(p, mev(cx + 1, cy + 1, Tachikoma.mouse_left))
+            @test p.focus == idx
+            @test length(mock.sent) >= 1
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "scroll up/down favors/devalues the hovered card" begin
+        p = _rendered()
+        (idx, (cx, cy, cw, ch)) = p.cell_rects[2]
+        Ressac.handle_mouse!(p, mev(cx + 1, cy + 1, Tachikoma.mouse_scroll_up))
+        @test p.pop.candidates[idx].weight > 0
+        Ressac.handle_mouse!(p, mev(cx + 1, cy + 1, Tachikoma.mouse_scroll_down))
+        @test p.pop.candidates[idx].weight < 0
+    end
+
+    @testset "right-click advances the generation" begin
+        p = _rendered()
+        Ressac.handle_mouse!(p, mev(2, 2, Tachikoma.mouse_right))
+        @test p.pop.generation == 1
+    end
+
+    @testset "click outside any card is ignored" begin
+        p = _rendered()
+        @test Ressac.handle_mouse!(p, mev(999, 999, Tachikoma.mouse_left)) == false
+    end
+end

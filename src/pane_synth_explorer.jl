@@ -526,6 +526,38 @@ function _explorer_keyboard_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
     return true   # en sous-mode clavier on consomme tout
 end
 
+# Which candidate index sits under (x, y), from the last render's rects.
+function _cell_at(p::SynthExplorerPane, x::Int, y::Int)
+    for (idx, (cx, cy, cw, ch)) in p.cell_rects
+        (cx <= x < cx + cw && cy <= y < cy + ch) && return idx
+    end
+    return nothing
+end
+
+# Souris : clic gauche = focus + jouer · scroll = favoriser/dévaluer ·
+# clic droit = génération suivante.
+function handle_mouse!(p::SynthExplorerPane, evt)
+    evt isa TK.MouseEvent || return false
+    if evt.button === TK.mouse_right && evt.action === TK.mouse_press
+        _explorer_next_gen!(p)
+        return true
+    end
+    idx = _cell_at(p, evt.x, evt.y)
+    if evt.button === TK.mouse_scroll_up
+        i = idx === nothing ? p.focus : idx
+        favor!(p.pop, i); return true
+    elseif evt.button === TK.mouse_scroll_down
+        i = idx === nothing ? p.focus : idx
+        devalue!(p.pop, i); return true
+    elseif evt.button === TK.mouse_left && evt.action === TK.mouse_press
+        idx === nothing && return false
+        p.focus = idx
+        _explorer_play_focus!(p)
+        return true
+    end
+    return false
+end
+
 function _explorer_toggle_drone!(p::SynthExplorerPane)
     osc = _explorer_osc(); osc === nothing && return true
     if p.audition.held_active
