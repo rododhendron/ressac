@@ -47,6 +47,7 @@ include("genome_render.jl")      # render_synthdef + render_dsl
 include("genome_archetypes.jl")  # serialization + seed archetypes
 include("genome_operators.jl")   # mutation + crossover operators
 include("ga_engine.jl")          # Population + breeding-pool next_generation
+include("ga_analysis.jl")        # genetic distance, clustering, gene distribution
 
 # ─── Extension registry — plugin-contributed docs + snippets ──────
 include("extension_registry.jl")
