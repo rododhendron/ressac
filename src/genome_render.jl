@@ -27,18 +27,36 @@ end
 
 _has_feedback(g::Genome) = any(n.ugen === :FbIn for n in values(g.nodes))
 
-# An :audio slot MUST receive an audio-rate signal. Coerce anything
-# else: a constant via DC.ar, a control / kr node via K2A.ar. Without
-# this, a filter fed a scalar (e.g. after repair pads a missing input)
-# makes SC reject the SynthDef ("first input is not audio rate").
+# Does this arg's rendered expression actually CARRY audio? We can't
+# trust a node's `rate` field alone: a math special-form (Tanh/Mix/
+# MulAdd) with only constant inputs renders to a scalar arithmetic
+# expression (e.g. `(1.0).tanh`) even at :ar — SC then rejects it as a
+# filter input. So we walk the graph: audio comes from a real generator
+# / filter at :ar, from FbIn (LocalIn.ar), or flows THROUGH a math node
+# only if one of its inputs is itself audio.
+function _node_is_audio(g::Genome, id::Int, seen::Set{Int} = Set{Int}())
+    (id in seen || !haskey(g.nodes, id)) && return false
+    push!(seen, id)
+    n = g.nodes[id]
+    n.ugen === :FbIn && return true
+    spec = ugen_spec(n.ugen)
+    spec === nothing && return n.rate === :ar
+    spec.role === :math && return any(a -> _is_audio_expr(g, a, seen), n.args)
+    return n.rate === :ar && (spec.role === :source || spec.role === :filter)
+end
+
+_is_audio_expr(g::Genome, a::Arg, seen::Set{Int} = Set{Int}()) =
+    a isa NodeRef ? _node_is_audio(g, a.id, seen) : false
+
+# An :audio slot MUST receive an audio-rate signal. If the expression
+# doesn't carry audio, wrap it: a control-rate node via K2A.ar, anything
+# else (constant / control / scalar math) via DC.ar.
 function _coerce_audio(g::Genome, a::Arg, code::String)
-    a isa ConstArg   && return "DC.ar($code)"
-    a isa ControlRef && return "K2A.ar($code)"
-    if a isa NodeRef
-        r = haskey(g.nodes, a.id) ? g.nodes[a.id].rate : :ir
-        return r === :ar ? code : "K2A.ar($code)"
+    _is_audio_expr(g, a) && return code
+    if a isa NodeRef && haskey(g.nodes, a.id) && g.nodes[a.id].rate === :kr
+        return "K2A.ar($code)"
     end
-    return code
+    return "DC.ar($code)"
 end
 
 function _emit_node(g::Genome, id::Int)

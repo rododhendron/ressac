@@ -11,6 +11,35 @@ const _GA_GRID_COLS = 3
 # (nom, dsl) ici ; le routeur de touches de l'app (tui_app.jl) draine.
 const _EXPLORER_EXPORT_REQUEST = Ref{Union{Nothing,Tuple{String,String}}}(nothing)
 
+# Copie `text` dans le presse-papier système (essaie les outils courants
+# Wayland/X11/macOS). Renvoie true si l'un a réussi.
+function _copy_to_clipboard(text::AbstractString)
+    for cmd in (`wl-copy`, `xclip -selection clipboard`,
+                `xsel --clipboard --input`, `pbcopy`)
+        try
+            open(pipeline(cmd; stderr = devnull), "w") do io
+                write(io, text)
+            end
+            return true
+        catch
+        end
+    end
+    return false
+end
+
+# Le texte yanké d'un candidat : son DSL rendu (ce que montre `i`).
+_explorer_yank_text(p) = render_dsl(p.pop.candidates[p.focus].genome, p.seed_name)
+
+function _explorer_yank!(p)
+    txt = _explorer_yank_text(p)
+    ok = _copy_to_clipboard(txt)
+    push!(_APP_LOG[], ok ?
+        "[INFO] candidat #$(p.focus) copié dans le presse-papier ($(length(txt)) car.)" :
+        "[WARN] presse-papier indisponible (installe wl-copy / xclip / xsel)")
+    length(_APP_LOG[]) > 200 && popfirst!(_APP_LOG[])
+    return true
+end
+
 mutable struct SynthExplorerPane <: PaneImpl
     pop::Population
     audition::AuditionState
@@ -313,7 +342,7 @@ const _EXPLORER_HELP_LINES = [
     "Sélection    f favoriser · d dévaluer · scroll souris",
     "Génération   n suivante · clic-droit suivant · R re-tirer",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
-    "Infos        i détails (DSL) · L lignée du candidat",
+    "Infos        i détails (DSL) · L lignée · y copier le DSL",
     "Édition      p params du candidat (freq/sustain/release) · r reset",
     "Garder       s graine · w synth · e éditeur",
     "Couleurs     cadre/pastille = cluster de proximité génétique",
@@ -385,6 +414,7 @@ function handle_key!(p::SynthExplorerPane, evt)
         return _explorer_naming_key!(p, evt)
     end
     if p.inspect
+        evt.char == 'y' && return _explorer_yank!(p)   # copie le DSL affiché
         (evt.key === :escape || evt.char == 'i' || evt.char == 'q') &&
             (p.inspect = false)
         return true
@@ -443,6 +473,7 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == '?' && (p.show_help = true;    return true)
     ch == 'g' && (p.ga_panel = true; p.ga_cursor = 1; return true)
     ch == 'p' && (p.param_edit = true; p.param_cursor = 1; return true)
+    ch == 'y' && return _explorer_yank!(p)   # copie le DSL du candidat focalisé
     return false
 end
 

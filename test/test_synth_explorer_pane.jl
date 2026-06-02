@@ -593,3 +593,20 @@ end
         @test occursin("release", whole)
     end
 end
+
+@testset "synth explorer pane — yank candidate DSL" begin
+    @testset "yank text is the focused candidate's DSL" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "pluck", "rng" => 3))
+        txt = Ressac._explorer_yank_text(p)
+        @test occursin("@synth", txt)
+        @test occursin("Sig(", txt)
+    end
+
+    @testset "y logs a clipboard result, never crashes" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
+        n0 = length(Ressac._APP_LOG[])
+        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('y')) == true
+        @test length(Ressac._APP_LOG[]) == n0 + 1
+        @test occursin("presse-papier", Ressac._APP_LOG[][end])
+    end
+end

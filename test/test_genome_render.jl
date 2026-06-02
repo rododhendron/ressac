@@ -71,6 +71,31 @@ using Ressac
         @test occursin("K2A.ar(LFNoise1.kr", s)
     end
 
+    @testset "scalar math (Tanh of const) feeding a filter is wrapped" begin
+        # (1.0).tanh is a SCALAR in SC even at :ar — must be DC-wrapped
+        # before a filter, else SC rejects "first input is not audio rate".
+        g = Ressac.Genome()
+        t = Ressac.add_node!(g, :Tanh, :ar, Ressac.Arg[Ressac.ConstArg(1.0)])
+        f = Ressac.add_node!(g, :HPF, :ar,
+                Ressac.Arg[Ressac.NodeRef(t), Ressac.ConstArg(400.0)])
+        g.output_id = f
+        s = Ressac.render_synthdef(g, :x)
+        @test occursin("HPF.ar(DC.ar((1.0).tanh)", s)
+    end
+
+    @testset "math carrying audio (Mix with a Saw) is NOT wrapped" begin
+        g = Ressac.Genome()
+        saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        mix = Ressac.add_node!(g, :Mix, :ar,
+                Ressac.Arg[Ressac.NodeRef(saw), Ressac.ConstArg(0.0)])
+        f = Ressac.add_node!(g, :HPF, :ar,
+                Ressac.Arg[Ressac.NodeRef(mix), Ressac.ConstArg(400.0)])
+        g.output_id = f
+        s = Ressac.render_synthdef(g, :x)
+        @test occursin("HPF.ar((Saw.ar(freq) + 0.0)", s)
+        @test !occursin("DC.ar((Saw", s)
+    end
+
     @testset "audio input from an ar node is left as-is" begin
         g = Ressac.Genome()
         saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
