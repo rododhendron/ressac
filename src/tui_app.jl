@@ -496,6 +496,32 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
         cmd = TK.pending_command!(pane.tabs[pane.current_tab].code_editor)
         isempty(cmd) || _handle_ex_command!(m, cmd)
     end
+    pane isa SynthExplorerPane && _drain_explorer_export!(m)
+    return true
+end
+
+"""
+    _drain_explorer_export!(m) -> Bool
+
+If a SynthExplorerPane posted an export request (via `e`), open an
+editor tab holding the rendered DSL. The pane has no WorkspaceManager
+handle, so it routes the request through `_EXPLORER_EXPORT_REQUEST`.
+"""
+function _drain_explorer_export!(m::RessacApp)
+    req = _EXPLORER_EXPORT_REQUEST[]
+    req === nothing && return false
+    _EXPLORER_EXPORT_REQUEST[] = nothing
+    name, dsl = req
+    cmd_split!(m.workspaces, "editor",
+               Dict{String,Any}("buffer_role" => "synth", "name" => name))
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return true
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    if leaf !== nothing && !isempty(leaf.tabs)
+        pane = leaf.tabs[leaf.current_tab]
+        pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs) &&
+            TK.set_text!(pane.tabs[pane.current_tab].code_editor, dsl)
+    end
     return true
 end
 

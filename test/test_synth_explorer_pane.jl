@@ -275,3 +275,42 @@ end
         @test s1 == s2
     end
 end
+
+@testset "synth explorer pane — export to editor" begin
+    @testset "e enters export-naming mode; Enter posts a request" begin
+        Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+        p = Ressac._pane_new(:explorer, Dict{String,Any}(
+            "seed" => "pluck", "rng" => 4))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('e'))
+        @test p.naming === :export
+        for c in "mywob"
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(c))
+        end
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:enter))
+        req = Ressac._EXPLORER_EXPORT_REQUEST[]
+        @test req !== nothing
+        @test req[1] == "mywob"
+        @test occursin("@synth", req[2])
+        Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+    end
+
+    @testset "_drain_explorer_export! opens an editor tab with the DSL" begin
+        mock = MockOSCClient()
+        sched = Ressac.Scheduler(mock; cps = 0.5)
+        app = Ressac.RessacApp(; scheduler = sched)
+        Ressac._ensure_default_workspace!(app)
+        Ressac._EXPLORER_EXPORT_REQUEST[] = ("expsynth", "@synth :expsynth saw(:freq)")
+        @test Ressac._drain_explorer_export!(app) == true
+        @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing
+        ws = Ressac.current_workspace(app.workspaces)
+        found = false
+        for leaf in Ressac._collect_panes!(Ressac.PaneImpl[], ws.tree)
+            if leaf isa Ressac.EditorPane
+                for t in leaf.tabs
+                    occursin("expsynth", Tachikoma.text(t.code_editor)) && (found = true)
+                end
+            end
+        end
+        @test found
+    end
+end

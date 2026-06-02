@@ -7,6 +7,10 @@ using Random
 const _GA_GEN_SIZE = 9
 const _GA_GRID_COLS = 3
 
+# Seam app-level : le pane n'a pas de handle WorkspaceManager. On poste
+# (nom, dsl) ici ; le routeur de touches de l'app (tui_app.jl) draine.
+const _EXPLORER_EXPORT_REQUEST = Ref{Union{Nothing,Tuple{String,String}}}(nothing)
+
 mutable struct SynthExplorerPane <: PaneImpl
     pop::Population
     audition::AuditionState
@@ -88,7 +92,8 @@ function render!(p::SynthExplorerPane, area, buf)
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(help, inner.width), TK.tstyle(:text_dim))
     if p.naming !== :none
-        prompt = (p.naming === :seed ? "nom graine: " : "nom synth: ") *
+        prompt = (p.naming === :seed ? "nom graine: " :
+                  p.naming === :synth ? "nom synth: " : "nom export: ") *
                  p.name_buf * "_"
         TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                        first(prompt, inner.width), TK.tstyle(:warning, bold = true))
@@ -208,8 +213,9 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'm' && (p.keyboard_mode = true; return true)
     ch == 't' && return _explorer_toggle_drone!(p)
     ch == 'i' && (p.inspect = true; return true)
-    ch == 's' && (p.naming = :seed;  p.name_buf = ""; return true)
-    ch == 'w' && (p.naming = :synth; p.name_buf = ""; return true)
+    ch == 's' && (p.naming = :seed;   p.name_buf = ""; return true)
+    ch == 'w' && (p.naming = :synth;  p.name_buf = ""; return true)
+    ch == 'e' && (p.naming = :export; p.name_buf = ""; return true)
     return false
 end
 
@@ -243,6 +249,8 @@ function _explorer_commit_named!(p::SynthExplorerPane)
               joinpath(pwd(), "plugins", "user-synths") : p.user_synth_dir_override
         isdir(dir) || mkpath(dir)
         write(joinpath(dir, "$(p.name_buf).jl"), render_dsl(g, Symbol(p.name_buf)))
+    elseif p.naming === :export
+        _EXPLORER_EXPORT_REQUEST[] = (p.name_buf, render_dsl(g, Symbol(p.name_buf)))
     end
     return
 end
