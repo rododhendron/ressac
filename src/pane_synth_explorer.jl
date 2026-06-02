@@ -23,7 +23,22 @@ mutable struct SynthExplorerPane <: PaneImpl
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
-    seed = Symbol(String(get(args, "seed", "drone_grave")))
+    seed = Symbol(String(get(args, "kind_seed", get(args, "seed", "drone_grave"))))
+    if haskey(args, "population")
+        rng = MersenneTwister(rand(UInt32))
+        radius = Float64(get(args, "radius", 0.5))
+        cands = Candidate[]
+        for entry in args["population"]
+            g = deserialize_genome(entry["genome"])
+            push!(cands, Candidate(g, Float64(entry["weight"])))
+        end
+        base = isempty(cands) ? archetype(:drone_grave) : _copy_genome(cands[1].genome)
+        pop = Population(cands, base, Int(get(args, "generation", 0)), radius)
+        aud = AuditionState(length(cands))
+        focus = Int(get(args, "focus", 1))
+        return SynthExplorerPane(pop, aud, focus, radius, rng, false, seed, false,
+                                 :none, "", nothing, nothing)
+    end
     seeds = all_seeds()
     base = haskey(seeds, seed) ? seeds[seed] : archetype(:drone_grave)
     rng = MersenneTwister(Int(get(args, "rng", rand(UInt32))))
@@ -268,6 +283,11 @@ function serialize(p::SynthExplorerPane)
         "kind_seed"  => String(p.seed_name),
         "generation" => p.pop.generation,
         "radius"     => p.radius,
+        "focus"      => p.focus,
+        "population" => [Dict{String,Any}(
+                            "genome" => serialize_genome(c.genome),
+                            "weight" => c.weight)
+                         for c in p.pop.candidates],
     )
 end
 

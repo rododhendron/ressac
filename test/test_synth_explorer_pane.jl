@@ -244,3 +244,34 @@ end
         end
     end
 end
+
+@testset "synth explorer pane — session persistence" begin
+    @testset ":explorer is a registered pane kind" begin
+        @test haskey(Ressac._PANE_KINDS, :explorer)
+    end
+
+    @testset "serialize captures the full population" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}(
+            "seed" => "pluck", "rng" => 3))
+        Ressac.favor!(p.pop, 2)
+        d = Ressac.serialize(p)
+        @test haskey(d, "population")
+        @test length(d["population"]) == 9
+    end
+
+    @testset "round-trip restores candidates + weights + generation" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}(
+            "seed" => "pluck", "rng" => 3))
+        Ressac.favor!(p.pop, 2)
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('f'))
+        gen_before = p.pop.generation
+        d = Ressac.serialize(p)
+        p2 = Ressac._pane_new(:explorer, d)
+        @test length(p2.pop.candidates) == 9
+        @test p2.pop.generation == gen_before
+        @test p2.pop.candidates[2].weight > 0
+        s1 = Ressac.render_synthdef(p.pop.candidates[5].genome, :x)
+        s2 = Ressac.render_synthdef(p2.pop.candidates[5].genome, :x)
+        @test s1 == s2
+    end
+end
