@@ -314,3 +314,57 @@ end
         @test found
     end
 end
+
+@testset "synth explorer pane — end-to-end via Tachikoma.update!" begin
+    # _new_app() est défini au top-level par test_ui_integration.jl
+    # (inclus avant ce fichier dans runtests.jl).
+    @testset "keys route app→pane through _route_key_to_focused_pane!" begin
+        app, _ = _new_app()
+        Ressac.cmd_vsplit!(app.workspaces, "explorer",
+                           Dict{String,Any}("rng" => 5))
+        ws = Ressac.current_workspace(app.workspaces)
+        leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+        pane = leaf.tabs[leaf.current_tab]
+        @test pane isa Ressac.SynthExplorerPane
+        Ressac._active_editor(app).mode = :normal
+        # navigation routée jusqu'au pane
+        Tachikoma.update!(app, Tachikoma.KeyEvent('l'))
+        @test pane.focus == 2
+        # favoriser puis avancer d'une génération, le tout via update!
+        Tachikoma.update!(app, Tachikoma.KeyEvent('f'))
+        @test pane.pop.candidates[2].weight > 0
+        Tachikoma.update!(app, Tachikoma.KeyEvent('n'))
+        @test pane.pop.generation == 1
+    end
+
+    @testset "export e flows update!→drain→new editor tab" begin
+        Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+        app, _ = _new_app()
+        Ressac.cmd_vsplit!(app.workspaces, "explorer",
+                           Dict{String,Any}("rng" => 6))
+        ws = Ressac.current_workspace(app.workspaces)
+        leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+        pane = leaf.tabs[leaf.current_tab]
+        Ressac._active_editor(app).mode = :normal
+        n_editors_before = count(p -> p isa Ressac.EditorPane,
+            Ressac._collect_panes!(Ressac.PaneImpl[], ws.tree))
+        # e → saisie du nom → Enter : poste la requête + draine via update!
+        Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
+        @test pane.naming === :export
+        for c in "fromupd"
+            Tachikoma.update!(app, Tachikoma.KeyEvent(c))
+        end
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
+        # la requête a été drainée par le routeur de touches
+        @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing
+        ws2 = Ressac.current_workspace(app.workspaces)
+        found = false
+        for lf in Ressac._collect_panes!(Ressac.PaneImpl[], ws2.tree)
+            lf isa Ressac.EditorPane || continue
+            for t in lf.tabs
+                occursin("fromupd", Tachikoma.text(t.code_editor)) && (found = true)
+            end
+        end
+        @test found
+    end
+end
