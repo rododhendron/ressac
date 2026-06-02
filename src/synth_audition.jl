@@ -18,6 +18,41 @@ end
 
 const _GA_HELD_NAME = :ga_held
 
+# ── Feedback d'audibilité sémantique (RMS mesuré par SC) ───────────
+# SC mesure l'amplitude de chaque candidat audionné et la renvoie via
+# /ressac/level. Le listener (thread de fond) écrit ici ; le pane lit.
+const _GA_SLOT_LEVEL = Ref{Vector{Float32}}(zeros(Float32, 9))
+const _GA_SLOT_MEASURED = Ref{Vector{Bool}}(falses(9))
+
+function _reset_slot_levels!(n::Int)
+    _GA_SLOT_LEVEL[] = zeros(Float32, n)
+    _GA_SLOT_MEASURED[] = falses(n)
+    return nothing
+end
+
+"""
+    _handle_synth_level!(args)
+
+`/ressac/level <nodeID> <replyID> <slot> <amp>` (SendReply prepends
+nodeID + replyID). Store the peak amplitude seen per slot so the
+explorer can flag candidates that measured silent (semantic silence the
+static check misses: phase cancellation, fully-filtered, …).
+"""
+function _handle_synth_level!(args::Vector)
+    length(args) >= 4 || return
+    slot = args[3] isa Integer ? Int(args[3]) :
+           args[3] isa Number  ? Int(round(args[3])) : return
+    amp = args[4] isa Number ? Float32(args[4]) : return
+    lv = _GA_SLOT_LEVEL[]; mk = _GA_SLOT_MEASURED[]
+    (1 <= slot <= length(lv)) || return
+    lv[slot] = max(lv[slot], amp)
+    mk[slot] = true
+    return nothing
+end
+
+_slot_index(name::Symbol) =
+    (m = match(r"^ga_slot(\d+)$", String(name)); m === nothing ? 0 : parse(Int, m.captures[1]))
+
 function _send(osc, address::AbstractString, args::Vector)
     send_osc(osc, encode(OSCMessage(address, args)))
 end
@@ -26,6 +61,7 @@ end
 # réécrit les MÊMES noms → SC n'accumule jamais plus de N SynthDefs.
 function enqueue_generation!(st::AuditionState, osc, genomes::Vector{Genome})
     n = min(length(genomes), length(st.slot_names))
+    _reset_slot_levels!(length(st.slot_names))   # nouvelle génération → niveaux remis à zéro
     for i in 1:n
         src = render_synthdef(genomes[i], st.slot_names[i])
         _send(osc, "/dirt/evalSC", Any[src])

@@ -200,14 +200,19 @@ function _render_candidate_card!(p::SynthExplorerPane, c::Candidate, idx::Int,
         meta = "$(length(c.genome.nodes)) nœuds · prof $(_genome_depth(c.genome)) · $(c.origin)"
         TK.set_string!(buf, ix, r.y + 3, first(meta, iw), TK.tstyle(:text_dim))
     end
-    # état d'audition
+    # état d'audition / silence sémantique mesuré par SC
     if r.height >= 6
-        state = (idx <= length(p.audition.ready) && p.audition.ready[idx]) ?
-                "·prêt" : "·en file"
-        TK.set_string!(buf, ix, r.y + r.height - 2, first(state, iw), TK.tstyle(:text_dim))
+        lv = _GA_SLOT_LEVEL[]; mk = _GA_SLOT_MEASURED[]
+        silent = idx <= length(mk) && mk[idx] && lv[idx] < _GA_SILENCE_THRESHOLD
+        state, st = silent ? ("⚠ MUET", TK.tstyle(:error, bold = true)) :
+                    (idx <= length(p.audition.ready) && p.audition.ready[idx]) ?
+                        ("·prêt", TK.tstyle(:text_dim)) : ("·en file", TK.tstyle(:text_dim))
+        TK.set_string!(buf, ix, r.y + r.height - 2, first(state, iw), st)
     end
     return nothing
 end
+
+const _GA_SILENCE_THRESHOLD = 0.003f0
 
 function render!(p::SynthExplorerPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
@@ -341,6 +346,7 @@ const _EXPLORER_HELP_LINES = [
     "Écoute       Espace jouer · t drone · m mini-clavier (z x c v…)",
     "Sélection    f favoriser · d dévaluer · scroll souris",
     "Génération   n suivante · clic-droit suivant · R re-tirer",
+    "Audibilité   ⚠ MUET = mesuré silencieux · S régénère les muets",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
     "Infos        i détails (DSL) · L lignée · y copier le DSL",
     "Édition      p params du candidat (freq/sustain/release) · r reset",
@@ -474,7 +480,32 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'g' && (p.ga_panel = true; p.ga_cursor = 1; return true)
     ch == 'p' && (p.param_edit = true; p.param_cursor = 1; return true)
     ch == 'y' && return _explorer_yank!(p)   # copie le DSL du candidat focalisé
+    ch == 'S' && return _explorer_regen_silent!(p)
     return false
+end
+
+# Remplace les candidats mesurés MUETS par de fraîches mutations (le
+# silence sémantique que l'analyse statique ne voit pas).
+function _explorer_regen_silent!(p::SynthExplorerPane)
+    lv = _GA_SLOT_LEVEL[]; mk = _GA_SLOT_MEASURED[]
+    n = 0
+    for i in 1:length(p.pop.candidates)
+        (i <= length(mk) && mk[i] && lv[i] < _GA_SILENCE_THRESHOLD) || continue
+        old = p.pop.candidates[i]
+        child = mutate(old.genome, p.rng; radius = max(p.radius, 0.5))
+        p.pop.candidates[i] = _spawn!(p.pop, child, "régénéré (muet)", [old.id])
+        n += 1
+    end
+    if n > 0
+        osc = _explorer_osc()
+        if osc !== nothing
+            enqueue_generation!(p.audition, osc, [c.genome for c in p.pop.candidates])
+            p.audition.defined_gen = p.pop.generation
+        end
+        push!(_APP_LOG[], "[INFO] $n candidat(s) muet(s) régénéré(s)")
+        length(_APP_LOG[]) > 200 && popfirst!(_APP_LOG[])
+    end
+    return true
 end
 
 # ── Per-candidate param editor (`p`) ───────────────────────────────

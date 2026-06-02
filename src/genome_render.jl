@@ -91,12 +91,21 @@ function render_synthdef(g::Genome, name::Symbol)
     sus = _fmt_const(control(g, :sustain))
     gn  = _fmt_const(control(g, :gain))
     rel = _fmt_const(control(g, :release))
+    # Sonde de niveau : pour les synths d'audition (ga_slotN), on mesure
+    # l'amplitude du signal et on la renvoie à Ressac (/ressac/level) →
+    # détection de silence sémantique. Mesurée AVANT l'enveloppe pour
+    # refléter le niveau intrinsèque, pas le fondu.
+    slot = _slot_index(name)
+    probe = slot > 0 ?
+        string("    SendReply.kr(Impulse.kr(15), '/ressac/level', [", slot,
+               ", Amplitude.kr(sig, 0.01, 0.1)]);\n") : ""
     return string(
         "SynthDef(\\", name, ", { |out = 0, pan = 0, ",
         "freq = ", fr, ", sustain = ", sus, ", gain = ", gn, "|\n",
         pre,
         "    var sig = ", sig, ";\n",
         post,
+        probe,
         "    sig = sig * gain;\n",
         "    sig = sig * EnvGen.kr(Env.linen(0.01, sustain, ", rel, "), doneAction: 2);\n",
         "    Out.ar(out, Pan2.ar(sig, pan));\n",

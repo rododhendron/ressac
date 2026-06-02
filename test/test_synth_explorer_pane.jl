@@ -610,3 +610,21 @@ end
         @test occursin("presse-papier", Ressac._APP_LOG[][end])
     end
 end
+
+@testset "synth explorer pane — regenerate silent candidates (S)" begin
+    @testset "S replaces measured-silent candidates" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 7))
+        Ressac._reset_slot_levels!(9)
+        # candidate 3 measured silent, candidate 1 audible
+        Ressac._handle_synth_level!(Any[1, 1, 1, 0.4])
+        Ressac._handle_synth_level!(Any[1, 1, 3, 0.0])
+        Ressac._GA_SLOT_MEASURED[][3] = true
+        id3_before = p.pop.candidates[3].id
+        id1_before = p.pop.candidates[1].id
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('S'))
+        @test p.pop.candidates[3].id != id3_before          # silent one replaced
+        @test occursin("régénéré", p.pop.candidates[3].origin)
+        @test p.pop.candidates[1].id == id1_before          # audible one untouched
+        @test Ressac.genome_is_audible(p.pop.candidates[3].genome)
+    end
+end

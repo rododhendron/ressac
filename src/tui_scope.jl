@@ -227,6 +227,9 @@ function _app_scope_listener_loop()
             elseif addr == "/ressac/synthError"
                 _handle_synth_error!(msg.args)
                 continue
+            elseif addr == "/ressac/level"
+                _handle_synth_level!(msg.args)
+                continue
             elseif haskey(_OSC_AD_HOC_HANDLERS, addr)
                 # Ephemeral handler installed by short-lived callers
                 # (sc-discoverer waiting on /ressac/sc-meta-reply or

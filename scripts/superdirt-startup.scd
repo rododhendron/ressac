@@ -68,6 +68,14 @@ s.waitForBoot({
         ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
     }, '/ressac/rms');
 
+    // GA explorer — per-candidate audibility level. The audition
+    // SynthDefs (ga_slotN) SendReply their amplitude; forward to Ressac
+    // so it can flag semantically-silent candidates.
+    OSCFunc({ |msg|
+        // msg = ['/ressac/level', nodeID, replyID, slot, amp]
+        ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
+    }, '/ressac/level');
+
     ~ressacOrbitMeters = nil;
     ~ressacInstallOrbitMeters = {
         if(~ressacOrbitMeters.notNil) {

@@ -74,3 +74,29 @@ end
         @test occursin("[SC ERROR]", log[end])
     end
 end
+
+@testset "RMS level feedback → silence flag" begin
+    @testset "level probe is baked into ga_slotN synthdefs only" begin
+        g = Ressac.archetype(:drone_grave)
+        @test occursin("SendReply.kr(Impulse.kr(15), '/ressac/level', [5,", Ressac.render_synthdef(g, :ga_slot5))
+        @test !occursin("/ressac/level", Ressac.render_synthdef(g, :x))    # export name → no probe
+    end
+
+    @testset "_handle_synth_level! stores the peak per slot" begin
+        Ressac._reset_slot_levels!(9)
+        Ressac._handle_synth_level!(Any[1200, 3, 4, 0.42])   # nodeID, replyID, slot=4, amp
+        @test Ressac._GA_SLOT_LEVEL[][4] ≈ 0.42f0
+        @test Ressac._GA_SLOT_MEASURED[][4]
+        Ressac._handle_synth_level!(Any[1200, 3, 4, 0.10])   # lower → peak unchanged
+        @test Ressac._GA_SLOT_LEVEL[][4] ≈ 0.42f0
+    end
+
+    @testset "enqueue resets levels" begin
+        Ressac._handle_synth_level!(Any[1, 1, 2, 0.5])
+        st = Ressac.AuditionState(9)
+        Ressac.enqueue_generation!(st, MockOSCClient(),
+                                   [Ressac.archetype(:pluck) for _ in 1:9])
+        @test all(==(0.0f0), Ressac._GA_SLOT_LEVEL[])
+        @test !any(Ressac._GA_SLOT_MEASURED[])
+    end
+end
