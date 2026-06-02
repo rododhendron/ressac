@@ -74,7 +74,19 @@ function _spawn!(pop::Population, genome::Genome, origin::AbstractString,
     return Candidate(genome, 0.0, cid, String(origin))
 end
 
+# Archive les génomes favorisés (à travers toute la session) pour
+# pouvoir les repêcher quand l'exploration a convergé.
+function _update_hall!(pop::Population; cap::Int = 30)
+    hall = get!(pop.state, :hall, Genome[])::Vector{Genome}
+    for c in pop.candidates
+        c.weight > 0 && push!(hall, _copy_genome(c.genome))
+    end
+    length(hall) > cap && (pop.state[:hall] = hall[(end - cap + 1):end])
+    return nothing
+end
+
 function next_generation!(pop::Population, rng::AbstractRNG)
+    _update_hall!(pop)
     pop.generation += 1
     s = pop.strategy
     if s === :champion
@@ -219,7 +231,28 @@ function _nextgen_novelty!(pop::Population, rng::AbstractRNG; tries::Int = 4)
     pop.candidates = out[1:n]
 end
 
-# regénère sans avancer la sélection (bouton R) : re-mute la base.
+# Skip de la sélection (bouton R) : RE-DIVERGE pour échapper à la
+# convergence. Repêche de VIEUX parents (hall of fame des favoris de la
+# session) + les candidats courants + la graine, et mute fort (rayon
+# boosté). Idéal quand un surrogate/une stratégie a convergé et qu'on
+# veut réinjecter de la nouveauté sans repartir de zéro.
+function diverge!(pop::Population, rng::AbstractRNG)
+    _update_hall!(pop)
+    pool = Genome[c.genome for c in pop.candidates]
+    append!(pool, get(pop.state, :hall, Genome[])::Vector{Genome})
+    push!(pool, pop.base)
+    r = clamp(max(pop.radius, 0.6) * 1.3, 0.0, 1.0)   # divergence boostée
+    pop.generation += 1
+    out = Candidate[]
+    while length(out) < pop.gen_size
+        g = rand(rng, pool)
+        push!(out, _spawn!(pop, mutate(g, rng; radius = r), "divergé", Int[]))
+    end
+    pop.candidates = out[1:pop.gen_size]
+    return pop
+end
+
+# Ancien nom conservé : re-mute simplement la base.
 function reshuffle!(pop::Population, rng::AbstractRNG)
     n = pop.gen_size
     pop.candidates = Candidate[]

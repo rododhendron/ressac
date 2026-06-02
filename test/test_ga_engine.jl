@@ -216,3 +216,28 @@ end
         end
     end
 end
+
+@testset "ga_engine — hall of fame + diverge" begin
+    base() = Ressac.archetype(:drone_grave)
+
+    @testset "favored genomes are archived in the hall" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(20); radius = 0.5)
+        Ressac.favor!(pop, 1); Ressac.favor!(pop, 3)
+        Ressac.next_generation!(pop, MersenneTwister(20))
+        @test haskey(pop.state, :hall)
+        @test length(pop.state[:hall]) >= 2
+    end
+
+    @testset "diverge! re-mutates a diverse pool, stays valid + audible" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(21); radius = 0.3)
+        Ressac.favor!(pop, 1)
+        Ressac.next_generation!(pop, MersenneTwister(21))   # seeds the hall
+        gen = pop.generation
+        Ressac.diverge!(pop, MersenneTwister(21))
+        @test pop.generation == gen + 1
+        @test length(pop.candidates) == 6
+        @test all(c -> isempty(Ressac.validate(c.genome)) &&
+                       Ressac.genome_is_audible(c.genome), pop.candidates)
+        @test all(c -> c.origin == "divergé", pop.candidates)
+    end
+end

@@ -217,7 +217,8 @@ const _GA_SILENCE_THRESHOLD = 0.003f0
 function render!(p::SynthExplorerPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
     bar = repeat("█", clamp(round(Int, p.radius * 5), 0, 5))
-    header = "SYNTH EXPLORER · gén $(p.pop.generation) · div $(rpad(bar, 5, '░')) · pop $(length(p.pop.candidates))"
+    strat = get(_GA_STRATEGY_NAMES, p.pop.strategy, "?")
+    header = "SYNTH EXPLORER · gén $(p.pop.generation) · div $(rpad(bar, 5, '░')) · $strat (Tab) · pop $(length(p.pop.candidates))"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 12 || inner.height < 6) && return
@@ -345,7 +346,9 @@ const _EXPLORER_HELP_LINES = [
     "Navigation   hjkl / flèches · 1-9 saut · clic souris",
     "Écoute       Espace jouer · t drone · m mini-clavier (z x c v…)",
     "Sélection    f favoriser · d dévaluer · scroll souris",
-    "Génération   n suivante · clic-droit suivant · R re-tirer",
+    "Génération   n suivante · clic-droit suivant",
+    "             R re-diverge (repêche de vieux parents + bruit)",
+    "Stratégie    Tab change à la volée · g réglages détaillés",
     "Audibilité   ⚠ MUET = mesuré silencieux · S régénère les muets",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
     "Infos        i détails (DSL) · L lignée · y copier le DSL",
@@ -405,13 +408,27 @@ end
 function _explorer_next_gen!(p::SynthExplorerPane)
     p.pop.radius = p.radius
     next_generation!(p.pop, p.rng)
-    osc = _explorer_osc()
-    if osc !== nothing
-        enqueue_generation!(p.audition, osc, [c.genome for c in p.pop.candidates])
-        p.audition.defined_gen = p.pop.generation
-    end
+    _explorer_reenqueue!(p)
     p.focus = 1
     return true
+end
+
+# R : skip + re-diverge (échappe à la convergence en repêchant de vieux
+# parents avec une divergence boostée).
+function _explorer_diverge!(p::SynthExplorerPane)
+    p.pop.radius = p.radius
+    diverge!(p.pop, p.rng)
+    _explorer_reenqueue!(p)
+    p.focus = 1
+    return true
+end
+
+function _explorer_reenqueue!(p::SynthExplorerPane)
+    osc = _explorer_osc()
+    osc === nothing && return
+    enqueue_generation!(p.audition, osc, [c.genome for c in p.pop.candidates])
+    p.audition.defined_gen = p.pop.generation
+    return
 end
 
 function handle_key!(p::SynthExplorerPane, evt)
@@ -461,8 +478,12 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'd' && (devalue!(p.pop, p.focus); return true)
     # génération
     ch == 'n' && return _explorer_next_gen!(p)
-    ch == 'R' && (p.pop.radius = p.radius; reshuffle!(p.pop, p.rng);
-                  p.focus = 1; return true)
+    # R = skip + re-diverge (repêche de vieux parents, divergence boostée).
+    ch == 'R' && return _explorer_diverge!(p)
+    # Tab = cycle de stratégie à la volée (sans ouvrir le panneau g).
+    k === :tab && (i = something(findfirst(==(p.pop.strategy), GA_STRATEGIES), 1);
+                   p.pop.strategy = GA_STRATEGIES[mod1(i + 1, length(GA_STRATEGIES))];
+                   return true)
     # divergence
     ch == ']' && (p.radius = clamp(p.radius + 0.1, 0.0, 1.0); return true)
     ch == '[' && (p.radius = clamp(p.radius - 0.1, 0.0, 1.0); return true)

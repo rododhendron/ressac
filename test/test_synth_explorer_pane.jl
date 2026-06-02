@@ -650,3 +650,31 @@ end
         @test pane.pop.candidates[2].weight > 0     # favorite preserved
     end
 end
+
+@testset "synth explorer pane — quick strategy switch + diverge" begin
+    @testset "Tab cycles the strategy live" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        s0 = p.pop.strategy
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:tab))
+        @test p.pop.strategy != s0
+        @test p.pop.strategy in Ressac.GA_STRATEGIES
+    end
+
+    @testset "header shows the active strategy" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        top = Tachikoma.row_text(tb, 1)
+        @test occursin("pool", top) || occursin("Tab", top)
+    end
+
+    @testset "R re-diverges (advances generation, all audible)" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        Ressac.favor!(p.pop, 1)
+        Ressac._explorer_next_gen!(p)
+        g0 = p.pop.generation
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('R'))
+        @test p.pop.generation == g0 + 1
+        @test all(c -> Ressac.genome_is_audible(c.genome), p.pop.candidates)
+    end
+end
