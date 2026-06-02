@@ -20,10 +20,25 @@ mutable struct SynthExplorerPane <: PaneImpl
     keyboard_mode::Bool
     seed_name::Symbol
     inspect::Bool
-    naming::Symbol                 # :none | :seed | :synth
+    naming::Symbol                 # :none | :seed | :synth | :export
     name_buf::String
     seed_dir_override::Union{String,Nothing}
     user_synth_dir_override::Union{String,Nothing}
+    # v2 UI state
+    cell_rects::Vector{Tuple{Int,NTuple{4,Int}}}  # idx => (x,y,w,h), filled by render!
+    ga_panel::Bool                 # `g` GA-settings sub-mode
+    ga_cursor::Int                 # selected row in the GA panel
+    show_lineage::Bool             # `L` lineage overlay
+    show_help::Bool                # `?` help overlay
+end
+
+# Default-fill the v2 UI state so existing positional constructions stay
+# short; callers pass the first 12 fields, the rest default.
+function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
+                           naming, name_buf, seed_dir, synth_dir)
+    return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
+                             naming, name_buf, seed_dir, synth_dir,
+                             Tuple{Int,NTuple{4,Int}}[], false, 1, false, false)
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -60,35 +75,139 @@ function _genome_summary(g::Genome)
     return string(join(first(names, 3), "→"), " (", length(g.nodes), ")")
 end
 
+# Mini-schéma : la chaîne de signal source→…→sortie (suit la 1re entrée
+# NodeRef de chaque nœud depuis la sortie).
+function _genome_mini_schema(g::Genome; max_len::Int = 4)
+    g.output_id == 0 && return "(vide)"
+    chain = String[]
+    cur = g.output_id
+    seen = Set{Int}()
+    while haskey(g.nodes, cur) && !(cur in seen) && length(chain) < max_len
+        push!(seen, cur)
+        n = g.nodes[cur]
+        pushfirst!(chain, String(n.ugen))
+        nxt = 0
+        for a in n.args
+            a isa NodeRef && (nxt = a.id; break)
+        end
+        nxt == 0 && break
+        cur = nxt
+    end
+    return join(chain, "→")
+end
+
+# Quelques paramètres clés (constantes), labellés court : f=freq source,
+# c=cutoff filtre, q=rq, w=width.
+function _genome_key_params(g::Genome; max_n::Int = 3)
+    parts = String[]
+    for id in sort(collect(keys(g.nodes)))
+        n = g.nodes[id]
+        spec = ugen_spec(n.ugen)
+        spec === nothing && continue
+        for (i, sp) in enumerate(spec.slots)
+            i <= length(n.args) || continue
+            a = n.args[i]
+            a isa ConstArg || continue
+            label = sp.name === :freq ? (spec.role === :source ? "f" : "c") :
+                    sp.name === :rq    ? "q" :
+                    sp.name === :width ? "w" : String(sp.name)[1:1]
+            v = a.value
+            vs = isinteger(v) ? string(Int(v)) :
+                 abs(v) >= 100 ? string(round(Int, v)) : string(round(v; digits = 1))
+            push!(parts, "$label$vs")
+            length(parts) >= max_n && return join(parts, " ")
+        end
+    end
+    return join(parts, " ")
+end
+
+# Palette de styles par cluster (cyclique).
+const _CLUSTER_STYLES = (:primary, :success, :warning, :title, :error, :secondary, :accent)
+_cluster_style(cid::Int; bold::Bool = false) =
+    TK.tstyle(_CLUSTER_STYLES[mod1(cid, length(_CLUSTER_STYLES))]; bold = bold)
+_cluster_letter(cid::Int) = string(Char('A' + (cid - 1) % 26))
+
 function title(p::SynthExplorerPane)
     return "explorer:$(p.seed_name) g$(p.pop.generation)"
+end
+
+# Draw one candidate as a boxed card: header (n° + ♥/✗ + cluster dot),
+# mini-schema, key params, ready state. Border + cluster dot tinted by
+# cluster; the focused card uses a bold accent border.
+function _render_candidate_card!(p::SynthExplorerPane, c::Candidate, idx::Int,
+                                 cid::Int, focused::Bool, r::TK.Rect, buf::TK.Buffer)
+    border = focused ? TK.tstyle(:accent, bold = true) : _cluster_style(cid)
+    TK.set_string!(buf, r.x, r.y, "┌" * "─"^(r.width - 2) * "┐", border)
+    for y in 1:(r.height - 2)
+        TK.set_string!(buf, r.x, r.y + y, "│", border)
+        TK.set_string!(buf, r.x + r.width - 1, r.y + y, "│", border)
+    end
+    TK.set_string!(buf, r.x, r.y + r.height - 1, "└" * "─"^(r.width - 2) * "┘", border)
+    ix = r.x + 1
+    iw = r.width - 2
+    mark = c.weight > 0 ? "♥" : c.weight < 0 ? "✗" : " "
+    foc  = focused ? "▸" : " "
+    # header line: ▸2♥ ●A
+    hdr = "$foc$idx$mark ●$(_cluster_letter(cid))"
+    TK.set_string!(buf, ix, r.y, first(hdr, iw),
+                   focused ? TK.tstyle(:accent, bold = true) :
+                   c.weight > 0 ? TK.tstyle(:success) :
+                   c.weight < 0 ? TK.tstyle(:text_dim) : _cluster_style(cid))
+    if r.height >= 3
+        TK.set_string!(buf, ix, r.y + 1, first(_genome_mini_schema(c.genome), iw),
+                       TK.tstyle(:text))
+    end
+    if r.height >= 4
+        TK.set_string!(buf, ix, r.y + 2, first(_genome_key_params(c.genome), iw),
+                       TK.tstyle(:text_dim))
+    end
+    if r.height >= 5
+        idxr = something(findfirst(==(idx), 1:length(p.audition.ready)), 0)
+        state = (idxr >= 1 && idxr <= length(p.audition.ready) &&
+                 p.audition.ready[idxr]) ? "·prêt" : "·compil."
+        TK.set_string!(buf, ix, r.y + r.height - 2, state, TK.tstyle(:text_dim))
+    end
+    return nothing
 end
 
 function render!(p::SynthExplorerPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
     bar = repeat("█", clamp(round(Int, p.radius * 5), 0, 5))
-    header = "SYNTH EXPLORER · gén $(p.pop.generation) · div $(rpad(bar, 5, '░'))"
+    header = "SYNTH EXPLORER · gén $(p.pop.generation) · div $(rpad(bar, 5, '░')) · pop $(length(p.pop.candidates))"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 12 || inner.height < 6) && return
+    empty!(p.cell_rects)
+    clusters = cluster_population(p.pop.candidates)
     cols = _GA_GRID_COLS
     rows = cld(length(p.pop.candidates), cols)
+    # Reserve 2 bottom rows: gene/cluster strip + help/prompt.
+    grid_h = max(rows * 2, inner.height - 3)
     cell_w = inner.width ÷ cols
-    cell_h = max(2, (inner.height - 2) ÷ rows)
+    cell_h = max(3, grid_h ÷ rows)
     for (idx, c) in enumerate(p.pop.candidates)
         col = (idx - 1) % cols
         row = (idx - 1) ÷ cols
         cx = inner.x + col * cell_w
         cy = inner.y + row * cell_h
-        mark = c.weight > 0 ? "♥" : c.weight < 0 ? "✗" : " "
-        focus = idx == p.focus ? "▸" : " "
-        style = idx == p.focus ? TK.tstyle(:accent, bold = true) :
-                c.weight > 0 ? TK.tstyle(:success) :
-                c.weight < 0 ? TK.tstyle(:text_dim) : TK.tstyle(:text)
-        label = "$focus$idx$mark $(_genome_summary(c.genome))"
-        TK.set_string!(buf, cx, cy, first(label, cell_w - 1), style)
+        cw = cell_w - 1
+        ch = cell_h - 1
+        (cw < 6 || ch < 2) && continue
+        push!(p.cell_rects, (idx, (cx, cy, cw, ch)))
+        cid = idx <= length(clusters) ? clusters[idx] : 1
+        focused = idx == p.focus
+        _render_candidate_card!(p, c, idx, cid, focused,
+                                TK.Rect(cx, cy, cw, ch), buf)
     end
-    help = "n:suiv f:fav d:dév i:détails [ ]:div m:clavier s w e:commit"
+    # Gene distribution + cluster legend strip.
+    strip_y = inner.y + inner.height - 2
+    genes = gene_distribution(p.pop.candidates)
+    gtxt = "gènes: " * join(("$(String(k))×$v" for (k, v) in first(genes, 5)), " ")
+    nclusters = isempty(clusters) ? 0 : maximum(clusters)
+    ctxt = "  clusters: " * join((_cluster_letter(i) for i in 1:nclusters), " ")
+    TK.set_string!(buf, inner.x, strip_y,
+                   first(gtxt * ctxt, inner.width), TK.tstyle(:text_dim))
+    help = "n:gén f/d i:détails L:lignée g:réglages m:clavier s w e  ?:aide"
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(help, inner.width), TK.tstyle(:text_dim))
     if p.naming !== :none

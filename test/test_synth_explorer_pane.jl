@@ -37,6 +37,19 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_synth_explorer.jl"))
         @test occursin("Saw", s) || occursin("RLPF", s)
     end
 
+    @testset "v2 cards: mini-schema, cluster strip, cell rects" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}(
+            "seed" => "drone_grave", "rng" => 5))
+        @test Ressac._genome_mini_schema(Ressac.archetype(:drone_grave)) == "Saw→RLPF"
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("gènes:", whole)
+        @test occursin("clusters:", whole)
+        @test occursin("→", whole)                    # a mini-schema arrow
+        @test length(p.cell_rects) == 9               # hit-test rects filled
+    end
+
     @testset "serialize captures seed + generation" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}(
             "seed" => "pluck", "rng" => 9))
