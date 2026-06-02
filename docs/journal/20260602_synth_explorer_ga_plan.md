@@ -14,8 +14,8 @@
 
 ## Décisions de cadrage du plan
 
-- **Feedback différé.** L'opérateur *feedback* (cycles via délai) exige un rendu à variables nommées + `LocalIn/LocalOut`. Hors périmètre de ce plan ; suivi séparé. Les 5 autres opérateurs structurels + le croisement couvrent la divergence.
-- **Rendu inline (arbre).** Le rendu génome→source procède par expansion d'expression (comme le DSL existant). Pas de cycles → la validité interdit les cycles dans ce sous-projet. Un sous-graphe partagé est dupliqué dans la sortie (inoffensif).
+- **Feedback sans cycle de DAG.** L'opérateur *feedback* est dans le périmètre (Tasks 1/3/6). Astuce : un nœud `FbIn` (feuille, 0 arg) rend `LocalIn.ar(1)` et le renderer ajoute un post-ambule `LocalOut.ar(sig)`. La boucle se ferme côté SC via le bus LocalIn/LocalOut → **le DAG reste acyclique** et la validité reste simple.
+- **Rendu inline (arbre).** Le rendu génome→source procède par expansion d'expression (comme le DSL existant). La validité interdit les cycles de DAG (le feedback passe par FbIn, pas par une arête de cycle). Un sous-graphe partagé est dupliqué dans la sortie (inoffensif).
 - **Contrôles implicites.** `:freq`/`:sustain`/`:gain` ne sont pas des nœuds : ce sont des `ControlRef` utilisables comme arg n'importe où. Le contrat « ils existent » est garanti par le rendu (header de SynthDef fixe), pas par des nœuds.
 - **Noms cohérents** (utilisés dans tout le plan) : types `ConstArg`/`NodeRef`/`ControlRef`/`Arg`/`UGenNode`/`Genome`/`SlotSpec`/`UGenSpec` ; catalogue `UGEN_CATALOG`/`register_ugen!`/`ugen_spec` ; render `render_synthdef`/`render_dsl` ; validité `validate`/`repair!` ; opérateurs `mutate`/`crossover` ; GA `Candidate`/`Population`/`next_generation` ; audition `AuditionState` ; pane `SynthExplorerPane`.
 
@@ -198,10 +198,16 @@ function _install_builtin_ugens!()
     # modulation
     register_ugen!(UGenSpec(:LFNoise1, [:kr], [sig(:freq, 4, 0.05, 30)], :mod))
     register_ugen!(UGenSpec(:SinOscKR, [:kr], [sig(:freq, 4, 0.05, 30)], :mod))
+    # feedback — FbIn est une FEUILLE (0 slot) : elle lit le bus de
+    # feedback (rendu en `LocalIn`), donc le DAG reste acyclique. La
+    # boucle réelle se ferme en SC via LocalIn/LocalOut (cf. render).
+    register_ugen!(UGenSpec(:FbIn, [:ar], SlotSpec[], :source))
     return nothing
 end
 _install_builtin_ugens!()
 ```
+
+Le test de catalogue couvre déjà `:Saw`/`:RLPF` ; pas de test spécifique `:FbIn` ici — il est exercé par le rendu (Task 3) et l'opérateur feedback (Task 6).
 
 - [ ] **Step 4: Inclure le module**
 
@@ -508,6 +514,21 @@ using Ressac
         @test occursin("Sig(", d)
         @test occursin("RLPF.ar", d)
     end
+
+    @testset "feedback genome renders LocalIn preamble + LocalOut" begin
+        g = Ressac.Genome()
+        saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        fb  = Ressac.add_node!(g, :FbIn, :ar, Ressac.Arg[])
+        mix = Ressac.add_node!(g, :Mix, :ar,
+                  Ressac.Arg[Ressac.NodeRef(saw), Ressac.NodeRef(fb)])
+        g.output_id = mix
+        s = Ressac.render_synthdef(g, :x)
+        @test occursin("var fb = LocalIn.ar(1)", s)
+        @test occursin("LocalOut.ar(sig)", s)
+        d = Ressac.render_dsl(g, :x)
+        @test occursin("LocalOut.ar", d)
+        @test occursin(".value", d)
+    end
 end
 ```
 
@@ -542,8 +563,11 @@ function _emit_special(g::Genome, n::UGenNode)
     n.ugen === :MulAdd   && return "(($(A(1)) * $(A(2))) + $(A(3)))"
     n.ugen === :Mix      && return "($(A(1)) + $(A(2)))"
     n.ugen === :SinOscKR && return "SinOsc.kr($(A(1)))"
+    n.ugen === :FbIn     && return "fb"   # lit le bus de feedback (var fb)
     return nothing
 end
+
+_has_feedback(g::Genome) = any(n.ugen === :FbIn for n in values(g.nodes))
 
 function _emit_node(g::Genome, id::Int)
     n = g.nodes[id]
@@ -562,10 +586,15 @@ end
 
 function render_synthdef(g::Genome, name::Symbol)
     sig = _safe_signal_expr(g)
+    fb  = _has_feedback(g)
+    pre  = fb ? "    var fb = LocalIn.ar(1);\n" : ""
+    post = fb ? "    LocalOut.ar(sig);\n" : ""   # ferme la boucle (1 frame)
     return string(
         "SynthDef(\\", name, ", { |out = 0, pan = 0, ",
         "freq = 220, sustain = 0.5, gain = 0.5|\n",
+        pre,
         "    var sig = ", sig, ";\n",
+        post,
         "    sig = sig * gain;\n",
         "    sig = sig * EnvGen.kr(Env.linen(0.01, sustain, 0.1), doneAction: 2);\n",
         "    Out.ar(out, Pan2.ar(sig, pan));\n",
@@ -574,9 +603,14 @@ end
 
 function render_dsl(g::Genome, name::Symbol)
     sig = _safe_signal_expr(g)
-    # Le corps est un Sig brut SC ; build_synth ajoutera env/gain/DirtPan.
+    # build_synth attend une EXPRESSION ; pour le feedback on emballe
+    # dans une fonction SC inline `{ ... }.value` (toujours une
+    # expression unique) afin d'inclure LocalIn/LocalOut.
+    body = _has_feedback(g) ?
+        "{ var fb = LocalIn.ar(1); var s = $sig; LocalOut.ar(s); s }.value" :
+        sig
     return string("@synth :", name, " (freq=220, sustain=0.5) ",
-                  "SynthDSL.Sig(\"", sig, "\")")
+                  "SynthDSL.Sig(\"", body, "\")")
 end
 ```
 
@@ -1058,6 +1092,19 @@ Append à `test/test_genome_operators.jl` :
         @test isempty(Ressac.validate(g))
     end
 
+    @testset "op_add_feedback! inserts a single FbIn, stays valid" begin
+        rng = MersenneTwister(20)
+        g = _g()
+        Ressac.op_add_feedback!(g, rng)
+        @test isempty(Ressac.validate(g))
+        fbs = count(n -> n.ugen === :FbIn, values(g.nodes))
+        @test fbs == 1
+        # re-appliquer ne crée pas un second FbIn
+        Ressac.op_add_feedback!(g, rng)
+        @test count(n -> n.ugen === :FbIn, values(g.nodes)) == 1
+        @test occursin("LocalIn", Ressac.render_synthdef(g, :x))
+    end
+
     @testset "crossover yields a valid child blending both" begin
         rng = MersenneTwister(16)
         a = _g()
@@ -1180,8 +1227,21 @@ function op_graft_mod!(g::Genome, rng::AbstractRNG)
     return g
 end
 
+function op_add_feedback!(g::Genome, rng::AbstractRNG)
+    edges = _signal_slot_edges(g)
+    isempty(edges) && return g
+    # un seul FbIn par génome (SC n'autorise qu'un LocalIn par SynthDef).
+    fb_ids = [id for (id, n) in g.nodes if n.ugen === :FbIn]
+    fb = isempty(fb_ids) ? add_node!(g, :FbIn, :ar, Arg[]) : first(fb_ids)
+    (nid, i) = rand(rng, edges)
+    nid == fb && return g                       # ne pas auto-référencer FbIn
+    g.nodes[nid].args[i] = NodeRef(fb)
+    return g
+end
+
 append!(_STRUCT_OPS, Function[op_insert_node!, op_remove_node!,
-                              op_swap_ugen!, op_rewire!, op_graft_mod!])
+                              op_swap_ugen!, op_rewire!, op_graft_mod!,
+                              op_add_feedback!])
 
 # ── Croisement (swap de sous-graphe) ───────────────────────────────
 
@@ -2507,8 +2567,6 @@ git commit -m "feat(explorer): full session persistence (population round-trip)"
 
 ## Suivi (hors périmètre de ce plan)
 
-- **Opérateur feedback** : cycles via délai (`LocalIn`/`LocalOut`) — demande un rendu à variables nommées plutôt qu'inline. Tâche dédiée.
-- **`e` export vers onglet éditeur** : ouvrir un onglet synth dans le workspace depuis le pane demande un handle `WorkspaceManager` que le contrat `PaneImpl` ne porte pas. À câbler au niveau app (helper app-level invoqué via une commande, ou un signal de retour du pane). `w` (sauver vers `user-synths`) couvre déjà le besoin « rendre jouable ».
 - **A2 — parser DSL→DAG** : importer un synth DSL écrit main comme génome (autre `GenomeSource`).
 - **Modèle (3)** — population pondérée persistante : ne changerait que `next_generation!`.
 - **Traduction DSL « jolie »** : `render_dsl` émet un `Sig(...)` brut SC ; une passe ultérieure pourrait ré-exprimer via les wrappers (`saw`, `rlpf`…).
@@ -2518,9 +2576,157 @@ git commit -m "feat(explorer): full session persistence (population round-trip)"
 - Génome DAG + catalogue + contrat I/O + sécurité → Tasks 1-3. ✓
 - Validité/réparation → Task 2. ✓
 - Archétypes + sérialisation native + `plugins/synth-seeds/` → Task 4. ✓
-- Mutation paramétrique + structurelle + croisement + rayon → Tasks 5-6. ✓ (feedback différé, noté)
+- Mutation paramétrique + structurelle + croisement + rayon → Tasks 5-6. ✓
+- **Opérateur feedback** (FbIn `LocalIn`/`LocalOut`, DAG acyclique) → Tasks 1, 3, 6. ✓
 - Moteur GA breeding-pool, poids prêts pour (3) → Task 7. ✓
 - Audition file bornée + evalAndPlay/play + drone + mini-clavier → Tasks 8, 11. ✓
-- Pane grille 6/9 + interactions + overlay détails + commit → Tasks 9-13. ✓ (`e` différé, noté)
+- Pane grille 6/9 + interactions + overlay détails + commit (`s`/`w`) → Tasks 9-13. ✓
+- **Export `e` vers éditeur** (seam `_EXPLORER_EXPORT_REQUEST` + drain app) → Task 15. ✓
 - Persistance session + graines → Tasks 4, 14. ✓
 - Tests purs (génome/opérateurs/GA) + mock OSC (audition) + render/handle_key (pane) → chaque task. ✓
+
+(Task 15 est détaillée plus bas, après cette section.)
+
+---
+
+### Task 15 : Export `e` vers un onglet éditeur (bridge app-level)
+
+`e` ouvre une saisie de nom (mode `:export`) ; `Enter` poste une requête dans un Ref module-level que le routeur de touches de l'app draine en ouvrant un onglet éditeur synth contenant le DSL rendu. Pas de handle workspace dans le pane → on passe par un singleton, comme `_LIVE_SCHEDULER`.
+
+**Files:**
+- Modify: `src/pane_synth_explorer.jl` (Ref + mode `:export`)
+- Modify: `src/tui_app.jl` (drain dans `_route_key_to_focused_pane!`)
+- Test: `test/test_synth_explorer_pane.jl` (append testset)
+
+- [ ] **Step 1: Ajouter les tests qui échouent**
+
+Append à `test/test_synth_explorer_pane.jl` :
+
+```julia
+@testset "synth explorer pane — export to editor" begin
+    @testset "e enters export-naming mode; Enter posts a request" begin
+        Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+        p = Ressac._pane_new(:explorer, Dict{String,Any}(
+            "seed" => "pluck", "rng" => 4))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('e'))
+        @test p.naming === :export
+        for c in "mywob"
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(c))
+        end
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:enter))
+        req = Ressac._EXPLORER_EXPORT_REQUEST[]
+        @test req !== nothing
+        @test req[1] == "mywob"
+        @test occursin("@synth", req[2])
+        Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+    end
+
+    @testset "_drain_explorer_export! opens an editor tab with the DSL" begin
+        if !isdefined(Main, :MockOSCClient)
+            mutable struct MockOSCClient; sent::Vector{Vector{UInt8}}; end
+            MockOSCClient() = MockOSCClient(Vector{UInt8}[])
+            Ressac.send_osc(c::MockOSCClient, b::Vector{UInt8}) = push!(c.sent, b)
+        end
+        mock = MockOSCClient()
+        sched = Ressac.Scheduler(mock; cps = 0.5)
+        app = Ressac.RessacApp(; scheduler = sched)
+        Ressac._ensure_default_workspace!(app)
+        Ressac._EXPLORER_EXPORT_REQUEST[] = ("expsynth", "@synth :expsynth saw(:freq)")
+        @test Ressac._drain_explorer_export!(app) == true
+        @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing
+        ws = Ressac.current_workspace(app.workspaces)
+        # un EditorPane synth contenant le DSL existe maintenant
+        found = false
+        for leaf in Ressac._collect_panes!(Ressac.PaneImpl[], ws.tree)
+            if leaf isa Ressac.EditorPane
+                for t in leaf.tabs
+                    occursin("expsynth", Tachikoma.text(t.code_editor)) && (found = true)
+                end
+            end
+        end
+        @test found
+    end
+end
+```
+
+- [ ] **Step 2: Lancer → échec**
+
+Run: `julia --project=. -e 'using Pkg; Pkg.test()' 2>&1 | tail -20`
+Expected: FAIL — `UndefVarError: _EXPLORER_EXPORT_REQUEST`.
+
+- [ ] **Step 3: Ajouter le Ref + le mode `:export` dans `src/pane_synth_explorer.jl`**
+
+Tout en haut du fichier (après les `const _GA_*`), ajouter :
+
+```julia
+# Seam app-level : le pane n'a pas de handle WorkspaceManager. On poste
+# (nom, dsl) ici ; le routeur de touches de l'app (tui_app.jl) draine.
+const _EXPLORER_EXPORT_REQUEST = Ref{Union{Nothing,Tuple{String,String}}}(nothing)
+```
+
+Dans `handle_key!`, avant `return false`, ajouter (à côté de `s`/`w`) :
+
+```julia
+    evt.char == 'e' && (p.naming = :export; p.name_buf = ""; return true)
+```
+
+Dans `_explorer_commit_named!`, ajouter une branche `:export` :
+
+```julia
+    elseif p.naming === :export
+        _EXPLORER_EXPORT_REQUEST[] = (p.name_buf, render_dsl(g, Symbol(p.name_buf)))
+```
+
+(insérée dans le `if/elseif` existant, après la branche `:synth`).
+
+Dans `render!`, l'invite de saisie gère déjà `p.naming !== :none` ; étendre le libellé :
+
+```julia
+        prompt = (p.naming === :seed ? "nom graine: " :
+                  p.naming === :synth ? "nom synth: " : "nom export: ") *
+                 p.name_buf * "_"
+```
+
+(remplace la ligne `prompt = ...` de Task 13).
+
+- [ ] **Step 4: Ajouter le drain dans `src/tui_app.jl`**
+
+Définir la fonction (par ex. juste après `_route_key_to_focused_pane!`, après sa ligne `end` de fermeture ~ligne 500) :
+
+```julia
+function _drain_explorer_export!(m::RessacApp)
+    req = _EXPLORER_EXPORT_REQUEST[]
+    req === nothing && return false
+    _EXPLORER_EXPORT_REQUEST[] = nothing
+    name, dsl = req
+    cmd_split!(m.workspaces, "editor",
+               Dict{String,Any}("buffer_role" => "synth", "name" => name))
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return true
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    if leaf !== nothing && !isempty(leaf.tabs)
+        pane = leaf.tabs[leaf.current_tab]
+        pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs) &&
+            TK.set_text!(pane.tabs[pane.current_tab].code_editor, dsl)
+    end
+    return true
+end
+```
+
+Dans `_route_key_to_focused_pane!`, juste avant le `return true` final (ligne ~499, après le bridge ex-command de l'EditorPane), insérer :
+
+```julia
+    pane isa SynthExplorerPane && _drain_explorer_export!(m)
+```
+
+- [ ] **Step 5: Lancer → succès**
+
+Run: `julia --project=. -e 'using Pkg; Pkg.test()' 2>&1 | grep -E 'Test Summary:|Ressac.jl|FAIL'`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/pane_synth_explorer.jl src/tui_app.jl test/test_synth_explorer_pane.jl
+git commit -m "feat(explorer): export focused candidate to an editor tab (app bridge)"
+```
