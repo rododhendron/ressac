@@ -204,14 +204,14 @@ end
         @test p.inspect == false
     end
 
-    @testset "overlay renders the DSL + stats of the focused candidate" begin
+    @testset "overlay renders the DAG tree + stats of the focused candidate" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}(
             "seed" => "drone_grave", "rng" => 8))
         Ressac.handle_key!(p, Tachikoma.KeyEvent('i'))
         tb = Tachikoma.TestBackend(80, 24)
         Ressac.render!(p, Tachikoma.Rect(1, 1, 80, 24), tb.buf)
         whole = join((Tachikoma.row_text(tb, r) for r in 1:24))
-        @test occursin("@synth", whole)
+        @test occursin("DAG", whole)
         @test occursin("nœuds", whole) || occursin("nodes", whole)
     end
 end
@@ -684,5 +684,31 @@ end
         Ressac.handle_key!(p, Tachikoma.KeyEvent('R'))
         @test p.pop.generation == g0 + 1
         @test all(c -> Ressac.genome_is_audible(c.genome), p.pop.candidates)
+    end
+end
+
+@testset "synth explorer pane — DAG tree details + reset" begin
+    @testset "inspect overlay shows the DAG tree, not raw code" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 5))
+        lines = Ressac._genome_tree_lines(Ressac.archetype(:drone_grave))
+        @test any(l -> occursin("RLPF", l), lines)
+        @test any(l -> occursin("└─", l) || occursin("├─", l), lines)   # tree branches
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('i'))
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("DAG des opérations", whole)
+        @test !occursin("@synth", whole)        # no raw DSL dump anymore
+    end
+
+    @testset "0 resets the explorer to a fresh gen-0 population" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 5))
+        Ressac.favor!(p.pop, 1)
+        Ressac._explorer_next_gen!(p)
+        @test p.pop.generation > 0
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('0'))
+        @test p.pop.generation == 0
+        @test length(p.pop.candidates) == 9
+        @test all(c -> c.weight == 0.0, p.pop.candidates)
     end
 end

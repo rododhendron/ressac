@@ -290,29 +290,64 @@ function _wrap_text(s::AbstractString, w::Int)
     return out
 end
 
+# Arbre lisible du DAG depuis la sortie : chaque nœud = un UGen + ses
+# constantes/contrôles inline ; les entrées-signal deviennent des
+# enfants indentés. Bien plus clair que le code SC brut.
+function _genome_tree_lines(g::Genome, id::Int = g.output_id;
+                            prefix::String = "", is_last::Bool = true,
+                            is_root::Bool = true,
+                            seen::Set{Int} = Set{Int}(), out::Vector{String} = String[])
+    (id == 0 || !haskey(g.nodes, id) || id in seen) && return out
+    push!(seen, id)
+    n = g.nodes[id]
+    spec = ugen_spec(n.ugen)
+    inline = String[]
+    children = Int[]
+    for (i, a) in enumerate(n.args)
+        nm = (spec !== nothing && i <= length(spec.slots)) ? String(spec.slots[i].name) : "a$i"
+        if a isa ConstArg
+            v = a.value
+            push!(inline, "$nm $(isinteger(v) ? string(Int(v)) : string(round(v; digits = 2)))")
+        elseif a isa ControlRef
+            push!(inline, "$nm=$(a.name)")
+        elseif a isa NodeRef
+            push!(children, a.id)
+        end
+    end
+    connector = is_root ? "" : (is_last ? "└─ " : "├─ ")
+    label = isempty(inline) ? String(n.ugen) : "$(n.ugen)  $(join(inline, " · "))"
+    push!(out, prefix * connector * label)
+    child_prefix = is_root ? "" : prefix * (is_last ? "   " : "│  ")
+    for (k, cid) in enumerate(children)
+        _genome_tree_lines(g, cid; prefix = child_prefix,
+                           is_last = (k == length(children)), is_root = false,
+                           seen = seen, out = out)
+    end
+    return out
+end
+
 function _render_inspect_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
     c = p.pop.candidates[p.focus]
     g = c.genome
-    dsl = render_dsl(g, p.seed_name)
-    ugens = join(unique(String(n.ugen) for n in values(g.nodes)), ", ")
-    stats = "nœuds: $(length(g.nodes)) · profondeur: $(_genome_depth(g)) · UGens: $ugens"
+    ctl = "freq $(round(Int, control(g, :freq))) · sustain $(round(control(g, :sustain); digits = 2)) · release $(round(control(g, :release); digits = 2))"
+    stats = "nœuds: $(length(g.nodes)) · profondeur: $(_genome_depth(g)) · $(c.origin)"
     blank = " "^inner.width
     for y in inner.y:(inner.y + inner.height - 1)
         TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
     end
     TK.set_string!(buf, inner.x, inner.y,
-                   first("DÉTAILS · candidat $(p.focus)", inner.width),
+                   first("DÉTAILS · candidat $(p.focus) — DAG des opérations", inner.width),
                    TK.tstyle(:accent, bold = true))
-    TK.set_string!(buf, inner.x, inner.y + 1, first(stats, inner.width),
-                   TK.tstyle(:text_dim))
-    y = inner.y + 3
-    for chunk in _wrap_text(dsl, inner.width)
+    TK.set_string!(buf, inner.x, inner.y + 1, first(stats, inner.width), TK.tstyle(:text_dim))
+    TK.set_string!(buf, inner.x, inner.y + 2, first(ctl, inner.width), TK.tstyle(:text_dim))
+    y = inner.y + 4
+    for line in _genome_tree_lines(g)
         y > inner.y + inner.height - 2 && break
-        TK.set_string!(buf, inner.x, y, chunk, TK.tstyle(:text))
+        TK.set_string!(buf, inner.x, y, first(line, inner.width), TK.tstyle(:text))
         y += 1
     end
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
-                   "Esc/i/q : fermer", TK.tstyle(:text_dim))
+                   "y copie le DSL · Esc/i/q ferme", TK.tstyle(:text_dim))
     return nothing
 end
 
@@ -350,6 +385,7 @@ const _EXPLORER_HELP_LINES = [
     "Génération   n suivante · clic-droit suivant",
     "             R re-diverge (repêche de vieux parents + bruit)",
     "Stratégie    Tab change à la volée · g réglages détaillés",
+    "Reset        0 nouvelle population depuis la graine",
     "Audibilité   ⚠ MUET = mesuré silencieux · S régénère les muets",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
     "Infos        i détails (DSL) · L lignée · y copier le DSL",
@@ -503,7 +539,20 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'p' && (p.param_edit = true; p.param_cursor = 1; return true)
     ch == 'y' && return _explorer_yank!(p)   # copie le DSL du candidat focalisé
     ch == 'S' && return _explorer_regen_silent!(p)
+    ch == '0' && return _explorer_reset!(p)  # repart d'une population fraîche
     return false
+end
+
+# Reset complet : nouvelle population gén-0 depuis la graine courante.
+function _explorer_reset!(p::SynthExplorerPane)
+    seeds = all_seeds()
+    base = haskey(seeds, p.seed_name) ? seeds[p.seed_name] : archetype(:drone_grave)
+    p.pop = init_population(base, _GA_GEN_SIZE, p.rng; radius = p.radius)
+    p.focus = 1
+    _explorer_reenqueue!(p)
+    push!(_APP_LOG[], "[INFO] explorer réinitialisé (graine $(p.seed_name))")
+    length(_APP_LOG[]) > 200 && popfirst!(_APP_LOG[])
+    return true
 end
 
 # Remplace les candidats mesurés MUETS par de fraîches mutations (le
