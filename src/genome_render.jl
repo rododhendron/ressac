@@ -69,14 +69,18 @@ function render_synthdef(g::Genome, name::Symbol)
     fb  = _has_feedback(g)
     pre  = fb ? "    var fb = LocalIn.ar(1);\n" : ""
     post = fb ? "    LocalOut.ar(sig);\n" : ""   # ferme la boucle (1 frame)
+    fr  = _fmt_const(control(g, :freq))
+    sus = _fmt_const(control(g, :sustain))
+    gn  = _fmt_const(control(g, :gain))
+    rel = _fmt_const(control(g, :release))
     return string(
         "SynthDef(\\", name, ", { |out = 0, pan = 0, ",
-        "freq = 220, sustain = 0.5, gain = 0.5|\n",
+        "freq = ", fr, ", sustain = ", sus, ", gain = ", gn, "|\n",
         pre,
         "    var sig = ", sig, ";\n",
         post,
         "    sig = sig * gain;\n",
-        "    sig = sig * EnvGen.kr(Env.linen(0.01, sustain, 0.1), doneAction: 2);\n",
+        "    sig = sig * EnvGen.kr(Env.linen(0.01, sustain, ", rel, "), doneAction: 2);\n",
         "    Out.ar(out, Pan2.ar(sig, pan));\n",
         "}).add;\n")
 end
@@ -89,6 +93,8 @@ function render_dsl(g::Genome, name::Symbol)
     body = _has_feedback(g) ?
         "{ var fb = LocalIn.ar(1); var s = $sig; LocalOut.ar(s); s }.value" :
         sig
-    return string("@synth :", name, " (freq=220, sustain=0.5) ",
+    fr  = _fmt_const(control(g, :freq))
+    sus = _fmt_const(control(g, :sustain))
+    return string("@synth :", name, " (freq=", fr, ", sustain=", sus, ") ",
                   "SynthDSL.Sig(\"", body, "\")")
 end

@@ -23,7 +23,8 @@ function serialize_genome(g::Genome)
                   "args" => [_ser_arg(a) for a in n.args])
              for n in values(g.nodes)]
     return Dict("nodes" => nodes, "output" => g.output_id,
-                "next_id" => g.next_id)
+                "next_id" => g.next_id,
+                "controls" => Dict(String(k) => v for (k, v) in g.controls))
 end
 
 function deserialize_genome(d::AbstractDict)
@@ -35,6 +36,11 @@ function deserialize_genome(d::AbstractDict)
     end
     g.output_id = Int(d["output"])
     g.next_id = Int(get(d, "next_id", maximum(keys(g.nodes); init = 0) + 1))
+    if haskey(d, "controls")
+        for (k, v) in d["controls"]
+            g.controls[Symbol(k)] = Float64(v)
+        end
+    end
     return g
 end
 

@@ -31,6 +31,8 @@ mutable struct SynthExplorerPane <: PaneImpl
     show_lineage::Bool             # `L` lineage overlay
     show_help::Bool                # `?` help overlay
     sustain::Float64               # default sustain used when auditioning
+    param_edit::Bool               # `p` per-candidate param editor
+    param_cursor::Int              # selected control row in the editor
 end
 
 # Default-fill the v2 UI state so existing positional constructions stay
@@ -39,7 +41,8 @@ function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                            naming, name_buf, seed_dir, synth_dir)
     return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                              naming, name_buf, seed_dir, synth_dir,
-                             Tuple{Int,NTuple{4,Int}}[], false, 1, false, false, 0.6)
+                             Tuple{Int,NTuple{4,Int}}[], false, 1, false, false,
+                             0.6, false, 1)
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -214,7 +217,7 @@ function render!(p::SynthExplorerPane, area, buf)
     ctxt = "  clusters: " * join((_cluster_letter(i) for i in 1:nclusters), " ")
     TK.set_string!(buf, inner.x, strip_y,
                    first(gtxt * ctxt, inner.width), TK.tstyle(:text_dim))
-    help = "n:gén f/d i:détails L:lignée g:réglages m:clavier s w e  ?:aide"
+    help = "n:gén f/d i:détails p:params L:lignée g:réglages m:clavier  ?:aide"
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(help, inner.width), TK.tstyle(:text_dim))
     if p.naming !== :none
@@ -228,6 +231,7 @@ function render!(p::SynthExplorerPane, area, buf)
     p.ga_panel && _render_ga_panel!(p, inner, buf)
     p.show_lineage && _render_lineage_overlay!(p, inner, buf)
     p.show_help && _render_help_overlay!(p, inner, buf)
+    p.param_edit && _render_param_editor!(p, inner, buf)
     return nothing
 end
 
@@ -310,6 +314,7 @@ const _EXPLORER_HELP_LINES = [
     "Génération   n suivante · clic-droit suivant · R re-tirer",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
     "Infos        i détails (DSL) · L lignée du candidat",
+    "Édition      p params du candidat (freq/sustain/release) · r reset",
     "Garder       s graine · w synth · e éditeur",
     "Couleurs     cadre/pastille = cluster de proximité génétique",
     "",
@@ -357,7 +362,8 @@ end
 function _explorer_play_focus!(p::SynthExplorerPane)
     osc = _explorer_osc(); osc === nothing && return true
     _explorer_ensure_defined!(p, osc)
-    audition_play!(p.audition, osc, p.focus, 220.0, p.sustain)
+    g = p.pop.candidates[p.focus].genome
+    audition_play!(p.audition, osc, p.focus, control(g, :freq), control(g, :sustain))
     return true
 end
 
@@ -396,6 +402,9 @@ function handle_key!(p::SynthExplorerPane, evt)
     if p.ga_panel
         return _explorer_ga_panel_key!(p, evt)
     end
+    if p.param_edit
+        return _explorer_param_key!(p, evt)
+    end
     if p.keyboard_mode
         return _explorer_keyboard_key!(p, evt)    # Task 11
     end
@@ -433,13 +442,68 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'L' && (p.show_lineage = true; return true)
     ch == '?' && (p.show_help = true;    return true)
     ch == 'g' && (p.ga_panel = true; p.ga_cursor = 1; return true)
+    ch == 'p' && (p.param_edit = true; p.param_cursor = 1; return true)
     return false
 end
 
+# ── Per-candidate param editor (`p`) ───────────────────────────────
+# Edit the focused candidate's controls (freq/sustain/gain/release).
+# Edits live on the genome → they bake into render + export AND are
+# inherited when the candidate is favored (re-enters the algorithm).
+const _PARAM_STEP = Dict(:freq => 10.0, :sustain => 0.1, :gain => 0.05, :release => 0.05)
+const _PARAM_RANGE = Dict(:freq => (20.0, 8000.0), :sustain => (0.05, 8.0),
+                          :gain => (0.0, 1.0), :release => (0.0, 4.0))
+
+function _explorer_param_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
+    ch = evt.char; k = evt.key
+    n = length(CONTROL_EDIT_ORDER)
+    if k === :escape || ch == 'p'
+        p.param_edit = false
+        return true
+    elseif ch == 'r'                       # reset to defaults
+        p.pop.candidates[p.focus].genome.controls = default_controls()
+        return true
+    end
+    (ch == 'j' || k === :down) && (p.param_cursor = clamp(p.param_cursor + 1, 1, n); return true)
+    (ch == 'k' || k === :up)   && (p.param_cursor = clamp(p.param_cursor - 1, 1, n); return true)
+    inc = (ch == 'l' || k === :right || ch == '+') ?  1 :
+          (ch == 'h' || k === :left  || ch == '-') ? -1 : 0
+    inc == 0 && return true
+    name = CONTROL_EDIT_ORDER[p.param_cursor]
+    g = p.pop.candidates[p.focus].genome
+    lo, hi = _PARAM_RANGE[name]
+    g.controls[name] = clamp(round(control(g, name) + inc * _PARAM_STEP[name]; digits = 3), lo, hi)
+    return true
+end
+
+function _render_param_editor!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
+    blank = " "^inner.width
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
+    end
+    g = p.pop.candidates[p.focus].genome
+    TK.set_string!(buf, inner.x, inner.y,
+                   first("PARAMS · candidat $(p.focus)", inner.width),
+                   TK.tstyle(:accent, bold = true))
+    for (i, name) in enumerate(CONTROL_EDIT_ORDER)
+        sel = i == p.param_cursor
+        cursor = sel ? "▸ " : "  "
+        v = control(g, name)
+        vs = isinteger(v) ? string(Int(v)) : string(round(v; digits = 2))
+        line = "$cursor$(rpad(String(name), 10)) $vs"
+        TK.set_string!(buf, inner.x, inner.y + 1 + i, first(line, inner.width),
+                       sel ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+    end
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                   "j/k choisir · ←/→ ajuster · r reset · Esc/p fermer",
+                   TK.tstyle(:text_dim))
+    return nothing
+end
+
 # ── GA settings sub-mode (`g`) ─────────────────────────────────────
-# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme ·
-#       5 sustain · 6 stratégie.
-const _GA_PANEL_ROWS = 6
+# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme · 5 stratégie.
+# (le sustain est par-candidat dans l'éditeur de params `p`.)
+const _GA_PANEL_ROWS = 5
 
 _ga_strategy_long(s::Symbol) =
     s === :breeding   ? "pool : croise + mute tes favoris" :
@@ -485,9 +549,7 @@ function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
         p.pop.crossover_prob = clamp(round(p.pop.crossover_prob + inc * 0.1; digits = 2), 0.0, 1.0)
     elseif row == 4        # élitisme
         p.pop.elitism = clamp(p.pop.elitism + inc, 0, p.pop.gen_size - 1)
-    elseif row == 5        # sustain d'écoute
-        p.sustain = clamp(round(p.sustain + inc * 0.1; digits = 2), 0.1, 8.0)
-    elseif row == 6        # stratégie (cycle dans GA_STRATEGIES)
+    elseif row == 5        # stratégie (cycle dans GA_STRATEGIES)
         i = something(findfirst(==(p.pop.strategy), GA_STRATEGIES), 1)
         p.pop.strategy = GA_STRATEGIES[mod1(i + inc, length(GA_STRATEGIES))]
     end
@@ -513,11 +575,10 @@ function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
             ("rayon divergence",   string(round(p.radius; digits = 2))),
             ("proba croisement",   string(round(p.pop.crossover_prob; digits = 2))),
             ("élitisme (favoris)", string(p.pop.elitism)),
-            ("sustain (écoute)",   string(round(p.sustain; digits = 2))),
             ("stratégie",          get(_GA_STRATEGY_NAMES, p.pop.strategy, "?"))]
     # Per-row description; the strategy row shows its full meaning.
     descs = [_GA_PANEL_DESC[1], _GA_PANEL_DESC[2], _GA_PANEL_DESC[3],
-             _GA_PANEL_DESC[4], _GA_PANEL_DESC[5], _ga_strategy_long(p.pop.strategy)]
+             _GA_PANEL_DESC[4], _ga_strategy_long(p.pop.strategy)]
     desc_x = inner.x + 36                      # description column (past values)
     for (i, (label, val)) in enumerate(rows)
         sel = i == p.ga_cursor
@@ -586,8 +647,9 @@ function _explorer_keyboard_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
     if ch isa Char && haskey(_KB_SEMITONES, ch)
         osc = _explorer_osc(); osc === nothing && return true
         _explorer_ensure_defined!(p, osc)
-        freq = 220.0 * 2.0 ^ (_KB_SEMITONES[ch] / 12.0)
-        audition_play!(p.audition, osc, p.focus, freq, p.sustain)
+        g = p.pop.candidates[p.focus].genome
+        freq = control(g, :freq) * 2.0 ^ (_KB_SEMITONES[ch] / 12.0)
+        audition_play!(p.audition, osc, p.focus, freq, control(g, :sustain))
         return true
     end
     return true   # en sous-mode clavier on consomme tout

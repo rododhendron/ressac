@@ -96,3 +96,20 @@ using Ressac
         @test occursin(".value", d)
     end
 end
+
+@testset "genome controls bake into the render + survive round-trip" begin
+    g = Ressac.Genome()
+    s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+    g.output_id = s
+    g.controls[:freq] = 110.0
+    g.controls[:sustain] = 1.5
+    g.controls[:release] = 0.8
+    out = Ressac.render_synthdef(g, :x)
+    @test occursin("freq = 110.0", out)
+    @test occursin("sustain = 1.5", out)
+    @test occursin("Env.linen(0.01, sustain, 0.8)", out)
+    # controls round-trip through serialization
+    g2 = Ressac.deserialize_genome(Ressac.serialize_genome(g))
+    @test Ressac.control(g2, :freq) == 110.0
+    @test Ressac.control(g2, :release) == 0.8
+end

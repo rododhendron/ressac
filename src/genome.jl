@@ -19,10 +19,18 @@ mutable struct Genome
     nodes::Dict{Int,UGenNode}
     output_id::Int          # 0 = pas encore de sortie
     next_id::Int
+    controls::Dict{Symbol,Float64}   # défauts joués/exportés (freq, sustain, …)
 end
-Genome() = Genome(Dict{Int,UGenNode}(), 0, 1)
+Genome() = Genome(Dict{Int,UGenNode}(), 0, 1, default_controls())
 
 const CONTROL_NAMES = (:freq, :sustain, :gain)
+
+# Contrôles éditables d'un son + leurs valeurs par défaut.
+default_controls() = Dict{Symbol,Float64}(
+    :freq => 220.0, :sustain => 0.5, :gain => 0.5, :release => 0.1)
+const CONTROL_EDIT_ORDER = (:freq, :sustain, :gain, :release)
+control(g::Genome, name::Symbol) =
+    get(g.controls, name, get(default_controls(), name, 0.0))
 
 function add_node!(g::Genome, ugen::Symbol, rate::Symbol, args::Vector{Arg})
     id = g.next_id

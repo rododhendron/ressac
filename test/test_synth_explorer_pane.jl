@@ -545,3 +545,51 @@ end
         @test pane.pop.candidates[idx].weight < 0
     end
 end
+
+@testset "synth explorer pane — per-candidate param editor (p)" begin
+    @testset "p opens, j/k navigate, ←/→ edit, Esc closes" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 6))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('p'))
+        @test p.param_edit == true
+        g = p.pop.candidates[p.focus].genome
+        f0 = Ressac.control(g, :freq)              # row 1 = freq
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:right))
+        @test Ressac.control(g, :freq) > f0
+        # move to sustain (row 2) and bump
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))
+        s0 = Ressac.control(g, :sustain)
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:right))
+        @test Ressac.control(g, :sustain) > s0
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.param_edit == false
+    end
+
+    @testset "r resets the focused candidate's controls" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 6))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('p'))
+        g = p.pop.candidates[p.focus].genome
+        g.controls[:freq] = 1234.0
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('r'))
+        @test Ressac.control(g, :freq) == Ressac.default_controls()[:freq]
+    end
+
+    @testset "edits ride along into mutation (inherited)" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 6))
+        p.pop.candidates[1].genome.controls[:freq] = 99.0
+        Ressac.favor!(p.pop, 1)
+        # champion strategy → all children descend from candidate 1
+        p.pop.strategy = :champion
+        Ressac.next_generation!(p.pop, p.rng)
+        @test all(c -> Ressac.control(c.genome, :freq) == 99.0, p.pop.candidates)
+    end
+
+    @testset "param editor renders the control rows" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 6))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('p'))
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("PARAMS", whole)
+        @test occursin("release", whole)
+    end
+end
