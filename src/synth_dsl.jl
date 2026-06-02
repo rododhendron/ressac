@@ -769,6 +769,38 @@ With params + opts (any combo):
 REPL / no-file context: an alias is required and becomes the SC
 name (no filename to fall back on).
 """
+# A single `(key=val)` without a trailing comma parses as a bare
+# assignment Expr, not a NamedTuple — splatting it later throws a
+# BoundsError. Wrap such bare assignments into a 1-tuple so both
+# `(auto_env=false)` and `(auto_env=false,)` work the same. Already-
+# tuple forms and everything else pass through unchanged.
+function _normalize_kw_group(ex)
+    if ex isa Expr && ex.head === :(=)
+        return Expr(:tuple, ex)
+    end
+    return ex
+end
+
+"""
+    _dsl_preprocess(src) -> String
+
+Normalize a DSL source string before `Meta.parse` so a chain can put
+the pipe operator at the START of a continuation line. Julia only
+continues an expression onto the next line when the PREVIOUS line is
+syntactically incomplete, so a leading `|>` would be an orphan parse
+error. We join any `\\n<whitespace>|>` back onto the previous line.
+
+    sin_osc(:freq)
+      |> rlpf(800)        # ← leading pipe, joined to the line above
+      |> tanh_drive(3)
+
+Only `|>` is handled — it's unambiguously binary, so joining is
+always correct. Other operators (`-`, `+`) can be unary at line
+start, so we leave them alone.
+"""
+_dsl_preprocess(src::AbstractString) =
+    replace(String(src), r"\n[ \t]*\|>" => " |>")
+
 macro synth(args...)
     isempty(args) && return :(error("@synth: needs a body"))
     body = args[end]
@@ -780,8 +812,8 @@ macro synth(args...)
     else
         (nothing, rest)
     end
-    params = length(middle) >= 1 ? middle[1] : :(NamedTuple())
-    opts   = length(middle) >= 2 ? middle[2] : nothing
+    params = length(middle) >= 1 ? _normalize_kw_group(middle[1]) : :(NamedTuple())
+    opts   = length(middle) >= 2 ? _normalize_kw_group(middle[2]) : nothing
     # `__source__` is only bound inside the macro body. Capture its
     # `.file` here at expansion time and embed as a string literal in
     # the produced expression — referencing `__source__` from inside

@@ -34,7 +34,7 @@ function _dsl_entry(name::String, category::String, description::String,
                     auto_gain::Bool = true)
     # Validate the DSL recipe compiles at load time — catches typos
     # in the library itself before the user clicks anything.
-    sig = Core.eval(SynthDSL, Meta.parse(dsl_text))
+    sig = Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(dsl_text)))
     SynthDSL.build_synth(Symbol(name), sig;
                          params = params,
                          auto_env = auto_env,

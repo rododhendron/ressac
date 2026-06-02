@@ -5821,7 +5821,8 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
             # Eval in the SynthDSL submodule so unqualified UGen names
             # (saw, sin_osc, rlpf, …) resolve. Main only has the Pattern
             # signal variants of the colliding names (saw, tri, square).
-            Core.eval(SynthDSL, Meta.parse(src))
+            # _dsl_preprocess joins leading-`|>` continuation lines.
+            Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(src)))
             _push_app_log!(m, "[INFO] T — test $(tab.name) (DSL → compiled SC)")
         catch err
             _push_app_log!(m, "[ERROR] DSL eval: $(sprint(showerror, err))")

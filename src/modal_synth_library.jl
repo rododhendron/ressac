@@ -81,7 +81,7 @@ function _preview_synth_from_library!(m::RessacApp)
             # Evaluate in SynthDSL scope so the UGen wrappers (saw,
             # sin_osc, rlpf, …) resolve. Evaluating in Main produces
             # `saw not defined in Main` for any unqualified usage.
-            Core.eval(SynthDSL, Meta.parse(entry.source))
+            Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(entry.source)))
             _push_app_log!(m, "[INFO] preview $(entry.name) (DSL)")
         catch err
             _push_app_log!(m, "[ERROR] preview DSL: $(sprint(showerror, err))")

@@ -99,6 +99,39 @@ end
     end
 end
 
+@testset "synth DSL — leading-pipe + bare kw group" begin
+    @testset "_dsl_preprocess joins leading |> onto previous line" begin
+        src = "sin_osc(:freq)\n  |> rlpf(800)\n  |> tanh_drive(3)"
+        out = SynthDSL._dsl_preprocess(src)
+        @test !occursin("\n  |>", out)        # no orphan leading pipe
+        @test occursin("sin_osc(:freq) |> rlpf(800) |> tanh_drive(3)", out)
+    end
+
+    @testset "leading-pipe DSL parses + evals" begin
+        src = """
+        sin_osc(:freq)
+          |> rlpf(800, 0.3)
+          |> tanh_drive(3)
+        """
+        sig = Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(src)))
+        @test occursin("SinOsc.ar", sig.code)
+        @test occursin("RLPF.ar", sig.code)
+        @test occursin(".tanh", sig.code)
+    end
+
+    @testset "bare (key=val) opts without trailing comma works" begin
+        # _normalize_kw_group wraps a bare assignment into a 1-tuple
+        # so `(auto_env=false)` behaves like `(auto_env=false,)`.
+        src = """
+        @synth :baretest (freq=65) (auto_env=false) begin
+          sin_osc(:freq)
+        end
+        """
+        # Should parse + eval without a BoundsError.
+        @test (Core.eval(SynthDSL, Meta.parse(src)); true)
+    end
+end
+
 @testset "synth DSL — env() + env_gen() raw envelope control" begin
     @testset "env() builds an Env spec Sig" begin
         e = SynthDSL.env([0, 1, 0], [0.01, 0.5])
