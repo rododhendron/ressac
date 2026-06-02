@@ -218,6 +218,7 @@ function render!(p::SynthExplorerPane, area, buf)
                        first(prompt, inner.width), TK.tstyle(:warning, bold = true))
     end
     p.inspect && _render_inspect_overlay!(p, inner, buf)
+    p.ga_panel && _render_ga_panel!(p, inner, buf)
     return nothing
 end
 
@@ -302,6 +303,19 @@ function handle_key!(p::SynthExplorerPane, evt)
             (p.inspect = false)
         return true
     end
+    if p.show_lineage
+        (evt.key === :escape || evt.char == 'L' || evt.char == 'q') &&
+            (p.show_lineage = false)
+        return true
+    end
+    if p.show_help
+        (evt.key === :escape || evt.char == '?' || evt.char == 'q') &&
+            (p.show_help = false)
+        return true
+    end
+    if p.ga_panel
+        return _explorer_ga_panel_key!(p, evt)
+    end
     if p.keyboard_mode
         return _explorer_keyboard_key!(p, evt)    # Task 11
     end
@@ -335,7 +349,69 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 's' && (p.naming = :seed;   p.name_buf = ""; return true)
     ch == 'w' && (p.naming = :synth;  p.name_buf = ""; return true)
     ch == 'e' && (p.naming = :export; p.name_buf = ""; return true)
+    # overlays / panels
+    ch == 'L' && (p.show_lineage = true; return true)
+    ch == '?' && (p.show_help = true;    return true)
+    ch == 'g' && (p.ga_panel = true; p.ga_cursor = 1; return true)
     return false
+end
+
+# ── GA settings sub-mode (`g`) ─────────────────────────────────────
+# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme.
+const _GA_PANEL_ROWS = 4
+
+function _explorer_ga_panel_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
+    ch = evt.char; k = evt.key
+    if k === :escape || ch == 'g'
+        p.ga_panel = false
+        return true
+    end
+    (ch == 'j' || k === :down) && (p.ga_cursor = clamp(p.ga_cursor + 1, 1, _GA_PANEL_ROWS); return true)
+    (ch == 'k' || k === :up)   && (p.ga_cursor = clamp(p.ga_cursor - 1, 1, _GA_PANEL_ROWS); return true)
+    inc = (ch == 'l' || k === :right || ch == '+') ?  1 :
+          (ch == 'h' || k === :left  || ch == '-') ? -1 : 0
+    inc == 0 && return true
+    _ga_panel_adjust!(p, p.ga_cursor, inc)
+    return true
+end
+
+function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
+    if row == 1            # taille génération (bornée au pool d'audition)
+        p.pop.gen_size = clamp(p.pop.gen_size + inc, 2, _GA_GEN_SIZE)
+        p.pop.elitism  = clamp(p.pop.elitism, 0, p.pop.gen_size - 1)
+    elseif row == 2        # rayon de divergence
+        p.radius = clamp(round(p.radius + inc * 0.1; digits = 2), 0.0, 1.0)
+        p.pop.radius = p.radius
+    elseif row == 3        # proba de croisement
+        p.pop.crossover_prob = clamp(round(p.pop.crossover_prob + inc * 0.1; digits = 2), 0.0, 1.0)
+    elseif row == 4        # élitisme
+        p.pop.elitism = clamp(p.pop.elitism + inc, 0, p.pop.gen_size - 1)
+    end
+    return
+end
+
+function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
+    blank = " "^inner.width
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
+    end
+    TK.set_string!(buf, inner.x, inner.y, first("RÉGLAGES GA", inner.width),
+                   TK.tstyle(:accent, bold = true))
+    rows = [("taille génération", string(p.pop.gen_size)),
+            ("rayon divergence",  string(round(p.radius; digits = 2))),
+            ("proba croisement",  string(round(p.pop.crossover_prob; digits = 2))),
+            ("élitisme (favoris)", string(p.pop.elitism))]
+    for (i, (label, val)) in enumerate(rows)
+        sel = i == p.ga_cursor
+        cursor = sel ? "▸ " : "  "
+        line = "$cursor$(rpad(label, 22)) $val"
+        TK.set_string!(buf, inner.x, inner.y + 1 + i,
+                       first(line, inner.width),
+                       sel ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+    end
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                   "j/k choisir · ←/→ ajuster · Esc/g fermer", TK.tstyle(:text_dim))
+    return nothing
 end
 
 function _explorer_naming_key!(p::SynthExplorerPane, evt::TK.KeyEvent)

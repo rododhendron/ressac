@@ -381,3 +381,51 @@ end
         @test found
     end
 end
+
+@testset "synth explorer pane — GA settings panel (g)" begin
+    @testset "g opens the panel, Esc closes" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 4))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
+        @test p.ga_panel == true
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.ga_panel == false
+    end
+
+    @testset "←/→ adjust the selected GA param" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 4))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
+        # row 1 = gen_size
+        before = p.pop.gen_size
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:left))
+        @test p.pop.gen_size == before - 1
+        # move to row 3 (crossover) and bump it
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))
+        xb = p.pop.crossover_prob
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:right))
+        @test p.pop.crossover_prob > xb
+    end
+
+    @testset "gen_size is bounded to the audition pool" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 4))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
+        for _ in 1:20
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:right))   # row 1
+        end
+        @test p.pop.gen_size <= 9
+        for _ in 1:20
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:left))
+        end
+        @test p.pop.gen_size >= 2
+    end
+
+    @testset "panel renders the rows" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 4))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("RÉGLAGES GA", whole)
+        @test occursin("croisement", whole)
+    end
+end
