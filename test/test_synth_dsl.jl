@@ -98,3 +98,35 @@ end
         @test occursin("LorenzL.ar(freq,", s.code)
     end
 end
+
+@testset "synth DSL — env() + env_gen() raw envelope control" begin
+    @testset "env() builds an Env spec Sig" begin
+        e = SynthDSL.env([0, 1, 0], [0.01, 0.5])
+        @test occursin("Env([0, 1, 0], [0.01, 0.5]", e.code)
+        @test occursin("\\lin", e.code)
+    end
+
+    @testset "env_gen exposes every EnvGen arg" begin
+        e = SynthDSL.env([0, 1, 0], [0.01, 0.5])
+        s = SynthDSL.saw(:freq) |> SynthDSL.env_gen(e; gate=:gate,
+            level_scale=0.8, level_bias=0.1, time_scale=2, done_action=2)
+        @test occursin("EnvGen.kr(", s.code)
+        @test occursin("gate", s.code)            # gate arg threaded
+        @test occursin("0.8", s.code)             # level_scale
+        @test occursin("0.1", s.code)             # level_bias
+        @test occursin("doneAction: 2", s.code)
+    end
+
+    @testset "env_gen accepts a raw Env.<shape> Sig" begin
+        s = SynthDSL.sin_osc(:freq) |>
+            SynthDSL.env_gen(SynthDSL.Sig("Env.perc(0.01, 1)"))
+        @test occursin("Env.perc(0.01, 1)", s.code)
+        @test occursin("EnvGen.kr(", s.code)
+    end
+
+    @testset "env_gen default done_action frees the synth" begin
+        e = SynthDSL.env([0, 1, 0], [0.01, 0.5])
+        s = SynthDSL.saw(:freq) |> SynthDSL.env_gen(e)
+        @test occursin("doneAction: 2", s.code)
+    end
+end

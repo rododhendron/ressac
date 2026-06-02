@@ -584,6 +584,8 @@ const _DSL_DOCS = Dict{String,String}(
     "sc_arg"  => "sc_arg(x) — render a Julia value (Sig / Symbol / Real / Array) as SC source. Used by every DSL wrapper.",
     "ugen"    => "ugen(name, args...; rate=\"ar\") — generic raw UGen builder for UGens not exposed as a DSL helper.",
     "register_synth!" => "register_synth!(entry::SynthEntry) — install a synth into the global registry (called by @synth).",
+    "env"     => "env(levels, times; curve=:lin) — build a raw SC Env spec as a Sig. Feed it to env_gen for full control.",
+    "env_gen" => "env_gen(envspec; gate=1, level_scale=1, level_bias=0, time_scale=1, done_action=2) — raw EnvGen.kr wrapper, exposes every arg. Pipe: `sig |> env_gen(e)`.",
 )
 
 """

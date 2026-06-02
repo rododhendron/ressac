@@ -61,7 +61,7 @@ export tanh_drive, soft_clip, cubic, clip, fold, wrap, decimator
 export amp, offset, abs_sig, sqrt_sig, pow_sig
 # Envelopes
 export env_perc, env_linen, env_adsr, env_asr, env_cutoff, env_sine
-export env_dadsr, env_pairs
+export env_dadsr, env_pairs, env, env_gen
 # Triggers / pitch
 export trig_kr, t_delay, pitch_shift, freq_shift, vibrato_sig
 # Rate conversion
@@ -425,6 +425,54 @@ env_dadsr(delay, attack, decay, sustain_level, release; gate=:gate, peak=1, curv
 
 env_pairs(times::AbstractVector, levels::AbstractVector; curve=:lin) = (s::Sig) ->
     Sig("($(sc_arg(s)) * EnvGen.kr(Env($(sc_arg(levels)), $(sc_arg(times)), $(sc_sym(curve))), doneAction: 2))")
+
+"""
+    env(levels, times; curve=:lin, release_node=-99, loop_node=-99) -> Sig
+
+Build a raw SC `Env(levels, times, curve, releaseNode, loopNode)`
+envelope spec as a Sig. `levels` is a vector of breakpoint values
+and `times` the durations between them (one fewer than `levels`).
+Feed the result to `env_gen` for full EnvGen control, or use the
+named `env_*` helpers for the common shapes.
+
+```julia
+e = env([0, 1, 0.3, 0], [0.01, 0.2, 0.5])
+saw(:freq) |> env_gen(e; gate=:gate)
+```
+"""
+env(levels::AbstractVector, times::AbstractVector; curve=:lin,
+    release_node=-99, loop_node=-99) =
+    Sig("Env($(sc_arg(levels)), $(sc_arg(times)), $(sc_sym(curve)), " *
+        "$(sc_arg(release_node)), $(sc_arg(loop_node)))")
+
+"""
+    env_gen(envspec; gate=1, level_scale=1, level_bias=0, time_scale=1,
+            done_action=2) -> (Sig -> Sig)
+
+Raw `EnvGen.kr` wrapper. Unlike the curried `env_*` helpers (which
+bake `doneAction: 2` and a fixed shape), `env_gen` exposes every
+EnvGen argument:
+
+  * `gate`        — re-trigger / hold input (use `:gate` for the
+                    SuperDirt gate so the env releases on note-off)
+  * `level_scale` — multiply the envelope output
+  * `level_bias`  — add a constant offset to the output
+  * `time_scale`  — stretch the whole envelope in time
+  * `done_action` — what the synth does when the env finishes
+                    (2 = free the synth; 0 = nothing)
+
+`envspec` is a Sig holding an `Env` construction — build one with
+`env(...)` or wrap a raw `Sig("Env.perc(0.01, 1)")`.
+
+Returns a pipe-style multiplier: `saw(:freq) |> env_gen(my_env)`.
+"""
+function env_gen(envspec; gate=1, level_scale=1, level_bias=0,
+                 time_scale=1, done_action=2)
+    return (s::Sig) -> Sig("($(sc_arg(s)) * EnvGen.kr(" *
+        "$(sc_arg(envspec)), $(sc_arg(gate)), $(sc_arg(level_scale)), " *
+        "$(sc_arg(level_bias)), $(sc_arg(time_scale)), " *
+        "doneAction: $(sc_arg(done_action))))")
+end
 
 # ════════════════════════════════════════════════════════════════════
 # Triggers / pitch / utility
