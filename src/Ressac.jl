@@ -40,6 +40,9 @@ include("plugin_registry.jl")    # _SAMPLE/INSTRUMENT/SYNTH_REGISTRY,
 include("synth_dsl.jl")          # SynthDSL: @synth, Sig, every ugen wrapper
 include("synth_library.jl")      # _SYNTH_LIBRARY entries (uses SynthDSL)
 
+# ─── GA synth explorer — modules purs (génome + GA, aucun SC/UI) ───
+include("genome.jl")             # Genome DAG + UGenSpec catalog
+
 # ─── Extension registry — plugin-contributed docs + snippets ──────
 include("extension_registry.jl")
 
