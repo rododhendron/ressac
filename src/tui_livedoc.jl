@@ -22,6 +22,24 @@ const _SC_UGEN_DOCS = Dict{String,String}(
     "PinkNoise"  => "PinkNoise.ar(mul=1) — natural-sounding noise (-3dB/oct).",
     "BrownNoise" => "BrownNoise.ar(mul=1) — deep rumble noise (-6dB/oct).",
     "Dust"       => "Dust.ar(density) — random impulses per sec.",
+    "Dust2"      => "Dust2.ar(density) — bipolar (-1..1) random impulses.",
+    "GrayNoise"  => "GrayNoise.ar(mul=1) — flat noise via bit-flipping; cheaper than WhiteNoise.",
+    "ClipNoise"  => "ClipNoise.ar(mul=1) — sample-and-hold +1/-1 noise (extreme harsh).",
+    "Crackle"    => "Crackle.ar(chaosParam=1.5, mul=1) — chaotic noise via x_{n+1} = abs(c·x_n − x_{n-1}).",
+    "Impulse"    => "Impulse.ar/.kr(freq, phase=0) — non-bandlimited single-sample impulse train.",
+    "Formant"    => "Formant.ar(fundfreq, formfreq, bwfreq) — formant-shaped oscillator.",
+    "Klang"      => "Klang.ar(specificationsArrayRef, freqscale=1, freqoffset=0) — bank of fixed sine oscs.",
+    # Chaos generators
+    "LorenzL"    => "LorenzL.ar(freq, s=10, r=28, b=2.667) — Lorenz attractor (linear).",
+    "HenonC"     => "HenonC.ar(freq, a=1.4, b=0.3) — Hénon map (cubic interp).",
+    "LogisticN"  => "LogisticN.ar(chaosParam=3.0, freq=1000) — logistic map x' = c·x·(1−x).",
+    "StandardN"  => "StandardN.ar(freq, k=1.0) — Chirikov standard map.",
+    "LatoocarfianC" => "LatoocarfianC.ar(freq, a=1, b=3, c=0.5, d=0.5) — Latoocarfian (Pickover) attractor.",
+    "LinCongC"   => "LinCongC.ar(freq, a=1.1, c=0.13, m=1.0) — linear congruential generator.",
+    "QuadC"      => "QuadC.ar(freq, a=1.0, b=-1.0, c=-0.75) — quadratic map.",
+    "FBSineC"    => "FBSineC.ar(freq, im=1, fb=0.1, a=1.1, c=0.5) — feedback sine.",
+    "GbmanC"     => "GbmanC.ar(freq) — Gingerbreadman attractor.",
+    "CuspC"      => "CuspC.ar(freq, a=1.0, b=1.9) — cusp catastrophe map.",
     # LFOs (control-rate)
     "LFSaw"      => "LFSaw.kr(freq) — low-frequency saw, for modulation.",
     "LFNoise0"   => "LFNoise0.kr(freq) — stepped random LFO.",
@@ -36,9 +54,17 @@ const _SC_UGEN_DOCS = Dict{String,String}(
     "BPF"        => "BPF.ar(in, freq, rq) — bandpass.",
     "MoogFF"     => "MoogFF.ar(in, freq, gain=2) — 4-pole Moog ladder filter, has self-oscillation.",
     "Resonz"     => "Resonz.ar(in, freq, bwr=1) — narrow resonator.",
-    # Envelopes
+    # Envelopes — generic + per-shape
     "EnvGen"     => "EnvGen.kr(env, gate=1, doneAction:0) — envelope generator. doneAction:2 frees the synth at end.",
-    "Env"        => "Env(levels, times, curves) / Env.adsr(a,d,s,r) / Env.linen(a,sus,r) / Env.perc(a,r) — envelope shape.",
+    "Env"        => "Env(levels, times, curves) — generic envelope spec. See Env.<shape> for the named presets.",
+    "Env.adsr"   => "Env.adsr(attack, decay, sustainLevel, release, peak=1, curve=-4) — classic attack/decay/sustain/release; gated.",
+    "Env.asr"    => "Env.asr(attack, sustainLevel, release, curve=-4) — attack/sustain/release; gated, no decay phase.",
+    "Env.dadsr"  => "Env.dadsr(delay, attack, decay, sustainLevel, release, peak=1, curve=-4) — adsr preceded by a silent delay.",
+    "Env.perc"   => "Env.perc(attack, release, level=1, curve=-4) — percussive: rise to level then exp decay. No sustain.",
+    "Env.linen"  => "Env.linen(attack, sustain, release, level=1, curve=:lin) — linear ramp up, hold, ramp down. Length = a+s+r.",
+    "Env.sine"   => "Env.sine(dur, level=1) — half-sine bump over `dur` seconds.",
+    "Env.cutoff" => "Env.cutoff(release, level=1, curve=:lin) — sustain until gate, then fade over `release`.",
+    "Env.pairs"  => "Env.pairs([[time,level], …], curve=:lin) — breakpoint envelope from (time, level) tuples.",
     "Line"       => "Line.kr(start, end, dur) — linear ramp.",
     "XLine"      => "XLine.kr(start, end, dur) — exponential ramp (start must be non-zero).",
     # Routing / output
@@ -55,12 +81,64 @@ const _SC_UGEN_DOCS = Dict{String,String}(
     "CombC"      => "CombC.ar(in, maxdelay, delay, decay) — comb-filter delay.",
     "AllpassC"   => "AllpassC.ar(in, maxdelay, delay, decay) — allpass delay (reverb building block).",
     "Decimator"  => "Decimator.ar(in, rate=44100, bits=24) — bit/sample-rate reducer (lofi).",
+    "DelayL"     => "DelayL.ar(in, maxdelay, delay) — linearly-interpolated delay.",
+    "CombN"      => "CombN.ar(in, maxdelay, delay, decay) — uninterpolated comb delay.",
+    "CombL"      => "CombL.ar(in, maxdelay, delay, decay) — linear-interp comb delay.",
+    "AllpassN"   => "AllpassN.ar(in, maxdelay, delay, decay) — uninterpolated allpass delay.",
+    "AllpassL"   => "AllpassL.ar(in, maxdelay, delay, decay) — linear-interp allpass delay.",
+    "Allpass"    => "Allpass.ar(in, ...) — generic allpass family (use AllpassC/L/N for concrete).",
+    "GVerb"      => "GVerb.ar(in, roomsize=10, revtime=3, damping=0.5) — modeled-room reverb.",
+    "Decay"      => "Decay.ar(in, decayTime=1.0) — exp decay of impulses; turns triggers into envelopes.",
+    "Decay2"     => "Decay2.ar(in, attackTime=0.01, decayTime=1.0) — Decay with attack ramp; no click.",
+    # Filters extras
+    "BRF"        => "BRF.ar(in, freq, rq) — band-reject (notch) filter.",
+    "LeakDC"     => "LeakDC.ar(in, coef=0.995) — strip DC offset from an audio signal.",
+    "Median"     => "Median.ar(length, in) — median of last `length` samples; removes spikes.",
+    "Slope"      => "Slope.kr(in) — sample-to-sample slope (derivative) of the input.",
+    "Ramp"       => "Ramp.kr(in, lagTime) — single-sample linear ramp toward each new input value.",
+    "Lag"        => "Lag.kr(in, lagTime=0.1) — exp smoothing (RC lag) — softens parameter jumps.",
+    "Lag2"       => "Lag2.kr(in, lagTime=0.1) — two cascaded Lags; smoother than Lag.",
+    "Lag3"       => "Lag3.kr(in, lagTime=0.1) — three cascaded Lags; smoothest.",
+    "BLowPass"   => "BLowPass.ar(in, freq=1200, rq=1) — biquad lowpass.",
+    "BHiPass"    => "BHiPass.ar(in, freq=1200, rq=1) — biquad highpass.",
+    "BPeakEQ"    => "BPeakEQ.ar(in, freq=1200, rq=1, db=0) — biquad peaking EQ.",
+    "BLowShelf"  => "BLowShelf.ar(in, freq=1200, rs=1, db=0) — biquad low shelf.",
+    "BHiShelf"   => "BHiShelf.ar(in, freq=1200, rs=1, db=0) — biquad high shelf.",
+    # LFO extras
+    "LFCub"      => "LFCub.kr(freq) — cubic-interpolated quasi-sine LFO.",
+    "LFPar"      => "LFPar.kr(freq) — parabolic LFO (smoother than triangle).",
+    # Spatial extras
+    "LinPan2"    => "LinPan2.ar(in, pos=0) — linear stereo pan (no power compensation).",
+    "Balance2"   => "Balance2.ar(left, right, pos=0, level=1) — fade between two channels.",
+    "Rotate2"    => "Rotate2.ar(xIn, yIn, pos=0) — rotate a stereo image in the plane.",
+    "Splay"      => "Splay.ar(inArray, spread=1, level=1, center=0) — spread N signals across stereo.",
+    "Mix"        => "Mix(array) — sum every signal in `array` into a single channel.",
+    # Triggers / pitch
+    "Trig"       => "Trig.kr(in, dur=0.1) — emit a high value for `dur` on rising edge.",
+    "TDelay"     => "TDelay.kr(in, dur) — re-emit triggers delayed by `dur` seconds.",
+    "PitchShift" => "PitchShift.ar(in, windowSize=0.2, pitchRatio=1, …) — granular pitch shifter.",
+    "FreqShift"  => "FreqShift.ar(in, freq=0, phase=0) — single-sideband frequency shifter.",
+    "Vibrato"    => "Vibrato.ar(freq=440, rate=6, depth=0.02, delay=0) — built-in vibrato oscillator.",
+    # Buffers
+    "PlayBuf"    => "PlayBuf.ar(numChannels, bufnum, rate=1, trigger=1, startPos=0, loop=0, doneAction=0) — sample playback.",
+    "BufRd"      => "BufRd.ar(numChannels, bufnum, phase=0, loop=1, interpolation=2) — read a buffer at an arbitrary phase.",
+    "GrainBuf"   => "GrainBuf.ar(numChannels, trigger, dur, sndbuf, rate=1, pos=0, interp=2, pan=0, envbufnum=-1, maxGrains=512) — granular playback.",
+    "Warp1"      => "Warp1.ar(numChannels, bufnum, pointer=0, freqScale=1, windowSize=0.2, envbufnum=-1, overlaps=8, …) — multi-grain time/pitch warp.",
+    # Rate conversion
+    "A2K"        => "A2K.kr(in) — audio-rate → control-rate (decimate).",
+    "K2A"        => "K2A.ar(in) — control-rate → audio-rate (upsample).",
     # Math / shaping
-    "tanh"       => "method .tanh — saturate input via hyperbolic tangent. Good cheap distortion.",
-    "clip"       => "method .clip(lo, hi) — hard-clip the value.",
-    "fold"       => "method .fold(lo, hi) — wave folding.",
-    "wrap"       => "method .wrap(lo, hi) — wrap modulo.",
-    "range"      => "method .range(lo, hi) — remap a -1..1 signal to lo..hi.",
+    "tanh"        => "method .tanh — saturate input via hyperbolic tangent. Good cheap distortion.",
+    "Tanh"        => "Tanh.ar(in) — UGen wrapper for .tanh; soft saturator, classic drive.",
+    "SoftClipper" => "SoftClipper.ar(in) — quadratic soft clip — less harmonics than tanh.",
+    "CubicDistort"=> "CubicDistort.ar(in) — cubic transfer function for asymmetric drive.",
+    "Clip"        => "Clip.ar(in, lo=-1, hi=1) — UGen wrapper for .clip(lo, hi).",
+    "Fold"        => "Fold.ar(in, lo=-1, hi=1) — UGen wrapper for .fold; wave folder.",
+    "Wrap"        => "Wrap.ar(in, lo=-1, hi=1) — UGen wrapper for .wrap; modulo wrap.",
+    "clip"        => "method .clip(lo, hi) — hard-clip the value.",
+    "fold"        => "method .fold(lo, hi) — wave folding.",
+    "wrap"        => "method .wrap(lo, hi) — wrap modulo.",
+    "range"       => "method .range(lo, hi) — remap a -1..1 signal to lo..hi.",
     # Common syntax
     "SynthDef"   => "SynthDef(\\name, { |params| ... }).add — register a synth graph. Params become OSC keys.",
     "doneAction" => "Envelope completion action. 0=do nothing, 2=free this synth (use to auto-cleanup).",
@@ -327,22 +405,186 @@ UGens), then strip a `.method` suffix and try the head. Returns
 """
 function _lookup_livedoc(word::AbstractString)
     isempty(word) && return nothing
-    e = lookup_doc(String(word))
+    w = String(word)
+    # 1. Plugin / user-contributed docs (last-wins highest priority).
+    e = lookup_doc(w)
     e !== nothing && return e.short
-    doc = get(_SC_UGEN_DOCS, String(word), nothing)
+    # 2. DSL-specific entries — for things we built ourselves with
+    #    no SC counterpart (chan, amp, the @synth macro, etc.).
+    haskey(_DSL_DOCS, w) && return _DSL_DOCS[w]
+    # 3. DSL function → SC UGen mapping. Most DSL helpers are thin
+    #    wrappers around a single UGen; this hop reuses the SC doc
+    #    automatically without hand-writing a description per wrapper.
+    if haskey(_DSL_TO_SCUGEN, w)
+        sc_key = _DSL_TO_SCUGEN[w]
+        doc = get(_SC_UGEN_DOCS, sc_key, nothing)
+        doc !== nothing && return doc
+    end
+    # 4. Direct SC UGen lookup (when the user writes SinOsc / LPF
+    #    verbatim in a Sig string).
+    doc = get(_SC_UGEN_DOCS, w, nothing)
     doc !== nothing && return doc
-    if occursin('.', word)
-        head, _ = split(word, '.'; limit=2)
+    if occursin('.', w)
+        head, _ = split(w, '.'; limit=2)
         doc = get(_SC_UGEN_DOCS, String(head), nothing)
         doc !== nothing && return doc
         e_head = lookup_doc(String(head))
         e_head !== nothing && return e_head.short
-        _, tail = split(word, '.'; limit=2)
+        _, tail = split(w, '.'; limit=2)
         doc = get(_SC_UGEN_DOCS, String(tail), nothing)
         doc !== nothing && return doc
     end
     return nothing
 end
+
+# ── DSL → SC UGen mapping ───────────────────────────────────────────
+# Snake-case DSL wrapper name → the primary SC UGen it wraps. For
+# functions that compose multiple UGens (the env_* family wrapping
+# both `EnvGen` and `Env.<shape>`), prefer the MORE SPECIFIC name
+# (Env.linen rather than EnvGen) so the user gets the per-shape doc.
+const _DSL_TO_SCUGEN = Dict{String,String}(
+    # Oscillators
+    "sin_osc"     => "SinOsc",
+    "saw"         => "Saw",
+    "pulse"       => "Pulse",
+    "tri"         => "LFTri",
+    "square"      => "LFPulse",
+    "var_saw"     => "VarSaw",
+    "blip"        => "Blip",
+    "formant"     => "Formant",
+    "klang"       => "Klang",
+    "impulse_ar"  => "Impulse",
+    "impulse_kr"  => "Impulse",
+    # Noise
+    "white"       => "WhiteNoise",
+    "pink"        => "PinkNoise",
+    "brown"       => "BrownNoise",
+    "gray"        => "GrayNoise",
+    "clip_noise"  => "ClipNoise",
+    "crackle"     => "Crackle",
+    "dust"        => "Dust",
+    "dust2"       => "Dust2",
+    "lf_noise0"   => "LFNoise0",
+    "lf_noise1"   => "LFNoise1",
+    "lf_noise2"   => "LFNoise2",
+    # Chaos
+    "lorenz"      => "LorenzL",
+    "henon"       => "HenonC",
+    "logistic"    => "LogisticN",
+    "standard_map"=> "StandardN",
+    "latoo"       => "LatoocarfianC",
+    "lincong"     => "LinCongC",
+    "quad"        => "QuadC",
+    "fbsine"      => "FBSineC",
+    "gbman"       => "GbmanC",
+    "cusp"        => "CuspC",
+    # LFOs (control-rate)
+    "lfo"         => "SinOsc",
+    "lfo_saw"     => "LFSaw",
+    "lfo_tri"     => "LFTri",
+    "lfo_pulse"   => "LFPulse",
+    "lf_cub"      => "LFCub",
+    "lf_par"      => "LFPar",
+    # Ramps / lags
+    "line"        => "Line",
+    "x_line"      => "XLine",
+    "ramp_kr"     => "Ramp",
+    "lag_kr"      => "Lag",
+    "lag2_kr"     => "Lag2",
+    "lag3_kr"     => "Lag3",
+    # Filters
+    "low_pass"    => "LPF",
+    "high_pass"   => "HPF",
+    "band_pass"   => "BPF",
+    "band_reject" => "BRF",
+    "rlpf"        => "RLPF",
+    "rhpf"        => "RHPF",
+    "moog_ff"     => "MoogFF",
+    "leak_dc"     => "LeakDC",
+    "median"      => "Median",
+    "slope_kr"    => "Slope",
+    # Biquad
+    "b_low_pass"  => "BLowPass",
+    "b_high_pass" => "BHiPass",
+    "b_peak_eq"   => "BPeakEQ",
+    "b_low_shelf" => "BLowShelf",
+    "b_high_shelf"=> "BHiShelf",
+    # Delays / combs / allpass
+    "delay_n"     => "DelayN",
+    "delay_l"     => "DelayL",
+    "delay_c"     => "DelayC",
+    "comb_n"      => "CombN",
+    "comb_l"      => "CombL",
+    "comb_c"      => "CombC",
+    "allpass_n"   => "AllpassN",
+    "allpass_l"   => "AllpassL",
+    "allpass_c"   => "AllpassC",
+    # Reverb / decay
+    "free_verb"   => "FreeVerb",
+    "g_verb"      => "GVerb",
+    "decay"       => "Decay",
+    "decay2"      => "Decay2",
+    # FX
+    "chorus"      => "DelayC",      # implemented as modulated delay
+    "flanger"     => "DelayC",
+    "phaser"      => "Allpass",
+    # Granular
+    "grain_buf"   => "GrainBuf",
+    "warp1"       => "Warp1",
+    # Spatial
+    "stereo_pan"  => "Pan2",
+    "stereo_pan_lin" => "LinPan2",
+    "stereo_balance" => "Balance2",
+    "stereo_rotate"  => "Rotate2",
+    "splay"       => "Splay",
+    "mix_sigs"    => "Mix",
+    # Distortion / shaping
+    "tanh_drive"  => "Tanh",
+    "soft_clip"   => "SoftClipper",
+    "cubic"       => "CubicDistort",
+    "clip"        => "Clip",
+    "fold"        => "Fold",
+    "wrap"        => "Wrap",
+    "decimator"   => "Decimator",
+    # Envelopes — point at Env.<shape> for the specific doc.
+    "env_perc"    => "Env.perc",
+    "env_linen"   => "Env.linen",
+    "env_adsr"    => "Env.adsr",
+    "env_asr"     => "Env.asr",
+    "env_cutoff"  => "Env.cutoff",
+    "env_sine"    => "Env.sine",
+    "env_dadsr"   => "Env.dadsr",
+    "env_pairs"   => "Env.pairs",
+    # Triggers
+    "trig_kr"     => "Trig",
+    "t_delay"     => "TDelay",
+    "pitch_shift" => "PitchShift",
+    "freq_shift"  => "FreqShift",
+    "vibrato_sig" => "Vibrato",
+    # Rate converters
+    "to_kr"       => "A2K",
+    "to_ar"       => "K2A",
+    # Buffer reads
+    "play_buf"    => "PlayBuf",
+    "buf_rd"      => "BufRd",
+)
+
+# ── DSL-specific docs ───────────────────────────────────────────────
+# For DSL constructs that have no direct SC counterpart — wrappers
+# that bake multiple UGens, value combinators, the @synth macro, etc.
+const _DSL_DOCS = Dict{String,String}(
+    "@synth" => "@synth :name (params...) begin <Sig pipeline> end — declares a SC SynthDef compiled from a DSL pipeline.",
+    "Sig"    => "Sig(\"<raw SC code>\") — escape hatch: wrap arbitrary SC source as a Sig for further DSL composition.",
+    "chan"   => "chan(elems...) — emit an SC `[a, b, …]` multichannel array as a single Sig. Compose with `.+` for per-channel arithmetic.",
+    "amp"    => "amp(x) — pipe-style amplitude multiply: `sig |> amp(0.5)` = `sig * 0.5`.",
+    "offset" => "offset(x) — pipe-style additive offset: `sig |> offset(0.1)`.",
+    "abs_sig"=> "abs_sig(s) — absolute value of a Sig (`s.abs` in SC).",
+    "sqrt_sig"=> "sqrt_sig(s) — square root (`s.sqrt` in SC).",
+    "pow_sig" => "pow_sig(s, n) — raise Sig to a power (`s.pow(n)` in SC).",
+    "sc_arg"  => "sc_arg(x) — render a Julia value (Sig / Symbol / Real / Array) as SC source. Used by every DSL wrapper.",
+    "ugen"    => "ugen(name, args...; rate=\"ar\") — generic raw UGen builder for UGens not exposed as a DSL helper.",
+    "register_synth!" => "register_synth!(entry::SynthEntry) — install a synth into the global registry (called by @synth).",
+)
 
 """
     _livedoc_line(m)
