@@ -62,3 +62,55 @@ using Random
         @test s1 == s2
     end
 end
+
+@testset "ga_engine — lineage + GA params" begin
+    base() = Ressac.archetype(:drone_grave)
+
+    @testset "init assigns unique ids + 'graine' origin" begin
+        pop = Ressac.init_population(base(), 9, MersenneTwister(1); radius = 0.5)
+        ids = [c.id for c in pop.candidates]
+        @test length(unique(ids)) == 9
+        @test all(c -> c.origin == "graine", pop.candidates)
+        @test pop.gen_size == 9
+    end
+
+    @testset "next_generation records origins (élite / muté / ×)" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(2); radius = 0.5)
+        Ressac.favor!(pop, 1); Ressac.favor!(pop, 2)
+        Ressac.next_generation!(pop, MersenneTwister(2))
+        origins = [c.origin for c in pop.candidates]
+        @test any(o -> startswith(o, "élite"), origins)
+        @test any(o -> startswith(o, "muté") || startswith(o, "×"), origins)
+        @test all(c -> c.id > 0, pop.candidates)
+    end
+
+    @testset "lineage_chain walks ancestry newest-first" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(3); radius = 0.5)
+        Ressac.favor!(pop, 1)
+        Ressac.next_generation!(pop, MersenneTwister(3))
+        Ressac.favor!(pop, 1)
+        Ressac.next_generation!(pop, MersenneTwister(3))
+        chain = Ressac.lineage_chain(pop, pop.candidates[1].id)
+        @test chain[1].id == pop.candidates[1].id
+        @test length(chain) >= 2          # at least itself + a parent
+    end
+
+    @testset "GA params drive next_generation (gen_size, elitism)" begin
+        pop = Ressac.init_population(base(), 9, MersenneTwister(4); radius = 0.5)
+        pop.gen_size = 6
+        pop.elitism = 2
+        Ressac.favor!(pop, 1); Ressac.favor!(pop, 2); Ressac.favor!(pop, 3)
+        Ressac.next_generation!(pop, MersenneTwister(4))
+        @test length(pop.candidates) == 6
+        # two elites preserved as-is
+        @test count(c -> startswith(c.origin, "élite"), pop.candidates) == 2
+    end
+
+    @testset "crossover_prob = 0 → only mutations" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(5); radius = 0.5)
+        pop.crossover_prob = 0.0
+        Ressac.favor!(pop, 1); Ressac.favor!(pop, 2)
+        Ressac.next_generation!(pop, MersenneTwister(5))
+        @test !any(c -> startswith(c.origin, "×"), pop.candidates)
+    end
+end
