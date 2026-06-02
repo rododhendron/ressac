@@ -506,3 +506,25 @@ end
         @test Ressac.handle_mouse!(p, mev(999, 999, Tachikoma.mouse_left)) == false
     end
 end
+
+@testset "synth explorer pane — scroll-to-rate via the app" begin
+    # _new_app() is defined in test_ui_integration.jl (loaded earlier);
+    # :explorer is registered because this file re-includes the pane.
+    @testset "scroll over a card favors/devalues the hovered candidate" begin
+        app, frame = _new_app()
+        Ressac.cmd_vsplit!(app.workspaces, "explorer", Dict{String,Any}("rng" => 5))
+        Tachikoma.view(app, frame)              # fills _last_ws_area + cell_rects
+        ws = Ressac.current_workspace(app.workspaces)
+        leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+        pane = leaf.tabs[leaf.current_tab]
+        @test pane isa Ressac.SynthExplorerPane
+        @test !isempty(pane.cell_rects)
+        (idx, (cx, cy, cw, ch)) = pane.cell_rects[2]
+        mev(btn) = Tachikoma.MouseEvent(cx + 1, cy + 1, btn, Tachikoma.mouse_press,
+                                        false, false, false)
+        @test Ressac._workspace_scroll_to_pane!(app, mev(Tachikoma.mouse_scroll_up)) == true
+        @test pane.pop.candidates[idx].weight > 0
+        @test Ressac._workspace_scroll_to_pane!(app, mev(Tachikoma.mouse_scroll_down)) == true
+        @test pane.pop.candidates[idx].weight < 0
+    end
+end

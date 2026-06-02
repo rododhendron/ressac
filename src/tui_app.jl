@@ -411,9 +411,11 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
        evt.button === TK.mouse_left
         _modal_click!(m, evt.x, evt.y); return
     end
-    # Wheel — context-aware.
+    # Wheel — context-aware. Give the pane under the cursor first dibs
+    # (the explorer rates candidates on scroll); fall back to the legacy
+    # wheel handler (log / editor scroll) when no pane consumes it.
     if evt.button === TK.mouse_scroll_up || evt.button === TK.mouse_scroll_down
-        _mouse_wheel!(m, evt)
+        _workspace_scroll_to_pane!(m, evt) || _mouse_wheel!(m, evt)
         return
     end
     # Left-click routing.
@@ -528,6 +530,30 @@ function _drain_explorer_export!(m::RessacApp)
             TK.set_text!(pane.tabs[pane.current_tab].code_editor, dsl)
     end
     return true
+end
+
+"""
+    _workspace_scroll_to_pane!(m, evt) -> Bool
+
+Route a scroll event to the tile pane under the cursor, returning true
+only if that pane's `handle_mouse!` consumed it. Lets panes that care
+about the wheel (the synth explorer rates candidates) intercept it
+while editors / logs fall through to the legacy `_mouse_wheel!`.
+"""
+function _workspace_scroll_to_pane!(m::RessacApp, evt::TK.MouseEvent)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return false
+    m._last_ws_area === nothing && return false
+    rects = _compute_rects(ws.tree, m._last_ws_area)
+    for (leaf_id, r) in rects
+        if _in_rect_xywh(r.x, r.y, r.w, r.h, evt.x, evt.y)
+            leaf = _find_leaf_by_id(ws.tree, leaf_id)
+            (leaf isa PaneLeaf && !isempty(leaf.tabs) &&
+             1 <= leaf.current_tab <= length(leaf.tabs)) || return false
+            return handle_mouse!(leaf.tabs[leaf.current_tab], evt) === true
+        end
+    end
+    return false
 end
 
 """
