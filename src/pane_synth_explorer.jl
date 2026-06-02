@@ -331,10 +331,20 @@ function _move_focus!(p::SynthExplorerPane, d::Int)
     return true
 end
 
+# Make sure the current generation's SynthDefs are loaded in SC before
+# we play one by name (gen 0 is never enqueued at ctor time — no osc).
+function _explorer_ensure_defined!(p::SynthExplorerPane, osc)
+    if p.audition.defined_gen != p.pop.generation
+        enqueue_generation!(p.audition, osc, [c.genome for c in p.pop.candidates])
+        p.audition.defined_gen = p.pop.generation
+    end
+    return nothing
+end
+
 function _explorer_play_focus!(p::SynthExplorerPane)
     osc = _explorer_osc(); osc === nothing && return true
-    c = p.pop.candidates[p.focus]
-    audition_play!(p.audition, osc, p.focus, c.genome, 220.0, 0.6)
+    _explorer_ensure_defined!(p, osc)
+    audition_play!(p.audition, osc, p.focus, 220.0, 0.6)
     return true
 end
 
@@ -342,9 +352,10 @@ function _explorer_next_gen!(p::SynthExplorerPane)
     p.pop.radius = p.radius
     next_generation!(p.pop, p.rng)
     osc = _explorer_osc()
-    osc === nothing ||
-        enqueue_generation!(p.audition, osc,
-                            [c.genome for c in p.pop.candidates])
+    if osc !== nothing
+        enqueue_generation!(p.audition, osc, [c.genome for c in p.pop.candidates])
+        p.audition.defined_gen = p.pop.generation
+    end
     p.focus = 1
     return true
 end
@@ -531,9 +542,9 @@ function _explorer_keyboard_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
     ch = evt.char
     if ch isa Char && haskey(_KB_SEMITONES, ch)
         osc = _explorer_osc(); osc === nothing && return true
+        _explorer_ensure_defined!(p, osc)
         freq = 220.0 * 2.0 ^ (_KB_SEMITONES[ch] / 12.0)
-        c = p.pop.candidates[p.focus]
-        audition_play!(p.audition, osc, p.focus, c.genome, freq, 0.6)
+        audition_play!(p.audition, osc, p.focus, freq, 0.6)
         return true
     end
     return true   # en sous-mode clavier on consomme tout

@@ -16,14 +16,7 @@ end
         st = Ressac.AuditionState(9)
         @test length(st.slot_names) == 9
         @test st.slot_names[1] === Symbol("ga_slot1")
-        @test all(!, st.played_once)
-    end
-
-    @testset "play address: first = evalAndPlay, then play" begin
-        st = Ressac.AuditionState(9)
-        @test Ressac._audition_play_address(st, 3) === :evalAndPlay
-        st.played_once[3] = true
-        @test Ressac._audition_play_address(st, 3) === :play
+        @test st.defined_gen == -1
     end
 
     @testset "enqueue_generation! defines every candidate (N msgs)" begin
@@ -32,16 +25,15 @@ end
         genomes = [base(), base(), base()]
         Ressac.enqueue_generation!(st, osc, genomes)
         @test length(osc.sent) == 3
-        @test all(!, st.played_once)
     end
 
-    @testset "audition_play! sends one message + flips played_once" begin
+    @testset "audition_play! plays a pre-defined synth via /ressac/play" begin
         st = Ressac.AuditionState(3)
         osc = MockOSCClient()
-        Ressac.audition_play!(st, osc, 2, base(), 220.0, 0.5)
+        Ressac.audition_play!(st, osc, 2, 220.0, 0.5)
         @test length(osc.sent) == 1
-        @test st.played_once[2]
-        Ressac.audition_play!(st, osc, 2, base(), 330.0, 0.5)
+        # second play does NOT redefine (no evalAndPlay) — just plays again
+        Ressac.audition_play!(st, osc, 2, 330.0, 0.5)
         @test length(osc.sent) == 2
     end
 
