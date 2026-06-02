@@ -42,6 +42,7 @@ include("synth_library.jl")      # _SYNTH_LIBRARY entries (uses SynthDSL)
 
 # ─── GA synth explorer — modules purs (génome + GA, aucun SC/UI) ───
 include("genome.jl")             # Genome DAG + UGenSpec catalog
+include("genome_validity.jl")    # validate + repair!
 
 # ─── Extension registry — plugin-contributed docs + snippets ──────
 include("extension_registry.jl")
