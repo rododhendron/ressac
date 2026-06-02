@@ -113,23 +113,13 @@ end
         @test occursin("wob1", Tachikoma.row_text(tb, 1))
     end
 
-    @testset "handle_key! routes 'e' for patterns role" begin
-        ep = Ressac._pane_new(:editor, Dict{String,Any}(
-            "buffer_role" => "patterns"))
-        @test Ressac.handle_key!(ep, Tachikoma.KeyEvent('e')) == true
-    end
-
-    @testset "handle_key! routes 'T' for synth role" begin
-        ep = Ressac._pane_new(:editor, Dict{String,Any}(
-            "buffer_role" => "synth"))
-        @test Ressac.handle_key!(ep, Tachikoma.KeyEvent('T')) == true
-    end
-
-    @testset "handle_key! delegates other chars to CodeEditor" begin
+    @testset "handle_key! delegates all keys to the TK.CodeEditor" begin
+        # Eval shortcuts (e / T) are routed at the app level in
+        # tui_app.jl — the pane just forwards keys to its editor, so
+        # handle_key! returns whatever TK.handle_key! returns (a Bool)
+        # without intercepting e/T itself.
         ep = Ressac._pane_new(:editor, Dict{String,Any}())
-        # 'x' in :normal mode isn't a slot-eval trigger — delegation
-        # should be observable as a non-error call (return is editor-
-        # mode-dependent so we don't pin the bool).
+        @test Ressac.handle_key!(ep, Tachikoma.KeyEvent('e')) isa Bool
         @test Ressac.handle_key!(ep, Tachikoma.KeyEvent('x')) isa Bool
     end
 

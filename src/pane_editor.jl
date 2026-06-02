@@ -11,8 +11,6 @@ mutable struct EditorBuffer
     code_editor::TK.CodeEditor
     role::Symbol            # :patterns | :synth
     name::String
-    eval_target::Symbol     # :slot | :sc_eval
-    completion_ctx::Symbol  # :patterns_dsl | :synth_dsl | :sc_ugens
     synth_mode::Symbol      # :dsl | :sc  (only meaningful for :synth role)
 end
 
@@ -20,17 +18,11 @@ function EditorBuffer(; role::Symbol = :patterns,
                        name::AbstractString = "main",
                        content::AbstractString = "",
                        synth_mode::Symbol = :dsl)
-    eval_target, completion_ctx = if role === :synth
-        (:sc_eval, :synth_dsl)
-    else
-        (:slot, :patterns_dsl)
-    end
     ed = TK.CodeEditor(; text = String(content),
                          focused = false,
                          tick = 0,
                          mode = :normal)
-    return EditorBuffer(ed, role, String(name),
-                        eval_target, completion_ctx, synth_mode)
+    return EditorBuffer(ed, role, String(name), synth_mode)
 end
 
 mutable struct EditorPane <: PaneImpl
@@ -111,27 +103,13 @@ end
 
 function handle_key!(p::EditorPane, evt)
     1 <= p.current_tab <= length(p.tabs) || return false
-    tab = p.tabs[p.current_tab]
-    # Eval shortcuts only fire from :normal — otherwise 'e' in
-    # insert mode would never reach the buffer (the original bug).
-    if evt isa TK.KeyEvent && evt.key === :char &&
-       tab.code_editor.mode === :normal
-        if evt.char == 'e' && tab.eval_target === :slot
-            _eval_focused_buffer_to_slot!(tab)
-            return true
-        elseif evt.char == 'T' && tab.eval_target === :sc_eval
-            _eval_focused_buffer_to_sc!(tab)
-            return true
-        end
-    end
-    return TK.handle_key!(tab.code_editor, evt)
+    # Delegate straight to the underlying TK.CodeEditor. The eval
+    # shortcuts (`e` for patterns slots, `T` for synth SC) are routed
+    # at the app level in tui_app.jl — they need the RessacApp +
+    # scheduler, which the PaneImpl contract doesn't carry — so there
+    # are no per-pane eval stubs here.
+    return TK.handle_key!(p.tabs[p.current_tab].code_editor, evt)
 end
-
-# Eval bridges. T8b wires these to the existing slot push and SC
-# eval flows in tui_app.jl; for now they're no-ops so dispatch is
-# observable in tests without firing a real eval.
-_eval_focused_buffer_to_slot!(::EditorBuffer) = nothing
-_eval_focused_buffer_to_sc!(::EditorBuffer)   = nothing
 
 function title(p::EditorPane)
     1 <= p.current_tab <= length(p.tabs) || return "(empty editor)"

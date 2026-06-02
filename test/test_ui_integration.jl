@@ -487,23 +487,21 @@ end
           _patterns_leaf_id(app)
 end
 
-@testset "Pressing e on a focused synth-role editor triggers SC path" begin
+@testset "T on a focused synth pane routes to the SC eval path" begin
     app, frame = _new_app()
     Ressac._active_editor(app).mode = :normal
-    # Vsplit a synth-role editor and focus it.
     Ressac.cmd_vsplit!(app.workspaces, "editor",
                        Dict{String,Any}("buffer_role" => "synth",
                                          "name" => "wob1"))
     Tachikoma.view(app, frame)
     ws = Ressac.current_workspace(app.workspaces)
     leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
-    synth_pane = leaf.tabs[1]
-    @test synth_pane.tabs[1].role === :synth
-    @test synth_pane.tabs[1].eval_target === :sc_eval
-    # 'T' in :normal triggers the SC eval bridge (stub no-op).
-    synth_pane.tabs[1].code_editor.focused = true
-    synth_pane.tabs[1].code_editor.mode = :normal
-    @test Ressac.handle_key!(synth_pane, Tachikoma.KeyEvent('T')) == true
+    @test leaf.tabs[1].tabs[1].role === :synth
+    leaf.tabs[1].tabs[1].code_editor.mode = :normal
+    # _route_key_to_focused_pane! intercepts T on a synth pane and
+    # fires _test_current_synth! (no-op without a live scheduler, but
+    # it CONSUMES the key → returns true).
+    @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('T')) == true
 end
 
 # ── Modal flows — navigation, not just close ───────────────────────
