@@ -166,15 +166,9 @@ non-empty), and the focus toggle for keystroke routing.
     # the latest entry); 1..N indexes into `_EX_COMMAND_HISTORY` from
     # the END (1 = most recent). Reset to 0 on submit / Esc.
     ex_history_idx::Int          = 0
-    # Reservoir scope — visible time span in wall-clock seconds. The
-    # renderer maps `span_seconds` of recent history into the area's
-    # width, so a spike at the right edge takes `span_seconds` to
-    # scroll all the way to the left.
-    #
-    # `+` zooms IN (smaller span, less time visible, faster apparent
-    # scroll, individual spikes pop). `-` zooms OUT (more time, slower).
-    # Bounded to [0.1, 60] seconds.
-    scope_reservoir_span_seconds::Float64 = 1.5
+    # (reservoir scope span lives in the module-level
+    # `_APP_SCOPE_RESERVOIR_SPAN[]` Ref alongside its singleton siblings,
+    # so the workspace ScopePane can render without an app handle.)
     # :keydebug toggles a verbose-input mode that pushes every KeyEvent
     # received from the terminal to the log pane. Lets the user see the
     # exact symbol + char + action for any keystroke when diagnosing
@@ -1512,15 +1506,15 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         elseif evt.char == '+' &&
                (_APP_SCOPE_TYPE[] === :reservoir ||
                 _APP_SCOPE_TYPE[] === Symbol("reservoir-graph"))
-            m.scope_reservoir_span_seconds = clamp(
-                m.scope_reservoir_span_seconds / 1.5, 0.1, 60.0)
-            _push_app_log!(m, "[INFO] reservoir scope span = $(round(m.scope_reservoir_span_seconds; digits=2)) s (faster)"); return
+            _APP_SCOPE_RESERVOIR_SPAN[] = clamp(
+                _APP_SCOPE_RESERVOIR_SPAN[] / 1.5, 0.1, 60.0)
+            _push_app_log!(m, "[INFO] reservoir scope span = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (faster)"); return
         elseif evt.char == '-' &&
                (_APP_SCOPE_TYPE[] === :reservoir ||
                 _APP_SCOPE_TYPE[] === Symbol("reservoir-graph"))
-            m.scope_reservoir_span_seconds = clamp(
-                m.scope_reservoir_span_seconds * 1.5, 0.1, 60.0)
-            _push_app_log!(m, "[INFO] reservoir scope span = $(round(m.scope_reservoir_span_seconds; digits=2)) s (slower)"); return
+            _APP_SCOPE_RESERVOIR_SPAN[] = clamp(
+                _APP_SCOPE_RESERVOIR_SPAN[] * 1.5, 0.1, 60.0)
+            _push_app_log!(m, "[INFO] reservoir scope span = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (slower)"); return
         elseif evt.char == '=' && _APP_SCOPE_TYPE[] === :wave
             m.scope_zoom = 1.0; m.scope_zoom_x = 1.0
             _push_app_log!(m, "[INFO] scope zoom reset (X & Y)"); return
@@ -3509,7 +3503,7 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         "scope: wave  Y×$(round(m.scope_zoom; digits=2)) X×$(round(m.scope_zoom_x; digits=2))   (+/-/= amp,  >/</= time)"
     elseif type === :reservoir
         rname = _APP_SCOPE_RESERVOIR_NAME[]
-        sp = round(m.scope_reservoir_span_seconds; digits=2)
+        sp = round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)
         "scope: reservoir · $rname   span=$(sp)s   (+/- adjust, rows = neurons, ◼ = spike)"
     elseif type === Symbol("reservoir-graph")
         rname = _APP_SCOPE_RESERVOIR_NAME[]
@@ -3525,11 +3519,11 @@ function _render_app_scope(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Reservoir scope handles itself — it has no `data` from the OSC
     # listener, only reads from the attached reservoir's history field.
     if type === :reservoir
-        _app_render_reservoir(body_area, buf, m)
+        _app_render_reservoir(body_area, buf, _APP_SCOPE_RESERVOIR_SPAN[])
         return
     end
     if type === Symbol("reservoir-graph")
-        _app_render_reservoir_graph(body_area, buf, m)
+        _app_render_reservoir_graph(body_area, buf, _APP_SCOPE_RESERVOIR_SPAN[])
         return
     end
     if isempty(data)
@@ -3573,7 +3567,8 @@ are neurons (downsampled if N > area.height); columns are recent steps
 (neuron, step) cell. If the reservoir is RECA, the plot looks like a
 classic cellular-automaton trail.
 """
-function _app_render_reservoir(area::TK.Rect, buf::TK.Buffer, m::RessacApp)
+function _app_render_reservoir(area::TK.Rect, buf::TK.Buffer,
+                               span_seconds::Float64 = _APP_SCOPE_RESERVOIR_SPAN[])
     r = _APP_SCOPE_RESERVOIR[]
     if r === nothing
         TK.set_string!(buf, area.x, area.y,
@@ -3604,7 +3599,7 @@ function _app_render_reservoir(area::TK.Rect, buf::TK.Buffer, m::RessacApp)
     cps = sched === nothing ? 0.5 : sched.cps
     steps_per_sec = r.spc * cps
     n_visible_steps = max(1,
-        round(Int, m.scope_reservoir_span_seconds * steps_per_sec))
+        round(Int, span_seconds * steps_per_sec))
     first_hist_idx = max(1, length(hist) - n_visible_steps + 1)
 
     # Braille rendering: each terminal cell encodes a 2 cols × 4 rows
@@ -3692,7 +3687,8 @@ in :error (inhibitory). Quiet neurons stay as `o`, spikers as `●` in
 Only works on plain `AdExReservoir` (needs the W matrix). For RECA
 or coupled groups, the raster scope is more meaningful.
 """
-function _app_render_reservoir_graph(area::TK.Rect, buf::TK.Buffer, m::RessacApp)
+function _app_render_reservoir_graph(area::TK.Rect, buf::TK.Buffer,
+                                     span_seconds::Float64 = _APP_SCOPE_RESERVOIR_SPAN[])
     r = _APP_SCOPE_RESERVOIR[]
     if r === nothing
         TK.set_string!(buf, area.x, area.y,
@@ -3753,7 +3749,7 @@ function _app_render_reservoir_graph(area::TK.Rect, buf::TK.Buffer, m::RessacApp
     sched = _LIVE_SCHEDULER[]
     cps = sched === nothing ? 0.5 : sched.cps
     steps_per_sec = r.N == 0 ? 1.0 : r.spc * cps
-    n_window = clamp(round(Int, m.scope_reservoir_span_seconds * steps_per_sec),
+    n_window = clamp(round(Int, span_seconds * steps_per_sec),
                      1, length(hist))
     recency = zeros(Float64, N)
     if !isempty(hist) && n_window > 0

@@ -27,15 +27,16 @@ handle_key!(::ScopePane, evt) = false
 title(p::ScopePane) = "scope:$(p.subtype)"
 
 # Per-subtype dispatch — extracted from tui_app's legacy
-# `_render_app_scope` body. Reservoir variants need RessacApp state
-# (span seconds, attached reservoir) — show a stub for those until
-# we thread per-pane state in a follow-up.
+# `_render_app_scope` body. The reservoir variants read the attached
+# reservoir + span from the module-level `_APP_SCOPE_*` singletons, so
+# they render here without an app handle just like the OSC-fed scopes.
 function _render_scope_subtype!(subtype::Symbol, area::TK.Rect, buf::TK.Buffer)
     data = _APP_SCOPE_DATA[]
-    if subtype === :reservoir || subtype === Symbol("reservoir-graph")
-        TK.set_string!(buf, area.x, area.y,
-                       "  (reservoir scope needs the legacy chrome — use `:scope $subtype`)",
-                       TK.tstyle(:text_dim))
+    if subtype === :reservoir
+        _app_render_reservoir(area, buf)
+        return
+    elseif subtype === Symbol("reservoir-graph")
+        _app_render_reservoir_graph(area, buf)
         return
     end
     if isempty(data)

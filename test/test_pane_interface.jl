@@ -247,4 +247,27 @@ end
         @test occursin("SCOPE", top)
         @test occursin("wave", top)
     end
+
+    @testset "reservoir variants render the real view, not a stub" begin
+        # The reservoir scopes read the attached reservoir + span from
+        # the module-level _APP_SCOPE_* singletons, so the pane renders
+        # them without an app handle. With nothing attached they show the
+        # renderer's own "no reservoir attached" prompt — proving the
+        # dispatch reaches _app_render_reservoir, not the old legacy-chrome
+        # stub.
+        prev = Ressac._APP_SCOPE_RESERVOIR[]
+        Ressac._APP_SCOPE_RESERVOIR[] = nothing
+        try
+            for sub in ("reservoir", "reservoir-graph")
+                sp = Ressac._pane_new(:scope, Dict{String,Any}("target" => sub))
+                tb = Tachikoma.TestBackend(60, 6)
+                Ressac.render!(sp, Tachikoma.Rect(1, 1, 60, 6), tb.buf)
+                body = join(Tachikoma.row_text(tb, r) for r in 2:6)
+                @test occursin("no reservoir attached", body)
+                @test !occursin("legacy chrome", body)
+            end
+        finally
+            Ressac._APP_SCOPE_RESERVOIR[] = prev
+        end
+    end
 end

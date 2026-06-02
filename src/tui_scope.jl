@@ -111,6 +111,12 @@ end
 # turns on history recording. `nothing` when no reservoir is bound.
 const _APP_SCOPE_RESERVOIR = Ref{Any}(nothing)
 const _APP_SCOPE_RESERVOIR_NAME = Ref{Symbol}(:none)
+# Wall-clock seconds of reservoir history that fit across the scope
+# width. Part of the singleton scope state (one attached reservoir →
+# one span), so it lives here alongside its siblings rather than on
+# RessacApp — that lets the workspace ScopePane render without an app
+# handle. The +/- keys adjust it; the legacy chrome reads it too.
+const _APP_SCOPE_RESERVOIR_SPAN = Ref{Float64}(1.5)
 # History ring size — large enough to cover a few seconds of activity
 # at typical step rates (1000 Hz → 4 s @ 4000 entries). Memory cost is
 # ~N bytes per snapshot ; for N=64 neurons that's ~256 KB total.
