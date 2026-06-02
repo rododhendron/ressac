@@ -16,6 +16,10 @@ mutable struct SynthExplorerPane <: PaneImpl
     keyboard_mode::Bool
     seed_name::Symbol
     inspect::Bool
+    naming::Symbol                 # :none | :seed | :synth
+    name_buf::String
+    seed_dir_override::Union{String,Nothing}
+    user_synth_dir_override::Union{String,Nothing}
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -26,7 +30,8 @@ function _synth_explorer_pane_ctor(args::AbstractDict)
     radius = Float64(get(args, "radius", 0.5))
     pop = init_population(base, _GA_GEN_SIZE, rng; radius = radius)
     aud = AuditionState(_GA_GEN_SIZE)
-    return SynthExplorerPane(pop, aud, 1, radius, rng, false, seed, false)
+    return SynthExplorerPane(pop, aud, 1, radius, rng, false, seed, false,
+                             :none, "", nothing, nothing)
 end
 
 # Résumé structurel court : UGens distincts + nb de nœuds.
@@ -67,6 +72,12 @@ function render!(p::SynthExplorerPane, area, buf)
     help = "n:suiv f:fav d:dév i:détails [ ]:div m:clavier s w e:commit"
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(help, inner.width), TK.tstyle(:text_dim))
+    if p.naming !== :none
+        prompt = (p.naming === :seed ? "nom graine: " : "nom synth: ") *
+                 p.name_buf * "_"
+        TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                       first(prompt, inner.width), TK.tstyle(:warning, bold = true))
+    end
     p.inspect && _render_inspect_overlay!(p, inner, buf)
     return nothing
 end
@@ -144,6 +155,9 @@ end
 
 function handle_key!(p::SynthExplorerPane, evt)
     evt isa TK.KeyEvent || return false
+    if p.naming !== :none
+        return _explorer_naming_key!(p, evt)
+    end
     if p.inspect
         (evt.key === :escape || evt.char == 'i' || evt.char == 'q') &&
             (p.inspect = false)
@@ -179,7 +193,43 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'm' && (p.keyboard_mode = true; return true)
     ch == 't' && return _explorer_toggle_drone!(p)
     ch == 'i' && (p.inspect = true; return true)
+    ch == 's' && (p.naming = :seed;  p.name_buf = ""; return true)
+    ch == 'w' && (p.naming = :synth; p.name_buf = ""; return true)
     return false
+end
+
+function _explorer_naming_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
+    if evt.key === :escape
+        p.naming = :none; p.name_buf = ""
+        return true
+    elseif evt.key === :enter || evt.char == '\r'
+        _explorer_commit_named!(p)
+        p.naming = :none; p.name_buf = ""
+        return true
+    elseif evt.key === :backspace
+        isempty(p.name_buf) || (p.name_buf = p.name_buf[1:end-1])
+        return true
+    elseif evt.char isa Char && (isletter(evt.char) || isdigit(evt.char) ||
+                                 evt.char == '_' || evt.char == '-')
+        p.name_buf *= evt.char
+        return true
+    end
+    return true
+end
+
+function _explorer_commit_named!(p::SynthExplorerPane)
+    isempty(p.name_buf) && return
+    g = p.pop.candidates[p.focus].genome
+    if p.naming === :seed
+        dir = p.seed_dir_override === nothing ? seed_dir() : p.seed_dir_override
+        save_seed(p.name_buf, g; dir = dir)
+    elseif p.naming === :synth
+        dir = p.user_synth_dir_override === nothing ?
+              joinpath(pwd(), "plugins", "user-synths") : p.user_synth_dir_override
+        isdir(dir) || mkpath(dir)
+        write(joinpath(dir, "$(p.name_buf).jl"), render_dsl(g, Symbol(p.name_buf)))
+    end
+    return
 end
 
 # Rangée de touches → décalage en demi-tons depuis la base (220 Hz).

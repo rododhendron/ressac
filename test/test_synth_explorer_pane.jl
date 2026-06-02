@@ -199,3 +199,48 @@ end
         @test occursin("nœuds", whole) || occursin("nodes", whole)
     end
 end
+
+@testset "synth explorer pane — commit save" begin
+    @testset "s enters seed-naming mode, typing builds the name" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 2))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('s'))
+        @test p.naming === :seed
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('a'))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('b'))
+        @test p.name_buf == "ab"
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.naming === :none
+        @test p.name_buf == ""
+    end
+
+    @testset "Enter in seed mode writes a JSON seed" begin
+        mktempdir() do dir
+            p = Ressac._pane_new(:explorer, Dict{String,Any}(
+                "seed" => "pluck", "rng" => 2))
+            p.seed_dir_override = dir
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('s'))
+            for c in "myseed"
+                Ressac.handle_key!(p, Tachikoma.KeyEvent(c))
+            end
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:enter))
+            @test isfile(joinpath(dir, "myseed.json"))
+            @test p.naming === :none
+        end
+    end
+
+    @testset "Enter in synth mode writes a .jl DSL file" begin
+        mktempdir() do dir
+            p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 2))
+            p.user_synth_dir_override = dir
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('w'))
+            @test p.naming === :synth
+            for c in "wobz"
+                Ressac.handle_key!(p, Tachikoma.KeyEvent(c))
+            end
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:enter))
+            path = joinpath(dir, "wobz.jl")
+            @test isfile(path)
+            @test occursin("@synth", read(path, String))
+        end
+    end
+end
