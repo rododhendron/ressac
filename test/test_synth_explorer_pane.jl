@@ -48,6 +48,9 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_synth_explorer.jl"))
         @test occursin("clusters:", whole)
         @test occursin("→", whole)                    # a mini-schema arrow
         @test length(p.cell_rects) == 9               # hit-test rects filled
+        kp = Ressac._genome_key_params(Ressac.archetype(:drone_grave))
+        @test occursin("freq", kp) || occursin("cutoff", kp)   # labeled
+        @test occursin("nœuds", whole)                 # the meta line
     end
 
     @testset "serialize captures seed + generation" begin

@@ -96,9 +96,8 @@ function _genome_mini_schema(g::Genome; max_len::Int = 4)
     return join(chain, "→")
 end
 
-# Quelques paramètres clés (constantes), labellés court : f=freq source,
-# c=cutoff filtre, q=rq, w=width.
-function _genome_key_params(g::Genome; max_n::Int = 3)
+# Paramètres clés (constantes) en clé-valeur lisible : freq/cutoff/rq/…
+function _genome_key_params(g::Genome; max_n::Int = 4)
     parts = String[]
     for id in sort(collect(keys(g.nodes)))
         n = g.nodes[id]
@@ -108,17 +107,16 @@ function _genome_key_params(g::Genome; max_n::Int = 3)
             i <= length(n.args) || continue
             a = n.args[i]
             a isa ConstArg || continue
-            label = sp.name === :freq ? (spec.role === :source ? "f" : "c") :
-                    sp.name === :rq    ? "q" :
-                    sp.name === :width ? "w" : String(sp.name)[1:1]
+            label = sp.name === :freq ? (spec.role === :source ? "freq" : "cutoff") :
+                    String(sp.name)
             v = a.value
             vs = isinteger(v) ? string(Int(v)) :
-                 abs(v) >= 100 ? string(round(Int, v)) : string(round(v; digits = 1))
-            push!(parts, "$label$vs")
-            length(parts) >= max_n && return join(parts, " ")
+                 abs(v) >= 100 ? string(round(Int, v)) : string(round(v; digits = 2))
+            push!(parts, "$label $vs")
+            length(parts) >= max_n && return join(parts, " · ")
         end
     end
-    return join(parts, " ")
+    return isempty(parts) ? "—" : join(parts, " · ")
 end
 
 # Palette de styles par cluster (cyclique).
@@ -153,19 +151,27 @@ function _render_candidate_card!(p::SynthExplorerPane, c::Candidate, idx::Int,
                    focused ? TK.tstyle(:accent, bold = true) :
                    c.weight > 0 ? TK.tstyle(:success) :
                    c.weight < 0 ? TK.tstyle(:text_dim) : _cluster_style(cid))
+    # structure (schéma) — la chaîne signal source→…→sortie
     if r.height >= 3
-        TK.set_string!(buf, ix, r.y + 1, first(_genome_mini_schema(c.genome), iw),
+        TK.set_string!(buf, ix, r.y + 1,
+                       first(_genome_mini_schema(c.genome; max_len = 6), iw),
                        TK.tstyle(:text))
     end
+    # paramètres clés en clé-valeur
     if r.height >= 4
         TK.set_string!(buf, ix, r.y + 2, first(_genome_key_params(c.genome), iw),
                        TK.tstyle(:text_dim))
     end
+    # méta : taille du DAG + origine génétique (graine / muté / croisé)
     if r.height >= 5
-        idxr = something(findfirst(==(idx), 1:length(p.audition.ready)), 0)
-        state = (idxr >= 1 && idxr <= length(p.audition.ready) &&
-                 p.audition.ready[idxr]) ? "·prêt" : "·compil."
-        TK.set_string!(buf, ix, r.y + r.height - 2, state, TK.tstyle(:text_dim))
+        meta = "$(length(c.genome.nodes)) nœuds · prof $(_genome_depth(c.genome)) · $(c.origin)"
+        TK.set_string!(buf, ix, r.y + 3, first(meta, iw), TK.tstyle(:text_dim))
+    end
+    # état d'audition
+    if r.height >= 6
+        state = (idx <= length(p.audition.ready) && p.audition.ready[idx]) ?
+                "·prêt" : "·en file"
+        TK.set_string!(buf, ix, r.y + r.height - 2, first(state, iw), TK.tstyle(:text_dim))
     end
     return nothing
 end
@@ -305,6 +311,12 @@ const _EXPLORER_HELP_LINES = [
     "Infos        i détails (DSL) · L lignée du candidat",
     "Garder       s graine · w synth · e éditeur",
     "Couleurs     cadre/pastille = cluster de proximité génétique",
+    "",
+    "Lecture d'une carte :",
+    "  ●A          cluster (sons génétiquement proches = même lettre)",
+    "  Saw→RLPF→…  schéma : chaîne de signal source→…→sortie",
+    "  freq 220 …  paramètres clés (constantes du génome)",
+    "  5 nœuds…    taille du DAG + origine (graine/muté/croisé)",
     "",
     "Esc / ? / q : fermer",
 ]
