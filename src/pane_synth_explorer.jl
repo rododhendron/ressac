@@ -30,6 +30,7 @@ mutable struct SynthExplorerPane <: PaneImpl
     ga_cursor::Int                 # selected row in the GA panel
     show_lineage::Bool             # `L` lineage overlay
     show_help::Bool                # `?` help overlay
+    sustain::Float64               # default sustain used when auditioning
 end
 
 # Default-fill the v2 UI state so existing positional constructions stay
@@ -38,7 +39,7 @@ function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                            naming, name_buf, seed_dir, synth_dir)
     return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                              naming, name_buf, seed_dir, synth_dir,
-                             Tuple{Int,NTuple{4,Int}}[], false, 1, false, false)
+                             Tuple{Int,NTuple{4,Int}}[], false, 1, false, false, 0.6)
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -356,7 +357,7 @@ end
 function _explorer_play_focus!(p::SynthExplorerPane)
     osc = _explorer_osc(); osc === nothing && return true
     _explorer_ensure_defined!(p, osc)
-    audition_play!(p.audition, osc, p.focus, 220.0, 0.6)
+    audition_play!(p.audition, osc, p.focus, 220.0, p.sustain)
     return true
 end
 
@@ -436,16 +437,27 @@ function handle_key!(p::SynthExplorerPane, evt)
 end
 
 # ── GA settings sub-mode (`g`) ─────────────────────────────────────
-# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme · 5 stratégie.
-const _GA_PANEL_ROWS = 5
+# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme ·
+#       5 sustain · 6 stratégie.
+const _GA_PANEL_ROWS = 6
 
+_ga_strategy_long(s::Symbol) =
+    s === :breeding   ? "pool : croise + mute tes favoris" :
+    s === :champion   ? "champion : un seul favori, tout = ses mutations" :
+    s === :tournament ? "tournoi : sélection douce par mini-duels" :
+    s === :weighted   ? "population pondérée : garde de la diversité" :
+    s === :novelty    ? "nouveauté : maximise la distance, surprends-moi" :
+    s === :cooling    ? "refroidissement : divergence décroît toute seule" : "?"
+
+# Noms COURTS affichés dans la colonne valeur (pour ne pas chevaucher
+# la description).
 const _GA_STRATEGY_NAMES = Dict(
-    :breeding   => "pool de reproduction",
-    :champion   => "champion & divergence",
+    :breeding   => "pool",
+    :champion   => "champion",
     :tournament => "tournoi",
-    :weighted   => "population pondérée",
-    :novelty    => "nouveauté (surprends-moi)",
-    :cooling    => "refroidissement")
+    :weighted   => "pondéré",
+    :novelty    => "nouveauté",
+    :cooling    => "refroidi")
 
 function _explorer_ga_panel_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
     ch = evt.char; k = evt.key
@@ -473,7 +485,9 @@ function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
         p.pop.crossover_prob = clamp(round(p.pop.crossover_prob + inc * 0.1; digits = 2), 0.0, 1.0)
     elseif row == 4        # élitisme
         p.pop.elitism = clamp(p.pop.elitism + inc, 0, p.pop.gen_size - 1)
-    elseif row == 5        # stratégie (cycle dans GA_STRATEGIES)
+    elseif row == 5        # sustain d'écoute
+        p.sustain = clamp(round(p.sustain + inc * 0.1; digits = 2), 0.1, 8.0)
+    elseif row == 6        # stratégie (cycle dans GA_STRATEGIES)
         i = something(findfirst(==(p.pop.strategy), GA_STRATEGIES), 1)
         p.pop.strategy = GA_STRATEGIES[mod1(i + inc, length(GA_STRATEGIES))]
     end
@@ -485,7 +499,7 @@ const _GA_PANEL_DESC = (
     "ampleur des mutations : 0 = fin, 1 = sauvage/structurel",
     "chance de croiser 2 favoris plutôt que muter un seul",
     "favoris gardés INTACTS — ne perd jamais un bon son",
-    "algorithme de sélection (←/→ pour changer)",
+    "durée de la note jouée à l'écoute (secondes)",
 )
 
 function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
@@ -499,18 +513,22 @@ function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
             ("rayon divergence",   string(round(p.radius; digits = 2))),
             ("proba croisement",   string(round(p.pop.crossover_prob; digits = 2))),
             ("élitisme (favoris)", string(p.pop.elitism)),
+            ("sustain (écoute)",   string(round(p.sustain; digits = 2))),
             ("stratégie",          get(_GA_STRATEGY_NAMES, p.pop.strategy, "?"))]
-    desc_x = inner.x + 30                      # description column
+    # Per-row description; the strategy row shows its full meaning.
+    descs = [_GA_PANEL_DESC[1], _GA_PANEL_DESC[2], _GA_PANEL_DESC[3],
+             _GA_PANEL_DESC[4], _GA_PANEL_DESC[5], _ga_strategy_long(p.pop.strategy)]
+    desc_x = inner.x + 36                      # description column (past values)
     for (i, (label, val)) in enumerate(rows)
         sel = i == p.ga_cursor
         y = inner.y + 1 + i
         cursor = sel ? "▸ " : "  "
-        line = "$cursor$(rpad(label, 20)) $(rpad(val, 4))"
-        TK.set_string!(buf, inner.x, y, first(line, inner.width),
+        line = "$cursor$(rpad(label, 20)) $(rpad(val, 11))"
+        TK.set_string!(buf, inner.x, y, first(line, min(34, inner.width)),
                        sel ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
         if desc_x < inner.x + inner.width
             TK.set_string!(buf, desc_x, y,
-                           first(_GA_PANEL_DESC[i], inner.x + inner.width - desc_x),
+                           first(descs[i], inner.x + inner.width - desc_x),
                            sel ? TK.tstyle(:text) : TK.tstyle(:text_dim))
         end
     end
@@ -569,7 +587,7 @@ function _explorer_keyboard_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
         osc = _explorer_osc(); osc === nothing && return true
         _explorer_ensure_defined!(p, osc)
         freq = 220.0 * 2.0 ^ (_KB_SEMITONES[ch] / 12.0)
-        audition_play!(p.audition, osc, p.focus, freq, 0.6)
+        audition_play!(p.audition, osc, p.focus, freq, p.sustain)
         return true
     end
     return true   # en sous-mode clavier on consomme tout
