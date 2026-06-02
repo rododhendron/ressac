@@ -511,7 +511,9 @@ _ga_strategy_long(s::Symbol) =
     s === :tournament ? "tournoi : sélection douce par mini-duels" :
     s === :weighted   ? "population pondérée : garde de la diversité" :
     s === :novelty    ? "nouveauté : maximise la distance, surprends-moi" :
-    s === :cooling    ? "refroidissement : divergence décroît toute seule" : "?"
+    s === :cooling    ? "refroidissement : divergence décroît toute seule" :
+    s === :bayesian   ? "bayésien : un modèle de ton goût pré-trie un grand pool" :
+    s === :quality_diversity ? "QD : archive du meilleur par niche, couvre l'espace" : "?"
 
 # Noms COURTS affichés dans la colonne valeur (pour ne pas chevaucher
 # la description).
@@ -521,7 +523,9 @@ const _GA_STRATEGY_NAMES = Dict(
     :tournament => "tournoi",
     :weighted   => "pondéré",
     :novelty    => "nouveauté",
-    :cooling    => "refroidi")
+    :cooling    => "refroidi",
+    :bayesian   => "bayésien",
+    :quality_diversity => "QD")
 
 function _explorer_ga_panel_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
     ch = evt.char; k = evt.key

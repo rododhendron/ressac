@@ -161,3 +161,58 @@ end
         @test all(c -> isempty(Ressac.validate(c.genome)), pop.candidates)
     end
 end
+
+@testset "ga_engine — bayesian + quality-diversity strategies" begin
+    base() = Ressac.archetype(:drone_grave)
+
+    @testset "genome_feature_vec has stable length" begin
+        a = Ressac.genome_feature_vec(Ressac.archetype(:drone_grave))
+        b = Ressac.genome_feature_vec(Ressac.archetype(:noise_perc))
+        @test length(a) == length(b)
+        @test length(a) > 3
+    end
+
+    @testset "bayesian: produces gen_size valid + audible candidates" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(11); radius = 0.5)
+        pop.strategy = :bayesian
+        Ressac.favor!(pop, 1); Ressac.devalue!(pop, 2)
+        Ressac.next_generation!(pop, MersenneTwister(11))
+        @test length(pop.candidates) == 6
+        @test all(c -> isempty(Ressac.validate(c.genome)), pop.candidates)
+        @test all(c -> Ressac.genome_is_audible(c.genome), pop.candidates)
+        @test haskey(pop.state, :bo_examples)
+    end
+
+    @testset "bayesian accumulates rated examples across generations" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(12); radius = 0.5)
+        pop.strategy = :bayesian
+        Ressac.favor!(pop, 1)
+        Ressac.next_generation!(pop, MersenneTwister(12))
+        n1 = length(pop.state[:bo_examples])
+        Ressac.favor!(pop, 1)
+        Ressac.next_generation!(pop, MersenneTwister(12))
+        @test length(pop.state[:bo_examples]) > n1
+    end
+
+    @testset "quality-diversity builds a behavior archive" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(13); radius = 0.6)
+        pop.strategy = :quality_diversity
+        Ressac.favor!(pop, 1)
+        Ressac.next_generation!(pop, MersenneTwister(13))
+        @test length(pop.candidates) == 6
+        @test all(c -> isempty(Ressac.validate(c.genome)), pop.candidates)
+        @test haskey(pop.state, :qd_archive)
+        @test !isempty(pop.state[:qd_archive])
+    end
+
+    @testset "all 8 strategies stay valid + audible" begin
+        for strat in Ressac.GA_STRATEGIES
+            pop = Ressac.init_population(base(), 6, MersenneTwister(14); radius = 0.5)
+            pop.strategy = strat
+            Ressac.favor!(pop, 1); Ressac.favor!(pop, 3)
+            Ressac.next_generation!(pop, MersenneTwister(14))
+            @test all(c -> isempty(Ressac.validate(c.genome)) &&
+                           Ressac.genome_is_audible(c.genome), pop.candidates)
+        end
+    end
+end

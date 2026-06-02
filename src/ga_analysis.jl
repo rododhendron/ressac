@@ -56,6 +56,26 @@ function cluster_population(cands::Vector{Candidate}; threshold::Float64 = 1.5)
 end
 
 """
+    genome_feature_vec(g) -> Vector{Float64}
+
+Fixed-length numeric features of a genome for the preference surrogate:
+one count per catalogued UGen (sorted, stable order) + node count +
+depth-ish (output's arg fan-in) + has-feedback flag. The order is stable
+across calls because it follows `sort(keys(UGEN_CATALOG))`.
+"""
+function genome_feature_vec(g::Genome)
+    names = sort!(collect(keys(UGEN_CATALOG)))
+    counts = _genome_ugen_counts(g)
+    feat = Float64[get(counts, nm, 0) for nm in names]
+    push!(feat, Float64(length(g.nodes)))
+    fanin = (g.output_id != 0 && haskey(g.nodes, g.output_id)) ?
+            count(a -> a isa NodeRef, g.nodes[g.output_id].args) : 0
+    push!(feat, Float64(fanin))
+    push!(feat, any(n -> n.ugen === :FbIn, values(g.nodes)) ? 1.0 : 0.0)
+    return feat
+end
+
+"""
     gene_distribution(cands) -> Vector{Pair{Symbol,Int}}
 
 Count UGen occurrences across the whole population, most common first.

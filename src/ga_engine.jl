@@ -16,7 +16,8 @@ end
 Candidate(genome::Genome, weight::Float64) = Candidate(genome, weight, 0, "graine")
 
 # Stratégies de sélection → génération suivante (cf. _nextgen_*).
-const GA_STRATEGIES = (:breeding, :champion, :tournament, :weighted, :novelty, :cooling)
+const GA_STRATEGIES = (:breeding, :champion, :tournament, :weighted, :novelty,
+                       :cooling, :bayesian, :quality_diversity)
 
 mutable struct Population
     candidates::Vector{Candidate}
@@ -29,11 +30,13 @@ mutable struct Population
     strategy::Symbol            # ∈ GA_STRATEGIES
     next_cid::Int               # compteur d'id de candidat
     lineage::Dict{Int,NamedTuple}   # id => (gen, origin, parents)
+    state::Dict{Symbol,Any}     # état par-stratégie (archive QD, historique BO)
 end
 # Compat : restauration de session (Task 14) passe 4 args positionnels.
 Population(c::Vector{Candidate}, b::Genome, g::Int, r::Float64) =
     Population(c, b, g, r, length(c), 0.5, 1, :breeding,
-               maximum((x.id for x in c); init = 0) + 1, Dict{Int,NamedTuple}())
+               maximum((x.id for x in c); init = 0) + 1,
+               Dict{Int,NamedTuple}(), Dict{Symbol,Any}())
 
 _new_cid!(pop::Population) = (id = pop.next_cid; pop.next_cid += 1; id)
 function _record!(pop::Population, id::Int, origin::AbstractString, parents::Vector{Int})
@@ -44,7 +47,7 @@ end
 function init_population(base::Genome, n::Int, rng::AbstractRNG;
                          radius::Float64 = 0.5)
     pop = Population(Candidate[], _copy_genome(base), 0, radius, n, 0.5, 1,
-                     :breeding, 1, Dict{Int,NamedTuple}())
+                     :breeding, 1, Dict{Int,NamedTuple}(), Dict{Symbol,Any}())
     for _ in 1:n
         cid = _new_cid!(pop)
         _record!(pop, cid, "graine", Int[])
@@ -85,6 +88,10 @@ function next_generation!(pop::Population, rng::AbstractRNG)
     elseif s === :cooling
         pop.radius = max(0.05, pop.radius * 0.85)   # refroidissement progressif
         _nextgen_breeding!(pop, rng)
+    elseif s === :bayesian
+        _nextgen_bayesian!(pop, rng)
+    elseif s === :quality_diversity
+        _nextgen_quality_diversity!(pop, rng)
     else
         _nextgen_breeding!(pop, rng)                # :breeding (défaut)
     end
@@ -223,6 +230,96 @@ function reshuffle!(pop::Population, rng::AbstractRNG)
               Candidate(mutate(pop.base, rng; radius = pop.radius), 0.0, cid, "graine"))
     end
     return pop
+end
+
+# 7. Bayésien (surrogate de préférences) : un modèle linéaire léger du
+#    goût (appris sur tes notes) pré-score un GRAND pool interne d'enfants ;
+#    on garde les mieux notés (exploitation) + quelques-uns lointains
+#    (exploration). C'est la version data-efficient, sans GP, de la BO
+#    par préférences — l'humain ne note que la poignée affichée.
+function _bo_taste(hist::Vector{Tuple{Vector{Float64},Float64}})
+    isempty(hist) && return nothing
+    dim = length(hist[1][1])
+    taste = zeros(Float64, dim)
+    wsum = 0.0
+    for (f, w) in hist
+        length(f) == dim || continue
+        taste .+= w .* f
+        wsum += abs(w)
+    end
+    wsum < 1e-9 && return nothing
+    return taste ./ wsum
+end
+
+function _nextgen_bayesian!(pop::Population, rng::AbstractRNG)
+    n = pop.gen_size
+    hist = get!(pop.state, :bo_examples,
+                Vector{Tuple{Vector{Float64},Float64}}())::Vector{Tuple{Vector{Float64},Float64}}
+    for c in pop.candidates
+        c.weight == 0.0 && continue
+        push!(hist, (genome_feature_vec(c.genome), c.weight))
+    end
+    taste = _bo_taste(hist)
+    favored = [c for c in pop.candidates if c.weight > 0]
+    parents = isempty(favored) ? pop.candidates : favored
+    isempty(parents) && (parents = [Candidate(pop.base, 0.0)])
+    pool = Candidate[]
+    for _ in 1:(n * 5)
+        pa = rand(rng, parents)
+        child = (length(parents) >= 2 && rand(rng) < pop.crossover_prob) ?
+            crossover(pa.genome, rand(rng, parents).genome, rng) :
+            mutate(pa.genome, rng; radius = pop.radius)
+        push!(pool, _spawn!(pop, child, "surrogate #$(pa.id)", [pa.id]))
+    end
+    if taste === nothing
+        pop.candidates = pool[1:n]
+        return
+    end
+    sort!(pool; by = c -> -sum(genome_feature_vec(c.genome) .* taste))
+    keep = max(0, n - 2)
+    out = pool[1:keep]
+    rest = pool[(keep + 1):end]
+    while length(out) < n && !isempty(rest)   # exploration : les plus lointains
+        chosen = [c.genome for c in out]
+        best = rest[argmax([isempty(chosen) ? 1.0 :
+                            minimum(genome_distance(c.genome, gg) for gg in chosen)
+                            for c in rest])]
+        push!(out, best)
+        rest = filter(c -> c !== best, rest)
+    end
+    pop.candidates = out[1:n]
+end
+
+# 8. Quality-Diversity (MAP-Elites) : archive du meilleur candidat par
+#    case d'un espace de comportement (taille du DAG × nb de filtres) ;
+#    on reproduit depuis les élites diverses → couvre l'espace sonore
+#    sans perdre de niche.
+function _qd_descriptor(g::Genome)
+    nc = clamp(length(g.nodes), 1, 8)
+    nf = clamp(count(n -> (s = ugen_spec(n.ugen); s !== nothing && s.role === :filter),
+                     values(g.nodes)), 0, 4)
+    return (nc, nf)
+end
+
+function _nextgen_quality_diversity!(pop::Population, rng::AbstractRNG)
+    n = pop.gen_size
+    archive = get!(pop.state, :qd_archive,
+                   Dict{Tuple{Int,Int},Candidate}())::Dict{Tuple{Int,Int},Candidate}
+    for c in pop.candidates
+        cell = _qd_descriptor(c.genome)
+        inc = get(archive, cell, nothing)
+        (inc === nothing || c.weight > inc.weight) && (archive[cell] = c)
+    end
+    elites = collect(values(archive))
+    isempty(elites) && (elites = pop.candidates)
+    isempty(elites) && (elites = [Candidate(pop.base, 0.0)])
+    out = Candidate[]
+    while length(out) < n
+        e = rand(rng, elites)
+        push!(out, _spawn!(pop, mutate(e.genome, rng; radius = pop.radius),
+                           "QD #$(e.id)", [e.id]))
+    end
+    pop.candidates = out[1:n]
 end
 
 """
