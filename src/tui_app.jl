@@ -2843,12 +2843,49 @@ function _ex_history_nav!(m::RessacApp, ed::TK.CodeEditor, dir::Symbol)
 end
 
 """
+    _open_or_reuse_editable_pane!(m; role, name) -> CodeEditor | Nothing
+
+Resolve the target editor for a content command (`:starter`, …) without
+relying on the ambient `_active_editor`. Reuses an EMPTY editable pane
+(any `EditorPane`, role-agnostic — patterns / synth / …) if one exists
+in the focused workspace; otherwise opens a fresh editor pane. Returns
+the target `CodeEditor`, or `nothing` if the pane couldn't be created.
+"""
+function _open_or_reuse_editable_pane!(m::RessacApp;
+                                       role::AbstractString = "patterns",
+                                       name::AbstractString = "main")
+    ws = current_workspace(m.workspaces)
+    if ws !== nothing
+        for leaf in _all_leaves(ws.tree)
+            for (ti, tab) in enumerate(leaf.tabs)
+                tab isa EditorPane || continue
+                1 <= tab.current_tab <= length(tab.tabs) || continue
+                ce = tab.tabs[tab.current_tab].code_editor
+                if isempty(strip(TK.text(ce)))
+                    ws.focused_pane = leaf.id
+                    leaf.current_tab = ti
+                    return ce
+                end
+            end
+        end
+    end
+    cmd_vsplit!(m.workspaces, "editor",
+                Dict{String,Any}("buffer_role" => role, "name" => name))
+    ws2 = current_workspace(m.workspaces)
+    ws2 === nothing && return nothing
+    leaf = _find_leaf_by_id(ws2.tree, ws2.focused_pane)
+    (leaf === nothing || isempty(leaf.tabs)) && return nothing
+    pane = leaf.tabs[leaf.current_tab]
+    return pane isa EditorPane ? pane.tabs[pane.current_tab].code_editor : nothing
+end
+
+"""
     _starter_command!(m, genre)
 
-Replace the patterns buffer with a starter sketch (the same packs the
-old TUI used). User can :back to whatever they had before? No — we
-overwrite without confirmation; vim convention says you should :w
-first if you want to keep things.
+Load a starter sketch into a target editor pane (reusing an empty
+editable pane or opening a fresh one — never clobbering a pane the user
+is working in). Packs with their own `panes=[...]` spec rebuild the
+layout and seed its primary editor instead.
 """
 function _starter_command!(m::RessacApp, genre::AbstractString)
     key = String(genre)
@@ -2886,7 +2923,14 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
                 "[ERROR] :starter — apply panes failed: $(sprint(showerror, err))")
         end
     end
-    ed = _active_editor(m)
+    # Target a pane explicitly. A starter with its own panes=[...] spec
+    # already built the layout above → seed its primary editor. Otherwise
+    # reuse an empty editable pane or open a fresh one (never clobber a
+    # pane the user is working in).
+    ed = isempty(snip.panes) ?
+        _open_or_reuse_editable_pane!(m; name = "starter") :
+        _active_editor(m)
+    ed === nothing && return
     TK.set_text!(ed, snip.resolved_content)
     ed.cursor_row = 1
     ed.cursor_col = 0

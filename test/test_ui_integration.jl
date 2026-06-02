@@ -1273,3 +1273,58 @@ end
         @test Ressac._active_editor(app) === nothing
     end
 end
+
+@testset "content commands target a pane (no ambient _active_editor)" begin
+    @testset "_open_or_reuse_editable_pane! reuses an EMPTY editor" begin
+        app, _ = _new_app()
+        Tachikoma.set_text!(Ressac._active_editor(app), "")   # make it empty
+        ws = Ressac.current_workspace(app.workspaces)
+        n_before = length(collect(Ressac._all_leaves(ws.tree)))
+        ed = Ressac._open_or_reuse_editable_pane!(app)
+        @test ed !== nothing
+        @test length(collect(Ressac._all_leaves(ws.tree))) == n_before  # reused
+    end
+
+    @testset "_open_or_reuse_editable_pane! opens a NEW pane when none empty" begin
+        app, _ = _new_app()
+        # fill the default editor so it's non-empty
+        Tachikoma.set_text!(Ressac._active_editor(app), "@d1 :bd")
+        ws = Ressac.current_workspace(app.workspaces)
+        n_before = length(collect(Ressac._all_leaves(ws.tree)))
+        ed = Ressac._open_or_reuse_editable_pane!(app)
+        @test ed !== nothing
+        @test length(collect(Ressac._all_leaves(ws.tree))) == n_before + 1
+        @test isempty(strip(Tachikoma.text(ed)))      # fresh, empty
+    end
+
+    @testset ":starter reuses the empty patterns pane, content lands there" begin
+        app, _ = _new_app()
+        ed0 = Ressac._active_editor(app)
+        Tachikoma.set_text!(ed0, "")              # empty → must be reused
+        ws = Ressac.current_workspace(app.workspaces)
+        n_before = length(collect(Ressac._all_leaves(ws.tree)))
+        Ressac._starter_command!(app, "house")
+        ws2 = Ressac.current_workspace(app.workspaces)
+        @test length(collect(Ressac._all_leaves(ws2.tree))) == n_before   # reused
+        @test !isempty(strip(Tachikoma.text(ed0)))                        # seeded
+    end
+
+    @testset ":starter with a busy editor opens a new pane (no clobber)" begin
+        app, _ = _new_app()
+        Tachikoma.set_text!(Ressac._active_editor(app), "@d1 :bd*4")
+        ws = Ressac.current_workspace(app.workspaces)
+        n_before = length(collect(Ressac._all_leaves(ws.tree)))
+        Ressac._starter_command!(app, "trap")     # exact starter, no panes spec
+        ws2 = Ressac.current_workspace(app.workspaces)
+        @test length(collect(Ressac._all_leaves(ws2.tree))) == n_before + 1
+        # the busy editor must be untouched
+        busy_intact = any(Ressac._all_leaves(ws2.tree)) do leaf
+            any(leaf.tabs) do tab
+                tab isa Ressac.EditorPane &&
+                    any(t -> occursin("@d1 :bd*4", Tachikoma.text(t.code_editor)),
+                        tab.tabs)
+            end
+        end
+        @test busy_intact
+    end
+end
