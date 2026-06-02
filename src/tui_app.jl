@@ -11,23 +11,10 @@ using Dates
 # of Ressac.jl so pane impls (loaded before this file) can reference
 # TK types directly.
 
-"""
-    SynthTab
-
-One open synth in the side panel. Holds the editable file name and a
-CodeEditor with its own buffer + cursor. The side panel is open when
-`RessacApp.synth_tabs` is non-empty.
-"""
-mutable struct SynthTab
-    name::String
-    editor::TK.CodeEditor
-    # `:dsl` (the default for new tabs) — buffer holds Julia DSL code;
-    # T evals the buffer as Julia and the @synth macro inside sends
-    # the compiled SC to SuperCollider. `:sc` — legacy raw SuperCollider
-    # SynthDef in the buffer; T ships the text verbatim.
-    mode::Symbol
-    SynthTab(name, editor; mode::Symbol=:dsl) = new(name, editor, mode)
-end
+# Synths are no longer a separate side-panel structure — each open
+# synth is a workspace EditorPane with role=:synth and a synth_mode
+# (:dsl | :sc) on its EditorBuffer. See _all_synth_buffers /
+# _current_synth_tab in this file.
 
 """
     _STARTER_BUFFER
@@ -59,13 +46,11 @@ non-empty), and the focus toggle for keystroke routing.
 
 @kwdef mutable struct RessacApp <: TK.Model
     scheduler::Scheduler
-    # No m.editor field — the patterns editor lives inside the
-    # workspace tree's default EditorPane (created lazily by
-    # _ensure_default_workspace!). Resolve dynamically via
-    # `_active_editor(m)` whenever code needs "the current editor".
-    synth_tabs::Vector{SynthTab} = SynthTab[]
-    synth_tab_idx::Int           = 0      # 1-based; 0 when no tabs open
-    focus::Symbol                = :patterns
+    # No m.editor / m.synth_tabs / m.focus fields — both the patterns
+    # editor and every synth live inside the workspace tree as
+    # EditorPanes (role :patterns / :synth). Resolve dynamically via
+    # `_active_editor(m)` / `_focused_buffer(m)` / `_focused_role(m)`
+    # / `_all_synth_buffers(m)`.
     # Modal overlay state — `:none`, `:guide`, `:synth_guide`, `:browse`,
     # `:synth_library`.
     modal::Symbol                = :none
@@ -281,40 +266,37 @@ function _normalise_event(evt::TK.KeyEvent)
 end
 
 """
-    _active_editor(m) -> CodeEditor
+    _focused_buffer(m) -> Union{EditorBuffer, Nothing}
 
-The editor the user is currently editing. Resolution order:
-
-  1. If `m.focus === :synth` and a synth tab is open → that synth
-     tab's TK.CodeEditor (synth side panel is a legacy code path
-     not yet folded into the workspace tree).
-  2. Otherwise → the `TK.CodeEditor` of the EditorPane currently
-     focused in the active workspace.
-  3. Otherwise → the first EditorPane found anywhere in the
-     workspace tree.
-  4. Otherwise (no workspace, no editor pane) → throw.
-
-Single source of truth for "where typed text goes" and "where the
-cursor lives" — the editor is owned by the workspace tree.
+The `EditorBuffer` of the EditorPane currently focused in the active
+workspace, or `nothing` if the focused leaf isn't an editor pane.
+The single source of truth for "what is the user editing right now",
+including its role (`:patterns` / `:synth`), name and synth_mode.
 """
-function _active_editor(m::RessacApp)
-    if m.focus === :synth && !isempty(m.synth_tabs)
-        return m.synth_tabs[m.synth_tab_idx].editor
-    end
-    # Lazy init — every accessor path through _active_editor needs an
-    # editor pane to exist. Cheaper than asking every callsite to
-    # call _ensure_default_workspace! defensively.
+function _focused_buffer(m::RessacApp)
     _ensure_default_workspace!(m)
     ws = current_workspace(m.workspaces)
+    ws === nothing && return nothing
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    (leaf isa PaneLeaf && 1 <= leaf.current_tab <= length(leaf.tabs)) || return nothing
+    pane = leaf.tabs[leaf.current_tab]
+    (pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs)) || return nothing
+    return pane.tabs[pane.current_tab]
+end
+
+"""
+    _active_editor(m) -> CodeEditor
+
+The `TK.CodeEditor` the user is currently editing — the focused
+EditorPane's editor, or the first editor pane found anywhere if the
+focused leaf isn't an editor. Throws if no editor pane exists at all.
+Single source of truth for "where typed text goes".
+"""
+function _active_editor(m::RessacApp)
+    buf = _focused_buffer(m)
+    buf !== nothing && return buf.code_editor
+    ws = current_workspace(m.workspaces)
     if ws !== nothing
-        leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
-        if leaf isa PaneLeaf && 1 <= leaf.current_tab <= length(leaf.tabs)
-            pane = leaf.tabs[leaf.current_tab]
-            if pane isa EditorPane && !isempty(pane.tabs) &&
-               1 <= pane.current_tab <= length(pane.tabs)
-                return pane.tabs[pane.current_tab].code_editor
-            end
-        end
         for any_leaf in _all_leaves(ws.tree)
             for tab in any_leaf.tabs
                 if tab isa EditorPane && !isempty(tab.tabs)
@@ -326,8 +308,58 @@ function _active_editor(m::RessacApp)
     throw(ErrorException("_active_editor: no editor pane available"))
 end
 
-_synth_pane_open(m::RessacApp) = !isempty(m.synth_tabs)
-_current_synth_tab(m::RessacApp) = m.synth_tabs[m.synth_tab_idx]
+"""
+    _focused_role(m) -> Symbol
+
+`:patterns` / `:synth` for an editor pane, `:other` for a non-editor
+pane (log / doc / scope / tuning) or no focus. Replaces the legacy
+`m.focus` field — the workspace tree is now authoritative.
+"""
+function _focused_role(m::RessacApp)
+    buf = _focused_buffer(m)
+    buf === nothing ? :other : buf.role
+end
+
+"""
+    _all_synth_buffers(m) -> Vector{Tuple{PaneLeaf, EditorBuffer}}
+
+Every synth-role editor buffer in the active workspace, paired with
+its containing leaf (for focus / close operations). Order follows
+the tree's leaf iteration so `:tabnext` cycling is stable.
+"""
+function _all_synth_buffers(m::RessacApp)
+    out = Tuple{PaneLeaf, EditorBuffer}[]
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return out
+    for leaf in _all_leaves(ws.tree)
+        for tab in leaf.tabs
+            if tab isa EditorPane
+                for b in tab.tabs
+                    b.role === :synth && push!(out, (leaf, b))
+                end
+            end
+        end
+    end
+    return out
+end
+
+# A synth pane is open when at least one synth-role buffer exists.
+_synth_pane_open(m::RessacApp) = !isempty(_all_synth_buffers(m))
+
+"""
+    _current_synth_tab(m) -> Union{EditorBuffer, Nothing}
+
+The focused synth buffer if the focused pane is synth-role;
+otherwise the first synth buffer found in the tree (so `:test` /
+`:w` still target *a* synth when focus drifted). `nothing` when no
+synth pane is open.
+"""
+function _current_synth_tab(m::RessacApp)
+    buf = _focused_buffer(m)
+    (buf !== nothing && buf.role === :synth) && return buf
+    syn = _all_synth_buffers(m)
+    isempty(syn) ? nothing : syn[1][2]
+end
 
 """
     _focused_editor_rect(m) -> Union{Nothing,TK.Rect}
@@ -388,15 +420,11 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     end
     # Left-click routing.
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
-        # Patterns editor — fast path (still the most common click).
-        # Driven by _focused_editor_rect(m) which is refilled by _render_tree!
-        # whenever the leaf holding _active_editor(m) is visible. Updates the
-        # workspace focus too so the focus border and key routing
-        # match the legacy editor focus.
+        # Focused editor — fast path (still the most common click).
+        # Drives off _focused_editor_rect(m), refilled by _render_tree!
+        # for whatever editor pane currently has focus.
         if _focused_editor_rect(m) !== nothing && _in_rect(_focused_editor_rect(m), evt.x, evt.y)
-            m.focus = :patterns; _refresh_focus_flags!(m)
             _click_into_editor!(_active_editor(m), _focused_editor_rect(m), evt.x, evt.y)
-            _focus_patterns_leaf!(m)
             return
         end
         # Workspace tree hit-test — focuses the clicked leaf and
@@ -447,11 +475,6 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
        pane.tabs[pane.current_tab].code_editor.mode === :normal &&
        evt.key === :char && (evt.char == 'T' || evt.char == 't' ||
                               evt.char == ' ')
-        # Make sure the SynthTab index points at this pane's editor
-        # so _test_current_synth! grabs the right source.
-        ed = pane.tabs[pane.current_tab].code_editor
-        idx = findfirst(t -> t.editor === ed, m.synth_tabs)
-        idx === nothing || (m.synth_tab_idx = idx; m.focus = :synth)
         _test_current_synth!(m)
         return true
     end
@@ -518,29 +541,6 @@ end
 
 _in_rect_xywh(x::Int, y::Int, w::Int, h::Int, px::Int, py::Int) =
     px >= x && px < x + w && py >= y && py < y + h
-
-"""
-    _focus_patterns_leaf!(m)
-
-Resolve which workspace leaf currently holds `_active_editor(m)` and set it
-as the focused leaf. Called from the patterns mouse fast path so
-the focus border and the workspace's `focused_pane` stay in sync
-with the legacy `m.focus = :patterns` flag.
-"""
-function _focus_patterns_leaf!(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return
-    for leaf in _all_leaves(ws.tree)
-        for tab in leaf.tabs
-            if tab isa EditorPane &&
-               1 <= tab.current_tab <= length(tab.tabs) &&
-               tab.tabs[tab.current_tab].code_editor === _active_editor(m)
-                ws.focused_pane = leaf.id
-                return
-            end
-        end
-    end
-end
 
 function _find_leaf_by_id(node::LayoutNode, leaf_id::Int)
     if node isa PaneLeaf
@@ -1311,9 +1311,9 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         _swap_focus!(m)
         return
     end
-    # gt / gT cycle synth tabs while focused on the synth pane.
+    # gt / gT cycle synth panes while focused on a synth pane.
     if is_press && ed.mode === :normal &&
-       m.focus === :synth && length(m.synth_tabs) > 1
+       _focused_role(m) === :synth && length(_all_synth_buffers(m)) > 1
         if evt.char == 't' && ed.pending_key == 'g'
             ed.pending_key = nothing
             _cycle_synth_tab!(m; dir=+1)
@@ -1439,7 +1439,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # existing mouse-wheel nudge). Only intercepts when the cursor IS
     # on a number — otherwise falls through to vim's `+`/`-`
     # "next/previous line" motion.
-    if is_press && ed.mode === :normal && m.focus === :patterns
+    if is_press && ed.mode === :normal && _focused_role(m) === :patterns
         if evt.char == '+'
             _try_nudge_at!(m, ed, ed.cursor_row, ed.cursor_col, +1) && return
         elseif evt.char == '-'
@@ -1454,40 +1454,40 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
     # potential vim commands and consumes the keystroke).
     if is_press && ed.mode === :normal
-        if evt.char == 'e' && m.focus === :patterns
+        if evt.char == 'e' && _focused_role(m) === :patterns
             # `e` evals the current line as Julia. Only meaningful in the
             # patterns pane — the synth pane buffer contains SuperCollider
             # code which Julia can't parse, so leave `e` for the editor's
             # vim "end of word" motion there.
             _eval_current_line!(m); return
-        elseif evt.char == 'E' && m.focus === :patterns
+        elseif evt.char == 'E' && _focused_role(m) === :patterns
             # `E` evals every @dN block in the buffer. Same intercept
             # reasoning as `e` — vim's "end of WORD" motion would
             # otherwise swallow the keystroke. Help text + welcome
             # buffer + README all promise this binding.
             _eval_pattern_blocks!(m, :all); return
         elseif (evt.char == 'T' || evt.char == 't' || evt.char == ' ') &&
-               _synth_pane_open(m) && m.focus === :synth
+               _synth_pane_open(m) && _focused_role(m) === :synth
             # t / T / Space all fire the test in the synth pane. Vim's
             # `t` (till motion) isn't useful there, and giving up the
             # shift keypress is worth it for the iteration speed.
             _fire_t_with_accel!(m)
             return
-        elseif evt.char == ' ' && m.focus === :patterns && !m.tap_recording
+        elseif evt.char == ' ' && _focused_role(m) === :patterns && !m.tap_recording
             # Space-as-leader for snippet expansion. Patterns pane
             # only — synth pane uses Space to fire the test synth.
             # The next char picks a template from _LEADER_SNIPPETS.
             m.pending_leader = true
             return
-        elseif evt.char == 'K' && m.focus === :patterns
+        elseif evt.char == 'K' && _focused_role(m) === :patterns
             _preview_word_under_cursor!(m); return
         elseif evt.char == 'S'
             # Allow S anywhere — scope is useful even without a synth
             # pane open (e.g. while a pattern is playing).
             _scope_cycle_key!(m); return
-        elseif evt.char == 'm' && m.focus === :patterns
+        elseif evt.char == 'm' && _focused_role(m) === :patterns
             _toggle_mute_current_line!(m); return
-        elseif evt.char == '?' && m.focus === :patterns
+        elseif evt.char == '?' && _focused_role(m) === :patterns
             # Quick help — opens the guide modal without going through
             # `:?`. Matches the footer hint shown in normal-mode.
             m.modal = :guide; m.modal_scroll = 0
@@ -2010,9 +2010,32 @@ function _scope_cycle_key!(m::RessacApp; dir::Int = +1)
     _push_app_log!(m, "[INFO] scope → $next")
 end
 
+"""
+    _swap_focus!(m)
+
+Toggle workspace focus between the patterns pane and a synth pane.
+From patterns → focus the first synth pane (if any). From a synth
+pane → focus the patterns pane. Bound to Tab in normal mode.
+"""
 function _swap_focus!(m::RessacApp)
-    m.focus = m.focus === :patterns ? :synth : :patterns
-    _refresh_focus_flags!(m)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    if _focused_role(m) === :synth
+        # Back to the patterns pane.
+        for leaf in _all_leaves(ws.tree)
+            for tab in leaf.tabs
+                if tab isa EditorPane && !isempty(tab.tabs) &&
+                   tab.tabs[tab.current_tab].role === :patterns
+                    ws.focused_pane = leaf.id
+                    return
+                end
+            end
+        end
+    else
+        # Into the first synth pane.
+        syn = _all_synth_buffers(m)
+        isempty(syn) || (ws.focused_pane = syn[1][1].id)
+    end
 end
 
 """
@@ -2626,14 +2649,14 @@ _register_special!(
 # Small named helpers — kept out of the inline lambdas above so they
 # stay readable + greppable. Each takes (m, mt::RegexMatch).
 function _save_or_session(m::RessacApp)
-    if m.focus === :synth && _synth_pane_open(m)
+    if _focused_role(m) === :synth && _synth_pane_open(m)
         _save_current_synth!(m)
     else
         _save_session_app!(m, "_last")
     end
 end
 function _save_or_session_named(m::RessacApp, mt::RegexMatch)
-    if m.focus === :synth && _synth_pane_open(m)
+    if _focused_role(m) === :synth && _synth_pane_open(m)
         _save_current_synth!(m; new_name = mt.captures[1])
     else
         _save_session_app!(m, mt.captures[1])
@@ -4469,11 +4492,24 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # selection to clear — by then the user has already copied.
     m.paused && return
     m.tick += 1
-    _active_editor(m).tick = m.tick
-    for tab in m.synth_tabs
-        tab.editor.tick = m.tick
-    end
     _ensure_default_workspace!(m)
+    # Tick every editor in the tree so cursor blink animates. The
+    # per-pane render in _render_tree_inner! also syncs .tick, but
+    # doing it up-front covers panes scrolled out of the current
+    # frame too.
+    let ws = current_workspace(m.workspaces)
+        if ws !== nothing
+            for leaf in _all_leaves(ws.tree)
+                for tab in leaf.tabs
+                    if tab isa EditorPane
+                        for b in tab.tabs
+                            b.code_editor.tick = m.tick
+                        end
+                    end
+                end
+            end
+        end
+    end
     buf = f.buffer
 
     area = f.area
@@ -4652,7 +4688,7 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
     m.recording &&
         (_push_app_log!(m, "[WARN] export: stop the current :rec first"); return)
     tab = _current_synth_tab(m)
-    src = TK.text(tab.editor)
+    src = TK.text(tab.code_editor)
     dir = joinpath(pwd(), "recordings")
     isdir(dir) || mkpath(dir)
     ts = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
@@ -4818,10 +4854,11 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     push!(sections, tempo_section)
 
     # Synth section (only if a synth pane is open)
-    if _synth_pane_open(m)
-        synth_label = "♬ $(_current_synth_tab(m).name)" *
-                      (length(m.synth_tabs) > 1 ?
-                       " [$(m.synth_tab_idx)/$(length(m.synth_tabs))]" : "")
+    syn = _all_synth_buffers(m)
+    if !isempty(syn)
+        cur = _current_synth_tab(m)
+        synth_label = "♬ $(cur === nothing ? "?" : cur.name)" *
+                      (length(syn) > 1 ? " [$(length(syn))]" : "")
         push!(sections, [(synth_label, TK.tstyle(:title, bold = true))])
     end
 
@@ -4991,7 +5028,7 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     elseif m.placeholder_active
         [("Tab", "next"), ("S-Tab", "prev"), ("Esc", "exit"),
          ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "filling")]
-    elseif ed.mode === :normal && m.focus === :patterns
+    elseif ed.mode === :normal && _focused_role(m) === :patterns
         [("?", "help"), ("Space", "snippet"), ("e", "eval"),
          ("E", "eval-all"), ("i", "insert"), ("dd.", "repeat"),
          (":tap", "loop"), (":tutorial", "tour"), (":q", "quit")]
@@ -4999,7 +5036,7 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         [("e", "eval"), ("i", "insert"), ("Esc", "normal"),
          (":synth", "<name>"), (":lib", "library"),
          (":tap", "loop"), (":wiki", "docs"), (":q", "quit")]
-    elseif length(m.synth_tabs) > 1
+    elseif length(_all_synth_buffers(m)) > 1
         [("e", "eval"), ("T", "test"), ("Tab", "swap"),
          ("gt/gT", "cycle"), (":w", "save"), (":close", ""), (":back", "")]
     else
@@ -5561,24 +5598,27 @@ end
 """
     _open_synth_tab!(m, name)
 
-If `name` is already an open tab, switch to it. Otherwise create a
-new tab (loading the source from disk or a starter template) and
-push it onto the stack.
+If a synth pane for `name` is already open in the workspace, focus
+it. Otherwise vsplit a new synth-role EditorPane, load the source
+(DSL `.jl` preferred, else raw `.scd`, else starter template), and
+focus it. Synths are plain workspace panes now — no separate tab
+list.
 """
 function _open_synth_tab!(m::RessacApp, name::AbstractString)
     name = String(name)
-    # Already open as a SynthTab → just refocus its workspace pane.
-    existing = findfirst(t -> t.name == name, m.synth_tabs)
-    if existing !== nothing
-        m.synth_tab_idx = existing
-        m.focus = :synth
-        _focus_pane_holding_editor!(m, m.synth_tabs[existing].editor)
-        _push_app_log!(m, "[INFO] switched to synth '$name'")
-        return
+    ws = current_workspace(m.workspaces)
+    # Already open → focus its leaf.
+    if ws !== nothing
+        for (leaf, buf) in _all_synth_buffers(m)
+            if buf.name == name
+                ws.focused_pane = leaf.id
+                _push_app_log!(m, "[INFO] switched to synth '$name'")
+                return
+            end
+        end
     end
-    # Mode detection: prefer existing `.jl` (DSL) on disk; fall back to
-    # `.scd` (raw SC); otherwise create a fresh DSL tab with the
-    # starter template — DSL is the primary authoring mode now.
+    # Mode detection: prefer existing `.jl` (DSL); fall back to `.scd`
+    # (raw SC); otherwise a fresh DSL starter.
     dsl_path = _app_synth_path(name; mode = :dsl)
     sc_path  = _app_synth_path(name; mode = :sc)
     src, mode = if isfile(dsl_path)
@@ -5588,10 +5628,6 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     else
         (_STARTER_DSL(name), :dsl)
     end
-    # Open the synth as a workspace EditorPane (synth-role). The
-    # pane's TK.CodeEditor IS what we hand to SynthTab — they share
-    # state so legacy paths that read tab.editor.X still observe the
-    # workspace pane's buffer.
     cmd_vsplit!(m.workspaces, "editor", Dict{String,Any}(
         "buffer_role" => "synth",
         "name"        => name,
@@ -5599,122 +5635,97 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     ws = current_workspace(m.workspaces)
     leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
     pane = leaf.tabs[1]
-    code_editor = pane.tabs[1].code_editor
-    TK.set_text!(code_editor, src)
-    code_editor.mode = :normal
-    code_editor.focused = true
-    push!(m.synth_tabs, SynthTab(name, code_editor; mode = mode))
-    m.synth_tab_idx = length(m.synth_tabs)
-    m.focus = :synth
+    eb = pane.tabs[1]
+    eb.synth_mode = mode
+    TK.set_text!(eb.code_editor, src)
+    eb.code_editor.mode = :normal
+    eb.code_editor.focused = true
     _push_app_log!(m, "[INFO] opened synth '$name' [$mode] — T test, :w save")
-end
-
-# Refocus the workspace leaf whose EditorPane currently holds `ed`.
-# No-op when the editor isn't reachable from the workspace tree.
-function _focus_pane_holding_editor!(m::RessacApp, ed::TK.CodeEditor)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return
-    for leaf in _all_leaves(ws.tree)
-        for tab in leaf.tabs
-            if tab isa EditorPane && !isempty(tab.tabs) &&
-               tab.tabs[1].code_editor === ed
-                ws.focused_pane = leaf.id
-                return
-            end
-        end
-    end
-end
-
-"""
-    _refresh_focus_flags!(m)
-
-Set the `focused` field on every editor to match `m.focus`. Called
-after any focus/tab change. Cleaner than relying on _swap_focus!
-side effects which made the caret invisible the first time
-the user opened a synth pane.
-"""
-function _refresh_focus_flags!(m::RessacApp)
-    _active_editor(m).focused = (m.focus === :patterns)
-    for (i, tab) in enumerate(m.synth_tabs)
-        tab.editor.focused = (m.focus === :synth && i == m.synth_tab_idx)
-    end
 end
 
 """
     _close_synth_pane!(m)
 
-Close every tab and return focus to the patterns editor. Triggered
-by `:back`. To drop just the active tab, see `_close_active_synth_tab!`.
+Close every synth pane in the workspace. Triggered by `:back`. To
+drop just the focused synth, see `_close_active_synth_tab!`.
 """
 function _close_synth_pane!(m::RessacApp)
-    isempty(m.synth_tabs) && return
-    for tab in m.synth_tabs
-        _close_pane_holding_editor!(m, tab.editor)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    closed = 0
+    # Re-fetch each iteration: cmd_close! mutates the tree.
+    while true
+        syn = _all_synth_buffers(m)
+        isempty(syn) && break
+        ws.focused_pane = syn[1][1].id
+        cmd_close!(m.workspaces)
+        closed += 1
+        closed > 64 && break   # safety against a stuck close
     end
-    empty!(m.synth_tabs)
-    m.synth_tab_idx = 0
-    m.focus = :patterns
-    _push_app_log!(m, "[INFO] closed all synth panes")
+    closed == 0 || _push_app_log!(m, "[INFO] closed $closed synth pane(s)")
 end
 
 """
     _close_active_synth_tab!(m)
 
-Drop the active tab. If it was the last one, falls through to
-`_close_synth_pane!` (which restores focus to patterns).
+Close the focused synth pane (or the first synth pane if focus
+drifted off one). No-op when no synth pane is open.
 """
 function _close_active_synth_tab!(m::RessacApp)
-    isempty(m.synth_tabs) && return
-    tab = _current_synth_tab(m)
-    name = tab.name
-    _close_pane_holding_editor!(m, tab.editor)
-    deleteat!(m.synth_tabs, m.synth_tab_idx)
-    if isempty(m.synth_tabs)
-        m.synth_tab_idx = 0
-        m.focus = :patterns
-        _push_app_log!(m, "[INFO] closed last synth tab '$name'")
-    else
-        m.synth_tab_idx = clamp(m.synth_tab_idx - 1, 1, length(m.synth_tabs))
-        m.focus = :synth
-        _focus_pane_holding_editor!(m, _current_synth_tab(m).editor)
-        _push_app_log!(m, "[INFO] closed '$name' — now on '$(_current_synth_tab(m).name)'")
-    end
-end
-
-function _cycle_synth_tab!(m::RessacApp; dir::Int = +1)
-    length(m.synth_tabs) <= 1 && return
-    n = length(m.synth_tabs)
-    m.synth_tab_idx = mod(m.synth_tab_idx + dir - 1, n) + 1
-    m.focus = :synth
-    _focus_pane_holding_editor!(m, _current_synth_tab(m).editor)
-end
-
-# Close the workspace leaf whose EditorPane currently holds `ed`.
-# No-op when the editor isn't reachable from the workspace tree
-# (e.g. user already closed the pane manually via C-w c).
-function _close_pane_holding_editor!(m::RessacApp, ed::TK.CodeEditor)
     ws = current_workspace(m.workspaces)
     ws === nothing && return
-    for leaf in collect(_all_leaves(ws.tree))
-        for tab in leaf.tabs
-            if tab isa EditorPane && !isempty(tab.tabs) &&
-               tab.tabs[1].code_editor === ed
-                ws.focused_pane = leaf.id
-                cmd_close!(m.workspaces)
-                return
-            end
-        end
+    buf = _focused_buffer(m)
+    leaf_id = if buf !== nothing && buf.role === :synth
+        # Focused leaf is a synth — close it.
+        ws.focused_pane
+    else
+        syn = _all_synth_buffers(m)
+        isempty(syn) && return
+        syn[1][1].id
     end
+    name = (b = _leaf_synth_name(m, leaf_id)) === nothing ? "?" : b
+    ws.focused_pane = leaf_id
+    cmd_close!(m.workspaces)
+    _push_app_log!(m, "[INFO] closed synth '$name'")
+end
+
+_leaf_synth_name(m::RessacApp, leaf_id::Int) = begin
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return nothing
+    leaf = _find_leaf_by_id(ws.tree, leaf_id)
+    (leaf isa PaneLeaf && !isempty(leaf.tabs)) || return nothing
+    pane = leaf.tabs[1]
+    (pane isa EditorPane && !isempty(pane.tabs)) || return nothing
+    pane.tabs[1].name
+end
+
+"""
+    _cycle_synth_tab!(m; dir=+1)
+
+Focus the next (`dir=+1`) / previous (`dir=-1`) synth pane in the
+workspace. No-op when fewer than two synth panes are open.
+"""
+function _cycle_synth_tab!(m::RessacApp; dir::Int = +1)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    syn = _all_synth_buffers(m)
+    length(syn) <= 1 && return
+    cur = findfirst(((leaf, _),) -> leaf.id == ws.focused_pane, syn)
+    cur = cur === nothing ? 1 : cur
+    nxt = mod(cur + dir - 1, length(syn)) + 1
+    ws.focused_pane = syn[nxt][1].id
 end
 
 function _list_synth_tabs!(m::RessacApp)
-    if isempty(m.synth_tabs)
-        _push_app_log!(m, "[INFO] no synth tabs open")
+    syn = _all_synth_buffers(m)
+    if isempty(syn)
+        _push_app_log!(m, "[INFO] no synth panes open")
         return
     end
-    for (i, tab) in enumerate(m.synth_tabs)
-        marker = i == m.synth_tab_idx ? "▶" : " "
-        _push_app_log!(m, "  $marker $i. $(tab.name)")
+    ws = current_workspace(m.workspaces)
+    for (leaf, buf) in syn
+        marker = (ws !== nothing && leaf.id == ws.focused_pane) ? "▶" : " "
+        _push_app_log!(m, "  $marker $(buf.name) [$(buf.synth_mode)]")
     end
 end
 
@@ -5729,30 +5740,30 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
     _synth_pane_open(m) || (_push_app_log!(m, "[ERROR] :w — no synth open"); return)
     tab = _current_synth_tab(m)
     old_name = tab.name
-    text = TK.text(tab.editor)
+    text = TK.text(tab.code_editor)
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
-    align = tab.mode === :dsl ? _align_dsl_synth_name : _align_synthdef_name
+    align = tab.synth_mode === :dsl ? _align_dsl_synth_name : _align_synthdef_name
     if new_name === nothing
         # Plain :w — overwrite the current tab's backing file at the
         # extension that matches its mode (.jl for DSL, .scd for SC).
         text = align(text, old_name)
-        TK.set_text!(tab.editor, text)
-        write(_app_synth_path(old_name; mode = tab.mode), text)
+        TK.set_text!(tab.code_editor, text)
+        write(_app_synth_path(old_name; mode = tab.synth_mode), text)
         register_synth!(SynthEntry(Symbol(old_name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
-                             "tags" => ["user", String(tab.mode)])))
-        _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(old_name; mode = tab.mode))")
+                             "tags" => ["user", String(tab.synth_mode)])))
+        _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(old_name; mode = tab.synth_mode))")
     else
         # :w newname — Save-As. Same mode as the originating tab; the
         # name token in the source gets rewritten to match.
         name = String(new_name)
         new_text = align(text, name)
-        write(_app_synth_path(name; mode = tab.mode), new_text)
+        write(_app_synth_path(name; mode = tab.synth_mode), new_text)
         register_synth!(SynthEntry(Symbol(name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
-                             "tags" => ["user", String(tab.mode)])))
-        _push_app_log!(m, "[INFO] saved synth as → $(_app_synth_path(name; mode = tab.mode))")
+                             "tags" => ["user", String(tab.synth_mode)])))
+        _push_app_log!(m, "[INFO] saved synth as → $(_app_synth_path(name; mode = tab.synth_mode))")
         _open_synth_tab!(m, name)
     end
 end
@@ -5799,8 +5810,8 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     tab = _current_synth_tab(m)
-    src = TK.text(tab.editor)
-    if tab.mode === :dsl
+    src = TK.text(tab.code_editor)
+    if tab.synth_mode === :dsl
         # DSL mode: realign the @synth name to the tab name (same
         # contract as SC mode's SynthDef name), then eval the buffer
         # as Julia. The @synth macro inside calls play_synth which

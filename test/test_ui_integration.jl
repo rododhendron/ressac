@@ -653,28 +653,34 @@ end
 
 # ── Synth tabs ─────────────────────────────────────────────────────
 
-@testset ":synth <name> opens a synth tab" begin
+# Synth panes are workspace EditorPanes (role=:synth) now —
+# inspect via Ressac._all_synth_buffers.
+_synth_names(app) = [b.name for (_, b) in Ressac._all_synth_buffers(app)]
+
+@testset ":synth <name> opens a synth pane in the workspace" begin
     app, _ = _new_app()
-    @test isempty(app.synth_tabs)
+    @test isempty(_synth_names(app))
     _exec_ex_command!(app, "synth wob")
-    @test length(app.synth_tabs) == 1
-    @test app.synth_tabs[1].name == "wob"
+    @test _synth_names(app) == ["wob"]
 end
 
-@testset ":synth + :tabs + :tabnext + :back lifecycle" begin
-    app, _ = _new_app()
+@testset ":synth + :tabnext + :close + :back lifecycle" begin
+    app, frame = _new_app()
     _exec_ex_command!(app, "synth one")
     _exec_ex_command!(app, "synth two")
-    @test length(app.synth_tabs) == 2
-    @test app.synth_tab_idx == 2
+    @test Set(_synth_names(app)) == Set(["one", "two"])
+    ws = Ressac.current_workspace(app.workspaces)
+    # Focused on the most-recently-opened synth pane.
+    @test Ressac._focused_role(app) === :synth
+    # tabprev / tabnext cycle focus between the two synth panes.
     _exec_ex_command!(app, "tabprev")
-    @test app.synth_tab_idx == 1
+    @test Ressac._focused_role(app) === :synth
     _exec_ex_command!(app, "tabnext")
-    @test app.synth_tab_idx == 2
-    _exec_ex_command!(app, "close")     # close active synth tab
-    @test length(app.synth_tabs) == 1
-    _exec_ex_command!(app, "back")      # close synth pane
-    @test isempty(app.synth_tabs)
+    @test Ressac._focused_role(app) === :synth
+    _exec_ex_command!(app, "close")     # close the focused synth pane
+    @test length(_synth_names(app)) == 1
+    _exec_ex_command!(app, "back")      # close all remaining synth panes
+    @test isempty(_synth_names(app))
 end
 
 # ── Modal flows — navigation, not just open/close ──────────────────
@@ -1093,7 +1099,7 @@ end
         Tachikoma.mouse_left, Tachikoma.mouse_press,
         false, false, false)
     Tachikoma.update!(app, evt)
-    @test app.focus === :patterns
+    @test Ressac._focused_role(app) === :patterns
 end
 
 # ── Search (Ctrl-F) ────────────────────────────────────────────────

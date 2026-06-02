@@ -13,11 +13,13 @@ mutable struct EditorBuffer
     name::String
     eval_target::Symbol     # :slot | :sc_eval
     completion_ctx::Symbol  # :patterns_dsl | :synth_dsl | :sc_ugens
+    synth_mode::Symbol      # :dsl | :sc  (only meaningful for :synth role)
 end
 
 function EditorBuffer(; role::Symbol = :patterns,
                        name::AbstractString = "main",
-                       content::AbstractString = "")
+                       content::AbstractString = "",
+                       synth_mode::Symbol = :dsl)
     eval_target, completion_ctx = if role === :synth
         (:sc_eval, :synth_dsl)
     else
@@ -28,7 +30,7 @@ function EditorBuffer(; role::Symbol = :patterns,
                          tick = 0,
                          mode = :normal)
     return EditorBuffer(ed, role, String(name),
-                        eval_target, completion_ctx)
+                        eval_target, completion_ctx, synth_mode)
 end
 
 mutable struct EditorPane <: PaneImpl

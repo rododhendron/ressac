@@ -20,9 +20,9 @@ so the picker only offers snippets that match the active tab's
 authoring language (DSL Julia vs raw SuperCollider).
 """
 function _snip_context(m::RessacApp)
-    if m.focus === :synth && _synth_pane_open(m)
+    if _focused_role(m) === :synth
         tab = _current_synth_tab(m)
-        return tab.mode === :dsl ? :synth_dsl : :synth_sc
+        tab !== nothing && return tab.synth_mode === :dsl ? :synth_dsl : :synth_sc
     end
     return :patterns
 end
