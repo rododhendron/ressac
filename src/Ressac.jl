@@ -45,6 +45,7 @@ include("genome.jl")             # Genome DAG + UGenSpec catalog
 include("genome_validity.jl")    # validate + repair!
 include("genome_render.jl")      # render_synthdef + render_dsl
 include("genome_archetypes.jl")  # serialization + seed archetypes
+include("genome_operators.jl")   # mutation + crossover operators
 
 # ─── Extension registry — plugin-contributed docs + snippets ──────
 include("extension_registry.jl")
