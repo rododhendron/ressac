@@ -446,6 +446,13 @@ function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
     return
 end
 
+const _GA_PANEL_DESC = (
+    "nb de candidats par génération (2-9)",
+    "ampleur des mutations : 0 = fin, 1 = sauvage/structurel",
+    "chance de croiser 2 favoris plutôt que muter un seul",
+    "favoris gardés INTACTS — ne perd jamais un bon son",
+)
+
 function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
     blank = " "^inner.width
     for y in inner.y:(inner.y + inner.height - 1)
@@ -453,17 +460,23 @@ function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
     end
     TK.set_string!(buf, inner.x, inner.y, first("RÉGLAGES GA", inner.width),
                    TK.tstyle(:accent, bold = true))
-    rows = [("taille génération", string(p.pop.gen_size)),
-            ("rayon divergence",  string(round(p.radius; digits = 2))),
-            ("proba croisement",  string(round(p.pop.crossover_prob; digits = 2))),
+    rows = [("taille génération",  string(p.pop.gen_size)),
+            ("rayon divergence",   string(round(p.radius; digits = 2))),
+            ("proba croisement",   string(round(p.pop.crossover_prob; digits = 2))),
             ("élitisme (favoris)", string(p.pop.elitism))]
+    desc_x = inner.x + 30                      # description column
     for (i, (label, val)) in enumerate(rows)
         sel = i == p.ga_cursor
+        y = inner.y + 1 + i
         cursor = sel ? "▸ " : "  "
-        line = "$cursor$(rpad(label, 22)) $val"
-        TK.set_string!(buf, inner.x, inner.y + 1 + i,
-                       first(line, inner.width),
+        line = "$cursor$(rpad(label, 20)) $(rpad(val, 4))"
+        TK.set_string!(buf, inner.x, y, first(line, inner.width),
                        sel ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+        if desc_x < inner.x + inner.width
+            TK.set_string!(buf, desc_x, y,
+                           first(_GA_PANEL_DESC[i], inner.x + inner.width - desc_x),
+                           sel ? TK.tstyle(:text) : TK.tstyle(:text_dim))
+        end
     end
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    "j/k choisir · ←/→ ajuster · Esc/g fermer", TK.tstyle(:text_dim))
