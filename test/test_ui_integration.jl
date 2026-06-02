@@ -1242,3 +1242,34 @@ end
     @test length(collect(Ressac._all_leaves(
         Ressac.current_workspace(app.workspaces).tree))) == 1
 end
+
+@testset "app survives closing the patterns editor (zero editors)" begin
+    app, frame = _new_app()
+    # Need a second pane so cmd_close! allows removing patterns.
+    Ressac.cmd_vsplit!(app.workspaces, "scope", Dict{String,Any}("target" => "wave"))
+    Ressac.cmd_focus!(app.workspaces, :left)        # back onto patterns
+    Ressac.cmd_close!(app.workspaces)               # close the patterns pane
+    @test Ressac._active_editor(app) === nothing     # no editor anywhere
+
+    @testset "view() re-renders without crashing" begin
+        @test (Tachikoma.view(app, frame); true)
+    end
+
+    @testset "':' still opens the command line with no editor" begin
+        Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
+        @test app.command_line.mode === :command
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    end
+
+    @testset "Ctrl-w still enters pane mode with no editor" begin
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+        @test Ressac._PANE_MODE.active == true
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+        @test Ressac._PANE_MODE.active == false
+    end
+
+    @testset "a plain key is eaten, no crash, no editor materializes" begin
+        @test (Tachikoma.update!(app, Tachikoma.KeyEvent('x')); true)
+        @test Ressac._active_editor(app) === nothing
+    end
+end

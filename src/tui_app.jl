@@ -299,7 +299,11 @@ function _active_editor(m::RessacApp)
             end
         end
     end
-    throw(ErrorException("_active_editor: no editor pane available"))
+    # No editor pane anywhere — patterns is a pane like any other and
+    # may be closed. Callers that run every frame (view chrome) or on
+    # every key (routing) must tolerate `nothing`; in-editor-context
+    # callers never see it because they only run when an editor exists.
+    return nothing
 end
 
 """
@@ -445,18 +449,19 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     (leaf === nothing || isempty(leaf.tabs)) && return false
     1 <= leaf.current_tab <= length(leaf.tabs) || return false
     pane = leaf.tabs[leaf.current_tab]
-    # While _active_editor(m) is in ex command mode, ALL keys belong to it —
+    ed = _active_editor(m)        # `nothing` when no editor pane is open
+    # While the editor is in ex command mode, ALL keys belong to it —
     # otherwise typed chars after ':' would land in the focused side
     # pane instead of the ex command buffer. Same for :search.
-    if _active_editor(m).mode === :command || _active_editor(m).mode === :search
+    if ed !== nothing && (ed.mode === :command || ed.mode === :search)
         return false
     end
-    # Global shortcuts that always belong to _active_editor(m) regardless of
+    # Global shortcuts that always belong to the editor regardless of
     # which workspace pane has focus. ':' opens ex command mode;
     # without this fall-through, ex commands wouldn't be reachable
     # from a focused log / doc / scope side pane.
     if evt.key === :char && evt.char == ':' &&
-       _active_editor(m).mode === :normal
+       ed !== nothing && ed.mode === :normal
         return false
     end
     # Synth-role pane: route T/t/Space (in :normal mode) to the
@@ -475,7 +480,7 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     # Patterns pane uses _active_editor(m) — legacy path owns it.
     if pane isa EditorPane &&
        1 <= pane.current_tab <= length(pane.tabs) &&
-       pane.tabs[pane.current_tab].code_editor === _active_editor(m)
+       pane.tabs[pane.current_tab].code_editor === ed
         return false
     end
     # TK.CodeEditor.handle_key! short-circuits to `false` when
@@ -1178,19 +1183,22 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             end
             return  # eat any other key while in pane mode
         end
+        # No editor → treat as :normal so pane mode + ex command stay
+        # reachable (the user must be able to `:vsplit editor` to reopen
+        # a patterns pane when none is open).
+        ed = _active_editor(m)
+        in_normal = ed === nothing || ed.mode === :normal
         # Pane mode entry — only from editor normal mode so insert-mode
         # word-delete (Ctrl-W) keeps working.
-        if _active_editor(m).mode === :normal &&
-           evt.key === :ctrl && evt.char == 'w'
+        if in_normal && evt.key === :ctrl && evt.char == 'w'
             _PANE_MODE.active = true
             return
         end
         # CommandLine entry — ':' opens ex command, '/' opens search.
-        # Only when the legacy patterns editor is in :normal (so ':'
-        # typed during insert is a literal char). Replaces TK.CodeEditor's
-        # built-in :command/:search mode entry, which we never want to
-        # trigger anymore.
-        if _active_editor(m).mode === :normal && evt.key === :char
+        # Only when the editor is in :normal (so ':' typed during insert
+        # is a literal char). Replaces TK.CodeEditor's built-in
+        # :command/:search mode entry, which we never want to trigger.
+        if in_normal && evt.key === :char
             if evt.char == ':'
                 enter!(m.command_line, :command)
                 return
@@ -1211,6 +1219,10 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if _route_key_to_focused_pane!(m, evt)
         return
     end
+    # No editor pane open at all → nothing below (the legacy patterns
+    # keystroke flow) applies. The focused pane already had its chance
+    # via routing above; eat the key.
+    _active_editor(m) === nothing && return
     # Cause A fix: the legacy update! body below calls
     # `TK.handle_key!(_active_editor(m), evt)`, which short-circuits
     # when `.focused == false`. _render_tree_inner! clears that flag
@@ -3076,6 +3088,7 @@ function _render_livedoc_row(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
                    TK.tstyle(:text))
     ed = _active_editor(m)
+    ed === nothing && return        # no editor → no word-under-cursor doc
     1 <= ed.cursor_row <= length(ed.lines) || return
     line_chars = ed.lines[ed.cursor_row]
     isempty(line_chars) && return
@@ -4983,7 +4996,8 @@ function _current_mode_symbol(m::RessacApp)
     m.command_line.mode === :command && return :command
     m.command_line.mode === :search  && return :search
     m.visual_active && return :visual
-    return _active_editor(m).mode
+    ed = _active_editor(m)
+    return ed === nothing ? :normal : ed.mode   # no editor → neutral NORMAL
 end
 
 """
@@ -5050,7 +5064,7 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     elseif m.placeholder_active
         [("Tab", "next"), ("S-Tab", "prev"), ("Esc", "exit"),
          ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "filling")]
-    elseif ed.mode === :normal && _focused_role(m) === :patterns
+    elseif ed !== nothing && ed.mode === :normal && _focused_role(m) === :patterns
         [("?", "help"), ("Space", "snippet"), ("e", "eval"),
          ("E", "eval-all"), ("i", "insert"), ("dd.", "repeat"),
          (":tap", "loop"), (":tutorial", "tour"), (":q", "quit")]
