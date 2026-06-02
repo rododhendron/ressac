@@ -628,3 +628,25 @@ end
         @test Ressac.genome_is_audible(p.pop.candidates[3].genome)
     end
 end
+
+@testset "explorer survives a layout save/load round-trip" begin
+    wm = Ressac.WorkspaceManager()
+    Ressac.create_workspace!(wm, "")
+    ws = Ressac.current_workspace(wm)
+    push!(ws.tree.tabs, Ressac._pane_new(:explorer,
+        Dict{String,Any}("seed" => "pluck", "rng" => 5)))
+    ws.tree.current_tab = 1
+    Ressac.favor!(ws.tree.tabs[1].pop, 2)
+    @test Ressac._kind_for(ws.tree.tabs[1]) == "explorer"
+    mktempdir() do d
+        path = joinpath(d, "layout.toml")
+        Ressac.save_layout(wm, path)
+        wm2 = Ressac.WorkspaceManager()
+        Ressac.load_layout!(wm2, path)
+        ws2 = Ressac.current_workspace(wm2)
+        pane = ws2.tree.tabs[ws2.tree.current_tab]
+        @test pane isa Ressac.SynthExplorerPane
+        @test length(pane.pop.candidates) == 9
+        @test pane.pop.candidates[2].weight > 0     # favorite preserved
+    end
+end

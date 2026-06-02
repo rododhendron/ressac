@@ -783,4 +783,8 @@ function on_close!(p::SynthExplorerPane)
     return nothing
 end
 
+# Le kind enregistré est :explorer (le fallback _kind_for donnerait
+# "synthexplorer" → la restauration de layout échouerait).
+_kind_for(::SynthExplorerPane) = "explorer"
+
 register_pane_kind!(:explorer, _synth_explorer_pane_ctor)

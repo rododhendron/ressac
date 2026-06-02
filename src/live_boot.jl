@@ -82,6 +82,14 @@ function live(; host::AbstractString = "127.0.0.1",
     try
         Tachikoma.app(app; fps=cfg.fps)
     finally
+        # Persist the workspace layout so the next launch restores the
+        # panes the user had open (explorer, splits, …). Best-effort:
+        # a failure here must not block a clean shutdown.
+        try
+            save_layout(app.workspaces, _default_layout_path())
+        catch err
+            @warn "Failed to save layout" exception=err
+        end
         # Always free SC voices on exit — drones with auto_env=false
         # would otherwise keep playing after Ressac closes. Cheap nuke
         # via /ressac/panic.
