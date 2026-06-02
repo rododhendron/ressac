@@ -41,6 +41,31 @@ end
 EditorPane() = EditorPane([EditorBuffer()], 1)
 
 function _editor_pane_ctor(args::AbstractDict)
+    # Restore path: a serialized pane carries a "tabs" list with the
+    # buffer content + cursor. Rebuild each EditorBuffer so layout
+    # load doesn't drop what the user had open.
+    tabs_raw = get(args, "tabs", nothing)
+    if tabs_raw isa AbstractVector && !isempty(tabs_raw)
+        buffers = EditorBuffer[]
+        for t in tabs_raw
+            t isa AbstractDict || continue
+            role = String(get(t, "role", "patterns")) == "synth" ? :synth : :patterns
+            name = String(get(t, "name", "main"))
+            content = String(get(t, "content", ""))
+            smode = Symbol(String(get(t, "synth_mode", "dsl")))
+            buf = EditorBuffer(; role = role, name = name,
+                                content = content, synth_mode = smode)
+            buf.code_editor.cursor_row = Int(get(t, "cursor_row", 1))
+            buf.code_editor.cursor_col = Int(get(t, "cursor_col", 0))
+            buf.code_editor.scroll_offset = Int(get(t, "scroll_offset", 0))
+            push!(buffers, buf)
+        end
+        if !isempty(buffers)
+            cur = Int(get(args, "current_tab", 1))
+            return EditorPane(buffers, clamp(cur, 1, length(buffers)))
+        end
+    end
+    # Fresh path: a new pane from `:vsplit editor` / snippet panes.
     role_str = String(get(args, "buffer_role", "patterns"))
     name_str = String(get(args, "name", "main"))
     role = role_str == "synth" ? :synth : :patterns
@@ -122,6 +147,7 @@ function serialize(p::EditorPane)
             "role" => String(t.role),
             "name" => t.name,
             "content" => TK.text(t.code_editor),
+            "synth_mode" => String(t.synth_mode),
             "cursor_row" => t.code_editor.cursor_row,
             "cursor_col" => t.code_editor.cursor_col,
             "scroll_offset" => t.code_editor.scroll_offset,

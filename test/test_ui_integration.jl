@@ -522,6 +522,34 @@ end
 
 # ── Layout persistence e2e (round-trip via real keystrokes) ────────
 
+@testset ":layout save/load preserves editor + synth content" begin
+    app, frame = _new_app()
+    Ressac.TK.set_text!(Ressac._active_editor(app),
+        "@d1 p\"bd sn\"  # KEEPME")
+    Ressac._open_synth_tab!(app, "wobx")
+    Ressac.TK.set_text!(Ressac._current_synth_tab(app).code_editor,
+        "@synth :wobx saw(:freq)  # SYNTHKEEP")
+    path = tempname() * ".toml"
+    try
+        Ressac.save_layout(app.workspaces, path)
+        wm2 = Ressac.WorkspaceManager()
+        Ressac.load_layout!(wm2, path)
+        texts = String[]
+        for leaf in Ressac._all_leaves(Ressac.current_workspace(wm2).tree)
+            for tab in leaf.tabs
+                tab isa Ressac.EditorPane || continue
+                for b in tab.tabs
+                    push!(texts, Ressac.TK.text(b.code_editor))
+                end
+            end
+        end
+        @test any(t -> occursin("KEEPME", t), texts)
+        @test any(t -> occursin("SYNTHKEEP", t), texts)
+    finally
+        rm(path; force = true)
+    end
+end
+
 @testset ":layout save / load round-trip via keystrokes" begin
     app, frame = _new_app()
     Ressac._active_editor(app).mode = :normal
