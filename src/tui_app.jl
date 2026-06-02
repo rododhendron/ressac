@@ -3034,8 +3034,12 @@ function _save_session_app!(m::RessacApp, name::AbstractString)
     dir = joinpath(pwd(), "sessions")
     isdir(dir) || mkpath(dir)
     path = joinpath(dir, String(name) * ".txt")
+    ed = _active_editor(m)
+    if ed === nothing
+        _push_app_log!(m, "[ERROR] save-session: no editor pane to save"); return
+    end
     try
-        write(path, TK.text(_active_editor(m)))
+        write(path, TK.text(ed))
         _push_app_log!(m, "[INFO] saved session → $path")
     catch err
         _push_app_log!(m, "[ERROR] save-session: $(sprint(showerror, err))")
@@ -3049,8 +3053,10 @@ function _load_session_app!(m::RessacApp, name::AbstractString)
         return
     end
     try
-        TK.set_text!(_active_editor(m), read(path, String))
-        _active_editor(m).cursor_row = 1; _active_editor(m).cursor_col = 0
+        ed = _open_or_reuse_editable_pane!(m; name = String(name))
+        ed === nothing && return
+        TK.set_text!(ed, read(path, String))
+        ed.cursor_row = 1; ed.cursor_col = 0
         _push_app_log!(m, "[INFO] loaded session '$name' — press E to eval all blocks")
     catch err
         _push_app_log!(m, "[ERROR] load-session: $(sprint(showerror, err))")
