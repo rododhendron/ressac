@@ -150,6 +150,7 @@ end
 
 function _browser_insert!(m::RessacApp, entry::_BrowserEntry)
     ed = _active_editor(m)
+    ed === nothing && return
     txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty=true))
     row = ed.cursor_row

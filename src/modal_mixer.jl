@@ -78,13 +78,15 @@ Adjust the gain of `slot`'s @dN line in the patterns buffer by
 applies it, and re-evals so audio reflects the change.
 """
 function _mixer_nudge_gain!(m::RessacApp, slot::Symbol, delta::Real)
-    txt = TK.text(_active_editor(m))
+    ed = _active_editor(m)
+    ed === nothing && return _push_app_log!(m, "[WARN] mixer +/-: no editor open")
+    txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty = true))
     slot_id = String(slot)
     row = findfirst(line -> occursin(Regex("^\\s*@$(slot_id)\\b"), String(line)), lines)
     row === nothing && return _push_app_log!(m, "[WARN] mixer +/-: no @$(slot_id) line in buffer")
     lines[row] = _apply_gain_delta_to_line(String(lines[row]), delta)
-    TK.set_text!(_active_editor(m), join(lines, '\n'))
+    TK.set_text!(ed, join(lines, '\n'))
     _eval_pattern_blocks!(m, [slot])
 end
 

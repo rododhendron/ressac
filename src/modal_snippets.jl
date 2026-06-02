@@ -165,6 +165,7 @@ function _insert_snippet!(m::RessacApp)
     1 <= m.snip_cursor <= length(snips) || return
     s = snips[m.snip_cursor]
     ed = _active_editor(m)
+    ed === nothing && return
     body_lines = split(strip(s.resolved_content), '\n')
     min_indent = typemax(Int)
     for line in body_lines

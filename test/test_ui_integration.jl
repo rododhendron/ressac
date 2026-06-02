@@ -1328,3 +1328,29 @@ end
         @test busy_intact
     end
 end
+
+@testset "focused-editor actions no-op cleanly with zero editors" begin
+    function _no_editor_app()
+        app, _ = _new_app()
+        Ressac.cmd_vsplit!(app.workspaces, "scope", Dict{String,Any}("target" => "wave"))
+        Ressac.cmd_focus!(app.workspaces, :left)
+        Ressac.cmd_close!(app.workspaces)            # drop the patterns pane
+        @test Ressac._active_editor(app) === nothing
+        return app
+    end
+
+    @testset "mute toggle is a no-op, no crash" begin
+        app = _no_editor_app()
+        @test (Ressac._toggle_mute_current_line!(app); true)
+    end
+
+    @testset "mixer nudge is a no-op, no crash" begin
+        app = _no_editor_app()
+        @test (Ressac._mixer_nudge_gain!(app, :d1, 0.1); true)
+    end
+
+    @testset "tap emit returns 0, no crash" begin
+        app = _no_editor_app()
+        @test Ressac._tap_emit_line!(app, ["bd", "~"], "") == 0
+    end
+end

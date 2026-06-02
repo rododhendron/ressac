@@ -1873,10 +1873,12 @@ uncommented `@dN ...` slot def → prefix it with `# ` and call
 and re-eval so the pattern comes back. Other lines log a warning.
 """
 function _toggle_mute_current_line!(m::RessacApp)
-    txt = TK.text(_active_editor(m))
+    ed = _active_editor(m)
+    ed === nothing && return
+    txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty=true))
-    row = _active_editor(m).cursor_row
-    col = _active_editor(m).cursor_col
+    row = ed.cursor_row
+    col = ed.cursor_col
     1 <= row <= length(lines) || return
     # Detect the logical block the cursor is on, then mute/unmute its
     # ROOT line — the @dN call sits there. For multi-line blocks we
@@ -1892,9 +1894,9 @@ function _toggle_mute_current_line!(m::RessacApp)
         for r in root_row:end_row
             lines[r] = "# " * lines[r]
         end
-        TK.set_text!(_active_editor(m), join(lines, '\n'))
-        _active_editor(m).cursor_row = row
-        _active_editor(m).cursor_col = col + 2
+        TK.set_text!(ed, join(lines, '\n'))
+        ed.cursor_row = row
+        ed.cursor_col = col + 2
         unset_pattern!(m.scheduler, slot)
         # Best-effort voice kill: free any drones on the SC side that
         # would otherwise hang now that the pattern stopped scheduling.
@@ -1912,9 +1914,9 @@ function _toggle_mute_current_line!(m::RessacApp)
                 lines[r] = s[2:end]
             end
         end
-        TK.set_text!(_active_editor(m), join(lines, '\n'))
-        _active_editor(m).cursor_row = row
-        _active_editor(m).cursor_col = max(0, col - 2)
+        TK.set_text!(ed, join(lines, '\n'))
+        ed.cursor_row = row
+        ed.cursor_col = max(0, col - 2)
         # Re-eval so the slot comes back live — `_eval_current_line!`
         # uses the same block detection, so multi-line blocks evaluate
         # correctly from any cursor row inside them.
@@ -4973,13 +4975,13 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             ("$label oct=$(m.piano_octave) [$(length(m.piano_events))]",
              TK.tstyle(:warning, bold = true)))
     end
-    if m.visual_active
-        r1 = min(m.visual_anchor_row, _active_editor(m).cursor_row)
-        r2 = max(m.visual_anchor_row, _active_editor(m).cursor_row)
+    if m.visual_active && (ved = _active_editor(m)) !== nothing
+        r1 = min(m.visual_anchor_row, ved.cursor_row)
+        r2 = max(m.visual_anchor_row, ved.cursor_row)
         n = r2 - r1 + 1
         if m.visual_kind === :char
             push!(state_parts,
-                ("▌ VISUAL CHAR $(m.visual_anchor_row):$(m.visual_anchor_col)→$(_active_editor(m).cursor_row):$(_active_editor(m).cursor_col)",
+                ("▌ VISUAL CHAR $(m.visual_anchor_row):$(m.visual_anchor_col)→$(ved.cursor_row):$(ved.cursor_col)",
                  TK.tstyle(:accent, bold = true)))
         else
             push!(state_parts,
