@@ -430,6 +430,20 @@ end
         whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
         @test occursin("RÉGLAGES GA", whole)
         @test occursin("croisement", whole)
+        @test occursin("stratégie", whole)
+    end
+
+    @testset "strategy row cycles through GA_STRATEGIES" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 4))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
+        @test p.pop.strategy === :breeding
+        for _ in 1:4
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))   # to row 5
+        end
+        s0 = p.pop.strategy
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:right))
+        @test p.pop.strategy !== s0
+        @test p.pop.strategy in Ressac.GA_STRATEGIES
     end
 end
 

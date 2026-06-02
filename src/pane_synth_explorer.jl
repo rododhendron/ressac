@@ -436,8 +436,16 @@ function handle_key!(p::SynthExplorerPane, evt)
 end
 
 # ── GA settings sub-mode (`g`) ─────────────────────────────────────
-# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme.
-const _GA_PANEL_ROWS = 4
+# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme · 5 stratégie.
+const _GA_PANEL_ROWS = 5
+
+const _GA_STRATEGY_NAMES = Dict(
+    :breeding   => "pool de reproduction",
+    :champion   => "champion & divergence",
+    :tournament => "tournoi",
+    :weighted   => "population pondérée",
+    :novelty    => "nouveauté (surprends-moi)",
+    :cooling    => "refroidissement")
 
 function _explorer_ga_panel_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
     ch = evt.char; k = evt.key
@@ -465,6 +473,9 @@ function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
         p.pop.crossover_prob = clamp(round(p.pop.crossover_prob + inc * 0.1; digits = 2), 0.0, 1.0)
     elseif row == 4        # élitisme
         p.pop.elitism = clamp(p.pop.elitism + inc, 0, p.pop.gen_size - 1)
+    elseif row == 5        # stratégie (cycle dans GA_STRATEGIES)
+        i = something(findfirst(==(p.pop.strategy), GA_STRATEGIES), 1)
+        p.pop.strategy = GA_STRATEGIES[mod1(i + inc, length(GA_STRATEGIES))]
     end
     return
 end
@@ -474,6 +485,7 @@ const _GA_PANEL_DESC = (
     "ampleur des mutations : 0 = fin, 1 = sauvage/structurel",
     "chance de croiser 2 favoris plutôt que muter un seul",
     "favoris gardés INTACTS — ne perd jamais un bon son",
+    "algorithme de sélection (←/→ pour changer)",
 )
 
 function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
@@ -486,7 +498,8 @@ function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
     rows = [("taille génération",  string(p.pop.gen_size)),
             ("rayon divergence",   string(round(p.radius; digits = 2))),
             ("proba croisement",   string(round(p.pop.crossover_prob; digits = 2))),
-            ("élitisme (favoris)", string(p.pop.elitism))]
+            ("élitisme (favoris)", string(p.pop.elitism)),
+            ("stratégie",          get(_GA_STRATEGY_NAMES, p.pop.strategy, "?"))]
     desc_x = inner.x + 30                      # description column
     for (i, (label, val)) in enumerate(rows)
         sel = i == p.ga_cursor

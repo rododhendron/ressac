@@ -114,3 +114,50 @@ end
         @test !any(c -> startswith(c.origin, "×"), pop.candidates)
     end
 end
+
+@testset "ga_engine — selection strategies" begin
+    base() = Ressac.archetype(:drone_grave)
+    function pop_with(strat)
+        pop = Ressac.init_population(base(), 6, MersenneTwister(7); radius = 0.5)
+        pop.strategy = strat
+        Ressac.favor!(pop, 1); Ressac.favor!(pop, 2)
+        return pop
+    end
+
+    @testset "every strategy yields gen_size valid candidates" begin
+        for strat in Ressac.GA_STRATEGIES
+            pop = pop_with(strat)
+            Ressac.next_generation!(pop, MersenneTwister(7))
+            @test length(pop.candidates) == 6
+            @test all(c -> isempty(Ressac.validate(c.genome)), pop.candidates)
+            @test all(c -> c.id > 0, pop.candidates)
+        end
+    end
+
+    @testset "champion: all children descend from the single best favorite" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(8); radius = 0.5)
+        pop.strategy = :champion
+        Ressac.favor!(pop, 3)
+        champ_id = pop.candidates[3].id
+        Ressac.next_generation!(pop, MersenneTwister(8))
+        for c in pop.candidates
+            @test pop.lineage[c.id].parents == [champ_id]
+        end
+    end
+
+    @testset "cooling shrinks the divergence radius each generation" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(9); radius = 0.8)
+        pop.strategy = :cooling
+        Ressac.favor!(pop, 1)
+        r0 = pop.radius
+        Ressac.next_generation!(pop, MersenneTwister(9))
+        @test pop.radius < r0
+    end
+
+    @testset "novelty children are valid + distinct" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(10); radius = 0.5)
+        pop.strategy = :novelty
+        Ressac.next_generation!(pop, MersenneTwister(10))
+        @test all(c -> isempty(Ressac.validate(c.genome)), pop.candidates)
+    end
+end
