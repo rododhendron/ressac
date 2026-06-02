@@ -57,14 +57,19 @@ function init_population(base::Genome, n::Int, rng::AbstractRNG;
     return pop
 end
 
-function _toggle_weight!(pop::Population, i::Int, val::Float64)
+# Note GRADUÉE : favoriser/dévaluer incrémente/décrémente le poids (au
+# lieu d'un simple oui/non), borné à [-3, +3]. Les stratégies (tournoi,
+# pondéré, bayésien) exploitent directement ce poids comme fitness.
+const _WEIGHT_MAX = 3.0
+
+function _bump_weight!(pop::Population, i::Int, delta::Float64)
     1 <= i <= length(pop.candidates) || return
     c = pop.candidates[i]
-    c.weight = (c.weight == val) ? 0.0 : val
+    c.weight = clamp(c.weight + delta, -_WEIGHT_MAX, _WEIGHT_MAX)
     return
 end
-favor!(pop::Population, i::Int)   = _toggle_weight!(pop, i, 1.0)
-devalue!(pop::Population, i::Int) = _toggle_weight!(pop, i, -1.0)
+favor!(pop::Population, i::Int)   = _bump_weight!(pop, i, 1.0)
+devalue!(pop::Population, i::Int) = _bump_weight!(pop, i, -1.0)
 
 # Crée un candidat en enregistrant sa lignée.
 function _spawn!(pop::Population, genome::Genome, origin::AbstractString,

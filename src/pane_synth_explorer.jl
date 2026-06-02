@@ -176,7 +176,8 @@ function _render_candidate_card!(p::SynthExplorerPane, c::Candidate, idx::Int,
     TK.set_string!(buf, r.x, r.y + r.height - 1, "└" * "─"^(r.width - 2) * "┘", border)
     ix = r.x + 1
     iw = r.width - 2
-    mark = c.weight > 0 ? "♥" : c.weight < 0 ? "✗" : " "
+    mark = c.weight > 0 ? "♥"^Int(min(c.weight, 3)) :
+           c.weight < 0 ? "✗"^Int(min(-c.weight, 3)) : " "
     foc  = focused ? "▸" : " "
     # header line: ▸2♥ ●A
     hdr = "$foc$idx$mark ●$(_cluster_letter(cid))"

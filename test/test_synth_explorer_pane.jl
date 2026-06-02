@@ -503,13 +503,16 @@ end
         end
     end
 
-    @testset "scroll up/down favors/devalues the hovered card" begin
+    @testset "scroll up/down grades the hovered card (cumulative)" begin
         p = _rendered()
         (idx, (cx, cy, cw, ch)) = p.cell_rects[2]
         Ressac.handle_mouse!(p, mev(cx + 1, cy + 1, Tachikoma.mouse_scroll_up))
-        @test p.pop.candidates[idx].weight > 0
-        Ressac.handle_mouse!(p, mev(cx + 1, cy + 1, Tachikoma.mouse_scroll_down))
-        @test p.pop.candidates[idx].weight < 0
+        Ressac.handle_mouse!(p, mev(cx + 1, cy + 1, Tachikoma.mouse_scroll_up))
+        @test p.pop.candidates[idx].weight == 2.0          # graded up
+        for _ in 1:4
+            Ressac.handle_mouse!(p, mev(cx + 1, cy + 1, Tachikoma.mouse_scroll_down))
+        end
+        @test p.pop.candidates[idx].weight < 0             # graded down past zero
     end
 
     @testset "right-click advances the generation" begin
@@ -541,7 +544,9 @@ end
                                         false, false, false)
         @test Ressac._workspace_scroll_to_pane!(app, mev(Tachikoma.mouse_scroll_up)) == true
         @test pane.pop.candidates[idx].weight > 0
-        @test Ressac._workspace_scroll_to_pane!(app, mev(Tachikoma.mouse_scroll_down)) == true
+        for _ in 1:3
+            @test Ressac._workspace_scroll_to_pane!(app, mev(Tachikoma.mouse_scroll_down)) == true
+        end
         @test pane.pop.candidates[idx].weight < 0
     end
 end
@@ -573,14 +578,17 @@ end
         @test Ressac.control(g, :freq) == Ressac.default_controls()[:freq]
     end
 
-    @testset "edits ride along into mutation (inherited)" begin
+    @testset "edits ride along into the algorithm (via lineage)" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 6))
         p.pop.candidates[1].genome.controls[:freq] = 99.0
+        champ_id = p.pop.candidates[1].id
         Ressac.favor!(p.pop, 1)
-        # champion strategy → all children descend from candidate 1
-        p.pop.strategy = :champion
+        p.pop.strategy = :champion       # all children descend from candidate 1
         Ressac.next_generation!(p.pop, p.rng)
-        @test all(c -> Ressac.control(c.genome, :freq) == 99.0, p.pop.candidates)
+        # the edited candidate re-entered the algorithm as the parent;
+        # mutation then perturbs the inherited freq around 99 (pitch variety).
+        @test all(c -> p.pop.lineage[c.id].parents == [champ_id], p.pop.candidates)
+        @test any(c -> Ressac.control(c.genome, :freq) != 220.0, p.pop.candidates)
     end
 
     @testset "param editor renders the control rows" begin

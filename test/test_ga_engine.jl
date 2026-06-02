@@ -15,14 +15,16 @@ using Random
         end
     end
 
-    @testset "favor!/devalue! write weights" begin
+    @testset "favor!/devalue! grade the weight (cumulative)" begin
         pop = Ressac.init_population(base(), 9, MersenneTwister(2); radius = 0.5)
         Ressac.favor!(pop, 1)
         Ressac.devalue!(pop, 2)
-        @test pop.candidates[1].weight > 0
-        @test pop.candidates[2].weight < 0
-        Ressac.favor!(pop, 1)              # re-presser annule
-        @test pop.candidates[1].weight == 0.0
+        @test pop.candidates[1].weight == 1.0
+        @test pop.candidates[2].weight == -1.0
+        Ressac.favor!(pop, 1)              # presser à nouveau = plus fort
+        @test pop.candidates[1].weight == 2.0
+        for _ in 1:10; Ressac.favor!(pop, 1); end
+        @test pop.candidates[1].weight == 3.0   # borné à +3
     end
 
     @testset "next_generation preserves a favored elite genome" begin

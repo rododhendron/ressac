@@ -70,19 +70,38 @@ function op_change_rate!(g::Genome, rng::AbstractRNG)
     return g
 end
 
+# Perturbe les CONTRÔLES du génome (freq/sustain/release) — ce qui fait
+# varier la hauteur et l'enveloppe d'un candidat à l'autre. La freq est
+# multipliée par un ratio (musical, borné) ; sustain/release jités.
+function op_perturb_control!(g::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
+    g.controls[:freq] = clamp(control(g, :freq) * 2.0 ^ (randn(rng) * radius),
+                              40.0, 4000.0)
+    if rand(rng) < 0.5
+        g.controls[:sustain] = clamp(control(g, :sustain) + randn(rng) * 0.3 * radius,
+                                     0.1, 4.0)
+    else
+        g.controls[:release] = clamp(control(g, :release) + randn(rng) * 0.2 * radius,
+                                     0.0, 2.0)
+    end
+    return g
+end
+
 # Mutation = applique 1..k opérateurs selon le rayon, puis répare.
 # radius 0 → uniquement paramétrique (1 perturbation).
 # radius>0 → mélange paramétrique + structurel (Task 6 enrichit _STRUCT_OPS).
-const _PARAM_OPS = Function[op_perturb_const!, op_change_rate!]
+const _PARAM_OPS = Function[op_perturb_const!, op_change_rate!, op_perturb_control!]
 const _STRUCT_OPS = Function[]   # rempli en Task 6
 
 function mutate(g0::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
     g = _copy_genome(g0)
+    # Toujours bouger un peu les contrôles (pitch/enveloppe) → chaque
+    # candidat a une hauteur distincte, même à faible rayon.
+    op_perturb_control!(g, rng; radius = max(radius, 0.3))
     n_ops = 1 + floor(Int, radius * 3)
     for _ in 1:n_ops
         use_struct = !isempty(_STRUCT_OPS) && rand(rng) < radius
         op = rand(rng, use_struct ? _STRUCT_OPS : _PARAM_OPS)
-        if op === op_perturb_const!
+        if op === op_perturb_const! || op === op_perturb_control!
             op(g, rng; radius = radius)
         else
             op(g, rng)
@@ -208,7 +227,7 @@ end
 
 append!(_STRUCT_OPS, Function[op_insert_node!, op_remove_node!,
                               op_swap_ugen!, op_rewire!, op_graft_mod!,
-                              op_add_feedback!])
+                              op_add_feedback!, op_add_feedback!])  # ×2 : feedback plus fréquent
 
 # ── Croisement (swap de sous-graphe) ───────────────────────────────
 
