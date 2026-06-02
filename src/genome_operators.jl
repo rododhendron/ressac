@@ -5,6 +5,36 @@ using Random
 
 _copy_genome(g::Genome) = deserialize_genome(serialize_genome(g))
 
+# ── Conservation « biologique » ────────────────────────────────────
+# Les nœuds essentiels = l'épine dorsale qui rend le son audible : les
+# sources atteignables depuis la sortie + le nœud de sortie. On les mute
+# MOINS (comme les gènes essentiels), en laissant la variance aux nœuds
+# périphériques/décoratifs.
+function _essential_nodes(g::Genome)
+    ess = Set{Int}()
+    g.output_id == 0 && return ess
+    push!(ess, g.output_id)
+    for id in _reachable_from_output(g)
+        n = g.nodes[id]
+        spec = ugen_spec(n.ugen)
+        spec === nothing && continue
+        (spec.role === :source && n.ugen !== :FbIn) && push!(ess, id)
+    end
+    return ess
+end
+
+# Tire un id de nœud en évitant l'essentiel avec proba `conservation`.
+function _pick_node(g::Genome, rng::AbstractRNG; conservation::Float64 = 0.85)
+    ids = collect(keys(g.nodes))
+    isempty(ids) && return nothing
+    if rand(rng) < conservation
+        ess = _essential_nodes(g)
+        peripheral = [i for i in ids if !(i in ess)]
+        isempty(peripheral) || return rand(rng, peripheral)
+    end
+    return rand(rng, ids)
+end
+
 function _const_slots(g::Genome)
     out = Tuple{Int,Int}[]   # (node_id, arg_index)
     for (id, n) in g.nodes
@@ -59,6 +89,8 @@ function mutate(g0::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
         end
         repair!(g)   # normalise entre chaque op : invariants toujours tenus
     end
+    repair_audible!(g)   # corrige les muets (source → sortie) ; no-op sinon
+    repair!(g)
     return g
 end
 
@@ -105,7 +137,8 @@ end
 
 function op_remove_node!(g::Genome, rng::AbstractRNG)
     length(g.nodes) <= 1 && return g
-    nid = rand(rng, collect(keys(g.nodes)))
+    nid = _pick_node(g, rng)              # protège l'épine dorsale
+    nid === nothing && return g
     n = g.nodes[nid]
     spec = ugen_spec(n.ugen)
     # Bypass through the node's signal path: prefer its audio input
@@ -128,7 +161,8 @@ end
 
 function op_swap_ugen!(g::Genome, rng::AbstractRNG)
     isempty(g.nodes) && return g
-    nid = rand(rng, collect(keys(g.nodes)))
+    nid = _pick_node(g, rng)              # protège l'épine dorsale
+    nid === nothing && return g
     n = g.nodes[nid]
     role = ugen_spec(n.ugen).role
     cands = [s for s in catalog_by_role(role) if s.name !== n.ugen]
@@ -211,6 +245,8 @@ function crossover(a0::Genome, b0::Genome, rng::AbstractRNG)
         (nid, i) = rand(rng, edges)
         child.nodes[nid].args[i] = NodeRef(remap[donor_root])
     end
+    repair!(child)
+    repair_audible!(child)
     repair!(child)
     return child
 end

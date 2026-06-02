@@ -82,6 +82,69 @@ function repair!(g::Genome)
     return g
 end
 
+# ── Audibilité (heuristique statique) ──────────────────────────────
+# Un génome est muet quand la sortie ne remonte à aucune SOURCE (oscillo
+# / bruit). On le détecte sans son, et repair_audible! corrige en
+# branchant une source vers la sortie.
+
+function _reachable_from_output(g::Genome)
+    seen = Set{Int}()
+    g.output_id == 0 && return seen
+    stack = Int[g.output_id]
+    while !isempty(stack)
+        id = pop!(stack)
+        (id in seen || !haskey(g.nodes, id)) && continue
+        push!(seen, id)
+        for a in g.nodes[id].args
+            a isa NodeRef && push!(stack, a.id)
+        end
+    end
+    return seen
+end
+
+"""
+    genome_is_audible(g) -> Bool
+
+Plausibility heuristic: there is an output, and a genuine generator
+(role :source, not the FbIn feedback reader) is reachable on the signal
+path to it. Catches the common silent cases (output fed only by
+constants/controls, a source disconnected from the output).
+"""
+function genome_is_audible(g::Genome)
+    (g.output_id == 0 || !haskey(g.nodes, g.output_id)) && return false
+    for id in _reachable_from_output(g)
+        n = g.nodes[id]
+        spec = ugen_spec(n.ugen)
+        spec === nothing && continue
+        (spec.role === :source && n.ugen !== :FbIn) && return true
+    end
+    return false
+end
+
+"""
+    repair_audible!(g) -> Genome
+
+Make a silent genome audible: inject a source and route it into the
+output's signal input (or make the source the output if the output has
+no signal slot). No-op when already audible.
+"""
+function repair_audible!(g::Genome)
+    genome_is_audible(g) && return g
+    src = add_node!(g, :Saw, :ar, Arg[ControlRef(:freq)])
+    out = g.output_id != 0 && haskey(g.nodes, g.output_id) ? g.nodes[g.output_id] : nothing
+    spec = out === nothing ? nothing : ugen_spec(out.ugen)
+    if spec !== nothing
+        for (i, sp) in enumerate(spec.slots)
+            if (sp.kind === :audio || sp.kind === :signal) && i <= length(out.args)
+                out.args[i] = NodeRef(src)
+                return g
+            end
+        end
+    end
+    g.output_id = src       # output had no signal slot → the source IS the output
+    return g
+end
+
 function _break_cycles!(g::Genome)
     while _has_cycle(g)
         state = Dict{Int,Int}()
