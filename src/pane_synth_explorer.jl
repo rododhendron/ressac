@@ -219,6 +219,8 @@ function render!(p::SynthExplorerPane, area, buf)
     end
     p.inspect && _render_inspect_overlay!(p, inner, buf)
     p.ga_panel && _render_ga_panel!(p, inner, buf)
+    p.show_lineage && _render_lineage_overlay!(p, inner, buf)
+    p.show_help && _render_help_overlay!(p, inner, buf)
     return nothing
 end
 
@@ -264,6 +266,60 @@ function _render_inspect_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.
     end
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    "Esc/i/q : fermer", TK.tstyle(:text_dim))
+    return nothing
+end
+
+function _render_lineage_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
+    blank = " "^inner.width
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
+    end
+    c = p.pop.candidates[p.focus]
+    TK.set_string!(buf, inner.x, inner.y,
+                   first("LIGNÉE · candidat $(p.focus) (id $(c.id))", inner.width),
+                   TK.tstyle(:accent, bold = true))
+    chain = lineage_chain(p.pop, c.id)
+    y = inner.y + 2
+    for (depth, e) in enumerate(chain)
+        y > inner.y + inner.height - 2 && break
+        indent = "  "^(depth - 1)
+        genlbl = e.gen >= 0 ? "gén$(e.gen)" : "gén?"
+        line = "$indent$genlbl #$(e.id)  $(e.origin)"
+        TK.set_string!(buf, inner.x, y, first(line, inner.width),
+                       depth == 1 ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+        y += 1
+    end
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                   "Esc/L/q : fermer", TK.tstyle(:text_dim))
+    return nothing
+end
+
+const _EXPLORER_HELP_LINES = [
+    "SYNTH EXPLORER — aide",
+    "",
+    "Navigation   hjkl / flèches · 1-9 saut · clic souris",
+    "Écoute       Espace jouer · t drone · m mini-clavier (z x c v…)",
+    "Sélection    f favoriser · d dévaluer · scroll souris",
+    "Génération   n suivante · clic-droit suivant · R re-tirer",
+    "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
+    "Infos        i détails (DSL) · L lignée du candidat",
+    "Garder       s graine · w synth · e éditeur",
+    "Couleurs     cadre/pastille = cluster de proximité génétique",
+    "",
+    "Esc / ? / q : fermer",
+]
+
+function _render_help_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
+    blank = " "^inner.width
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
+    end
+    for (i, line) in enumerate(_EXPLORER_HELP_LINES)
+        y = inner.y + i - 1
+        y > inner.y + inner.height - 1 && break
+        TK.set_string!(buf, inner.x, y, first(line, inner.width),
+                       i == 1 ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+    end
     return nothing
 end
 

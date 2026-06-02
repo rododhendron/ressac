@@ -429,3 +429,33 @@ end
         @test occursin("croisement", whole)
     end
 end
+
+@testset "synth explorer pane — lineage + help overlays" begin
+    @testset "L opens lineage, shows origin chain" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
+        Ressac.favor!(p.pop, 1)
+        Ressac._explorer_next_gen!(p)        # gen 1, candidates have parents
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('L'))
+        @test p.show_lineage == true
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("LIGNÉE", whole)
+        @test occursin("gén", whole)
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.show_lineage == false
+    end
+
+    @testset "? opens help overlay, Esc closes" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('?'))
+        @test p.show_help == true
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("aide", whole)
+        @test occursin("mini-clavier", whole)
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.show_help == false
+    end
+end
