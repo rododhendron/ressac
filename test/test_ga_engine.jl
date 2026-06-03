@@ -243,3 +243,18 @@ end
         @test all(c -> c.origin == "divergé", pop.candidates)
     end
 end
+
+@testset "ga_engine — explore when nothing is rated" begin
+    base() = Ressac.archetype(:drone_grave)
+
+    @testset "n with no ratings explores from the current pop (drift)" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(40); radius = 0.4)
+        src0 = [Ressac.render_synthdef(c.genome, :x) for c in pop.candidates]
+        Ressac.next_generation!(pop, MersenneTwister(40))   # nothing rated
+        @test all(c -> c.origin == "exploré", pop.candidates)
+        @test all(c -> isempty(Ressac.validate(c.genome)) &&
+                       Ressac.genome_is_audible(c.genome), pop.candidates)
+        src1 = [Ressac.render_synthdef(c.genome, :x) for c in pop.candidates]
+        @test src1 != src0                  # actually moved
+    end
+end

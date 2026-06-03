@@ -225,9 +225,42 @@ function op_add_feedback!(g::Genome, rng::AbstractRNG)
     return g
 end
 
+# Duplique un GROUPE FONCTIONNEL : clone le sous-graphe enraciné sur un
+# nœud et mixe le clone en parallèle (comme une duplication de gène).
+# Permet de construire de la complexité — oscillos détunés, filtres
+# doublés, etc. Borné pour éviter l'explosion combinatoire.
+function op_duplicate_subgraph!(g::Genome, rng::AbstractRNG)
+    length(g.nodes) >= 12 && return g          # garde-fou anti-explosion
+    ids = collect(keys(g.nodes))
+    isempty(ids) && return g
+    root = rand(rng, ids)
+    sub = collect(_subtree_ids(g, root))
+    remap = Dict{Int,Int}()
+    for old in sub
+        remap[old] = g.next_id; g.next_id += 1
+    end
+    for old in sub
+        dn = g.nodes[old]
+        newargs = Arg[a isa NodeRef && haskey(remap, a.id) ? NodeRef(remap[a.id]) : a
+                      for a in dn.args]
+        g.nodes[remap[old]] = UGenNode(remap[old], dn.ugen, dn.rate, newargs)
+    end
+    # Mixe le clone en parallèle sur une edge signal (le clone et
+    # l'existant se superposent → épaississement / détune).
+    edges = _signal_slot_edges(g)
+    if !isempty(edges)
+        (nid, i) = rand(rng, edges)
+        existing = g.nodes[nid].args[i]
+        mixid = add_node!(g, :Mix, :ar, Arg[existing, NodeRef(remap[root])])
+        g.nodes[nid].args[i] = NodeRef(mixid)
+    end
+    return g
+end
+
 append!(_STRUCT_OPS, Function[op_insert_node!, op_remove_node!,
                               op_swap_ugen!, op_rewire!, op_graft_mod!,
-                              op_add_feedback!, op_add_feedback!])  # ×2 : feedback plus fréquent
+                              op_add_feedback!, op_add_feedback!,   # ×2 : feedback plus fréquent
+                              op_duplicate_subgraph!])
 
 # ── Croisement (swap de sous-graphe) ───────────────────────────────
 

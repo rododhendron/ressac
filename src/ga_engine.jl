@@ -90,9 +90,29 @@ function _update_hall!(pop::Population; cap::Int = 30)
     return nothing
 end
 
+# Rien noté → on EXPLORE largement : dérive depuis la population courante
+# (+ hall + graine) à divergence accrue, au lieu de re-mouler la graine.
+# C'est ce qui « re-bruise » quand l'utilisateur skippe la sélection.
+function _nextgen_explore!(pop::Population, rng::AbstractRNG)
+    pool = Genome[c.genome for c in pop.candidates]
+    append!(pool, get(pop.state, :hall, Genome[])::Vector{Genome})
+    push!(pool, pop.base)
+    r = clamp(max(pop.radius, 0.5) * 1.2, 0.0, 1.0)
+    out = Candidate[]
+    while length(out) < pop.gen_size
+        push!(out, _spawn!(pop, mutate(rand(rng, pool), rng; radius = r), "exploré", Int[]))
+    end
+    pop.candidates = out[1:pop.gen_size]
+    return pop
+end
+
 function next_generation!(pop::Population, rng::AbstractRNG)
     _update_hall!(pop)
     pop.generation += 1
+    # Aucune note → exploration large (toutes stratégies confondues).
+    if all(c -> c.weight == 0.0, pop.candidates)
+        return _nextgen_explore!(pop, rng)
+    end
     s = pop.strategy
     if s === :champion
         _nextgen_champion!(pop, rng)

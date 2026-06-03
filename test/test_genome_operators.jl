@@ -131,3 +131,31 @@ end
         @test changed
     end
 end
+
+@testset "genome — duplication operator" begin
+    function _g()
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(1000.0), Ressac.ConstArg(0.5)])
+        g.output_id = f
+        return g
+    end
+
+    @testset "op_duplicate_subgraph! clones a group + stays valid" begin
+        rng = MersenneTwister(30)
+        g = _g(); n0 = length(g.nodes)
+        Ressac.op_duplicate_subgraph!(g, rng)
+        Ressac.repair!(g)
+        @test length(g.nodes) > n0          # grew (clone + Mix)
+        @test isempty(Ressac.validate(g))
+        @test Ressac.genome_is_audible(g)
+    end
+
+    @testset "duplication is bounded (no runaway)" begin
+        rng = MersenneTwister(31)
+        g = _g()
+        for _ in 1:30; Ressac.op_duplicate_subgraph!(g, rng); Ressac.repair!(g); end
+        @test length(g.nodes) <= 20         # guard caps growth
+    end
+end
