@@ -45,6 +45,7 @@ include("genome.jl")             # Genome DAG + UGenSpec catalog
 include("genome_validity.jl")    # validate + repair!
 include("genome_render.jl")      # render_synthdef + render_dsl
 include("nrt_analysis.jl")       # offline acoustic descriptors (headless NRT)
+include("synth_roles.jl")        # usage roles (bass/kick/…) + role_fit targeting
 include("genome_archetypes.jl")  # serialization + seed archetypes
 include("genome_operators.jl")   # mutation + crossover operators
 include("genome_moves.jl")       # good moves + directional guidance
