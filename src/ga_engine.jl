@@ -81,6 +81,34 @@ _mutate(pop::Population, g::Genome, rng::AbstractRNG;
         radius::Float64 = pop.radius, target::Float64 = _current_target(pop)) =
     mutate(g, rng; radius = radius, target = target, stiffness = pop.stiffness)
 
+# ── Ciblage par rôle (re-pondération douce de la sélection) ─────────
+# Le rôle d'usage (mode A/C) et les descripteurs MESURÉS par candidat
+# vivent dans pop.state. Le terme de rôle re-pondère la sélection sans
+# rien écraser : _eff = note + λ·(role_fit − 0.5). Un son qui colle au
+# rôle (fit > 0.5) est boosté, un son hors-cible (fit < 0.5) pénalisé.
+# Inerte sans rôle actif ou sans descripteurs mesurés → compose avec tout.
+const _ROLE_BASELINE = 0.5
+
+function _role_term(pop::Population, c::Candidate)
+    r = get(pop.state, :role, nothing)
+    r === nothing && return 0.0
+    descrs = get(pop.state, :descr, nothing)
+    descrs === nothing && return 0.0
+    d = get(descrs, c.id, nothing)
+    d === nothing && return 0.0
+    λ = get(pop.state, :role_strength, 1.0)::Float64
+    return λ * (role_fit(d, r) - _ROLE_BASELINE)
+end
+
+_eff(pop::Population, c::Candidate) = c.weight + _role_term(pop, c)
+
+# Signal de rôle exploitable ? (rôle actif + au moins un descripteur mesuré)
+function _role_has_signal(pop::Population)
+    get(pop.state, :role, nothing) === nothing && return false
+    d = get(pop.state, :descr, nothing)
+    return d !== nothing && !isempty(d)
+end
+
 _new_cid!(pop::Population) = (id = pop.next_cid; pop.next_cid += 1; id)
 function _record!(pop::Population, id::Int, origin::AbstractString, parents::Vector{Int})
     pop.lineage[id] = (gen = pop.generation, origin = String(origin), parents = parents)
@@ -155,7 +183,7 @@ function next_generation!(pop::Population, rng::AbstractRNG)
     pop.generation += 1
     _apply_global_chaos!(pop)        # promène la cible d'énergie (anti-figement)
     # Aucune note → exploration large (toutes stratégies confondues).
-    if all(c -> c.weight == 0.0, pop.candidates)
+    if all(c -> c.weight == 0.0, pop.candidates) && !_role_has_signal(pop)
         return _nextgen_explore!(pop, rng)
     end
     s = pop.strategy
@@ -202,7 +230,7 @@ end
 # 1. Pool de reproduction : élitisme + croisement + mutation des favoris.
 function _nextgen_breeding!(pop::Population, rng::AbstractRNG)
     n = pop.gen_size
-    favored = sort([c for c in pop.candidates if c.weight > 0]; by = c -> -c.weight)
+    favored = sort([c for c in pop.candidates if _eff(pop, c) > 0]; by = c -> -_eff(pop, c))
     parents = isempty(favored) ? [Candidate(pop.base, 0.0)] : favored
     out = Candidate[]
     for e in first(favored, isempty(favored) ? 0 : pop.elitism)
@@ -225,7 +253,7 @@ end
 # 2. Champion & divergence : un seul favori, toute la génération = ses mutations.
 function _nextgen_champion!(pop::Population, rng::AbstractRNG)
     n = pop.gen_size
-    favored = sort([c for c in pop.candidates if c.weight > 0]; by = c -> -c.weight)
+    favored = sort([c for c in pop.candidates if _eff(pop, c) > 0]; by = c -> -_eff(pop, c))
     champ = isempty(favored) ? Candidate(pop.base, 0.0) : favored[1]
     out = Candidate[_spawn!(pop, _copy_genome(champ.genome), "champion #$(champ.id)", [champ.id])]
     while length(out) < n
@@ -242,7 +270,7 @@ function _tournament_pick(pop::Population, rng::AbstractRNG; k::Int = 3)
     best = rand(rng, pool)
     for _ in 2:k
         c = rand(rng, pool)
-        c.weight > best.weight && (best = c)
+        _eff(pop, c) > _eff(pop, best) && (best = c)
     end
     return best
 end
@@ -268,7 +296,7 @@ end
 function _weighted_pick(pop::Population, rng::AbstractRNG)
     pool = pop.candidates
     isempty(pool) && return Candidate(pop.base, 0.0)
-    scores = [max(c.weight + 1.0, 0.05) for c in pool]
+    scores = [max(_eff(pop, c) + 1.0, 0.05) for c in pool]
     r = rand(rng) * sum(scores)
     acc = 0.0
     for (i, sc) in enumerate(scores)
@@ -298,7 +326,7 @@ end
 #    génétiquement de la population (anti-convergence, « surprends-moi »).
 function _nextgen_novelty!(pop::Population, rng::AbstractRNG; tries::Int = 4)
     n = pop.gen_size
-    pool = [c for c in pop.candidates if c.weight >= 0]
+    pool = [c for c in pop.candidates if _eff(pop, c) >= 0]
     isempty(pool) && (pool = pop.candidates)
     isempty(pool) && (pool = [Candidate(pop.base, 0.0)])
     ref = [c.genome for c in pop.candidates]
@@ -389,7 +417,7 @@ function _nextgen_bayesian!(pop::Population, rng::AbstractRNG)
         push!(hist, (genome_feature_vec(c.genome), c.weight))
     end
     taste = _bo_taste(hist)
-    favored = [c for c in pop.candidates if c.weight > 0]
+    favored = [c for c in pop.candidates if _eff(pop, c) > 0]
     parents = isempty(favored) ? pop.candidates : favored
     isempty(parents) && (parents = [Candidate(pop.base, 0.0)])
     pool = Candidate[]
@@ -427,7 +455,7 @@ end
 #    élites diverses → couvre l'espace sonore sans perdre de famille.
 const _QD_NICHE_THRESHOLD = 1.5
 
-function _qd_update_archive!(archive::Vector{Candidate}, cands)
+function _qd_update_archive!(pop::Population, archive::Vector{Candidate}, cands)
     for c in cands
         best_i = 0; best_d = Inf
         for (i, e) in enumerate(archive)
@@ -436,7 +464,7 @@ function _qd_update_archive!(archive::Vector{Candidate}, cands)
         end
         if best_i == 0 || best_d > _QD_NICHE_THRESHOLD
             push!(archive, c)                       # nouvelle famille structurelle
-        elseif c.weight > archive[best_i].weight
+        elseif _eff(pop, c) > _eff(pop, archive[best_i])
             archive[best_i] = c                     # meilleur de sa famille
         end
     end
@@ -456,7 +484,7 @@ end
 function _nextgen_quality_diversity!(pop::Population, rng::AbstractRNG)
     n = pop.gen_size
     archive = get!(pop.state, :qd_archive, Candidate[])::Vector{Candidate}
-    _qd_update_archive!(archive, pop.candidates)
+    _qd_update_archive!(pop, archive, pop.candidates)
     elites = isempty(archive) ? pop.candidates : archive
     isempty(elites) && (elites = [Candidate(pop.base, 0.0)])
     out = Candidate[]

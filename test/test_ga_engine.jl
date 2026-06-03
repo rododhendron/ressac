@@ -154,6 +154,52 @@ end
     end
 end
 
+@testset "ga_engine — role targeting (soft re-weight)" begin
+    base() = Ressac.archetype(:drone_grave)
+
+    @testset "inert without a role: _eff == weight" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(1))
+        Ressac.favor!(pop, 2)
+        @test Ressac._eff(pop, pop.candidates[2]) == pop.candidates[2].weight
+        @test !Ressac._role_has_signal(pop)
+    end
+
+    @testset "role + measured descriptors re-weight selection" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(2))
+        pop.strategy = :breeding
+        basse = Ressac.role(:basse).target
+        voix  = Ressac.role(:voix).target
+        descr = Dict{Int,Vector{Float64}}()
+        for (i, c) in enumerate(pop.candidates)
+            descr[c.id] = i == 1 ? copy(basse) : copy(voix)
+        end
+        pop.state[:role] = :basse
+        pop.state[:role_strength] = 3.0
+        pop.state[:descr] = descr
+        @test Ressac._role_has_signal(pop)
+        # le candidat « basse parfaite » domine en poids effectif…
+        @test Ressac._eff(pop, pop.candidates[1]) > Ressac._eff(pop, pop.candidates[2])
+        # …et survit comme élite-de-rôle malgré une note manuelle nulle
+        src1 = Ressac.render_synthdef(pop.candidates[1].genome, :x)
+        Ressac.next_generation!(pop, MersenneTwister(2))
+        srcs = [Ressac.render_synthdef(c.genome, :x) for c in pop.candidates]
+        @test src1 in srcs
+        @test all(c -> isempty(Ressac.validate(c.genome)), pop.candidates)
+    end
+
+    @testset "role signal prevents the no-rating explore fallback" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(3))
+        pop.strategy = :champion
+        pop.state[:role] = :basse
+        pop.state[:descr] = Dict{Int,Vector{Float64}}(
+            pop.candidates[1].id => copy(Ressac.role(:basse).target))
+        # toutes les notes à 0 mais signal de rôle → pas d'exploration aveugle
+        Ressac.next_generation!(pop, MersenneTwister(3))
+        @test pop.generation == 1
+        @test all(c -> isempty(Ressac.validate(c.genome)), pop.candidates)
+    end
+end
+
 @testset "ga_engine — lineage + GA params" begin
     base() = Ressac.archetype(:drone_grave)
 
