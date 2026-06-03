@@ -520,6 +520,103 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
     catch
         _LIVE_SCHEDULER[] = nothing
     end
+
+    # ── GA synth explorer : génome + GA + rôles + pane ─────────────
+    # Tout le sous-projet explorateur (rendu de SynthDef, mutation,
+    # stratégies, ciblage par rôle, top-k, pane :explorer + mode panes).
+    # AUCUN sclang ici : l'analyse NRT est remplacée par un analyseur
+    # simulé → on chauffe le codegen sans lancer de process externe.
+    try
+        gpc = Genome()
+        spc = add_node!(gpc, :Saw, :ar, Arg[ControlRef(:freq)])
+        fpc = add_node!(gpc, :RLPF, :ar, Arg[NodeRef(spc), ConstArg(1200.0), ConstArg(0.4)])
+        gpc.output_id = fpc
+        validate(gpc); repair!(gpc); genome_is_audible(gpc); genome_energy(gpc)
+        render_synthdef(gpc, :ga_slot1)
+        render_dsl(gpc, :_pc_dsl_synth)
+        render_analysis_synthdef(gpc, :nrt1)
+        deserialize_genome(serialize_genome(gpc))
+        _genome_tree_lines(gpc)
+
+        rngpc = MersenneTwister(1)
+        basepc = archetype(:pluck)
+        pop = init_population(basepc, 9, rngpc)
+        mutate(basepc, rngpc); crossover(gpc, basepc, rngpc)
+        favor!(pop, 1); devalue!(pop, 2)
+        for strat in (:breeding, :champion, :tournament, :weighted,
+                      :novelty, :cooling, :bayesian, :quality_diversity)
+            pop.strategy = strat
+            next_generation!(pop, rngpc)
+        end
+        tune_generation!(pop, pop.candidates[1].genome, rngpc)
+        diverge!(pop, rngpc)
+        cluster_population(pop.candidates); gene_distribution(pop.candidates)
+        genome_distance(gpc, basepc); genome_feature_vec(gpc)
+        apply_good_move!(pop.candidates[1].genome, rngpc)
+        apply_guidance!(pop.candidates[1].genome, :grave, rngpc)
+
+        # Rôles + ciblage (analyseur simulé, pas de NRT/sclang).
+        fakeanalyze = gs -> Vector{Float64}[copy(role(:basse).target) for _ in gs]
+        pop.state[:role] = :basse
+        pop.state[:role_strength] = 2.0
+        for nm in ROLE_ORDER
+            role_fit(role(nm).target, nm); role_fit(role(nm).target, role(nm))
+        end
+        effective_role(pop, :basse); cycle_role(:basse, 1)
+        refine_role(role(:basse), Vector{Float64}[role(:basse).target], Vector{Float64}[])
+        _eff(pop, pop.candidates[1]); _role_has_signal(pop)
+        poolc = generate_pool(pop, rngpc, 12)
+        store = _descr_store(pop)
+        for c in poolc; store[c.id] = fill(0.5, N_DESCRIPTORS); end
+        rank_topk(pop, poolc, 9)
+        cluster_descriptors([store[c.id] for c in poolc])
+        cluster_representatives(pop, poolc, 9)
+        tag_example!(pop, 1, true)
+        harvest_topk!(pop, rngpc; pool_size = 12, k = 9, analyze = fakeanalyze)
+
+        # Pane :explorer standalone — render! + tout le routeur de touches.
+        ep = _pane_new(:explorer, Dict{String,Any}("seed" => "pluck", "rng" => 3))
+        title(ep)
+        tbp = Tachikoma.TestBackend(100, 30)
+        rectp = Tachikoma.Rect(1, 1, 100, 30)
+        render!(ep, rectp, tbp.buf)
+        prev_an = _EXPLORER_ANALYZE[]
+        _EXPLORER_ANALYZE[] = fakeanalyze
+        try
+            for kc in ('l', 'h', 'j', 'k', '1', '5', 'f', 'd', 'n', 'T', 'R',
+                       '[', ']', ' ', 'u', '+', '-', 'H', '<', '>', 'G', 'S',
+                       '0', 'C', 'y')
+                handle_key!(ep, Tachikoma.KeyEvent(kc)); render!(ep, rectp, tbp.buf)
+            end
+            handle_key!(ep, Tachikoma.KeyEvent(:tab))
+            # sous-modes : ouvrir, agir, fermer (Esc).
+            for op in ('i', 'g', 'p', 'L', '?', 'm')
+                handle_key!(ep, Tachikoma.KeyEvent(op))
+                handle_key!(ep, Tachikoma.KeyEvent('j'))
+                handle_key!(ep, Tachikoma.KeyEvent(:right))
+                render!(ep, rectp, tbp.buf)
+                handle_key!(ep, Tachikoma.KeyEvent(:escape))
+            end
+            serialize(ep)
+        finally
+            _EXPLORER_ANALYZE[] = prev_an
+        end
+
+        # Mode panes : ouvrir l'explorer (et un scope) dans le workspace,
+        # router une touche au pane focalisé, rendre l'app entière.
+        app2 = RessacApp(; scheduler = sched)
+        framew = Tachikoma.Frame(Tachikoma.TestBackend(120, 32).buf,
+                                 Tachikoma.Rect(1, 1, 120, 32),
+                                 Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+        cmd_vsplit!(app2.workspaces, "explorer", Dict{String,Any}("rng" => 2))
+        cmd_hsplit!(app2.workspaces, "scope", Dict{String,Any}())
+        Tachikoma.view(app2, framew)
+        _route_key_to_focused_pane!(app2, Tachikoma.KeyEvent(:char, 'l', Tachikoma.key_press))
+        _route_key_to_focused_pane!(app2, Tachikoma.KeyEvent(:char, 'n', Tachikoma.key_press))
+        Tachikoma.view(app2, framew)
+    catch
+        # Best-effort : un raté de précompile ne coûte que de la latence.
+    end
 end
 
 function __init__()
