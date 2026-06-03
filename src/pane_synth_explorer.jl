@@ -210,9 +210,9 @@ function render!(p::SynthExplorerPane, area, buf)
     # Jauge d'énergie : énergie moyenne de la génération → cible (ressort).
     en = isempty(p.pop.candidates) ? 0.0 :
          sum(genome_energy(c.genome) for c in p.pop.candidates) / length(p.pop.candidates)
-    tgt = p.pop.energy_target
+    tgt = _current_target(p.pop)           # cible effective (avec dérive chaos)
     arrow = en > tgt + 0.5 ? "↑" : en < tgt - 0.5 ? "↓" : "≈"
-    engauge = "én $(round(en; digits = 1))$arrow$(round(Int, tgt))"
+    engauge = "én $(round(en; digits = 1))$arrow$(round(Int, tgt))$(_chaos_on(p.pop) ? "∿" : "")"
     header = "EXPLORER · gén $(p.pop.generation) · $modebadge$guide · $engauge · div $(rpad(bar, 5, '░')) · pop $(length(p.pop.candidates))"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
@@ -411,6 +411,7 @@ const _EXPLORER_HELP_LINES = [
     "               ↔ BREW (rebrassage structurel, stratégies GA)",
     "             R re-diverge (repêche de vieux parents + bruit)",
     "Stratégie    Tab change à la volée · g réglages détaillés",
+    "Diversité    C cible d'énergie errante (chaos) : anti-figement",
     "Guidance     G greffe un bon coup (filtre/satu/reverb/détune…)",
     "             < > pousse vers une notion (grave/aigu/sombre/saturé…)",
     "Reset        0 nouvelle population depuis la graine",
@@ -563,6 +564,8 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'n' && return _explorer_next_gen!(p)
     # T = bascule réglage-fin (tune, structure gelée) ↔ rebrassage (brew).
     ch == 'T' && (p.mode = p.mode === :tune ? :brew : :tune; return true)
+    # C = bascule la diversité chaotique (cible d'énergie errante).
+    ch == 'C' && (p.pop.state[:chaos_on] = !_chaos_on(p.pop); return true)
     # R = skip + re-diverge (repêche de vieux parents, divergence boostée).
     ch == 'R' && return _explorer_diverge!(p)
     # Tab = cycle de stratégie à la volée (sans ouvrir le panneau g).
@@ -704,9 +707,9 @@ end
 
 # ── GA settings sub-mode (`g`) ─────────────────────────────────────
 # Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme ·
-#       5 stratégie · 6 cible énergie · 7 raideur ressort.
+#       5 stratégie · 6 cible énergie · 7 raideur · 8 diversité chaos.
 # (le sustain est par-candidat dans l'éditeur de params `p`.)
-const _GA_PANEL_ROWS = 7
+const _GA_PANEL_ROWS = 8
 
 _ga_strategy_long(s::Symbol) =
     s === :breeding   ? "pool : croise + mute tes favoris" :
@@ -763,6 +766,8 @@ function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
         p.pop.energy_target = clamp(round(p.pop.energy_target + inc * 1.0; digits = 1), 2.0, 40.0)
     elseif row == 7        # raideur du ressort (bas = oscille/déborde plus)
         p.pop.stiffness = clamp(round(p.pop.stiffness + inc * 0.1; digits = 2), 0.05, 2.0)
+    elseif row == 8        # diversité chaotique (cible d'énergie errante)
+        p.pop.state[:chaos_on] = !_chaos_on(p.pop)
     end
     return
 end
@@ -775,6 +780,7 @@ const _GA_PANEL_DESC = (
     "moteur de sélection (cf. ligne)",
     "cible de complexité : plus haut = sons plus riches",
     "raideur du ressort : bas = l'énergie oscille/déborde",
+    "cible d'énergie errante (chaos) : évite de se figer",
 )
 
 function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
@@ -790,11 +796,12 @@ function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
             ("élitisme (favoris)", string(p.pop.elitism)),
             ("stratégie",          get(_GA_STRATEGY_NAMES, p.pop.strategy, "?")),
             ("cible énergie",      string(round(p.pop.energy_target; digits = 1))),
-            ("raideur ressort",    string(round(p.pop.stiffness; digits = 2)))]
+            ("raideur ressort",    string(round(p.pop.stiffness; digits = 2))),
+            ("diversité chaos",    _chaos_on(p.pop) ? "on" : "off")]
     # Per-row description; the strategy row shows its full meaning.
     descs = [_GA_PANEL_DESC[1], _GA_PANEL_DESC[2], _GA_PANEL_DESC[3],
              _GA_PANEL_DESC[4], _ga_strategy_long(p.pop.strategy),
-             _GA_PANEL_DESC[6], _GA_PANEL_DESC[7]]
+             _GA_PANEL_DESC[6], _GA_PANEL_DESC[7], _GA_PANEL_DESC[8]]
     desc_x = inner.x + 36                      # description column (past values)
     for (i, (label, val)) in enumerate(rows)
         sel = i == p.ga_cursor

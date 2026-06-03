@@ -41,10 +41,45 @@ Population(c::Vector{Candidate}, b::Genome, g::Int, r::Float64) =
                Dict{Int,NamedTuple}(), Dict{Symbol,Any}(),
                _DEFAULT_ENERGY_TARGET, _DEFAULT_STIFFNESS)
 
-# Mutation pilotée par les réglages d'énergie de la population.
-_mutate(pop::Population, g::Genome, rng::AbstractRNG; radius::Float64 = pop.radius) =
-    mutate(g, rng; radius = radius,
-           target = pop.energy_target, stiffness = pop.stiffness)
+# ── Dérive chaotique de la cible d'énergie ─────────────────────────
+# Pour ne JAMAIS se figer sur une complexité (donc sur les mêmes sons),
+# la cible d'énergie est promenée par une map logistique (régime
+# chaotique, r=3.9) : déterministe mais non-périodique. La cible
+# « erre » dans [E* − span, E* + span] au fil des générations. En QD,
+# chaque NICHE porte sa propre phase → les familles structurelles se
+# stabilisent à des complexités différentes et continuent d'explorer.
+_chaos_next(x::Float64) = (y = 3.9 * x * (1.0 - x); (y <= 0.0 || y >= 1.0) ? 0.5 : y)
+
+function _chaos_step!(pop::Population, key::Symbol; init::Float64 = 0.37)
+    x = _chaos_next(get(pop.state, key, init)::Float64)
+    pop.state[key] = x
+    return x
+end
+
+_chaos_span(pop::Population) = get(pop.state, :chaos_span, 6.0)::Float64
+_chaos_on(pop::Population) = get(pop.state, :chaos_on, true)::Bool
+# x∈(0,1) → cible bornée autour du centre réglé par l'utilisateur.
+_target_from_phase(pop::Population, x::Float64) =
+    max(2.0, pop.energy_target + (x - 0.5) * 2.0 * _chaos_span(pop))
+
+# Cible effective de la génération courante (offset chaotique global posé
+# par _apply_global_chaos! ; 0 si chaos coupé).
+_current_target(pop::Population) =
+    max(2.0, pop.energy_target + get(pop.state, :chaos_offset, 0.0)::Float64)
+
+# Avance la phase chaotique GLOBALE d'un cran (1×/génération).
+function _apply_global_chaos!(pop::Population)
+    pop.state[:chaos_offset] =
+        _chaos_on(pop) ? (_chaos_step!(pop, :chaos_x) - 0.5) * 2.0 * _chaos_span(pop) : 0.0
+    return nothing
+end
+
+# Mutation pilotée par les réglages d'énergie de la population. `target`
+# par défaut = cible effective (avec dérive chaotique) ; les stratégies
+# par-niche (QD) passent une cible explicite.
+_mutate(pop::Population, g::Genome, rng::AbstractRNG;
+        radius::Float64 = pop.radius, target::Float64 = _current_target(pop)) =
+    mutate(g, rng; radius = radius, target = target, stiffness = pop.stiffness)
 
 _new_cid!(pop::Population) = (id = pop.next_cid; pop.next_cid += 1; id)
 function _record!(pop::Population, id::Int, origin::AbstractString, parents::Vector{Int})
@@ -118,6 +153,7 @@ end
 function next_generation!(pop::Population, rng::AbstractRNG)
     _update_hall!(pop)
     pop.generation += 1
+    _apply_global_chaos!(pop)        # promène la cible d'énergie (anti-figement)
     # Aucune note → exploration large (toutes stratégies confondues).
     if all(c -> c.weight == 0.0, pop.candidates)
         return _nextgen_explore!(pop, rng)
@@ -407,6 +443,16 @@ function _qd_update_archive!(archive::Vector{Candidate}, cands)
     return archive
 end
 
+# Cible d'énergie PROPRE à une niche : chaque famille structurelle porte sa
+# phase chaotique → des complexités différentes par niche, qui errent.
+function _qd_niche_target!(pop::Population, niche::Int)
+    _chaos_on(pop) || return _current_target(pop)
+    phases = get!(pop.state, :qd_chaos, Dict{Int,Float64}())::Dict{Int,Float64}
+    x = _chaos_next(get(phases, niche, mod(0.13 + 0.27 * niche, 1.0)))   # graine variée/niche
+    phases[niche] = x
+    return _target_from_phase(pop, x)
+end
+
 function _nextgen_quality_diversity!(pop::Population, rng::AbstractRNG)
     n = pop.gen_size
     archive = get!(pop.state, :qd_archive, Candidate[])::Vector{Candidate}
@@ -415,8 +461,10 @@ function _nextgen_quality_diversity!(pop::Population, rng::AbstractRNG)
     isempty(elites) && (elites = [Candidate(pop.base, 0.0)])
     out = Candidate[]
     while length(out) < n
-        e = rand(rng, elites)
-        push!(out, _spawn!(pop, _mutate(pop, e.genome, rng),
+        ni = rand(rng, 1:length(elites))
+        e = elites[ni]
+        t = _qd_niche_target!(pop, ni)        # attracteur chaotique par niche
+        push!(out, _spawn!(pop, _mutate(pop, e.genome, rng; target = t),
                            "QD #$(e.id)", [e.id]))
     end
     pop.candidates = out[1:n]

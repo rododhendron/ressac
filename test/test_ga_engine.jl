@@ -110,6 +110,50 @@ end
     @test pop.strategy === :bayesian
 end
 
+@testset "ga_engine — chaotic energy drive (anti-figement)" begin
+    base() = Ressac.archetype(:drone_grave)
+
+    @testset "logistic map stays in (0,1) and is non-constant" begin
+        x = 0.37
+        xs = Float64[]
+        for _ in 1:50; x = Ressac._chaos_next(x); push!(xs, x); end
+        @test all(0.0 < v < 1.0 for v in xs)
+        @test length(unique(round.(xs; digits = 4))) > 30   # non-périodique
+    end
+
+    @testset "global chaos makes the effective target wander when ON" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(3))
+        pop.state[:chaos_on] = true
+        targets = Float64[]
+        for _ in 1:12
+            Ressac._apply_global_chaos!(pop)
+            push!(targets, Ressac._current_target(pop))
+        end
+        @test length(unique(round.(targets; digits = 3))) >= 8   # ça erre
+        @test all(t >= 2.0 for t in targets)                     # borné en bas
+    end
+
+    @testset "chaos OFF pins the effective target to energy_target" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(3))
+        pop.state[:chaos_on] = false
+        Ressac._apply_global_chaos!(pop)
+        @test Ressac._current_target(pop) == pop.energy_target
+    end
+
+    @testset "QD niches carry distinct chaotic targets" begin
+        pop = Ressac.init_population(base(), 6, MersenneTwister(4))
+        pop.strategy = :quality_diversity
+        pop.state[:chaos_on] = true
+        t1 = Ressac._qd_niche_target!(pop, 1)
+        t2 = Ressac._qd_niche_target!(pop, 2)
+        @test t1 != t2                       # niches → cibles différentes
+        # une génération QD reste valide + audible avec les attracteurs
+        Ressac.favor!(pop, 1)
+        Ressac.next_generation!(pop, MersenneTwister(4))
+        @test all(c -> Ressac.genome_is_audible(c.genome), pop.candidates)
+    end
+end
+
 @testset "ga_engine — lineage + GA params" begin
     base() = Ressac.archetype(:drone_grave)
 
