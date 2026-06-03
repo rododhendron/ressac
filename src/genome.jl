@@ -143,6 +143,36 @@ function _install_builtin_ugens!()
                                                  sca(:amount, 1.0, 0.1, 2.0)], :math))
     # modulateur additionnel
     register_ugen!(UGenSpec(:LFNoise0, [:kr], [sig(:freq, 4, 0.05, 30)], :mod))
+
+    # ── Palette élargie (lot 3) ────────────────────────────────────
+    # sources
+    register_ugen!(UGenSpec(:Formant, [:ar], [sig(:fundfreq, 220, 20, 2000),
+                                              sig(:formfreq, 1000, 200, 4000),
+                                              sig(:bwfreq, 200, 50, 2000)], :source))
+    register_ugen!(UGenSpec(:SyncSaw, [:ar], [sig(:syncFreq, 100, 20, 2000),
+                                              sig(:sawFreq, 440, 20, 4000)], :source))
+    register_ugen!(UGenSpec(:Crackle, [:ar], [sca(:chaosParam, 1.5, 1.0, 2.0)], :source))
+    # filtres / résonateurs
+    register_ugen!(UGenSpec(:Ringz, [:ar], [aud(:in), sig(:freq, 2000, 40, 8000),
+                                            sca(:decaytime, 0.5, 0.01, 3.0)], :filter))
+    register_ugen!(UGenSpec(:Formlet, [:ar], [aud(:in), sig(:freq, 1000, 40, 8000),
+                                              sca(:attacktime, 0.01, 0.001, 0.1),
+                                              sca(:decaytime, 0.5, 0.01, 2.0)], :filter))
+    register_ugen!(UGenSpec(:OnePole, [:ar], [aud(:in), sca(:coef, 0.5, -0.99, 0.99)], :filter))
+    # délais / échos (maxdelaytime > delaytime garanti par les plages)
+    register_ugen!(UGenSpec(:CombC, [:ar], [aud(:in), sca(:maxdelay, 0.3, 0.3, 0.5),
+                                            sca(:delaytime, 0.1, 0.001, 0.2),
+                                            sca(:decaytime, 1.0, 0.1, 5.0)], :filter))
+    register_ugen!(UGenSpec(:AllpassC, [:ar], [aud(:in), sca(:maxdelay, 0.3, 0.3, 0.5),
+                                               sca(:delaytime, 0.1, 0.001, 0.2),
+                                               sca(:decaytime, 1.0, 0.1, 5.0)], :filter))
+    # waveshaper bitcrush-ish : .round(quant)
+    register_ugen!(UGenSpec(:Round, [:ar, :kr], [sig(:in, 0, -1, 1),
+                                                 sca(:quant, 0.1, 0.01, 0.5)], :math))
+    # modulateur additionnel
+    register_ugen!(UGenSpec(:LFPulseKR, [:kr], [sig(:freq, 4, 0.05, 30),
+                                               sca(:iphase, 0, 0, 1),
+                                               sca(:width, 0.5, 0.01, 0.99)], :mod))
     return nothing
 end
 _install_builtin_ugens!()
