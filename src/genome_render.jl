@@ -21,6 +21,8 @@ function _emit_special(g::Genome, n::UGenNode)
     n.ugen === :MulAdd   && return "(($(A(1)) * $(A(2))) + $(A(3)))"
     n.ugen === :Mix      && return "($(A(1)) + $(A(2)))"
     n.ugen === :SinOscKR && return "SinOsc.kr($(A(1)))"
+    n.ugen === :Fold2    && return "($(A(1))).fold2($(A(2)))"
+    n.ugen === :Clip2    && return "($(A(1))).clip2($(A(2)))"
     n.ugen === :FbIn     && return "fb"   # lit le bus de feedback (var fb)
     return nothing
 end

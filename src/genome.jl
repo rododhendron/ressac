@@ -103,6 +103,46 @@ function _install_builtin_ugens!()
     # feedback (rendu en `LocalIn`), donc le DAG reste acyclique. La
     # boucle réelle se ferme en SC via LocalIn/LocalOut (cf. render).
     register_ugen!(UGenSpec(:FbIn, [:ar], SlotSpec[], :source))
+
+    # ── Palette élargie ────────────────────────────────────────────
+    # sources additionnelles
+    register_ugen!(UGenSpec(:VarSaw, [:ar, :kr], [sig(:freq, 220, 20, 8000),
+                                                  sca(:iphase, 0, 0, 1),
+                                                  sca(:width, 0.5, 0.01, 0.99)], :source))
+    register_ugen!(UGenSpec(:Blip,   [:ar], [sig(:freq, 220, 20, 8000),
+                                             sca(:numharm, 200, 1, 512)], :source))
+    register_ugen!(UGenSpec(:Impulse,[:ar], [sig(:freq, 8, 0.1, 400)], :source))
+    register_ugen!(UGenSpec(:LFSaw,  [:ar, :kr], [sig(:freq, 220, 0.1, 4000)], :source))
+    register_ugen!(UGenSpec(:PinkNoise, [:ar], SlotSpec[], :source))
+    register_ugen!(UGenSpec(:Dust,   [:ar], [sig(:density, 20, 0.1, 400)], :source))
+    # générateurs CHAOTIQUES — premier arg = freq d'itération ; SC donne
+    # les défauts aux autres args, donc on n'expose que la freq.
+    for (nm, lo, hi, def) in ((:LorenzL, 20, 12000, 4000), (:HenonL, 20, 12000, 2000),
+                              (:LatoocarfianL, 20, 12000, 2000), (:CuspL, 20, 12000, 2000),
+                              (:QuadL, 20, 12000, 2000), (:GbmanL, 20, 8000, 2000),
+                              (:StandardL, 20, 12000, 4000), (:FBSineL, 20, 12000, 2000))
+        register_ugen!(UGenSpec(nm, [:ar], [sig(:freq, def, lo, hi)], :source))
+    end
+    register_ugen!(UGenSpec(:Logistic, [:ar], [sca(:chaos, 3.7, 3.5, 4.0),
+                                               sig(:freq, 1000, 20, 8000)], :source))
+    # filtres additionnels
+    register_ugen!(UGenSpec(:BPF,    [:ar], [aud(:in), sig(:freq, 1000, 40, 12000),
+                                             sca(:rq, 1.0, 0.1, 4.0)], :filter))
+    register_ugen!(UGenSpec(:Resonz, [:ar], [aud(:in), sig(:freq, 1000, 40, 12000),
+                                             sca(:bwr, 1.0, 0.05, 4.0)], :filter))
+    register_ugen!(UGenSpec(:MoogFF, [:ar], [aud(:in), sig(:freq, 1000, 40, 12000),
+                                             sca(:gain, 2.0, 0.0, 4.0)], :filter))
+    # effets (entrée audio → traités comme des filtres dans le graphe)
+    register_ugen!(UGenSpec(:FreeVerb, [:ar], [aud(:in), sca(:mix, 0.33, 0, 1),
+                                               sca(:room, 0.5, 0, 1),
+                                               sca(:damp, 0.5, 0, 1)], :filter))
+    # waveshapers (special-forms côté render : .fold2 / .clip2)
+    register_ugen!(UGenSpec(:Fold2, [:ar, :kr], [sig(:in, 0, -1, 1),
+                                                 sca(:amount, 1.0, 0.1, 2.0)], :math))
+    register_ugen!(UGenSpec(:Clip2, [:ar, :kr], [sig(:in, 0, -1, 1),
+                                                 sca(:amount, 1.0, 0.1, 2.0)], :math))
+    # modulateur additionnel
+    register_ugen!(UGenSpec(:LFNoise0, [:kr], [sig(:freq, 4, 0.05, 30)], :mod))
     return nothing
 end
 _install_builtin_ugens!()

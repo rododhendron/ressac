@@ -41,3 +41,35 @@ using Ressac
         @test cut.lo < cut.hi
     end
 end
+
+@testset "genome — expanded catalogue (chaos + effects + shapers)" begin
+    @testset "chaotic generators are registered as sources" begin
+        for nm in (:LorenzL, :HenonL, :LatoocarfianL, :CuspL, :Logistic, :FBSineL)
+            spec = Ressac.ugen_spec(nm)
+            @test spec !== nothing
+            @test spec.role === :source
+        end
+    end
+
+    @testset "a chaotic source renders + is audible" begin
+        g = Ressac.Genome()
+        c = Ressac.add_node!(g, :LorenzL, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        g.output_id = c
+        @test occursin("LorenzL.ar(freq)", Ressac.render_synthdef(g, :x))
+        @test Ressac.genome_is_audible(g)
+    end
+
+    @testset "waveshapers render their method form" begin
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :Fold2, :ar, Ressac.Arg[Ressac.NodeRef(s), Ressac.ConstArg(1.5)])
+        g.output_id = f
+        @test occursin("(Saw.ar(freq)).fold2(1.5)", Ressac.render_synthdef(g, :x))
+    end
+
+    @testset "effects + filters present" begin
+        @test Ressac.ugen_spec(:FreeVerb).role === :filter
+        @test Ressac.ugen_spec(:BPF).role === :filter
+        @test Ressac.ugen_spec(:MoogFF).role === :filter
+    end
+end
