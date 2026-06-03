@@ -111,6 +111,35 @@ using Ressac
         @test occursin("LPF.ar(Saw.ar(freq)", s)   # no wrapper
     end
 
+    @testset "render_analysis_synthdef emits descriptor channels, no audio out" begin
+        s = Ressac.render_analysis_synthdef(_filtered(), :ga_slot1)
+        @test occursin("SynthDef(\\ga_slot1", s)
+        @test occursin("RLPF.ar(Saw.ar(freq)", s)        # même chaîne de signal
+        # descripteurs acoustiques
+        @test occursin("FFT(LocalBuf", s)
+        @test occursin("SpecCentroid", s)
+        @test occursin("SpecFlatness", s)
+        @test occursin("Pitch.kr", s)
+        @test occursin("K2A.ar([centroid, subratio, flatness, amp, pitchconf])", s)
+        # PAS de lecture audio : aucune sortie son ni sonde live
+        @test !occursin("Pan2", s)
+        @test !occursin("DirtPan", s)
+        @test !occursin("SendReply", s)
+        @test Ressac.N_ANALYSIS_CHANNELS == 5
+    end
+
+    @testset "analysis synthdef carries feedback (LocalIn/LocalOut)" begin
+        g = Ressac.Genome()
+        saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        fb  = Ressac.add_node!(g, :FbIn, :ar, Ressac.Arg[])
+        mix = Ressac.add_node!(g, :Mix, :ar,
+                  Ressac.Arg[Ressac.NodeRef(saw), Ressac.NodeRef(fb)])
+        g.output_id = mix
+        s = Ressac.render_analysis_synthdef(g, :x)
+        @test occursin("var fb = LocalIn.ar(1)", s)
+        @test occursin("LocalOut.ar(sig)", s)
+    end
+
     @testset "feedback genome renders LocalIn preamble + LocalOut" begin
         g = Ressac.Genome()
         saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])

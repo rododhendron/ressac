@@ -116,6 +116,48 @@ function render_synthdef(g::Genome, name::Symbol)
         "}).add;\n")
 end
 
+# Canaux descripteurs émis par render_analysis_synthdef (dans cet ordre).
+# Julia (nrt_analysis.jl) en dérive le vecteur scalaire par candidat :
+# centroïde / sub-ratio / platitude moyennés, attaque + forme d'enveloppe
+# tirées de la série temporelle d'amplitude, stabilité de hauteur moyennée.
+const ANALYSIS_CHANNELS = (:centroid, :subratio, :flatness, :amp, :pitchconf)
+const N_ANALYSIS_CHANNELS = length(ANALYSIS_CHANNELS)
+
+# Variante d'ANALYSE (NRT uniquement) : même chaîne de signal, mais la
+# sortie n'est PAS du son — ce sont les descripteurs acoustiques, écrits
+# comme canaux audio sur le bus de sortie (que le rendu NRT capture dans
+# le fichier). Aucune lecture aux haut-parleurs : à n'instancier qu'en
+# NRT (sur un serveur live, `Out.ar(0, …)` jouerait ces canaux).
+#
+# L'enveloppe réelle (linen) est appliquée pour que le canal d'amplitude
+# porte la dynamique attaque/sustain/decay du son tel qu'il serait joué.
+function render_analysis_synthdef(g::Genome, name::Symbol)
+    sig = _safe_signal_expr(g)
+    fb  = _has_feedback(g)
+    pre  = fb ? "    var fb = LocalIn.ar(1);\n" : ""
+    post = fb ? "    LocalOut.ar(sig);\n" : ""
+    fr  = _fmt_const(control(g, :freq))
+    sus = _fmt_const(control(g, :sustain))
+    rel = _fmt_const(control(g, :release))
+    return string(
+        "SynthDef(\\", name, ", { |out = 0, freq = ", fr,
+        ", sustain = ", sus, "|\n",
+        pre,
+        "    var sig = ", sig, ";\n",
+        post,
+        "    sig = sig * EnvGen.kr(Env.linen(0.01, sustain, ", rel, "), doneAction: 2);\n",
+        "    var chain = FFT(LocalBuf(1024), sig);\n",
+        "    var centroid = (SpecCentroid.kr(chain) / 8000).clip(0, 1);\n",
+        "    var flatness = SpecFlatness.kr(chain).clip(0, 1);\n",
+        "    var low  = Amplitude.kr(LPF.ar(sig, 200), 0.01, 0.05);\n",
+        "    var full = Amplitude.kr(sig, 0.01, 0.05);\n",
+        "    var subratio = (low / (full + 1e-4)).clip(0, 1);\n",
+        "    var amp = Amplitude.kr(sig, 0.001, 0.02).clip(0, 1);\n",
+        "    var pitchconf = Pitch.kr(sig)[1].clip(0, 1);\n",
+        "    Out.ar(out, K2A.ar([centroid, subratio, flatness, amp, pitchconf]));\n",
+        "}).add;\n")
+end
+
 # Ordre topologique (entrées avant le nœud) depuis la sortie.
 function _topo_order(g::Genome)
     order = Int[]
