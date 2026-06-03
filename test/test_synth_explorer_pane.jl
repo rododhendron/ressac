@@ -777,3 +777,62 @@ end
         @test meanfreq(p1) < meanfreq(p2)
     end
 end
+
+@testset "synth explorer pane — usage role targeting (UI)" begin
+    @testset "u cycles the role; header reflects it" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        @test get(p.pop.state, :role, nothing) === nothing
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('u'))
+        @test get(p.pop.state, :role, nothing) === Ressac.ROLE_ORDER[1]
+        tb = Tachikoma.TestBackend(110, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 110, 30), tb.buf)
+        @test occursin(String(Ressac.ROLE_ORDER[1]), Tachikoma.row_text(tb, 1))
+    end
+
+    @testset "card shows measured role-fit (♪) when role active" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+        p.pop.state[:role] = :basse
+        store = Ressac._descr_store(p.pop)
+        for c in p.pop.candidates
+            store[c.id] = copy(Ressac.role(:basse).target)   # match parfait → ♪100
+        end
+        tb = Tachikoma.TestBackend(110, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 110, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("♪", whole)
+    end
+
+    @testset "+ tags the focused candidate for mode C refine" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        p.pop.state[:role] = :basse
+        Ressac._descr_store(p.pop)[p.pop.candidates[p.focus].id] =
+            [0.0, 1.0, 0.0, 0.4, 0.8, 1.0]
+        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('+')) == true
+        ex = p.pop.state[:role_examples][:basse]
+        @test length(ex.pos) == 1
+    end
+
+    @testset "H runs a harvest with an injected analyzer (no sclang)" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+        p.pop.state[:role] = :basse
+        prev = Ressac._EXPLORER_ANALYZE[]
+        Ressac._EXPLORER_ANALYZE[] = genomes -> [copy(Ressac.role(:basse).target) for _ in genomes]
+        try
+            g0 = p.pop.generation
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('H')) == true
+            @test p.pop.generation == g0 + 1
+            @test length(p.pop.candidates) == Ressac._GA_GEN_SIZE
+            @test all(c -> haskey(p.pop.state[:descr], c.id), p.pop.candidates)
+        finally
+            Ressac._EXPLORER_ANALYZE[] = prev
+        end
+    end
+
+    @testset "GA panel adjusts role strength λ (row 9)" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
+        for _ in 1:8; Ressac.handle_key!(p, Tachikoma.KeyEvent('j')); end   # → row 9
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:right))
+        @test get(p.pop.state, :role_strength, 1.0) > 1.0
+    end
+end

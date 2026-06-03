@@ -11,6 +11,68 @@ const _GA_GRID_COLS = 3
 # (nom, dsl) ici ; le routeur de touches de l'app (tui_app.jl) draine.
 const _EXPLORER_EXPORT_REQUEST = Ref{Union{Nothing,Tuple{String,String}}}(nothing)
 
+# Seam d'analyse acoustique : par défaut le rendu NRT (sclang headless),
+# surchargeable en test par un analyseur simulé (pas de sclang dans la suite).
+const _EXPLORER_ANALYZE = Ref{Function}(analyze_genomes)
+
+# Log applicatif court (borné).
+function _explorer_log!(msg::AbstractString)
+    push!(_APP_LOG[], msg)
+    length(_APP_LOG[]) > 200 && popfirst!(_APP_LOG[])
+    return true
+end
+
+# role_fit du candidat focalisé/affiché si mesuré + rôle actif, sinon nothing.
+function _explorer_card_fit(p, c)
+    rname = get(p.pop.state, :role, nothing)
+    rname === nothing && return nothing
+    d = get(get(p.pop.state, :descr, Dict{Int,Vector{Float64}}()), c.id, nothing)
+    d === nothing && return nothing
+    r = effective_role(p.pop, rname)
+    return r === nothing ? nothing : role_fit(d, r)
+end
+
+# H : tour « illumination » — grand pool, mesure NRT silencieuse, top-k.
+# Bloquant (sclang) ; on logue avant/après. En mode A (rôle) cible le rôle,
+# en mode B (pas de rôle) expose des représentants de familles timbrales.
+function _explorer_harvest!(p)
+    rname = get(p.pop.state, :role, nothing)
+    _explorer_log!("[INFO] récolte NRT en cours (pool $(3 * p.pop.gen_size))…")
+    try
+        p.pop.radius = p.radius
+        harvest_topk!(p.pop, p.rng; pool_size = 3 * p.pop.gen_size,
+                      k = _GA_GEN_SIZE, analyze = _EXPLORER_ANALYZE[])
+        _explorer_apply_guidance!(p)
+        _explorer_reenqueue!(p)
+        p.focus = 1
+        _explorer_log!(rname === nothing ?
+            "[INFO] récolte : familles timbrales (mode B)" :
+            "[INFO] récolte : top sons « $rname » (mode A)")
+    catch err
+        _explorer_log!("[WARN] récolte NRT indisponible ($(sprint(showerror, err)))")
+    end
+    return true
+end
+
+# u : cycle le rôle d'usage (none → basse → kick → … → none).
+function _explorer_cycle_role!(p)
+    p.pop.state[:role] = cycle_role(get(p.pop.state, :role, nothing), 1)
+    r = get(p.pop.state, :role, nothing)
+    _explorer_log!(r === nothing ? "[INFO] rôle : aucun (mode B, exploration)" :
+                                   "[INFO] rôle ciblé : $r (mode A)")
+    return true
+end
+
+# + / − : tague le candidat focalisé comme bon/mauvais exemple du rôle (mode C).
+function _explorer_tag!(p, positive::Bool)
+    if tag_example!(p.pop, p.focus, positive)
+        _explorer_log!("[INFO] candidat #$(p.focus) tagué $(positive ? "+" : "−") pour le rôle")
+    else
+        _explorer_log!("[WARN] tag impossible (rôle actif + mesure NRT requis)")
+    end
+    return true
+end
+
 # Copie `text` dans le presse-papier système (essaie les outils courants
 # Wayland/X11/macOS). Renvoie true si l'un a réussi.
 function _copy_to_clipboard(text::AbstractString)
@@ -158,8 +220,11 @@ function _render_candidate_card!(p::SynthExplorerPane, c::Candidate, idx::Int,
     mark = c.weight > 0 ? "♥"^Int(min(c.weight, 3)) :
            c.weight < 0 ? "✗"^Int(min(-c.weight, 3)) : " "
     foc  = focused ? "▸" : " "
-    # header line: ▸2♥ ●A
-    hdr = "$foc$idx$mark ●$(_cluster_letter(cid))"
+    # role-fit mesuré (mode A/C) : ♪NN% si dispo
+    fit = _explorer_card_fit(p, c)
+    fitstr = fit === nothing ? "" : " ♪$(round(Int, fit * 100))"
+    # header line: ▸2♥ ●A ♪82
+    hdr = "$foc$idx$mark ●$(_cluster_letter(cid))$fitstr"
     TK.set_string!(buf, ix, r.y, first(hdr, iw),
                    focused ? TK.tstyle(:accent, bold = true) :
                    c.weight > 0 ? TK.tstyle(:success) :
@@ -213,7 +278,9 @@ function render!(p::SynthExplorerPane, area, buf)
     tgt = _current_target(p.pop)           # cible effective (avec dérive chaos)
     arrow = en > tgt + 0.5 ? "↑" : en < tgt - 0.5 ? "↓" : "≈"
     engauge = "én $(round(en; digits = 1))$arrow$(round(Int, tgt))$(_chaos_on(p.pop) ? "∿" : "")"
-    header = "EXPLORER · gén $(p.pop.generation) · $modebadge$guide · $engauge · div $(rpad(bar, 5, '░')) · pop $(length(p.pop.candidates))"
+    rname = get(p.pop.state, :role, nothing)
+    rolebadge = rname === nothing ? "fam(u)" : "$rname(u)"
+    header = "EXPLORER · gén $(p.pop.generation) · $modebadge · $rolebadge · $engauge · div $(rpad(bar, 5, '░'))$guide"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 12 || inner.height < 6) && return
@@ -247,7 +314,7 @@ function render!(p::SynthExplorerPane, area, buf)
     ctxt = "  clusters: " * join((_cluster_letter(i) for i in 1:nclusters), " ")
     TK.set_string!(buf, inner.x, strip_y,
                    first(gtxt * ctxt, inner.width), TK.tstyle(:text_dim))
-    help = "n:gén T:tune/brew f/d p:params L:lignée g:réglages m:clavier  ?:aide"
+    help = "n:gén H:récolte u:rôle +/−:tags T:tune f/d p:params g:réglages  ?:aide"
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(help, inner.width), TK.tstyle(:text_dim))
     if p.naming !== :none
@@ -412,6 +479,10 @@ const _EXPLORER_HELP_LINES = [
     "             R re-diverge (repêche de vieux parents + bruit)",
     "Stratégie    Tab change à la volée · g réglages détaillés",
     "Diversité    C cible d'énergie errante (chaos) : anti-figement",
+    "Usage        u cycle le rôle (basse/kick/lead/nappe/voix ↔ familles)",
+    "             H récolte NRT silencieuse → top-k (mode A) / familles (B)",
+    "             + / − tague le candidat (bon/mauvais exemple du rôle, mode C)",
+    "             ♪NN sur la carte = adéquation mesurée au rôle (%)",
     "Guidance     G greffe un bon coup (filtre/satu/reverb/détune…)",
     "             < > pousse vers une notion (grave/aigu/sombre/saturé…)",
     "Reset        0 nouvelle population depuis la graine",
@@ -566,6 +637,11 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'T' && (p.mode = p.mode === :tune ? :brew : :tune; return true)
     # C = bascule la diversité chaotique (cible d'énergie errante).
     ch == 'C' && (p.pop.state[:chaos_on] = !_chaos_on(p.pop); return true)
+    # Ciblage par usage : u cycle le rôle · H récolte NRT (top-k) · +/− tags (mode C)
+    ch == 'u' && return _explorer_cycle_role!(p)
+    ch == 'H' && return _explorer_harvest!(p)
+    ch == '+' && return _explorer_tag!(p, true)
+    ch == '-' && return _explorer_tag!(p, false)
     # R = skip + re-diverge (repêche de vieux parents, divergence boostée).
     ch == 'R' && return _explorer_diverge!(p)
     # Tab = cycle de stratégie à la volée (sans ouvrir le panneau g).
@@ -706,10 +782,10 @@ function _render_param_editor!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buf
 end
 
 # ── GA settings sub-mode (`g`) ─────────────────────────────────────
-# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme ·
-#       5 stratégie · 6 cible énergie · 7 raideur · 8 diversité chaos.
+# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme · 5 stratégie ·
+#       6 cible énergie · 7 raideur · 8 diversité chaos · 9 force du rôle (λ).
 # (le sustain est par-candidat dans l'éditeur de params `p`.)
-const _GA_PANEL_ROWS = 8
+const _GA_PANEL_ROWS = 9
 
 _ga_strategy_long(s::Symbol) =
     s === :breeding   ? "pool : croise + mute tes favoris" :
@@ -768,6 +844,9 @@ function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
         p.pop.stiffness = clamp(round(p.pop.stiffness + inc * 0.1; digits = 2), 0.05, 2.0)
     elseif row == 8        # diversité chaotique (cible d'énergie errante)
         p.pop.state[:chaos_on] = !_chaos_on(p.pop)
+    elseif row == 9        # force du ciblage par rôle (λ)
+        cur = get(p.pop.state, :role_strength, 1.0)::Float64
+        p.pop.state[:role_strength] = clamp(round(cur + inc * 0.5; digits = 1), 0.0, 6.0)
     end
     return
 end
@@ -781,6 +860,7 @@ const _GA_PANEL_DESC = (
     "cible de complexité : plus haut = sons plus riches",
     "raideur du ressort : bas = l'énergie oscille/déborde",
     "cible d'énergie errante (chaos) : évite de se figer",
+    "force du rôle λ : combien le rôle tire la sélection (H)",
 )
 
 function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
@@ -797,11 +877,12 @@ function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
             ("stratégie",          get(_GA_STRATEGY_NAMES, p.pop.strategy, "?")),
             ("cible énergie",      string(round(p.pop.energy_target; digits = 1))),
             ("raideur ressort",    string(round(p.pop.stiffness; digits = 2))),
-            ("diversité chaos",    _chaos_on(p.pop) ? "on" : "off")]
+            ("diversité chaos",    _chaos_on(p.pop) ? "on" : "off"),
+            ("force rôle (λ)",     string(round(get(p.pop.state, :role_strength, 1.0); digits = 1)))]
     # Per-row description; the strategy row shows its full meaning.
     descs = [_GA_PANEL_DESC[1], _GA_PANEL_DESC[2], _GA_PANEL_DESC[3],
              _GA_PANEL_DESC[4], _ga_strategy_long(p.pop.strategy),
-             _GA_PANEL_DESC[6], _GA_PANEL_DESC[7], _GA_PANEL_DESC[8]]
+             _GA_PANEL_DESC[6], _GA_PANEL_DESC[7], _GA_PANEL_DESC[8], _GA_PANEL_DESC[9]]
     desc_x = inner.x + 36                      # description column (past values)
     for (i, (label, val)) in enumerate(rows)
         sel = i == p.ga_cursor
