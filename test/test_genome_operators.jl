@@ -159,3 +159,41 @@ end
         @test length(g.nodes) <= 20         # guard caps growth
     end
 end
+
+@testset "genome — good moves + directional guidance" begin
+    base() = Ressac.archetype(:pluck)
+
+    @testset "every good move keeps the genome valid + audible" begin
+        rng = MersenneTwister(50)
+        for (name, _) in Ressac.GOOD_MOVES
+            g = base()
+            Ressac.apply_good_move!(g, rng; move = name)
+            @test isempty(Ressac.validate(g))
+            @test Ressac.genome_is_audible(g)
+        end
+    end
+
+    @testset "dir_grave lowers the freq control" begin
+        g = base(); g.controls[:freq] = 200.0
+        Ressac.apply_guidance!(g, :grave, MersenneTwister(1))
+        @test Ressac.control(g, :freq) < 200.0
+    end
+
+    @testset "dir_aigu raises the freq control" begin
+        g = base(); g.controls[:freq] = 200.0
+        Ressac.apply_guidance!(g, :aigu, MersenneTwister(1))
+        @test Ressac.control(g, :freq) > 200.0
+    end
+
+    @testset "every direction stays valid + audible; :none is a no-op" begin
+        rng = MersenneTwister(51)
+        for dir in Ressac.GUIDANCE_ORDER
+            g = Ressac.archetype(:drone_grave)
+            before = Ressac.render_synthdef(g, :x)
+            Ressac.apply_guidance!(g, dir, rng)
+            @test isempty(Ressac.validate(g))
+            @test Ressac.genome_is_audible(g)
+            dir === :none && @test Ressac.render_synthdef(g, :x) == before
+        end
+    end
+end

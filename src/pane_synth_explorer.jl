@@ -62,6 +62,7 @@ mutable struct SynthExplorerPane <: PaneImpl
     sustain::Float64               # default sustain used when auditioning
     param_edit::Bool               # `p` per-candidate param editor
     param_cursor::Int              # selected control row in the editor
+    guidance_dir::Symbol           # direction perceptive active (∈ GUIDANCE_ORDER)
 end
 
 # Default-fill the v2 UI state so existing positional constructions stay
@@ -71,7 +72,7 @@ function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
     return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                              naming, name_buf, seed_dir, synth_dir,
                              Tuple{Int,NTuple{4,Int}}[], false, 1, false, false,
-                             0.6, false, 1)
+                             0.6, false, 1, :none)
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -219,7 +220,8 @@ function render!(p::SynthExplorerPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
     bar = repeat("█", clamp(round(Int, p.radius * 5), 0, 5))
     strat = get(_GA_STRATEGY_NAMES, p.pop.strategy, "?")
-    header = "SYNTH EXPLORER · gén $(p.pop.generation) · div $(rpad(bar, 5, '░')) · $strat (Tab) · pop $(length(p.pop.candidates))"
+    guide = p.guidance_dir === :none ? "" : " · → $(p.guidance_dir)"
+    header = "SYNTH EXPLORER · gén $(p.pop.generation) · div $(rpad(bar, 5, '░')) · $strat (Tab)$guide · pop $(length(p.pop.candidates))"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 12 || inner.height < 6) && return
@@ -385,6 +387,8 @@ const _EXPLORER_HELP_LINES = [
     "Génération   n suivante · clic-droit suivant",
     "             R re-diverge (repêche de vieux parents + bruit)",
     "Stratégie    Tab change à la volée · g réglages détaillés",
+    "Guidance     G greffe un bon coup (filtre/satu/reverb/détune…)",
+    "             < > pousse vers une notion (grave/aigu/sombre/saturé…)",
     "Reset        0 nouvelle population depuis la graine",
     "Audibilité   ⚠ MUET = mesuré silencieux · S régénère les muets",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
@@ -442,9 +446,20 @@ function _explorer_play_focus!(p::SynthExplorerPane)
     return true
 end
 
+# Pousse chaque candidat vers la notion perceptive active (si une
+# direction est sélectionnée). Appelé après chaque génération.
+function _explorer_apply_guidance!(p::SynthExplorerPane)
+    p.guidance_dir === :none && return
+    for c in p.pop.candidates
+        apply_guidance!(c.genome, p.guidance_dir, p.rng)
+    end
+    return
+end
+
 function _explorer_next_gen!(p::SynthExplorerPane)
     p.pop.radius = p.radius
     next_generation!(p.pop, p.rng)
+    _explorer_apply_guidance!(p)
     _explorer_reenqueue!(p)
     p.focus = 1
     return true
@@ -455,6 +470,7 @@ end
 function _explorer_diverge!(p::SynthExplorerPane)
     p.pop.radius = p.radius
     diverge!(p.pop, p.rng)
+    _explorer_apply_guidance!(p)
     _explorer_reenqueue!(p)
     p.focus = 1
     return true
@@ -540,7 +556,28 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'y' && return _explorer_yank!(p)   # copie le DSL du candidat focalisé
     ch == 'S' && return _explorer_regen_silent!(p)
     ch == '0' && return _explorer_reset!(p)  # repart d'une population fraîche
+    # guidance : G = greffe un bon coup · < / > = direction perceptive
+    ch == 'G' && return _explorer_good_move!(p)
+    ch == '>' && (p.guidance_dir = _cycle_guidance(p.guidance_dir, 1);  return true)
+    ch == '<' && (p.guidance_dir = _cycle_guidance(p.guidance_dir, -1); return true)
     return false
+end
+
+_cycle_guidance(cur::Symbol, d::Int) =
+    GUIDANCE_ORDER[mod1(something(findfirst(==(cur), GUIDANCE_ORDER), 1) + d,
+                        length(GUIDANCE_ORDER))]
+
+# Greffe un bon coup (filtre/satu/reverb/détune/trémolo/sous-octave) sur
+# le candidat focalisé.
+function _explorer_good_move!(p::SynthExplorerPane)
+    g = p.pop.candidates[p.focus].genome
+    apply_good_move!(g, p.rng)
+    osc = _explorer_osc()
+    osc !== nothing && (enqueue_generation!(p.audition, osc, [c.genome for c in p.pop.candidates]);
+                        p.audition.defined_gen = p.pop.generation)
+    push!(_APP_LOG[], "[INFO] bon coup greffé sur le candidat #$(p.focus)")
+    length(_APP_LOG[]) > 200 && popfirst!(_APP_LOG[])
+    return true
 end
 
 # Reset complet : nouvelle population gén-0 depuis la graine courante.

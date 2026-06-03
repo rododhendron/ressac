@@ -712,3 +712,37 @@ end
         @test all(c -> c.weight == 0.0, p.pop.candidates)
     end
 end
+
+@testset "synth explorer pane — guidance (good move + direction)" begin
+    @testset "G grafts a good move onto the focused candidate" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 7))
+        n0 = length(p.pop.candidates[p.focus].genome.nodes)
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('G'))
+        @test length(p.pop.candidates[p.focus].genome.nodes) > n0
+        @test Ressac.genome_is_audible(p.pop.candidates[p.focus].genome)
+    end
+
+    @testset "< > cycle the guidance direction (shown in header)" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 7))
+        @test p.guidance_dir === :none
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('>'))
+        @test p.guidance_dir !== :none
+        @test p.guidance_dir in Ressac.GUIDANCE_ORDER
+        tb = Tachikoma.TestBackend(110, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 110, 30), tb.buf)
+        @test occursin("→", Tachikoma.row_text(tb, 1))
+    end
+
+    @testset "grave guidance yields a lower-pitched generation (vs none)" begin
+        meanfreq(p) = sum(Ressac.control(c.genome, :freq) for c in p.pop.candidates) /
+                      length(p.pop.candidates)
+        # same seed → identical mutations; grave applies ×0.8 on top.
+        p1 = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 7))
+        p2 = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 7))
+        Ressac.favor!(p1.pop, 1); Ressac.favor!(p2.pop, 1)
+        p1.guidance_dir = :grave
+        Ressac._explorer_next_gen!(p1)
+        Ressac._explorer_next_gen!(p2)
+        @test meanfreq(p1) < meanfreq(p2)
+    end
+end
