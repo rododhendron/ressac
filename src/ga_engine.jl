@@ -309,6 +309,13 @@ function _bo_taste(hist::Vector{Tuple{Vector{Float64},Float64}})
     return taste ./ wsum
 end
 
+_featdist(a::Vector{Float64}, b::Vector{Float64}) = sqrt(sum((a .- b) .^ 2))
+function _minmax_norm(xs::Vector{Float64})
+    lo, hi = extrema(xs)
+    hi - lo < 1e-9 && return fill(0.5, length(xs))
+    return (xs .- lo) ./ (hi - lo)
+end
+
 function _nextgen_bayesian!(pop::Population, rng::AbstractRNG)
     n = pop.gen_size
     hist = get!(pop.state, :bo_examples,
@@ -333,43 +340,50 @@ function _nextgen_bayesian!(pop::Population, rng::AbstractRNG)
         pop.candidates = pool[1:n]
         return
     end
-    sort!(pool; by = c -> -sum(genome_feature_vec(c.genome) .* taste))
-    keep = max(0, n - 2)
-    out = pool[1:keep]
-    rest = pool[(keep + 1):end]
-    while length(out) < n && !isempty(rest)   # exploration : les plus lointains
-        chosen = [c.genome for c in out]
-        best = rest[argmax([isempty(chosen) ? 1.0 :
-                            minimum(genome_distance(c.genome, gg) for gg in chosen)
-                            for c in rest])]
-        push!(out, best)
-        rest = filter(c -> c !== best, rest)
-    end
-    pop.candidates = out[1:n]
+    # Active inference (lite) : acquisition = valeur PRAGMATIQUE (goût
+    # prédit, exploitation) + β · valeur ÉPISTÉMIQUE (incertitude ≈
+    # éloignement des exemples déjà notés → ta note y réduit le plus
+    # l'incertitude). Les deux normalisés sur le pool pour être
+    # comparables.
+    rated = [f for (f, _) in hist]
+    feats = [genome_feature_vec(c.genome) for c in pool]
+    exploit = _minmax_norm([sum(f .* taste) for f in feats])
+    uncert = _minmax_norm([isempty(rated) ? 0.0 : minimum(_featdist(f, rf) for rf in rated)
+                           for f in feats])
+    β = 0.45
+    acq = (1 - β) .* exploit .+ β .* uncert
+    order = sortperm(acq; rev = true)
+    pop.candidates = pool[order[1:n]]
 end
 
-# 8. Quality-Diversity (MAP-Elites) : archive du meilleur candidat par
-#    case d'un espace de comportement (taille du DAG × nb de filtres) ;
-#    on reproduit depuis les élites diverses → couvre l'espace sonore
-#    sans perdre de niche.
-function _qd_descriptor(g::Genome)
-    nc = clamp(length(g.nodes), 1, 8)
-    nf = clamp(count(n -> (s = ugen_spec(n.ugen); s !== nothing && s.role === :filter),
-                     values(g.nodes)), 0, 4)
-    return (nc, nf)
+# 8. Quality-Diversity (MAP-Elites) : archive par RESSEMBLANCE DE
+#    STRUCTURE. Chaque niche = une famille structurelle (un candidat
+#    rejoint la niche du plus proche par genome_distance si sous le
+#    seuil, sinon il ouvre une nouvelle niche). On reproduit depuis ces
+#    élites diverses → couvre l'espace sonore sans perdre de famille.
+const _QD_NICHE_THRESHOLD = 1.5
+
+function _qd_update_archive!(archive::Vector{Candidate}, cands)
+    for c in cands
+        best_i = 0; best_d = Inf
+        for (i, e) in enumerate(archive)
+            d = genome_distance(c.genome, e.genome)
+            d < best_d && (best_d = d; best_i = i)
+        end
+        if best_i == 0 || best_d > _QD_NICHE_THRESHOLD
+            push!(archive, c)                       # nouvelle famille structurelle
+        elseif c.weight > archive[best_i].weight
+            archive[best_i] = c                     # meilleur de sa famille
+        end
+    end
+    return archive
 end
 
 function _nextgen_quality_diversity!(pop::Population, rng::AbstractRNG)
     n = pop.gen_size
-    archive = get!(pop.state, :qd_archive,
-                   Dict{Tuple{Int,Int},Candidate}())::Dict{Tuple{Int,Int},Candidate}
-    for c in pop.candidates
-        cell = _qd_descriptor(c.genome)
-        inc = get(archive, cell, nothing)
-        (inc === nothing || c.weight > inc.weight) && (archive[cell] = c)
-    end
-    elites = collect(values(archive))
-    isempty(elites) && (elites = pop.candidates)
+    archive = get!(pop.state, :qd_archive, Candidate[])::Vector{Candidate}
+    _qd_update_archive!(archive, pop.candidates)
+    elites = isempty(archive) ? pop.candidates : archive
     isempty(elites) && (elites = [Candidate(pop.base, 0.0)])
     out = Candidate[]
     while length(out) < n
