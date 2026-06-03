@@ -29,6 +29,7 @@ using Random
 
     @testset "next_generation preserves a favored elite genome" begin
         pop = Ressac.init_population(base(), 9, MersenneTwister(3); radius = 0.5)
+        pop.strategy = :breeding
         Ressac.favor!(pop, 4)
         elite_src = Ressac.render_synthdef(pop.candidates[4].genome, :x)
         Ressac.next_generation!(pop, MersenneTwister(3))
@@ -65,6 +66,50 @@ using Random
     end
 end
 
+@testset "ga_engine — tune mode (frozen structure)" begin
+    base() = Ressac.archetype(:drone_grave)
+
+    # Signature structurelle : multiset d'UGens + nb de nœuds + nb d'arêtes
+    # NodeRef. Invariante sous une mutation paramétrique pure.
+    function _struct_sig(g::Ressac.Genome)
+        ugens = sort([String(n.ugen) for n in values(g.nodes)])
+        edges = sum(count(a -> a isa Ressac.NodeRef, n.args) for n in values(g.nodes); init = 0)
+        return (ugens, length(g.nodes), edges)
+    end
+
+    @testset "tune_generation! freezes the graph, anchor stays at #1" begin
+        pop = Ressac.init_population(base(), 9, MersenneTwister(10); radius = 0.6)
+        anchor = pop.candidates[3].genome
+        sig0 = _struct_sig(anchor)
+        anchor_src = Ressac.render_synthdef(anchor, :x)
+        Ressac.tune_generation!(pop, anchor, MersenneTwister(10))
+        @test pop.generation == 1
+        @test length(pop.candidates) == 9
+        # l'ancre est conservée telle quelle en tête
+        @test Ressac.render_synthdef(pop.candidates[1].genome, :x) == anchor_src
+        # toute la génération partage la structure de l'ancre (gelée)
+        for c in pop.candidates
+            @test _struct_sig(c.genome) == sig0
+            @test isempty(Ressac.validate(c.genome))
+        end
+    end
+
+    @testset "tune children actually differ from the anchor" begin
+        pop = Ressac.init_population(base(), 9, MersenneTwister(11); radius = 0.6)
+        anchor = pop.candidates[1].genome
+        anchor_src = Ressac.render_synthdef(anchor, :x)
+        Ressac.tune_generation!(pop, anchor, MersenneTwister(11))
+        # au moins un enfant (hors ancre) diffère par ses constantes/contrôles
+        others = [Ressac.render_synthdef(c.genome, :x) for c in pop.candidates[2:end]]
+        @test any(s -> s != anchor_src, others)
+    end
+end
+
+@testset "ga_engine — default strategy is active inference (bayesian)" begin
+    pop = Ressac.init_population(Ressac.archetype(:drone_grave), 6, MersenneTwister(1))
+    @test pop.strategy === :bayesian
+end
+
 @testset "ga_engine — lineage + GA params" begin
     base() = Ressac.archetype(:drone_grave)
 
@@ -78,6 +123,7 @@ end
 
     @testset "next_generation records origins (élite / muté / ×)" begin
         pop = Ressac.init_population(base(), 6, MersenneTwister(2); radius = 0.5)
+        pop.strategy = :breeding
         Ressac.favor!(pop, 1); Ressac.favor!(pop, 2)
         Ressac.next_generation!(pop, MersenneTwister(2))
         origins = [c.origin for c in pop.candidates]
@@ -99,6 +145,7 @@ end
 
     @testset "GA params drive next_generation (gen_size, elitism)" begin
         pop = Ressac.init_population(base(), 9, MersenneTwister(4); radius = 0.5)
+        pop.strategy = :breeding
         pop.gen_size = 6
         pop.elitism = 2
         Ressac.favor!(pop, 1); Ressac.favor!(pop, 2); Ressac.favor!(pop, 3)

@@ -34,7 +34,7 @@ mutable struct Population
 end
 # Compat : restauration de session (Task 14) passe 4 args positionnels.
 Population(c::Vector{Candidate}, b::Genome, g::Int, r::Float64) =
-    Population(c, b, g, r, length(c), 0.5, 1, :breeding,
+    Population(c, b, g, r, length(c), 0.5, 1, :bayesian,
                maximum((x.id for x in c); init = 0) + 1,
                Dict{Int,NamedTuple}(), Dict{Symbol,Any}())
 
@@ -47,7 +47,7 @@ end
 function init_population(base::Genome, n::Int, rng::AbstractRNG;
                          radius::Float64 = 0.5)
     pop = Population(Candidate[], _copy_genome(base), 0, radius, n, 0.5, 1,
-                     :breeding, 1, Dict{Int,NamedTuple}(), Dict{Symbol,Any}())
+                     :bayesian, 1, Dict{Int,NamedTuple}(), Dict{Symbol,Any}())
     for _ in 1:n
         cid = _new_cid!(pop)
         _record!(pop, cid, "graine", Int[])
@@ -132,6 +132,25 @@ function next_generation!(pop::Population, rng::AbstractRNG)
     else
         _nextgen_breeding!(pop, rng)                # :breeding (défaut)
     end
+    return pop
+end
+
+# Mode TUNE : orbite paramétrique autour d'un son ancré. La structure
+# (graphe d'UGens) est GELÉE — seuls les constantes, rates et contrôles
+# (freq/sustain/release) bougent. L'ancre est conservée INTACTE en tête
+# pour servir de référence audible. C'est le pendant « réglage fin » de
+# next_generation! (« rebrasser »). Indépendant de la stratégie : le tri
+# par goût ne s'applique pas, on tourne juste autour de l'ancre.
+function tune_generation!(pop::Population, anchor::Genome, rng::AbstractRNG)
+    _update_hall!(pop)
+    pop.generation += 1
+    r = max(0.05, pop.radius)
+    out = Candidate[_spawn!(pop, _copy_genome(anchor), "ancre", Int[])]
+    while length(out) < pop.gen_size
+        child = mutate(anchor, rng; radius = r, structural = false, control_floor = 0.0)
+        push!(out, _spawn!(pop, child, "tuné", Int[]))
+    end
+    pop.candidates = out[1:pop.gen_size]
     return pop
 end
 

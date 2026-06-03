@@ -79,6 +79,21 @@ function repair!(g::Genome)
             add_node!(g, :Saw, :ar, Arg[ControlRef(:freq)]) :
             maximum(keys(g.nodes))
     end
+    # 4. GC : retire le poids mort — nœuds inatteignables depuis la sortie
+    #    (laissés par remove/rewire). Le rendu part de la sortie, donc le
+    #    son ne change JAMAIS ; on supprime juste le bloat (taille, sérial,
+    #    cibles de mutation gaspillées).
+    _prune_unreachable!(g)
+    return g
+end
+
+# Supprime les nœuds non atteignables depuis la sortie. Idempotent.
+function _prune_unreachable!(g::Genome)
+    g.output_id == 0 && return g
+    keep = _reachable_from_output(g)
+    for id in collect(keys(g.nodes))
+        id in keep || delete!(g.nodes, id)
+    end
     return g
 end
 

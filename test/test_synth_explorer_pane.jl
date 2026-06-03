@@ -37,7 +37,7 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_synth_explorer.jl"))
         @test occursin("Saw", s) || occursin("RLPF", s)
     end
 
-    @testset "v2 cards: mini-schema, cluster strip, cell rects" begin
+    @testset "v2 cards: DAG tree, cluster strip, cell rects" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}(
             "seed" => "drone_grave", "rng" => 5))
         @test Ressac._genome_mini_schema(Ressac.archetype(:drone_grave)) == "Saw→RLPF"
@@ -46,11 +46,10 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_synth_explorer.jl"))
         whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
         @test occursin("gènes:", whole)
         @test occursin("clusters:", whole)
-        @test occursin("→", whole)                    # a mini-schema arrow
+        # la case montre maintenant le DAG (arbre), comme les détails
+        @test occursin("RLPF", whole) || occursin("Saw", whole)   # UGen names
+        @test occursin("└─", whole)                               # tree connector
         @test length(p.cell_rects) == 9               # hit-test rects filled
-        kp = Ressac._genome_key_params(Ressac.archetype(:drone_grave))
-        @test occursin("freq", kp) || occursin("cutoff", kp)   # labeled
-        @test occursin("nœuds", whole)                 # the meta line
     end
 
     @testset "serialize captures seed + generation" begin
@@ -436,7 +435,7 @@ end
     @testset "strategy row cycles through GA_STRATEGIES" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 4))
         Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
-        @test p.pop.strategy === :breeding
+        @test p.pop.strategy === :bayesian        # défaut = active inference
         for _ in 1:5
             Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))   # to row 6 (strategy)
         end
@@ -685,6 +684,37 @@ end
         Ressac.handle_key!(p, Tachikoma.KeyEvent('R'))
         @test p.pop.generation == g0 + 1
         @test all(c -> Ressac.genome_is_audible(c.genome), p.pop.candidates)
+    end
+end
+
+@testset "synth explorer pane — tune/brew toggle (T)" begin
+    @testset "T flips the mode, default is brew" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        @test p.mode === :brew
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))
+        @test p.mode === :tune
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))
+        @test p.mode === :brew
+    end
+
+    @testset "n in tune mode keeps every candidate's structure frozen" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+        p.focus = 2
+        anchor_ugens = sort([String(n.ugen) for n in values(p.pop.candidates[2].genome.nodes)])
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))     # → tune
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('n'))     # générer
+        @test p.pop.generation == 1
+        for c in p.pop.candidates
+            @test sort([String(n.ugen) for n in values(c.genome.nodes)]) == anchor_ugens
+        end
+    end
+
+    @testset "header shows the TUNE badge in tune mode" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        @test occursin("TUNE", Tachikoma.row_text(tb, 1))
     end
 end
 

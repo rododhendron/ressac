@@ -89,17 +89,22 @@ end
 # Mutation = applique 1..k opérateurs selon le rayon, puis répare.
 # radius 0 → uniquement paramétrique (1 perturbation).
 # radius>0 → mélange paramétrique + structurel (Task 6 enrichit _STRUCT_OPS).
+# structural=false → GÈLE le graphe : aucun opérateur structurel n'est
+#   tiré, seuls consts/rate/contrôles bougent (mode « réglage fin »).
+# control_floor → plancher du rayon appliqué aux contrôles (pitch/env).
+#   0.3 par défaut (variété de hauteur) ; 0.0 pour un tuning vraiment fin.
 const _PARAM_OPS = Function[op_perturb_const!, op_change_rate!, op_perturb_control!]
 const _STRUCT_OPS = Function[]   # rempli en Task 6
 
-function mutate(g0::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
+function mutate(g0::Genome, rng::AbstractRNG; radius::Float64 = 0.5,
+                structural::Bool = true, control_floor::Float64 = 0.3)
     g = _copy_genome(g0)
     # Toujours bouger un peu les contrôles (pitch/enveloppe) → chaque
     # candidat a une hauteur distincte, même à faible rayon.
-    op_perturb_control!(g, rng; radius = max(radius, 0.3))
+    op_perturb_control!(g, rng; radius = max(radius, control_floor))
     n_ops = 1 + floor(Int, radius * 3)
     for _ in 1:n_ops
-        use_struct = !isempty(_STRUCT_OPS) && rand(rng) < radius
+        use_struct = structural && !isempty(_STRUCT_OPS) && rand(rng) < radius
         op = rand(rng, use_struct ? _STRUCT_OPS : _PARAM_OPS)
         if op === op_perturb_const! || op === op_perturb_control!
             op(g, rng; radius = radius)

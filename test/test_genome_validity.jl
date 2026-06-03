@@ -53,6 +53,21 @@ using Ressac
         Ressac.repair!(g)
         @test isempty(Ressac.validate(g))
     end
+
+    @testset "repair! GCs nodes unreachable from the output" begin
+        g = Ressac.Genome()
+        src = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        flt = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(src),
+                               Ressac.ConstArg(1200.0), Ressac.ConstArg(0.4)])
+        orphan = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ConstArg(440.0)])
+        g.output_id = flt
+        before = Ressac.render_synthdef(g, :x)
+        Ressac.repair!(g)
+        @test !haskey(g.nodes, orphan)          # poids mort retiré
+        @test haskey(g.nodes, src) && haskey(g.nodes, flt)
+        # le son rendu ne change pas (le render part déjà de la sortie)
+        @test Ressac.render_synthdef(g, :x) == before
+    end
 end
 
 @testset "genome — audibility + repair + conservation" begin

@@ -63,6 +63,7 @@ mutable struct SynthExplorerPane <: PaneImpl
     param_edit::Bool               # `p` per-candidate param editor
     param_cursor::Int              # selected control row in the editor
     guidance_dir::Symbol           # direction perceptive active (∈ GUIDANCE_ORDER)
+    mode::Symbol                   # :brew (rebrassage structurel) | :tune (réglage fin)
 end
 
 # Default-fill the v2 UI state so existing positional constructions stay
@@ -72,7 +73,7 @@ function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
     return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                              naming, name_buf, seed_dir, synth_dir,
                              Tuple{Int,NTuple{4,Int}}[], false, 1, false, false,
-                             0.6, false, 1, :none)
+                             0.6, false, 1, :none, :brew)
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -130,29 +131,6 @@ function _genome_mini_schema(g::Genome; max_len::Int = 4)
     return join(chain, "→")
 end
 
-# Paramètres clés (constantes) en clé-valeur lisible : freq/cutoff/rq/…
-function _genome_key_params(g::Genome; max_n::Int = 4)
-    parts = String[]
-    for id in sort(collect(keys(g.nodes)))
-        n = g.nodes[id]
-        spec = ugen_spec(n.ugen)
-        spec === nothing && continue
-        for (i, sp) in enumerate(spec.slots)
-            i <= length(n.args) || continue
-            a = n.args[i]
-            a isa ConstArg || continue
-            label = sp.name === :freq ? (spec.role === :source ? "freq" : "cutoff") :
-                    String(sp.name)
-            v = a.value
-            vs = isinteger(v) ? string(Int(v)) :
-                 abs(v) >= 100 ? string(round(Int, v)) : string(round(v; digits = 2))
-            push!(parts, "$label $vs")
-            length(parts) >= max_n && return join(parts, " · ")
-        end
-    end
-    return isempty(parts) ? "—" : join(parts, " · ")
-end
-
 # Palette de styles par cluster (cyclique).
 const _CLUSTER_STYLES = (:primary, :success, :warning, :title, :error, :secondary, :accent)
 _cluster_style(cid::Int; bold::Bool = false) =
@@ -186,21 +164,27 @@ function _render_candidate_card!(p::SynthExplorerPane, c::Candidate, idx::Int,
                    focused ? TK.tstyle(:accent, bold = true) :
                    c.weight > 0 ? TK.tstyle(:success) :
                    c.weight < 0 ? TK.tstyle(:text_dim) : _cluster_style(cid))
-    # structure (schéma) — la chaîne signal source→…→sortie
-    if r.height >= 3
+    # structure : le DAG des opérations (arbre), comme dans les détails.
+    # Arbre complet s'il rentre ; sinon les premiers niveaux (cf.
+    # _card_dag_lines). Replie sur le schéma linéaire si vraiment étroit.
+    # On réserve la dernière ligne intérieure pour l'état (height-2).
+    tree_avail = r.height - 3        # lignes entre l'en-tête et l'état
+    if tree_avail >= 1
+        lines = _card_dag_lines(c.genome, tree_avail, iw)
+        if isempty(lines)
+            TK.set_string!(buf, ix, r.y + 1,
+                           first(_genome_mini_schema(c.genome; max_len = 6), iw),
+                           TK.tstyle(:text))
+        else
+            for (li, line) in enumerate(lines)
+                TK.set_string!(buf, ix, r.y + li, line,
+                               li == 1 ? TK.tstyle(:text) : TK.tstyle(:text_dim))
+            end
+        end
+    elseif r.height >= 3
         TK.set_string!(buf, ix, r.y + 1,
                        first(_genome_mini_schema(c.genome; max_len = 6), iw),
                        TK.tstyle(:text))
-    end
-    # paramètres clés en clé-valeur
-    if r.height >= 4
-        TK.set_string!(buf, ix, r.y + 2, first(_genome_key_params(c.genome), iw),
-                       TK.tstyle(:text_dim))
-    end
-    # méta : taille du DAG + origine génétique (graine / muté / croisé)
-    if r.height >= 5
-        meta = "$(length(c.genome.nodes)) nœuds · prof $(_genome_depth(c.genome)) · $(c.origin)"
-        TK.set_string!(buf, ix, r.y + 3, first(meta, iw), TK.tstyle(:text_dim))
     end
     # état d'audition / silence sémantique mesuré par SC
     if r.height >= 6
@@ -221,7 +205,9 @@ function render!(p::SynthExplorerPane, area, buf)
     bar = repeat("█", clamp(round(Int, p.radius * 5), 0, 5))
     strat = get(_GA_STRATEGY_NAMES, p.pop.strategy, "?")
     guide = p.guidance_dir === :none ? "" : " · → $(p.guidance_dir)"
-    header = "SYNTH EXPLORER · gén $(p.pop.generation) · div $(rpad(bar, 5, '░')) · $strat (Tab)$guide · pop $(length(p.pop.candidates))"
+    # En mode tune la stratégie ne s'applique pas (orbite paramétrique).
+    modebadge = p.mode === :tune ? "TUNE (T)" : "BREW · $strat (Tab)"
+    header = "SYNTH EXPLORER · gén $(p.pop.generation) · $modebadge$guide · div $(rpad(bar, 5, '░')) · pop $(length(p.pop.candidates))"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 12 || inner.height < 6) && return
@@ -255,7 +241,7 @@ function render!(p::SynthExplorerPane, area, buf)
     ctxt = "  clusters: " * join((_cluster_letter(i) for i in 1:nclusters), " ")
     TK.set_string!(buf, inner.x, strip_y,
                    first(gtxt * ctxt, inner.width), TK.tstyle(:text_dim))
-    help = "n:gén f/d i:détails p:params L:lignée g:réglages m:clavier  ?:aide"
+    help = "n:gén T:tune/brew f/d p:params L:lignée g:réglages m:clavier  ?:aide"
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
                    first(help, inner.width), TK.tstyle(:text_dim))
     if p.naming !== :none
@@ -297,7 +283,8 @@ end
 # enfants indentés. Bien plus clair que le code SC brut.
 function _genome_tree_lines(g::Genome, id::Int = g.output_id;
                             prefix::String = "", is_last::Bool = true,
-                            is_root::Bool = true,
+                            is_root::Bool = true, depth::Int = 0,
+                            max_depth::Int = typemax(Int),
                             seen::Set{Int} = Set{Int}(), out::Vector{String} = String[])
     (id == 0 || !haskey(g.nodes, id) || id in seen) && return out
     push!(seen, id)
@@ -320,12 +307,41 @@ function _genome_tree_lines(g::Genome, id::Int = g.output_id;
     label = isempty(inline) ? String(n.ugen) : "$(n.ugen)  $(join(inline, " · "))"
     push!(out, prefix * connector * label)
     child_prefix = is_root ? "" : prefix * (is_last ? "   " : "│  ")
+    # Au-delà de max_depth, on coupe : un marqueur signale les enfants cachés.
+    if depth >= max_depth
+        isempty(children) || push!(out, child_prefix * "└─ …")
+        return out
+    end
     for (k, cid) in enumerate(children)
         _genome_tree_lines(g, cid; prefix = child_prefix,
                            is_last = (k == length(children)), is_root = false,
+                           depth = depth + 1, max_depth = max_depth,
                            seen = seen, out = out)
     end
     return out
+end
+
+# Lignes d'arbre à afficher dans une CASE (hauteur/largeur limitées).
+# Format demandé : l'arbre COMPLET s'il rentre ; sinon les premiers
+# niveaux de profondeur qui tiennent dans `avail` lignes (un marqueur
+# « … » indique les nœuds plus profonds). Largeur tronquée à `iw` avec
+# un marqueur « › » en cas de débordement horizontal.
+function _card_dag_lines(g::Genome, avail::Int, iw::Int)
+    avail <= 0 && return String[]
+    fit(s) = length(s) > iw ? string(first(s, max(iw - 1, 0)), "›") : s
+    full = _genome_tree_lines(g)
+    isempty(full) && return String[]
+    if length(full) <= avail
+        return [fit(l) for l in full]
+    end
+    # Cherche la plus grande profondeur dont le rendu tient dans avail.
+    best = String[]
+    for d in 1:_genome_depth(g)
+        ls = _genome_tree_lines(g; max_depth = d)
+        length(ls) <= avail ? (best = ls) : break
+    end
+    isempty(best) && (best = first(full, avail))   # garde-fou (arbre très large)
+    return [fit(l) for l in best]
 end
 
 function _render_inspect_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
@@ -385,6 +401,8 @@ const _EXPLORER_HELP_LINES = [
     "Écoute       Espace jouer · t drone · m mini-clavier (z x c v…)",
     "Sélection    f favoriser · d dévaluer · scroll souris",
     "Génération   n suivante · clic-droit suivant",
+    "             T bascule TUNE (réglage fin, structure gelée)",
+    "               ↔ BREW (rebrassage structurel, stratégies GA)",
     "             R re-diverge (repêche de vieux parents + bruit)",
     "Stratégie    Tab change à la volée · g réglages détaillés",
     "Guidance     G greffe un bon coup (filtre/satu/reverb/détune…)",
@@ -458,7 +476,13 @@ end
 
 function _explorer_next_gen!(p::SynthExplorerPane)
     p.pop.radius = p.radius
-    next_generation!(p.pop, p.rng)
+    if p.mode === :tune
+        # Réglage fin : orbite paramétrique autour du candidat focalisé,
+        # structure gelée. L'ancre revient en position 1.
+        tune_generation!(p.pop, p.pop.candidates[p.focus].genome, p.rng)
+    else
+        next_generation!(p.pop, p.rng)
+    end
     _explorer_apply_guidance!(p)
     _explorer_reenqueue!(p)
     p.focus = 1
@@ -531,6 +555,8 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'd' && (devalue!(p.pop, p.focus); return true)
     # génération
     ch == 'n' && return _explorer_next_gen!(p)
+    # T = bascule réglage-fin (tune, structure gelée) ↔ rebrassage (brew).
+    ch == 'T' && (p.mode = p.mode === :tune ? :brew : :tune; return true)
     # R = skip + re-diverge (repêche de vieux parents, divergence boostée).
     ch == 'R' && return _explorer_diverge!(p)
     # Tab = cycle de stratégie à la volée (sans ouvrir le panneau g).
