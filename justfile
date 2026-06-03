@@ -8,6 +8,11 @@ default:
 test:
     julia --project=. -e 'using Pkg; Pkg.test()'
 
+# Slow opt-in: NRT acoustic-analysis integration (spawns headless sclang).
+# Excluded from `just test` because each sclang call compiles its classlib.
+test-nrt:
+    RESSAC_NRT_TESTS=1 QT_QPA_PLATFORM=minimal julia --project=. -e 'using Pkg; Pkg.test()'
+
 # Run tests with line coverage tracking, then summarise per file.
 # Drops .cov files next to every src/*.jl. Cleans stale ones first so the
 # report doesn't double-count old + new runs.

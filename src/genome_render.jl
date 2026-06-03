@@ -123,6 +123,12 @@ end
 const ANALYSIS_CHANNELS = (:centroid, :subratio, :flatness, :amp, :pitchconf)
 const N_ANALYSIS_CHANNELS = length(ANALYSIS_CHANNELS)
 
+# Fenêtre d'analyse FIXE (s) : on mesure le timbre en régime établi, pas la
+# durée de note du génome (la sustain est un contrôle du joueur, pas une
+# caractéristique du son). Le caractère temporel intrinsèque (percussif vs
+# tenu) émerge des dynamiques internes du graphe sous cette porte fixe.
+const _NRT_WINDOW = 0.3
+
 # Variante d'ANALYSE (NRT uniquement) : même chaîne de signal, mais la
 # sortie n'est PAS du son — ce sont les descripteurs acoustiques, écrits
 # comme canaux audio sur le bus de sortie (que le rendu NRT capture dans
@@ -134,28 +140,35 @@ const N_ANALYSIS_CHANNELS = length(ANALYSIS_CHANNELS)
 function render_analysis_synthdef(g::Genome, name::Symbol)
     sig = _safe_signal_expr(g)
     fb  = _has_feedback(g)
-    pre  = fb ? "    var fb = LocalIn.ar(1);\n" : ""
-    post = fb ? "    LocalOut.ar(sig);\n" : ""
     fr  = _fmt_const(control(g, :freq))
     sus = _fmt_const(control(g, :sustain))
-    rel = _fmt_const(control(g, :release))
+    win = _fmt_const(_NRT_WINDOW)
+    # SC exige TOUS les `var` en tête de fonction (avant le 1er statement),
+    # sinon parse error → sclang reste bloqué. On déclare donc tout d'abord.
+    vars = fb ? "fb, sig, chain, centroid, flatness, low, full, subratio, amp, pitchconf" :
+                "sig, chain, centroid, flatness, low, full, subratio, amp, pitchconf"
+    pre  = fb ? "    fb = LocalIn.ar(1);\n" : ""
+    post = fb ? "    LocalOut.ar(sig);\n" : ""
+    # Retourne l'EXPRESSION SynthDef (sans .add) : le moteur NRT y appelle
+    # `.asBytes` pour le Score ; un appelant live appendrait `.add`.
     return string(
         "SynthDef(\\", name, ", { |out = 0, freq = ", fr,
         ", sustain = ", sus, "|\n",
+        "    var ", vars, ";\n",
         pre,
-        "    var sig = ", sig, ";\n",
+        "    sig = ", sig, ";\n",
         post,
-        "    sig = sig * EnvGen.kr(Env.linen(0.01, sustain, ", rel, "), doneAction: 2);\n",
-        "    var chain = FFT(LocalBuf(1024), sig);\n",
-        "    var centroid = (SpecCentroid.kr(chain) / 8000).clip(0, 1);\n",
-        "    var flatness = SpecFlatness.kr(chain).clip(0, 1);\n",
-        "    var low  = Amplitude.kr(LPF.ar(sig, 200), 0.01, 0.05);\n",
-        "    var full = Amplitude.kr(sig, 0.01, 0.05);\n",
-        "    var subratio = (low / (full + 1e-4)).clip(0, 1);\n",
-        "    var amp = Amplitude.kr(sig, 0.001, 0.02).clip(0, 1);\n",
-        "    var pitchconf = Pitch.kr(sig)[1].clip(0, 1);\n",
+        "    sig = sig * EnvGen.kr(Env.linen(0.01, ", win, ", 0.02), doneAction: 2);\n",
+        "    chain = FFT(LocalBuf(1024), sig);\n",
+        "    centroid = (SpecCentroid.kr(chain) / 8000).clip(0, 1);\n",
+        "    flatness = SpecFlatness.kr(chain).clip(0, 1);\n",
+        "    low = Amplitude.kr(LPF.ar(sig, 200), 0.01, 0.05);\n",
+        "    full = Amplitude.kr(sig, 0.01, 0.05);\n",
+        "    subratio = (low / (full + 1e-4)).clip(0, 1);\n",
+        "    amp = Amplitude.kr(sig, 0.001, 0.02).clip(0, 1);\n",
+        "    pitchconf = Pitch.kr(sig)[1].clip(0, 1);\n",
         "    Out.ar(out, K2A.ar([centroid, subratio, flatness, amp, pitchconf]));\n",
-        "}).add;\n")
+        "})")
 end
 
 # Ordre topologique (entrées avant le nœud) depuis la sortie.

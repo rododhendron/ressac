@@ -136,8 +136,9 @@ using Ressac
                   Ressac.Arg[Ressac.NodeRef(saw), Ressac.NodeRef(fb)])
         g.output_id = mix
         s = Ressac.render_analysis_synthdef(g, :x)
-        @test occursin("var fb = LocalIn.ar(1)", s)
+        @test occursin("fb = LocalIn.ar(1)", s)
         @test occursin("LocalOut.ar(sig)", s)
+        @test occursin("var fb, sig,", s)        # tous les var en tête (SC)
     end
 
     @testset "feedback genome renders LocalIn preamble + LocalOut" begin
