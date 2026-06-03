@@ -436,8 +436,8 @@ end
         p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 4))
         Ressac.handle_key!(p, Tachikoma.KeyEvent('g'))
         @test p.pop.strategy === :bayesian        # défaut = active inference
-        for _ in 1:5
-            Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))   # to row 6 (strategy)
+        for _ in 1:4
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))   # to row 5 (stratégie)
         end
         s0 = p.pop.strategy
         Ressac.handle_key!(p, Tachikoma.KeyEvent(:right))

@@ -207,7 +207,13 @@ function render!(p::SynthExplorerPane, area, buf)
     guide = p.guidance_dir === :none ? "" : " · → $(p.guidance_dir)"
     # En mode tune la stratégie ne s'applique pas (orbite paramétrique).
     modebadge = p.mode === :tune ? "TUNE (T)" : "BREW · $strat (Tab)"
-    header = "SYNTH EXPLORER · gén $(p.pop.generation) · $modebadge$guide · div $(rpad(bar, 5, '░')) · pop $(length(p.pop.candidates))"
+    # Jauge d'énergie : énergie moyenne de la génération → cible (ressort).
+    en = isempty(p.pop.candidates) ? 0.0 :
+         sum(genome_energy(c.genome) for c in p.pop.candidates) / length(p.pop.candidates)
+    tgt = p.pop.energy_target
+    arrow = en > tgt + 0.5 ? "↑" : en < tgt - 0.5 ? "↓" : "≈"
+    engauge = "én $(round(en; digits = 1))$arrow$(round(Int, tgt))"
+    header = "EXPLORER · gén $(p.pop.generation) · $modebadge$guide · $engauge · div $(rpad(bar, 5, '░')) · pop $(length(p.pop.candidates))"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 12 || inner.height < 6) && return
@@ -697,9 +703,10 @@ function _render_param_editor!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buf
 end
 
 # ── GA settings sub-mode (`g`) ─────────────────────────────────────
-# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme · 5 stratégie.
+# Rows: 1 génération · 2 divergence · 3 croisement · 4 élitisme ·
+#       5 stratégie · 6 cible énergie · 7 raideur ressort.
 # (le sustain est par-candidat dans l'éditeur de params `p`.)
-const _GA_PANEL_ROWS = 5
+const _GA_PANEL_ROWS = 7
 
 _ga_strategy_long(s::Symbol) =
     s === :breeding   ? "pool : croise + mute tes favoris" :
@@ -752,6 +759,10 @@ function _ga_panel_adjust!(p::SynthExplorerPane, row::Int, inc::Int)
     elseif row == 5        # stratégie (cycle dans GA_STRATEGIES)
         i = something(findfirst(==(p.pop.strategy), GA_STRATEGIES), 1)
         p.pop.strategy = GA_STRATEGIES[mod1(i + inc, length(GA_STRATEGIES))]
+    elseif row == 6        # cible d'énergie (plus haut = sons plus riches)
+        p.pop.energy_target = clamp(round(p.pop.energy_target + inc * 1.0; digits = 1), 2.0, 40.0)
+    elseif row == 7        # raideur du ressort (bas = oscille/déborde plus)
+        p.pop.stiffness = clamp(round(p.pop.stiffness + inc * 0.1; digits = 2), 0.05, 2.0)
     end
     return
 end
@@ -761,7 +772,9 @@ const _GA_PANEL_DESC = (
     "ampleur des mutations : 0 = fin, 1 = sauvage/structurel",
     "chance de croiser 2 favoris plutôt que muter un seul",
     "favoris gardés INTACTS — ne perd jamais un bon son",
-    "durée de la note jouée à l'écoute (secondes)",
+    "moteur de sélection (cf. ligne)",
+    "cible de complexité : plus haut = sons plus riches",
+    "raideur du ressort : bas = l'énergie oscille/déborde",
 )
 
 function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
@@ -775,10 +788,13 @@ function _render_ga_panel!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
             ("rayon divergence",   string(round(p.radius; digits = 2))),
             ("proba croisement",   string(round(p.pop.crossover_prob; digits = 2))),
             ("élitisme (favoris)", string(p.pop.elitism)),
-            ("stratégie",          get(_GA_STRATEGY_NAMES, p.pop.strategy, "?"))]
+            ("stratégie",          get(_GA_STRATEGY_NAMES, p.pop.strategy, "?")),
+            ("cible énergie",      string(round(p.pop.energy_target; digits = 1))),
+            ("raideur ressort",    string(round(p.pop.stiffness; digits = 2)))]
     # Per-row description; the strategy row shows its full meaning.
     descs = [_GA_PANEL_DESC[1], _GA_PANEL_DESC[2], _GA_PANEL_DESC[3],
-             _GA_PANEL_DESC[4], _ga_strategy_long(p.pop.strategy)]
+             _GA_PANEL_DESC[4], _ga_strategy_long(p.pop.strategy),
+             _GA_PANEL_DESC[6], _GA_PANEL_DESC[7]]
     desc_x = inner.x + 36                      # description column (past values)
     for (i, (label, val)) in enumerate(rows)
         sel = i == p.ga_cursor

@@ -176,3 +176,29 @@ function _install_builtin_ugens!()
     return nothing
 end
 _install_builtin_ugens!()
+
+# ── Énergie / coût métabolique ─────────────────────────────────────
+# Chaque nœud a un COÛT. L'énergie d'un génome = somme des coûts. La
+# pression de parcimonie (cf. ga_engine / mutate) pousse le système à
+# « payer » sa complexité : un générateur de plus coûte cher, une
+# modulation presque rien → on favorise la richesse PAR MODULATION
+# plutôt que par empilement de sources.
+const _ROLE_COST = Dict{Symbol,Float64}(
+    :source => 3.0, :filter => 2.0, :math => 1.0, :mod => 0.5, :env => 0.5)
+
+# Surcharges par UGen : les briques lourdes (DSP/perception) coûtent plus.
+const _UGEN_COST = Dict{Symbol,Float64}(
+    :FreeVerb => 4.0, :Formlet => 3.0, :Ringz => 2.5,
+    :CombC => 3.0, :AllpassC => 3.0,
+    :LorenzL => 4.0, :HenonL => 4.0, :LatoocarfianL => 4.0, :CuspL => 4.0,
+    :QuadL => 4.0, :GbmanL => 4.0, :StandardL => 4.0, :FBSineL => 4.0,
+    :Logistic => 4.0, :FbIn => 0.5)
+
+function node_cost(u::Symbol)
+    haskey(_UGEN_COST, u) && return _UGEN_COST[u]
+    spec = ugen_spec(u)
+    return spec === nothing ? 1.0 : get(_ROLE_COST, spec.role, 1.0)
+end
+
+genome_energy(g::Genome) =
+    sum(node_cost(n.ugen) for n in values(g.nodes); init = 0.0)

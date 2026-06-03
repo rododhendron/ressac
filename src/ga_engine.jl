@@ -31,12 +31,20 @@ mutable struct Population
     next_cid::Int               # compteur d'id de candidat
     lineage::Dict{Int,NamedTuple}   # id => (gen, origin, parents)
     state::Dict{Symbol,Any}     # état par-stratégie (archive QD, historique BO)
+    energy_target::Float64      # cible d'énergie (ressort de parcimonie)
+    stiffness::Float64          # raideur du ressort (faible = oscille/déborde)
 end
 # Compat : restauration de session (Task 14) passe 4 args positionnels.
 Population(c::Vector{Candidate}, b::Genome, g::Int, r::Float64) =
     Population(c, b, g, r, length(c), 0.5, 1, :bayesian,
                maximum((x.id for x in c); init = 0) + 1,
-               Dict{Int,NamedTuple}(), Dict{Symbol,Any}())
+               Dict{Int,NamedTuple}(), Dict{Symbol,Any}(),
+               _DEFAULT_ENERGY_TARGET, _DEFAULT_STIFFNESS)
+
+# Mutation pilotée par les réglages d'énergie de la population.
+_mutate(pop::Population, g::Genome, rng::AbstractRNG; radius::Float64 = pop.radius) =
+    mutate(g, rng; radius = radius,
+           target = pop.energy_target, stiffness = pop.stiffness)
 
 _new_cid!(pop::Population) = (id = pop.next_cid; pop.next_cid += 1; id)
 function _record!(pop::Population, id::Int, origin::AbstractString, parents::Vector{Int})
@@ -47,12 +55,13 @@ end
 function init_population(base::Genome, n::Int, rng::AbstractRNG;
                          radius::Float64 = 0.5)
     pop = Population(Candidate[], _copy_genome(base), 0, radius, n, 0.5, 1,
-                     :bayesian, 1, Dict{Int,NamedTuple}(), Dict{Symbol,Any}())
+                     :bayesian, 1, Dict{Int,NamedTuple}(), Dict{Symbol,Any}(),
+                     _DEFAULT_ENERGY_TARGET, _DEFAULT_STIFFNESS)
     for _ in 1:n
         cid = _new_cid!(pop)
         _record!(pop, cid, "graine", Int[])
         push!(pop.candidates,
-              Candidate(mutate(base, rng; radius = radius), 0.0, cid, "graine"))
+              Candidate(_mutate(pop, base, rng; radius = radius), 0.0, cid, "graine"))
     end
     return pop
 end
@@ -100,7 +109,7 @@ function _nextgen_explore!(pop::Population, rng::AbstractRNG)
     r = clamp(max(pop.radius, 0.5) * 1.2, 0.0, 1.0)
     out = Candidate[]
     while length(out) < pop.gen_size
-        push!(out, _spawn!(pop, mutate(rand(rng, pool), rng; radius = r), "exploré", Int[]))
+        push!(out, _spawn!(pop, _mutate(pop, rand(rng, pool), rng; radius = r), "exploré", Int[]))
     end
     pop.candidates = out[1:pop.gen_size]
     return pop
@@ -170,7 +179,7 @@ function _nextgen_breeding!(pop::Population, rng::AbstractRNG)
                                "× #$(pa.id)×#$(pb.id)", [pa.id, pb.id]))
         else
             pa = rand(rng, parents)
-            push!(out, _spawn!(pop, mutate(pa.genome, rng; radius = pop.radius),
+            push!(out, _spawn!(pop, _mutate(pop, pa.genome, rng),
                                "muté #$(pa.id)", [pa.id]))
         end
     end
@@ -184,7 +193,7 @@ function _nextgen_champion!(pop::Population, rng::AbstractRNG)
     champ = isempty(favored) ? Candidate(pop.base, 0.0) : favored[1]
     out = Candidate[_spawn!(pop, _copy_genome(champ.genome), "champion #$(champ.id)", [champ.id])]
     while length(out) < n
-        push!(out, _spawn!(pop, mutate(champ.genome, rng; radius = pop.radius),
+        push!(out, _spawn!(pop, _mutate(pop, champ.genome, rng),
                            "muté #$(champ.id)", [champ.id]))
     end
     pop.candidates = out[1:n]
@@ -211,7 +220,7 @@ function _nextgen_tournament!(pop::Population, rng::AbstractRNG)
             push!(out, _spawn!(pop, crossover(pa.genome, pb.genome, rng),
                                "tournoi #$(pa.id)×#$(pb.id)", [pa.id, pb.id]))
         else
-            push!(out, _spawn!(pop, mutate(pa.genome, rng; radius = pop.radius),
+            push!(out, _spawn!(pop, _mutate(pop, pa.genome, rng),
                                "tournoi #$(pa.id)", [pa.id]))
         end
     end
@@ -242,7 +251,7 @@ function _nextgen_weighted!(pop::Population, rng::AbstractRNG)
             push!(out, _spawn!(pop, crossover(pa.genome, pb.genome, rng),
                                "pondéré #$(pa.id)×#$(pb.id)", [pa.id, pb.id]))
         else
-            push!(out, _spawn!(pop, mutate(pa.genome, rng; radius = pop.radius),
+            push!(out, _spawn!(pop, _mutate(pop, pa.genome, rng),
                                "pondéré #$(pa.id)", [pa.id]))
         end
     end
@@ -262,7 +271,7 @@ function _nextgen_novelty!(pop::Population, rng::AbstractRNG; tries::Int = 4)
         best = nothing; best_d = -1.0; best_parent = 0
         for _ in 1:tries
             pa = rand(rng, pool)
-            child = mutate(pa.genome, rng; radius = max(pop.radius, 0.6))
+            child = _mutate(pop, pa.genome, rng; radius = max(pop.radius, 0.6))
             allref = vcat(ref, [c.genome for c in out])
             d = isempty(allref) ? 1.0 :
                 minimum(genome_distance(child, gref) for gref in allref)
@@ -290,7 +299,7 @@ function diverge!(pop::Population, rng::AbstractRNG)
     out = Candidate[]
     while length(out) < pop.gen_size
         g = rand(rng, pool)
-        push!(out, _spawn!(pop, mutate(g, rng; radius = r), "divergé", Int[]))
+        push!(out, _spawn!(pop, _mutate(pop, g, rng; radius = r), "divergé", Int[]))
     end
     pop.candidates = out[1:pop.gen_size]
     return pop
@@ -304,7 +313,7 @@ function reshuffle!(pop::Population, rng::AbstractRNG)
         cid = _new_cid!(pop)
         _record!(pop, cid, "graine", Int[])
         push!(pop.candidates,
-              Candidate(mutate(pop.base, rng; radius = pop.radius), 0.0, cid, "graine"))
+              Candidate(_mutate(pop, pop.base, rng), 0.0, cid, "graine"))
     end
     return pop
 end
@@ -352,7 +361,7 @@ function _nextgen_bayesian!(pop::Population, rng::AbstractRNG)
         pa = rand(rng, parents)
         child = (length(parents) >= 2 && rand(rng) < pop.crossover_prob) ?
             crossover(pa.genome, rand(rng, parents).genome, rng) :
-            mutate(pa.genome, rng; radius = pop.radius)
+            _mutate(pop, pa.genome, rng)
         push!(pool, _spawn!(pop, child, "surrogate #$(pa.id)", [pa.id]))
     end
     if taste === nothing
@@ -407,7 +416,7 @@ function _nextgen_quality_diversity!(pop::Population, rng::AbstractRNG)
     out = Candidate[]
     while length(out) < n
         e = rand(rng, elites)
-        push!(out, _spawn!(pop, mutate(e.genome, rng; radius = pop.radius),
+        push!(out, _spawn!(pop, _mutate(pop, e.genome, rng),
                            "QD #$(e.id)", [e.id]))
     end
     pop.candidates = out[1:n]

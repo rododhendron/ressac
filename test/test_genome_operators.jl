@@ -152,11 +152,69 @@ end
         @test Ressac.genome_is_audible(g)
     end
 
-    @testset "duplication is bounded (no runaway)" begin
+    @testset "duplication stays bounded (safety guard, overflow allowed)" begin
         rng = MersenneTwister(31)
         g = _g()
         for _ in 1:30; Ressac.op_duplicate_subgraph!(g, rng); Ressac.repair!(g); end
-        @test length(g.nodes) <= 20         # guard caps growth
+        # le cap dur a sauté (on autorise l'overflow) ; reste un garde-fou de
+        # sécurité à 30 nœuds → pas de runaway infini.
+        @test length(g.nodes) <= 60
+    end
+end
+
+@testset "genome — énergie / coût métabolique" begin
+    @testset "un générateur coûte plus qu'une modulation" begin
+        @test Ressac.node_cost(:Saw) > Ressac.node_cost(:SinOscKR)
+        @test Ressac.node_cost(:SinOscKR) <= Ressac.node_cost(:RLPF)
+        @test Ressac.node_cost(:FreeVerb) > Ressac.node_cost(:Saw)   # surcharge
+    end
+
+    @testset "genome_energy somme les coûts des nœuds" begin
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(1000.0), Ressac.ConstArg(0.5)])
+        g.output_id = f
+        @test Ressac.genome_energy(g) ≈ Ressac.node_cost(:Saw) + Ressac.node_cost(:RLPF)
+    end
+
+    @testset "le ressort élague au-dessus de la cible" begin
+        # gros génome + cible basse → la mutation structurelle tend à réduire
+        # l'énergie en moyenne (pression de parcimonie).
+        rng = MersenneTwister(7)
+        big = Ressac.Genome()
+        s = Ressac.add_node!(big, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        big.output_id = s
+        for _ in 1:8; Ressac.op_duplicate_subgraph!(big, rng); Ressac.repair!(big); end
+        e0 = Ressac.genome_energy(big)
+        drops = 0
+        for t in 1:40
+            child = Ressac.mutate(big, MersenneTwister(t); radius = 0.8,
+                                  target = 3.0, stiffness = 0.6)
+            Ressac.genome_energy(child) < e0 && (drops += 1)
+        end
+        @test drops > 20            # majorité des mutations réduisent l'énergie
+    end
+
+    @testset "le ressort fait croître sous la cible" begin
+        rng = MersenneTwister(9)
+        small = Ressac.Genome()
+        s = Ressac.add_node!(small, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        small.output_id = s
+        e0 = Ressac.genome_energy(small)
+        grows = 0
+        for t in 1:40
+            child = Ressac.mutate(small, MersenneTwister(t); radius = 0.8,
+                                  target = 20.0, stiffness = 0.6)
+            Ressac.genome_energy(child) > e0 && (grows += 1)
+        end
+        @test grows > 20            # majorité des mutations augmentent l'énergie
+    end
+
+    @testset "Population porte les réglages d'énergie par défaut" begin
+        pop = Ressac.init_population(Ressac.archetype(:drone_grave), 6, MersenneTwister(1))
+        @test pop.energy_target == Ressac._DEFAULT_ENERGY_TARGET
+        @test pop.stiffness == Ressac._DEFAULT_STIFFNESS
     end
 end
 

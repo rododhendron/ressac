@@ -86,35 +86,66 @@ function op_perturb_control!(g::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
     return g
 end
 
+# Cible d'énergie par défaut + raideur du ressort (cf. _apply_structural_op!).
+# κ faible = rappel mou → l'énergie peut DÉPASSER la cible (oscillation),
+# nécessaire pour découvrir les bons systèmes complexes (« permettre
+# l'overflow »). Pas de plafond dur — juste une dérive de rappel.
+const _DEFAULT_ENERGY_TARGET = 8.0
+const _DEFAULT_STIFFNESS = 0.4
+
 # Mutation = applique 1..k opérateurs selon le rayon, puis répare.
 # radius 0 → uniquement paramétrique (1 perturbation).
-# radius>0 → mélange paramétrique + structurel (Task 6 enrichit _STRUCT_OPS).
 # structural=false → GÈLE le graphe : aucun opérateur structurel n'est
 #   tiré, seuls consts/rate/contrôles bougent (mode « réglage fin »).
 # control_floor → plancher du rayon appliqué aux contrôles (pitch/env).
 #   0.3 par défaut (variété de hauteur) ; 0.0 pour un tuning vraiment fin.
+# target/stiffness → ressort d'énergie : au-dessus de la cible on élague,
+#   en dessous on grossit (cf. _apply_structural_op!).
 const _PARAM_OPS = Function[op_perturb_const!, op_change_rate!, op_perturb_control!]
-const _STRUCT_OPS = Function[]   # rempli en Task 6
+const _STRUCT_OPS = Function[]   # rempli en bas de fichier (union grow+prune+neutre)
 
 function mutate(g0::Genome, rng::AbstractRNG; radius::Float64 = 0.5,
-                structural::Bool = true, control_floor::Float64 = 0.3)
+                structural::Bool = true, control_floor::Float64 = 0.3,
+                target::Float64 = _DEFAULT_ENERGY_TARGET,
+                stiffness::Float64 = _DEFAULT_STIFFNESS)
     g = _copy_genome(g0)
     # Toujours bouger un peu les contrôles (pitch/enveloppe) → chaque
     # candidat a une hauteur distincte, même à faible rayon.
     op_perturb_control!(g, rng; radius = max(radius, control_floor))
     n_ops = 1 + floor(Int, radius * 3)
     for _ in 1:n_ops
-        use_struct = structural && !isempty(_STRUCT_OPS) && rand(rng) < radius
-        op = rand(rng, use_struct ? _STRUCT_OPS : _PARAM_OPS)
-        if op === op_perturb_const! || op === op_perturb_control!
-            op(g, rng; radius = radius)
+        if structural && !isempty(_STRUCT_OPS) && rand(rng) < radius
+            _apply_structural_op!(g, rng; target = target, stiffness = stiffness)
         else
-            op(g, rng)
+            op = rand(rng, _PARAM_OPS)
+            if op === op_perturb_const! || op === op_perturb_control!
+                op(g, rng; radius = radius)
+            else
+                op(g, rng)
+            end
         end
         repair!(g)   # normalise entre chaque op : invariants toujours tenus
     end
     repair_audible!(g)   # corrige les muets (source → sortie) ; no-op sinon
     repair!(g)
+    return g
+end
+
+# Choix d'opérateur structurel piloté par l'ÉNERGIE (ressort doux vers la
+# cible E*). p_grow = σ(κ·(E* − énergie)) : au-dessus de la cible on tend
+# à élaguer, en dessous à grossir. Les ops neutres en taille (swap/rewire)
+# gardent une part fixe. Aucun plafond dur : la dérive ramène toute seule.
+function _apply_structural_op!(g::Genome, rng::AbstractRNG;
+                               target::Float64 = _DEFAULT_ENERGY_TARGET,
+                               stiffness::Float64 = _DEFAULT_STIFFNESS)
+    if rand(rng) < 0.25                       # ops neutres en taille
+        rand(rng, _NEUTRAL_OPS)(g, rng)
+        return g
+    end
+    e = genome_energy(g)
+    p_grow = 1.0 / (1.0 + exp(stiffness * (e - target)))
+    pool = rand(rng) < p_grow ? _GROW_OPS : _PRUNE_OPS
+    rand(rng, pool)(g, rng)
     return g
 end
 
@@ -235,7 +266,7 @@ end
 # Permet de construire de la complexité — oscillos détunés, filtres
 # doublés, etc. Borné pour éviter l'explosion combinatoire.
 function op_duplicate_subgraph!(g::Genome, rng::AbstractRNG)
-    length(g.nodes) >= 12 && return g          # garde-fou anti-explosion
+    length(g.nodes) >= 30 && return g          # garde-fou de sécurité (pas un cap)
     ids = collect(keys(g.nodes))
     isempty(ids) && return g
     root = rand(rng, ids)
@@ -262,10 +293,18 @@ function op_duplicate_subgraph!(g::Genome, rng::AbstractRNG)
     return g
 end
 
-append!(_STRUCT_OPS, Function[op_insert_node!, op_remove_node!,
-                              op_swap_ugen!, op_rewire!, op_graft_mod!,
-                              op_add_feedback!, op_add_feedback!,   # ×2 : feedback plus fréquent
-                              op_duplicate_subgraph!])
+# Opérateurs structurels classés par effet sur l'ÉNERGIE :
+#   grow   → ajoutent de la complexité (insert, mod, feedback, duplication)
+#   prune  → en retirent (remove)
+#   neutre → réorganisent sans changer la taille (swap, rewire)
+# Le ressort d'énergie (_apply_structural_op!) choisit grow vs prune selon
+# l'énergie courante ; les neutres gardent une part fixe.
+const _GROW_OPS = Function[op_insert_node!, op_graft_mod!,
+                           op_add_feedback!, op_add_feedback!,   # ×2 : feedback plus fréquent
+                           op_duplicate_subgraph!]
+const _PRUNE_OPS = Function[op_remove_node!]
+const _NEUTRAL_OPS = Function[op_swap_ugen!, op_rewire!]
+append!(_STRUCT_OPS, vcat(_GROW_OPS, _PRUNE_OPS, _NEUTRAL_OPS))
 
 # ── Croisement (swap de sous-graphe) ───────────────────────────────
 
