@@ -19,8 +19,8 @@ timbre rendu, on s'en sert comme signal de sélection, sans jamais jouer le son.
 
 | Sujet | Décision | Raison |
 |---|---|---|
-| Moteur d'analyse | **NRT (Non-Realtime)** : scsynth rend un *score* hors-ligne, plus vite que le temps réel, vers un fichier ; **aucune sortie audio**. | Découple l'évaluation de la lecture ET du temps réel → on évalue des centaines de candidats par tour. Déterministe, reproductible, scriptable, testable. |
-| Source des descripteurs | Le **son rendu** (FFT/enveloppe/pitch en SC), pas une heuristique structurelle. | C'est le sens de « bosser au niveau de l'onde ». |
+| Moteur d'analyse | **NRT via `sclang` + `Score.recordNRT`, headless** (`QT_QPA_PLATFORM=minimal`). sclang compile les synthdefs et orchestre le rendu hors-ligne, plus vite que le temps réel, vers un wav ; **aucune sortie audio**. | Découple l'évaluation de la lecture ET du temps réel → des centaines de candidats par tour. **sclang = autodiscovery feature-complete** (FFT/Env/n'importe quel plugin compilés sans hardcoding). `minimal` = headless prouvé sans rebuild SC ni Qt à l'écran. |
+| Source des descripteurs | Le **son rendu** (FFT/enveloppe/pitch en SC), pas une heuristique structurelle. **Jeu complet** (FFT platitude + attaque/enveloppe inclus) — sclang compile tout, pas de compromis. | C'est le sens de « bosser au niveau de l'onde ». |
 | Modes | **B exploration (défaut) → A rôle préréglé → C affinage supervisé** ; on dérive de B vers A puis C à la volée. | L'envie se précise en explorant ; la supervision n'est jamais imposée. |
 | Ciblage | **Re-pondération douce** : `score = note + λ·role_fit`, biaise la sélection sans rien écraser. | Compose avec bayésien (goût) × énergie × chaos ; préserve la diversité. |
 | Boucle | **Grand pool évalué en NRT → classement → top-k affichés.** | L'évaluation silencieuse rend le coût de génération négligeable ; on illumine large. |
@@ -50,12 +50,15 @@ Couches indépendantes, chacune testable seule :
    signaux). Aucun son aux haut-parleurs.
 
 2. **Moteur NRT** (`nrt_analysis.jl`) — pour un lot de génomes :
-   - construit un **score OSC** : `/d_recv` des analysis-synthdefs, puis un
-     `/s_new` par candidat sur une **fenêtre temporelle** dédiée `[i·dt, i·dt+win]`,
-     descripteurs écrits sur un petit jeu de canaux fixes ;
-   - invoque `scsynth -N score.osc _ out.wav <sr> <nchan> ...` (offline) ;
-   - relit `out.wav`, **segmente par fenêtre**, moyenne → un vecteur descripteur par
-     candidat. Renvoie `Vector{Vector{Float64}}` aligné sur le lot.
+   - génère un **script sclang** : un `Score` qui `/d_recv` les analysis-synthdefs
+     (compilés par sclang → feature-complete) puis `/s_new` chaque candidat sur une
+     **fenêtre temporelle** `[i·dt, i·dt+win]`, descripteurs sur des canaux fixes ;
+   - lance `sclang` **headless** (`QT_QPA_PLATFORM=minimal`) qui appelle
+     `Score.recordNRT` → rendu offline > temps réel, **aucune sortie audio** ;
+   - relit le wav (float, multicanal), **segmente par fenêtre**, moyenne → un vecteur
+     descripteur par candidat. Renvoie `Vector{Vector{Float64}}` aligné sur le lot.
+   - *Headless prouvé* : `minimal` évite le crash GLX de Qt sans rebuild SC ; un
+     synthdef FFT+LocalBuf+Amplitude rend correctement hors-ligne dans le sandbox.
 
 3. **Store + modèle de rôle** (`synth_roles.jl`) —
    - **templates de rôles** (points cibles dans l'espace descripteur) : basse, kick,
@@ -85,10 +88,10 @@ Couches indépendantes, chacune testable seule :
 génère N génomes (depuis archive/favoris + énergie + chaos)
         │
         ▼
-render_analysis_synthdef ×N  ──►  score NRT  ──►  scsynth -N (silencieux, > temps réel)
+render_analysis_synthdef ×N  ──►  Score sclang  ──►  recordNRT headless (minimal, > temps réel)
         │
         ▼
-out.wav (canaux = descripteurs)  ──►  segmentation par fenêtre  ──►  N vecteurs descripteurs
+wav multicanal (descripteurs)  ──►  segmentation par fenêtre  ──►  N vecteurs descripteurs
         │
         ▼
 mode B : cluster → représentants     mode A : role_fit = proximité au template
@@ -114,9 +117,9 @@ Transitions libres : B (explore) → A (une envie se précise) → C (tu affines
 
 - **Hors-ligne** : store, role_fit, clustering, top-k, affinage — testés avec des
   vecteurs descripteurs injectés (déterministe, pas de SC).
-- **Intégration NRT** : un test gardé (skip si `scsynth` indispo) qui rend 2-3 génomes
-  connus et vérifie que les descripteurs sont plausibles (un sinus grave → centroïde bas,
-  graves haut ; un bruit → platitude haute).
+- **Intégration NRT** : un test gardé (skip si `sclang` indispo) qui rend 2-3 génomes
+  connus headless (`QT_QPA_PLATFORM=minimal`) et vérifie que les descripteurs sont
+  plausibles (un sinus grave → centroïde bas, graves haut ; un bruit → platitude haute).
 - **Risque** : extraction descripteur depuis le wav (segmentation, normalisation,
   transitoire d'attaque). Calé à l'implémentation, isolé dans `nrt_analysis.jl`.
 - **Risque** : coût NRT par tour. Atténué par faster-than-realtime + fenêtres courtes ;
@@ -125,7 +128,7 @@ Transitions libres : B (explore) → A (une envie se précise) → C (tu affines
 ## Ordre de livraison (incréments testables)
 
 1. `render_analysis_synthdef` + descripteurs SC (rendu de la sonde, pas encore NRT).
-2. Moteur NRT : score → scsynth -N → relecture wav → vecteurs (test intégration gardé).
+2. Moteur NRT : Score sclang → `recordNRT` headless → relecture wav → vecteurs (test gardé).
 3. Store + `role_fit` + templates de rôles (tests hors-ligne).
 4. Ciblage par re-pondération douce dans la sélection (compose avec l'existant).
 5. Boucle grand-pool → top-k.
