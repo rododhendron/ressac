@@ -116,16 +116,82 @@ function render_synthdef(g::Genome, name::Symbol)
         "}).add;\n")
 end
 
+# Ordre topologique (entrées avant le nœud) depuis la sortie.
+function _topo_order(g::Genome)
+    order = Int[]
+    seen = Set{Int}()
+    function visit(id)
+        (id in seen || !haskey(g.nodes, id)) && return
+        push!(seen, id)
+        for a in g.nodes[id].args
+            a isa NodeRef && visit(a.id)
+        end
+        push!(order, id)
+    end
+    g.output_id != 0 && visit(g.output_id)
+    return order
+end
+
+# ── Export DSL propre : bloc begin/end multi-ligne (variables nommées) ──
+# Le feedback est représenté par le combinateur `feedback() do fb … end`
+# du DSL : les nœuds FbIn renvoient simplement la variable `fb`.
+_dsl_arg(g, a::Arg, vars) =
+    a isa ConstArg   ? _fmt_const(a.value) :
+    a isa ControlRef ? ":$(a.name)" :
+    a isa NodeRef    ? get(vars, a.id, "ugen(:Silent)") : "0"
+
+function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
+    A(i) = _dsl_arg(g, n.args[i], vars)
+    n.ugen === :Mix       && return "$(A(1)) + $(A(2))"
+    n.ugen === :MulAdd    && return "($(A(1)) * $(A(2))) + $(A(3))"
+    n.ugen === :Tanh      && return "$(A(1)) |> tanh_drive(1)"
+    n.ugen === :Fold2     && return "$(A(1)) |> fold2($(A(2)))"
+    n.ugen === :Clip2     && return "$(A(1)) |> clip2($(A(2)))"
+    n.ugen === :Round     && return "$(A(1)) |> round_q($(A(2)))"
+    n.ugen === :SinOscKR  && return "ugen(:SinOsc, $(A(1)); rate = :kr)"
+    n.ugen === :LFPulseKR && return "ugen(:LFPulse, $(A(1)), $(A(2)), $(A(3)); rate = :kr)"
+    spec = ugen_spec(n.ugen)
+    parts = String[]
+    for (i, a) in enumerate(n.args)
+        code = _dsl_arg(g, a, vars)
+        if spec !== nothing && i <= length(spec.slots) &&
+           spec.slots[i].kind === :audio && !_is_audio_expr(g, a)
+            code = (a isa NodeRef && haskey(g.nodes, a.id) && g.nodes[a.id].rate === :kr) ?
+                   "ugen(:K2A, $code)" : "ugen(:DC, $code)"
+        end
+        push!(parts, code)
+    end
+    rate = n.rate === :kr ? "; rate = :kr" : ""
+    return "ugen(:$(n.ugen), $(join(parts, ", "))$rate)"
+end
+
+# Lignes du corps DSL (`var = expr`), indentées de `pad`. Les FbIn sont
+# liés à `fb` (fourni par le combinateur feedback) et n'émettent rien.
+function _dsl_body_lines(g::Genome, pad::String)
+    order = _topo_order(g)
+    vars = Dict{Int,String}()
+    for id in order
+        g.nodes[id].ugen === :FbIn && (vars[id] = "fb")
+    end
+    lines = String[]
+    k = 0
+    for id in order
+        g.nodes[id].ugen === :FbIn && continue
+        k += 1
+        vars[id] = "n$k"
+        push!(lines, "$(pad)n$k = $(_dsl_node_expr(g, g.nodes[id], vars))")
+    end
+    out = g.output_id == 0 ? "ugen(:Silent)" : vars[g.output_id]
+    push!(lines, "$(pad)ugen(:Limiter, ugen(:LeakDC, ugen(:Sanitize, $out)), 0.95)")
+    return join(lines, "\n")
+end
+
 function render_dsl(g::Genome, name::Symbol)
-    sig = _safe_signal_expr(g)
-    # build_synth attend une EXPRESSION ; pour le feedback on emballe
-    # dans une fonction SC inline `{ ... }.value` (toujours une
-    # expression unique) afin d'inclure LocalIn/LocalOut.
-    body = _has_feedback(g) ?
-        "{ var fb = LocalIn.ar(1); var s = $sig; LocalOut.ar(s); s }.value" :
-        sig
     fr  = _fmt_const(control(g, :freq))
     sus = _fmt_const(control(g, :sustain))
-    return string("@synth :", name, " (freq=", fr, ", sustain=", sus, ") ",
-                  "SynthDSL.Sig(\"", body, "\")")
+    head = string("@synth :", name, " (freq=", fr, ", sustain=", sus, ") ")
+    if _has_feedback(g)
+        return string(head, "feedback() do fb\n", _dsl_body_lines(g, "    "), "\nend\n")
+    end
+    return string(head, "begin\n", _dsl_body_lines(g, "    "), "\nend\n")
 end

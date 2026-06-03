@@ -57,7 +57,7 @@ export grain_buf, warp1
 # Spatial
 export stereo_pan, stereo_pan_lin, stereo_balance, stereo_rotate, splay, mix_sigs
 # Distortion / shaping
-export tanh_drive, soft_clip, cubic, clip, fold, wrap, decimator
+export tanh_drive, soft_clip, cubic, clip, fold, wrap, decimator, fold2, clip2, round_q, feedback
 export amp, offset, abs_sig, sqrt_sig, pow_sig
 # Envelopes
 export env_perc, env_linen, env_adsr, env_asr, env_cutoff, env_sine
@@ -397,6 +397,32 @@ decimator(rate=11025, bits=8) =
 abs_sig()  = (s::Sig) -> Sig("$(sc_arg(s)).abs")
 sqrt_sig() = (s::Sig) -> Sig("$(sc_arg(s)).sqrt")
 pow_sig(p) = (s::Sig) -> Sig("$(sc_arg(s)).pow($(sc_arg(p)))")
+
+# Symmetric fold/clip + quantize (used by the explorer's clean DSL export).
+fold2(amount=1)  = (s::Sig) -> Sig("($(sc_arg(s))).fold2($(sc_arg(amount)))")
+clip2(amount=1)  = (s::Sig) -> Sig("($(sc_arg(s))).clip2($(sc_arg(amount)))")
+round_q(quant=0.1) = (s::Sig) -> Sig("($(sc_arg(s))).round($(sc_arg(quant)))")
+
+"""
+    feedback(builder) -> Sig
+
+Single-sample feedback loop. `builder` receives the feedback bus as a
+`Sig` (read via `LocalIn.ar`) and returns the output `Sig`; that output
+is written back to the bus (`LocalOut.ar`) before being emitted. The
+side effect can't be expressed as a plain value, so we wrap the whole
+thing in an inline SC function `{ … }.value` — but the body stays real
+DSL, e.g.:
+
+    feedback() do fb
+        sig = saw(:freq) + (fb |> tanh_drive(0.5))
+        rlpf(sig, 800, 0.3)
+    end
+"""
+function feedback(builder::Function)
+    out = builder(Sig("fb"))::Sig
+    Sig(string("{ var fb = LocalIn.ar(1); var out = ", sc_arg(out),
+               "; LocalOut.ar(out); out }.value"))
+end
 
 # ════════════════════════════════════════════════════════════════════
 # Envelopes (multiply into the signal chain)

@@ -40,11 +40,16 @@ using Ressac
         @test occursin("(Saw.ar(freq)).tanh", s)
     end
 
-    @testset "render_dsl emits a @synth string a Sig body" begin
+    @testset "render_dsl emits a clean multi-line DSL block" begin
         d = Ressac.render_dsl(_filtered(), :myseed)
         @test occursin("@synth :myseed", d)
-        @test occursin("Sig(", d)
-        @test occursin("RLPF.ar", d)
+        @test occursin("begin\n", d)            # real DSL block, not a string
+        @test !occursin("Sig(\"", d)            # no giant inlined SC string
+        @test occursin("ugen(:RLPF", d)
+        @test occursin("ugen(:Saw, :freq)", d)
+        # the emitted DSL must actually parse, expand and build a SynthDef
+        src = Core.eval(Ressac.SynthDSL, Meta.parse(Ressac.SynthDSL._dsl_preprocess(d)))
+        @test occursin("RLPF.ar", src)
     end
 
     @testset "audio-rate coercion: filter input never a bare scalar" begin
@@ -116,9 +121,13 @@ using Ressac
         s = Ressac.render_synthdef(g, :x)
         @test occursin("var fb = LocalIn.ar(1)", s)
         @test occursin("LocalOut.ar(sig)", s)
-        d = Ressac.render_dsl(g, :x)
-        @test occursin("LocalOut.ar", d)
-        @test occursin(".value", d)
+        d = Ressac.render_dsl(g, :fbtest)
+        @test occursin("feedback() do fb", d)   # real DSL combinator
+        @test !occursin("Sig(\"", d)            # not a raw SC string
+        # build it: the feedback combinator must yield LocalIn + LocalOut
+        src = Core.eval(Ressac.SynthDSL, Meta.parse(Ressac.SynthDSL._dsl_preprocess(d)))
+        @test occursin("LocalIn.ar(1)", src)
+        @test occursin("LocalOut.ar", src)
     end
 end
 

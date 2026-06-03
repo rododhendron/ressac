@@ -607,7 +607,8 @@ end
         p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "pluck", "rng" => 3))
         txt = Ressac._explorer_yank_text(p)
         @test occursin("@synth", txt)
-        @test occursin("Sig(", txt)
+        @test occursin("ugen(", txt)        # clean multi-line DSL, not a Sig string
+        @test !occursin("Sig(\"", txt)
     end
 
     @testset "y logs a clipboard result, never crashes" begin
