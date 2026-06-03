@@ -89,13 +89,27 @@ _mutate(pop::Population, g::Genome, rng::AbstractRNG;
 # Inerte sans rôle actif ou sans descripteurs mesurés → compose avec tout.
 const _ROLE_BASELINE = 0.5
 
+# Rôle EFFECTIF : template de base affiné par les exemples tagués (mode C).
+# Sans exemples → le template tel quel (mode A).
+function effective_role(pop::Population, name::Symbol)
+    base = role(name)
+    base === nothing && return nothing
+    ex = get(pop.state, :role_examples, nothing)
+    ex === nothing && return base
+    e = get(ex, name, nothing)
+    e === nothing && return base
+    return refine_role(base, e.pos, e.neg)
+end
+
 function _role_term(pop::Population, c::Candidate)
-    r = get(pop.state, :role, nothing)
-    r === nothing && return 0.0
+    rname = get(pop.state, :role, nothing)
+    rname === nothing && return 0.0
     descrs = get(pop.state, :descr, nothing)
     descrs === nothing && return 0.0
     d = get(descrs, c.id, nothing)
     d === nothing && return 0.0
+    r = effective_role(pop, rname)
+    r === nothing && return 0.0
     λ = get(pop.state, :role_strength, 1.0)::Float64
     return λ * (role_fit(d, r) - _ROLE_BASELINE)
 end
