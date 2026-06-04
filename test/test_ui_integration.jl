@@ -782,6 +782,54 @@ end
     @test true   # smoke — these dispatch through and don't throw
 end
 
+@testset "! is a GLOBAL panic except while typing" begin
+    _npanic(app) = count(l -> occursin("PANIC", l), app.logs)
+
+    @testset "fires from the editor in normal mode" begin
+        app, _ = _new_app()
+        Ressac._active_editor(app).mode = :normal
+        n0 = _npanic(app)
+        Tachikoma.update!(app, Tachikoma.KeyEvent('!'))
+        @test _npanic(app) == n0 + 1
+    end
+
+    @testset "fires from inside a modal (synth library)" begin
+        app, _ = _new_app()
+        Ressac._active_editor(app).mode = :normal
+        app.modal = :synth_library
+        Tachikoma.update!(app, Tachikoma.KeyEvent('!'))
+        @test _npanic(app) >= 1
+    end
+
+    @testset "fires from a non-editor pane (explorer focused)" begin
+        app, _ = _new_app()
+        Ressac.cmd_vsplit!(app.workspaces, "explorer", Dict{String,Any}("rng" => 2))
+        n0 = _npanic(app)
+        Tachikoma.update!(app, Tachikoma.KeyEvent('!'))
+        @test _npanic(app) == n0 + 1
+    end
+
+    @testset "does NOT fire in insert mode (typed as a char)" begin
+        app, _ = _new_app()
+        ed = Ressac._active_editor(app)
+        ed.mode = :insert
+        Tachikoma.set_text!(ed, "")
+        n0 = _npanic(app)
+        Tachikoma.update!(app, Tachikoma.KeyEvent('!'))
+        @test _npanic(app) == n0                       # pas de panic
+        @test occursin("!", Tachikoma.text(ed))        # tapé dans le buffer
+    end
+
+    @testset "does NOT fire while the command line is active" begin
+        app, _ = _new_app()
+        Ressac._active_editor(app).mode = :normal
+        Tachikoma.update!(app, Tachikoma.KeyEvent(':'))   # ouvre la barre de commande
+        n0 = _npanic(app)
+        Tachikoma.update!(app, Tachikoma.KeyEvent('!'))
+        @test _npanic(app) == n0                       # ! va dans la commande
+    end
+end
+
 @testset ":rec toggles m.recording (smoke — no actual SC)" begin
     app, _ = _new_app()
     # Without a live SC session, :rec start logs an error and bails;

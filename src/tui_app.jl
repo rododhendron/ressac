@@ -1195,6 +1195,18 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         end
         return
     end
+    # ── Panic : coupe-son GLOBAL ─────────────────────────────────────
+    # `!` tue le son (patterns + tous les nœuds SC) depuis N'IMPORTE QUEL
+    # pane ou modal (lib de synths, scope, explorer…). Seules exceptions :
+    # la SAISIE DE TEXTE — barre de commande active (gérée juste au-dessus)
+    # et éditeur en insert/command/search (où `!` est un caractère).
+    if evt.action === TK.key_press && evt.char == '!'
+        ed_panic = _active_editor(m)
+        if ed_panic === nothing || ed_panic.mode === :normal
+            _panic!(m)
+            return
+        end
+    end
     # ── Sub-project 10: workspace globals + pane mode ────────────────
     # These fire BEFORE any existing dispatch so live-coding shortcuts
     # don't get swallowed by editor modes.
@@ -1570,11 +1582,6 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             # `:?`. Matches the footer hint shown in normal-mode.
             m.modal = :guide; m.modal_scroll = 0
             return
-        elseif evt.char == '!'
-            # Single-key panic: stops all patterns + frees all SC nodes.
-            # Bound to `!` so the vim `.` repeat-last-action keystroke
-            # passes through to the editor unchanged.
-            _panic!(m); return
         elseif evt.char == ','
             # Soft hush — pulls patterns from the scheduler but lets
             # SC's currently-playing synths complete their envelope
