@@ -66,6 +66,7 @@ include("pane_scope.jl")
 include("pane_tuning.jl")
 include("synth_audition.jl")     # GA explorer — audition harness (OSC)
 include("pane_synth_explorer.jl")# GA explorer — :explorer PaneImpl
+include("pane_waveform.jl")      # :waveform — zoomable sound-wave viewer
 include("workspace_commands.jl")
 include("workspace_keymap.jl")
 include("workspace_persistence.jl")

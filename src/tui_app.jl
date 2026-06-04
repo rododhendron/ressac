@@ -503,7 +503,10 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
         cmd = TK.pending_command!(pane.tabs[pane.current_tab].code_editor)
         isempty(cmd) || _handle_ex_command!(m, cmd)
     end
-    pane isa SynthExplorerPane && _drain_explorer_export!(m)
+    if pane isa SynthExplorerPane
+        _drain_explorer_export!(m)
+        _drain_explorer_waveform!(m)
+    end
     return true
 end
 
@@ -529,6 +532,23 @@ function _drain_explorer_export!(m::RessacApp)
         pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs) &&
             TK.set_text!(pane.tabs[pane.current_tab].code_editor, dsl)
     end
+    return true
+end
+
+"""
+    _drain_explorer_waveform!(m) -> Bool
+
+If a SynthExplorerPane posted a waveform request (via `V`), open a
+:waveform pane rendering the focused candidate's NRT audio. Same seam
+pattern as the export drain (the pane has no WorkspaceManager handle).
+"""
+function _drain_explorer_waveform!(m::RessacApp)
+    req = _EXPLORER_WAVEFORM_REQUEST[]
+    req === nothing && return false
+    _EXPLORER_WAVEFORM_REQUEST[] = nothing
+    gser, label = req
+    cmd_split!(m.workspaces, "waveform",
+               Dict{String,Any}("genome" => gser, "label" => label))
     return true
 end
 

@@ -836,3 +836,17 @@ end
         @test get(p.pop.state, :role_strength, 1.0) > 1.0
     end
 end
+
+@testset "synth explorer pane — V posts a waveform request" begin
+    p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+    Ressac._EXPLORER_WAVEFORM_REQUEST[] = nothing
+    p.focus = 3
+    @test Ressac.handle_key!(p, Tachikoma.KeyEvent('V')) == true
+    req = Ressac._EXPLORER_WAVEFORM_REQUEST[]
+    @test req !== nothing
+    @test occursin("#3", req[2])                       # label = candidat #3
+    # le génome sérialisé se redéserialise
+    g = Ressac.deserialize_genome(req[1])
+    @test g isa Ressac.Genome
+    Ressac._EXPLORER_WAVEFORM_REQUEST[] = nothing
+end

@@ -11,6 +11,10 @@ const _GA_GRID_COLS = 3
 # (nom, dsl) ici ; le routeur de touches de l'app (tui_app.jl) draine.
 const _EXPLORER_EXPORT_REQUEST = Ref{Union{Nothing,Tuple{String,String}}}(nothing)
 
+# Seam : ouvrir l'onde du candidat focalisé dans un pane :waveform.
+# Porte (génome sérialisé, label) ; drainé par tui_app (_drain_explorer_waveform!).
+const _EXPLORER_WAVEFORM_REQUEST = Ref{Union{Nothing,Tuple{Any,String}}}(nothing)
+
 # Seam d'analyse acoustique : par défaut le rendu NRT (sclang headless),
 # surchargeable en test par un analyseur simulé (pas de sclang dans la suite).
 const _EXPLORER_ANALYZE = Ref{Function}(analyze_genomes)
@@ -51,6 +55,14 @@ function _explorer_harvest!(p)
     catch err
         _explorer_log!("[WARN] récolte NRT indisponible ($(sprint(showerror, err)))")
     end
+    return true
+end
+
+# V : ouvre l'onde sonore complète du candidat focalisé (pane :waveform).
+function _explorer_open_waveform!(p)
+    g = p.pop.candidates[p.focus].genome
+    _EXPLORER_WAVEFORM_REQUEST[] = (serialize_genome(g), "candidat #$(p.focus)")
+    _explorer_log!("[INFO] ouverture de l'onde du candidat #$(p.focus)…")
     return true
 end
 
@@ -488,7 +500,7 @@ const _EXPLORER_HELP_LINES = [
     "Reset        0 nouvelle population depuis la graine",
     "Audibilité   ⚠ MUET = mesuré silencieux · S régénère les muets",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
-    "Infos        i détails (DSL) · L lignée · y copier le DSL",
+    "Infos        i détails (DSL) · L lignée · y copier · V onde (zoom molette)",
     "Édition      p params du candidat (freq/sustain/release) · r reset",
     "Garder       s graine · w synth · e éditeur",
     "Couleurs     cadre/pastille = cluster de proximité génétique",
@@ -639,6 +651,7 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'C' && (p.pop.state[:chaos_on] = !_chaos_on(p.pop); return true)
     # Ciblage par usage : u cycle le rôle · H récolte NRT (top-k) · +/− tags (mode C)
     ch == 'u' && return _explorer_cycle_role!(p)
+    ch == 'V' && return _explorer_open_waveform!(p)
     ch == 'H' && return _explorer_harvest!(p)
     ch == '+' && return _explorer_tag!(p, true)
     ch == '-' && return _explorer_tag!(p, false)
