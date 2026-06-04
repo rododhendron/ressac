@@ -850,3 +850,30 @@ end
     @test g isa Ressac.Genome
     Ressac._EXPLORER_WAVEFORM_REQUEST[] = nothing
 end
+
+@testset "synth explorer pane — explainer overlay (x)" begin
+    @testset "x opens the explainer, Esc closes it" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+        @test p.show_explain == false
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('x'))
+        @test p.show_explain == true
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("EXPLAIN", whole)
+        @test occursin("CHAÎNE", whole) || occursin("POURQUOI", whole)
+        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+        @test p.show_explain == false
+    end
+
+    @testset "explainer overlay uses measured descriptors when present" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+        p.pop.state[:descr] = Dict{Int,Vector{Float64}}(
+            p.pop.candidates[p.focus].id => [0.1, 0.85, 0.05, 0.4, 0.8, 0.95])
+        p.show_explain = true
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("mesuré", whole)              # en-tête signale la mesure
+    end
+end

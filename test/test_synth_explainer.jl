@@ -50,6 +50,30 @@ using Ressac
         @test occursin("hauteur", whole)
     end
 
+    @testset "exported synth carries its genome → explainable in :synth" begin
+        g = _dark_filtered(); g.controls[:freq] = 90.0
+        txt = Ressac.render_dsl(g, :mybass) * "\n" * Ressac.genome_comment(g) * "\n"
+        @test occursin("ressac-genome:", txt)
+        g2 = Ressac.genome_from_text(txt)
+        @test g2 isa Ressac.Genome
+        # même structure rendue → génome récupéré fidèlement
+        @test Ressac.render_synthdef(g2, :x) == Ressac.render_synthdef(g, :x)
+        # explain via fichier
+        path = tempname() * ".jl"; write(path, txt)
+        lines = Ressac.explain_synth_file(path)
+        @test any(l -> occursin("RLPF", l), lines)
+        @test any(l -> occursin("sombre", l), lines)
+        rm(path; force = true)
+    end
+
+    @testset "synth without embedded genome → graceful note" begin
+        path = tempname() * ".jl"
+        write(path, "@synth :x SynthDSL.saw(:freq)\n")
+        lines = Ressac.explain_synth_file(path)
+        @test any(l -> occursin("pas de génome", l), lines)
+        rm(path; force = true)
+    end
+
     @testset "simple sound → no spurious cues" begin
         g = Ressac.Genome()
         s = Ressac.add_node!(g, :SinOsc, :ar, Ressac.Arg[Ressac.ControlRef(:freq), Ressac.ConstArg(0.0)])

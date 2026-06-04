@@ -172,3 +172,41 @@ function explain_genome(g::Genome; descriptors = nothing)
     end
     return lines
 end
+
+# ── Persistance du génome dans les synths exportés ─────────────────
+# Pour que l'explainer marche AUSSI dans :synth (après export depuis
+# l'explorer), on embarque le génome sérialisé en commentaire Julia dans
+# le .jl. Le loader SC l'ignore ; l'explainer le relit.
+const _GENOME_COMMENT_PREFIX = "# ressac-genome: "
+
+genome_comment(g::Genome) = _GENOME_COMMENT_PREFIX * JSON.json(serialize_genome(g))
+
+# Récupère le génome embarqué dans un texte de synth, ou nothing.
+function genome_from_text(text::AbstractString)
+    for line in eachline(IOBuffer(text))
+        if startswith(line, _GENOME_COMMENT_PREFIX)
+            try
+                return deserialize_genome(JSON.parse(chopprefix(line, _GENOME_COMMENT_PREFIX)))
+            catch
+                return nothing
+            end
+        end
+    end
+    return nothing
+end
+
+"""
+    explain_synth_file(path; descriptors=nothing) -> Vector{String}
+
+Explique un synth EXPORTÉ : si le .jl embarque son génome ressac (export
+explorer), explication structurelle complète ; sinon, indique que seule
+l'analyse acoustique pourrait le décrire.
+"""
+function explain_synth_file(path::AbstractString; descriptors = nothing)
+    isfile(path) || return ["(fichier introuvable : $path)"]
+    g = genome_from_text(read(path, String))
+    g === nothing && return [
+        "(pas de génome ressac embarqué — synth non issu de l'explorateur)",
+        "Seule l'analyse acoustique (rendu NRT) pourrait en décrire le timbre."]
+    return explain_genome(g; descriptors = descriptors)
+end

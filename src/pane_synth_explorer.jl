@@ -138,6 +138,7 @@ mutable struct SynthExplorerPane <: PaneImpl
     param_cursor::Int              # selected control row in the editor
     guidance_dir::Symbol           # direction perceptive active (∈ GUIDANCE_ORDER)
     mode::Symbol                   # :brew (rebrassage structurel) | :tune (réglage fin)
+    show_explain::Bool             # `x` overlay « pourquoi ça sonne comme ça »
 end
 
 # Default-fill the v2 UI state so existing positional constructions stay
@@ -147,7 +148,7 @@ function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
     return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                              naming, name_buf, seed_dir, synth_dir,
                              Tuple{Int,NTuple{4,Int}}[], false, 1, false, false,
-                             0.6, false, 1, :none, :brew)
+                             0.6, false, 1, :none, :brew, false)
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -340,7 +341,35 @@ function render!(p::SynthExplorerPane, area, buf)
     p.ga_panel && _render_ga_panel!(p, inner, buf)
     p.show_lineage && _render_lineage_overlay!(p, inner, buf)
     p.show_help && _render_help_overlay!(p, inner, buf)
+    p.show_explain && _render_explain_overlay!(p, inner, buf)
     p.param_edit && _render_param_editor!(p, inner, buf)
+    return nothing
+end
+
+# Overlay « pourquoi ça sonne comme ça » : explication déterministe du
+# candidat focalisé (+ descripteurs mesurés s'ils existent).
+function _render_explain_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
+    blank = " "^inner.width
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
+    end
+    c = p.pop.candidates[p.focus]
+    descr = get(get(p.pop.state, :descr, Dict{Int,Vector{Float64}}()), c.id, nothing)
+    TK.set_string!(buf, inner.x, inner.y,
+                   first("EXPLAIN · candidat $(p.focus)" *
+                         (descr === nothing ? " (mesure : H pour descripteurs)" : " (mesuré)"),
+                         inner.width), TK.tstyle(:accent, bold = true))
+    y = inner.y + 2
+    for line in explain_genome(c.genome; descriptors = descr)
+        y > inner.y + inner.height - 2 && break
+        # titres de section (sans puce, non vides) en accent ; corps en texte
+        is_header = !isempty(line) && !startswith(line, " ")
+        TK.set_string!(buf, inner.x, y, first(line, inner.width),
+                       is_header ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+        y += 1
+    end
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                   "Esc/x/q : fermer", TK.tstyle(:text_dim))
     return nothing
 end
 
@@ -500,7 +529,7 @@ const _EXPLORER_HELP_LINES = [
     "Reset        0 nouvelle population depuis la graine",
     "Audibilité   ⚠ MUET = mesuré silencieux · S régénère les muets",
     "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
-    "Infos        i détails (DSL) · L lignée · y copier · V onde (zoom molette)",
+    "Infos        i détails (DSL) · x expliquer · L lignée · y copier · V onde",
     "Édition      p params du candidat (freq/sustain/release) · r reset",
     "Garder       s graine · w synth · e éditeur",
     "Couleurs     cadre/pastille = cluster de proximité génétique",
@@ -619,6 +648,11 @@ function handle_key!(p::SynthExplorerPane, evt)
             (p.show_help = false)
         return true
     end
+    if p.show_explain
+        (evt.key === :escape || evt.char == 'x' || evt.char == 'q') &&
+            (p.show_explain = false)
+        return true
+    end
     if p.ga_panel
         return _explorer_ga_panel_key!(p, evt)
     end
@@ -669,6 +703,7 @@ function handle_key!(p::SynthExplorerPane, evt)
     ch == 'm' && (p.keyboard_mode = true; return true)
     ch == 't' && return _explorer_toggle_drone!(p)
     ch == 'i' && (p.inspect = true; return true)
+    ch == 'x' && (p.show_explain = true; return true)   # explainer overlay
     ch == 's' && (p.naming = :seed;   p.name_buf = ""; return true)
     ch == 'w' && (p.naming = :synth;  p.name_buf = ""; return true)
     ch == 'e' && (p.naming = :export; p.name_buf = ""; return true)
@@ -944,12 +979,16 @@ function _explorer_commit_named!(p::SynthExplorerPane)
         dir = p.user_synth_dir_override === nothing ?
               joinpath(pwd(), "plugins", "user-synths") : p.user_synth_dir_override
         isdir(dir) || mkpath(dir)
-        write(joinpath(dir, "$(p.name_buf).jl"), render_dsl(g, Symbol(p.name_buf)))
+        write(joinpath(dir, "$(p.name_buf).jl"), _explorer_export_text(g, p.name_buf))
     elseif p.naming === :export
-        _EXPLORER_EXPORT_REQUEST[] = (p.name_buf, render_dsl(g, Symbol(p.name_buf)))
+        _EXPLORER_EXPORT_REQUEST[] = (p.name_buf, _explorer_export_text(g, p.name_buf))
     end
     return
 end
+
+# DSL exporté + génome embarqué (commentaire) → l'explainer marche dans :synth.
+_explorer_export_text(g::Genome, name::AbstractString) =
+    render_dsl(g, Symbol(name)) * "\n" * genome_comment(g) * "\n"
 
 # Rangée de touches → décalage en demi-tons depuis la base (220 Hz).
 const _KB_ROW = ('z','x','c','v','b','n','m',',','.')
