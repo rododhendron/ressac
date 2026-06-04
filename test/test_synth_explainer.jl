@@ -66,11 +66,49 @@ using Ressac
         rm(path; force = true)
     end
 
-    @testset "synth without embedded genome → graceful note" begin
-        path = tempname() * ".jl"
-        write(path, "@synth :x SynthDSL.saw(:freq)\n")
+    @testset "genome_from_dsl round-trips our exported DSL" begin
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)])
+        g.output_id = f; g.controls[:freq] = 120.0
+        g2 = Ressac.genome_from_dsl(Ressac.render_dsl(g, :foo))
+        @test g2 isa Ressac.Genome
+        @test Ressac.control(g2, :freq) == 120.0
+        names = Set(n.ugen for n in values(g2.nodes))
+        @test :Saw in names && :RLPF in names
+        # la sortie pointe le nœud signifiant (safety stage retiré)
+        @test g2.nodes[g2.output_id].ugen === :RLPF
+        @test any(l -> occursin("RLPF", l), Ressac.explain_genome(g2))
+    end
+
+    @testset "genome_from_dsl handles a feedback export" begin
+        txt = "@synth :x (freq=200, sustain=0.5) feedback() do fb\n" *
+              "    n1 = ugen(:Saw, fb)\n" *
+              "    ugen(:Limiter, ugen(:LeakDC, ugen(:Sanitize, n1)), 0.95)\nend\n"
+        g = Ressac.genome_from_dsl(txt)
+        @test g isa Ressac.Genome
+        @test any(n -> n.ugen === :FbIn, values(g.nodes))
+    end
+
+    @testset "explain_synth_file works on a DSL export without embedded genome" begin
+        # exactement le format metalressone (DSL, pas de commentaire génome)
+        txt = "@synth :m (freq=280, sustain=2.9) begin\n" *
+              "    n1 = ugen(:Saw, :freq)\n" *
+              "    n2 = ugen(:Formlet, n1, 1000, 0.3, 1.1)\n" *
+              "    ugen(:Limiter, ugen(:LeakDC, ugen(:Sanitize, n2)), 0.95)\nend\n"
+        path = tempname() * ".jl"; write(path, txt)
         lines = Ressac.explain_synth_file(path)
-        @test any(l -> occursin("pas de génome", l), lines)
+        @test any(l -> occursin("Formlet", l) || occursin("résonateur", l), lines)
+        @test any(l -> occursin("métallique", l), lines)   # cue structurel
+        rm(path; force = true)
+    end
+
+    @testset "unparseable synth → graceful note" begin
+        path = tempname() * ".jl"
+        write(path, "this is not a synth at all\n")
+        lines = Ressac.explain_synth_file(path)
+        @test any(l -> occursin("impossible", l), lines)
         rm(path; force = true)
     end
 

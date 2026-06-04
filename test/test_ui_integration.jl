@@ -782,6 +782,30 @@ end
     @test true   # smoke — these dispatch through and don't throw
 end
 
+@testset ":explain opens a scrollable explainer modal" begin
+    @testset ":explain <name> on a missing synth → graceful modal" begin
+        app, _ = _new_app()
+        Ressac._handle_ex_command!(app, "explain __does_not_exist__")
+        @test app.modal === :explain
+        @test !isempty(app.explain_lines)
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))   # Esc ferme
+        @test app.modal === :none
+    end
+
+    @testset ":explain (no arg) explains the focused DSL buffer" begin
+        app, _ = _new_app()
+        ed = Ressac._active_editor(app)
+        ed.mode = :normal
+        Tachikoma.set_text!(ed, "@synth :b (freq=100, sustain=0.5) begin\n" *
+                                "  n1 = ugen(:Saw, :freq)\n" *
+                                "  ugen(:RLPF, n1, 300, 0.2)\nend\n")
+        Ressac._handle_ex_command!(app, "explain")
+        @test app.modal === :explain
+        @test any(l -> occursin("CHAÎNE", l), app.explain_lines)
+        @test any(l -> occursin("RLPF", l) || occursin("Saw", l), app.explain_lines)
+    end
+end
+
 @testset "! is a GLOBAL panic except while typing" begin
     _npanic(app) = count(l -> occursin("PANIC", l), app.logs)
 

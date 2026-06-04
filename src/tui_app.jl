@@ -55,6 +55,8 @@ non-empty), and the focus toggle for keystroke routing.
     # `:synth_library`.
     modal::Symbol                = :none
     modal_scroll::Int            = 0
+    # Lines shown by the generic :explain modal (`:explain <name>`).
+    explain_lines::Vector{String} = String[]
     # Synth library picker state (only meaningful when modal === :synth_library).
     synthlib_cursor::Int         = 1
     # Snippet picker state (only meaningful when modal === :snippets).
@@ -2605,6 +2607,29 @@ _register_literal!(m -> _push_app_log!(m,
 _register_regex!(r"^starter\s+([\w.-]+)$",
     (m, mt) -> _starter_command!(m, mt.captures[1]))
 
+# ── Explainer : :explain [nom] ──────────────────────────────────────
+# Explique un synth — `:explain <nom>` lit plugins/user-synths/<nom>.jl
+# (structurel si génome embarqué/DSL reconnu) ; `:explain` seul explique
+# le buffer focalisé. Résultat dans un modal scrollable.
+function _explain_command!(m::RessacApp, name::AbstractString)
+    nm = strip(String(name))
+    lines = if isempty(nm)
+        ed = _active_editor(m)
+        g = ed === nothing ? nothing : genome_from_dsl(TK.text(ed))
+        g === nothing ? ["(buffer courant : pas un synth DSL reconnu)"] : explain_genome(g)
+    else
+        path = joinpath(pwd(), "plugins", "user-synths", "$nm.jl")
+        explain_synth_file(path)
+    end
+    m.explain_lines = vcat(["EXPLAIN · $(isempty(nm) ? "buffer courant" : nm)", ""], lines)
+    m.modal = :explain
+    m.modal_scroll = 0
+    return
+end
+_register_literal!(m -> _explain_command!(m, ""), "explain")
+_register_regex!(r"^explain\s+([\w.-]+)$",
+    (m, mt) -> _explain_command!(m, mt.captures[1]))
+
 # ── SC autodiscover commands (sub-project 8) ────────────────────────
 _register_literal!(m -> _sc_rediscover_command!(m), "sc-rediscover")
 _register_literal!(m -> _sc_cache_info_command!(m), "sc-cache-info")
@@ -3246,6 +3271,7 @@ _modal_lines(m::RessacApp) =
     m.modal === :synth_guide ? _SYNTH_GUIDE_LINES :
     m.modal === :dsl_guide   ? _DSL_GUIDE_LINES :
     m.modal === :tutorial    ? _TUTORIAL_LINES :
+    m.modal === :explain     ? m.explain_lines :
     String[]
 
 """
@@ -3458,7 +3484,8 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     title = m.modal === :guide       ? "GUIDE" :
             m.modal === :synth_guide ? "SYNTH GUIDE" :
             m.modal === :dsl_guide   ? "DSL GUIDE" :
-            m.modal === :tutorial    ? "TUTORIAL · 5-minute tour" : "INFO"
+            m.modal === :tutorial    ? "TUTORIAL · 5-minute tour" :
+            m.modal === :explain     ? "EXPLAIN" : "INFO"
     inner = _render_modal_block!(buf, area;
         title = title,
         title_right = "j/k scroll · q close",

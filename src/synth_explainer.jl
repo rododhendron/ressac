@@ -204,9 +204,157 @@ l'analyse acoustique pourrait le décrire.
 """
 function explain_synth_file(path::AbstractString; descriptors = nothing)
     isfile(path) || return ["(fichier introuvable : $path)"]
-    g = genome_from_text(read(path, String))
+    text = read(path, String)
+    g = genome_from_text(text)            # génome embarqué (exports récents)
+    g === nothing && (g = genome_from_dsl(text))   # sinon : parser le DSL
     g === nothing && return [
-        "(pas de génome ressac embarqué — synth non issu de l'explorateur)",
-        "Seule l'analyse acoustique (rendu NRT) pourrait en décrire le timbre."]
+        "(impossible d'analyser ce synth : ni génome embarqué ni DSL reconnu).",
+        "Seul un rendu acoustique NRT pourrait en décrire le timbre."]
     return explain_genome(g; descriptors = descriptors)
+end
+
+# ── Parser DSL → Genome (best-effort) ──────────────────────────────
+# Reconnaît la sortie de render_dsl (begin-block ou `feedback() do fb …`)
+# pour expliquer les synths exportés AVANT l'embarquement du génome (ou
+# retouchés main). Tolérant : une expression inconnue devient une
+# constante → l'explication reste utile même imparfaite.
+_is_node_sym(s::Symbol) = occursin(r"^n\d+$", String(s))
+
+function _synth_body(expr)
+    expr isa Expr || return nothing
+    if expr.head === :macrocall && !isempty(expr.args) &&
+       string(expr.args[1]) == "@synth"
+        body = expr.args[end]
+        body isa Expr || return nothing
+        body.head === :block && return body
+        if body.head === :do && length(body.args) == 2 && body.args[2] isa Expr &&
+           body.args[2].head === :-> && body.args[2].args[2] isa Expr
+            return body.args[2].args[2]        # corps du do fb … end
+        end
+        return nothing
+    end
+    for a in expr.args
+        b = _synth_body(a); b === nothing || return b
+    end
+    return nothing
+end
+
+function _dsl_arg(g::Genome, ex, nmap::Dict{Symbol,Int}, fbid::Base.RefValue{Int})
+    ex isa Number && return ConstArg(Float64(ex))
+    ex isa QuoteNode && ex.value isa Symbol && return ControlRef(ex.value)
+    if ex isa Symbol
+        _is_node_sym(ex) && haskey(nmap, ex) && return NodeRef(nmap[ex])
+        if ex === :fb
+            fbid[] == 0 && (fbid[] = add_node!(g, :FbIn, :ar, Arg[]))
+            return NodeRef(fbid[])
+        end
+        return ConstArg(0.0)
+    end
+    if ex isa Expr
+        # contrôle décalé (:freq + n) → on garde le contrôle (offset ignoré)
+        if ex.head === :call && length(ex.args) == 3 && ex.args[1] in (:+, :-) &&
+           ex.args[2] isa QuoteNode && ex.args[2].value isa Symbol && ex.args[3] isa Number
+            return ControlRef(ex.args[2].value)
+        end
+        return NodeRef(_dsl_node!(g, ex, nmap, fbid))
+    end
+    return ConstArg(0.0)
+end
+
+function _kw_rate(params::Expr)
+    for kw in params.args
+        if kw isa Expr && kw.head === :kw && kw.args[1] === :rate && kw.args[2] isa QuoteNode
+            return kw.args[2].value
+        end
+    end
+    return :ar
+end
+
+function _dsl_node!(g::Genome, ex, nmap::Dict{Symbol,Int}, fbid::Base.RefValue{Int})
+    ex isa Symbol && _is_node_sym(ex) && haskey(nmap, ex) && return nmap[ex]
+    ex isa Expr || return add_node!(g, :Silent, :ar, Arg[])
+    if ex.head === :call
+        head = ex.args[1]
+        if head === :ugen
+            name = ex.args[2] isa QuoteNode ? ex.args[2].value : :Silent
+            rate = :ar; args = Arg[]
+            for a in ex.args[3:end]
+                if a isa Expr && a.head === :parameters
+                    rate = _kw_rate(a)
+                else
+                    push!(args, _dsl_arg(g, a, nmap, fbid))
+                end
+            end
+            return add_node!(g, name, rate, args)
+        elseif head === :+
+            l = ex.args[2]
+            if l isa Expr && l.head === :call && l.args[1] === :* && length(l.args) == 3
+                return add_node!(g, :MulAdd, :ar, Arg[_dsl_arg(g, l.args[2], nmap, fbid),
+                    _dsl_arg(g, l.args[3], nmap, fbid), _dsl_arg(g, ex.args[3], nmap, fbid)])
+            end
+            return add_node!(g, :Mix, :ar, Arg[_dsl_arg(g, ex.args[2], nmap, fbid),
+                                               _dsl_arg(g, ex.args[3], nmap, fbid)])
+        elseif head === :|>
+            x = _dsl_arg(g, ex.args[2], nmap, fbid)
+            sh = ex.args[3]
+            ug = (sh isa Expr && sh.head === :call) ?
+                 (sh.args[1] === :fold2 ? :Fold2 : sh.args[1] === :clip2 ? :Clip2 :
+                  sh.args[1] === :round_q ? :Round : :Tanh) : :Tanh
+            return add_node!(g, ug, :ar, Arg[x])
+        end
+    end
+    return add_node!(g, :Silent, :ar, Arg[])
+end
+
+# Retire la chaîne de sécurité (Limiter→LeakDC→Sanitize) pour pointer la
+# sortie sur le nœud signifiant.
+function _unwrap_safety(g::Genome, id::Int)
+    cur = id
+    for nm in (:Limiter, :LeakDC, :Sanitize)
+        (haskey(g.nodes, cur) && g.nodes[cur].ugen === nm) || break
+        nxt = 0
+        for a in g.nodes[cur].args
+            a isa NodeRef && (nxt = a.id; break)
+        end
+        nxt == 0 && break
+        cur = nxt
+    end
+    return cur
+end
+
+function _apply_synth_params!(g::Genome, expr)
+    expr isa Expr || return
+    if expr.head === :macrocall
+        for a in expr.args
+            a isa Expr && a.head === :tuple || continue
+            for kw in a.args
+                kw isa Expr && kw.head === :(=) && kw.args[1] isa Symbol &&
+                    kw.args[2] isa Number && (g.controls[kw.args[1]] = Float64(kw.args[2]))
+            end
+        end
+    else
+        for a in expr.args
+            _apply_synth_params!(g, a)
+        end
+    end
+end
+
+"Parse notre DSL @synth (begin/feedback) en Genome best-effort, ou nothing."
+function genome_from_dsl(text::AbstractString)
+    expr = try Meta.parse(text) catch; return nothing end
+    body = _synth_body(expr)
+    body === nothing && return nothing
+    g = Genome(); nmap = Dict{Symbol,Int}(); fbid = Ref(0); last = 0
+    for st in body.args
+        st isa LineNumberNode && continue
+        if st isa Expr && st.head === :(=) && st.args[1] isa Symbol
+            nmap[st.args[1]] = _dsl_node!(g, st.args[2], nmap, fbid); last = nmap[st.args[1]]
+        else
+            last = _dsl_node!(g, st, nmap, fbid)
+        end
+    end
+    last == 0 && return nothing
+    g.output_id = _unwrap_safety(g, last)
+    _apply_synth_params!(g, expr)
+    return g
 end
