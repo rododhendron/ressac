@@ -129,3 +129,49 @@ function analyze_genomes(genomes::Vector{Genome}; timeout::Int = 120)
         rm(dir; recursive = true, force = true)
     end
 end
+
+# Script sclang minimal : rend UN génome en audio mono vers `wavpath`.
+function _build_audio_script(g::Genome, wavpath::String, oscpath::String, dur::Float64)
+    io = IOBuffer()
+    println(io, "(")
+    println(io, "var d;")
+    println(io, "d = ", render_audio_synthdef(g, :nrtaudio), ";")
+    println(io, "Score([")
+    println(io, "  [0.0, ['/d_recv', d.asBytes]],")
+    println(io, "  [0.0, ['/s_new', \"nrtaudio\", 1000, 0, 0]],")
+    println(io, "  [", round(dur; digits = 4), ", ['/c_set', 0, 0]]")
+    println(io, "]).recordNRT(")
+    println(io, "  \"", oscpath, "\", \"", wavpath, "\", nil,")
+    println(io, "  ", _NRT_SR, ", \"WAV\", \"float\",")
+    println(io, "  ServerOptions.new.numOutputBusChannels_(1),")
+    println(io, "  duration: ", round(dur; digits = 4), ",")
+    println(io, "  action: { 0.exit });")
+    println(io, ")")
+    return String(take!(io))
+end
+
+"""
+    render_genome_audio(g; pad=0.15) -> (samples::Vector{Float32}, sr::Int)
+
+Rend l'onde sonore COMPLÈTE d'un génome en NRT headless (mono, avec son
+enveloppe). Durée = attaque + sustain + release + `pad`, bornée à 6 s. Lève
+une erreur si sclang est indisponible ou si le rendu échoue.
+"""
+function render_genome_audio(g::Genome; pad::Float64 = 0.15)
+    _sclang_available() || error("nrt: sclang introuvable")
+    dur = clamp(0.01 + control(g, :sustain) + control(g, :release) + pad, 0.2, 6.0)
+    dir = mktempdir()
+    try
+        scd = joinpath(dir, "audio.scd")
+        wav = joinpath(dir, "audio.wav")
+        osc = joinpath(dir, "audio.osc")
+        write(scd, _build_audio_script(g, wav, osc, dur))
+        cmd = addenv(`sclang $scd`, "QT_QPA_PLATFORM" => "minimal")
+        Base.run(pipeline(ignorestatus(cmd); stdout = devnull, stderr = devnull))
+        isfile(wav) || error("nrt: rendu audio échoué (pas de wav)")
+        mat, sr = _read_wav_f32(wav)
+        return Float32.(vec(mat[1, :])), sr
+    finally
+        rm(dir; recursive = true, force = true)
+    end
+end

@@ -61,4 +61,18 @@ using Ressac
     else
         @info "nrt: test d'intégration sauté (RESSAC_NRT_TESTS=1 pour le lancer)"
     end
+
+    if get(ENV, "RESSAC_NRT_TESTS", "") == "1" && Ressac._sclang_available()
+        @testset "render_genome_audio capture l'onde complète (mono)" begin
+            g = Ressac.Genome()
+            s = Ressac.add_node!(g, :SinOsc, :ar,
+                                 Ressac.Arg[Ressac.ControlRef(:freq), Ressac.ConstArg(0.0)])
+            g.output_id = s; g.controls[:freq] = 220.0; g.controls[:sustain] = 0.4
+            samples, sr = Ressac.render_genome_audio(g)
+            @test sr == 44100
+            @test length(samples) > 10000               # ~0.5s de son
+            @test maximum(abs, samples) > 0.05           # non silencieux
+            @test maximum(abs, samples) <= 1.0           # borné (Limiter)
+        end
+    end
 end

@@ -128,6 +128,15 @@ using Ressac
         @test Ressac.N_ANALYSIS_CHANNELS == 5
     end
 
+    @testset "render_audio_synthdef emits the real mono audio (no descriptors)" begin
+        s = Ressac.render_audio_synthdef(_filtered(), :nrtaudio)
+        @test occursin("RLPF.ar(Saw.ar(freq)", s)        # vraie chaîne de signal
+        @test occursin("EnvGen.kr(Env.linen", s)         # enveloppe réelle
+        @test occursin("Out.ar(out, sig)", s)            # audio mono
+        @test occursin("var sig;", s)                    # var en tête (SC)
+        @test !occursin("K2A", s) && !occursin("SpecCentroid", s)   # pas d'analyse
+    end
+
     @testset "analysis synthdef carries feedback (LocalIn/LocalOut)" begin
         g = Ressac.Genome()
         saw = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])

@@ -171,6 +171,33 @@ function render_analysis_synthdef(g::Genome, name::Symbol)
         "})")
 end
 
+# Variante AUDIO (NRT) : le SON réel du génome, mono, avec son enveloppe et
+# son gain — pour capturer l'onde complète (viewer). À n'instancier qu'en NRT
+# (`Out.ar(0, …)` jouerait aux haut-parleurs sur un serveur live). Comme la
+# variante d'analyse : tous les `var` en tête (sinon sclang bloque).
+function render_audio_synthdef(g::Genome, name::Symbol)
+    sig = _safe_signal_expr(g)
+    fb  = _has_feedback(g)
+    fr  = _fmt_const(control(g, :freq))
+    sus = _fmt_const(control(g, :sustain))
+    gn  = _fmt_const(control(g, :gain))
+    rel = _fmt_const(control(g, :release))
+    vars = fb ? "fb, sig" : "sig"
+    pre  = fb ? "    fb = LocalIn.ar(1);\n" : ""
+    post = fb ? "    LocalOut.ar(sig);\n" : ""
+    return string(
+        "SynthDef(\\", name, ", { |out = 0, freq = ", fr,
+        ", sustain = ", sus, "|\n",
+        "    var ", vars, ";\n",
+        pre,
+        "    sig = ", sig, ";\n",
+        post,
+        "    sig = sig * ", gn, ";\n",
+        "    sig = sig * EnvGen.kr(Env.linen(0.01, sustain, ", rel, "), doneAction: 2);\n",
+        "    Out.ar(out, sig);\n",
+        "})")
+end
+
 # Ordre topologique (entrées avant le nœud) depuis la sortie.
 function _topo_order(g::Genome)
     order = Int[]
