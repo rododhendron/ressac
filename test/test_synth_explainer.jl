@@ -11,14 +11,16 @@ using Ressac
         return g
     end
 
-    @testset "explains the signal chain + controls" begin
+    @testset "functional, output-first structure" begin
         lines = Ressac.explain_genome(_dark_filtered())
         whole = join(lines, "\n")
-        @test occursin("CHAÎNE DE SIGNAL", whole)
-        @test occursin("Saw", whole) && occursin("dent-de-scie", whole)
+        @test occursin("SYNTHÈSE", whole)
+        @test occursin("EN SORTIE", whole)
+        @test occursin("À LA BASE", whole)
+        # le dernier geste (RLPF) est décrit en sortie ; la matière (Saw) à la base
         @test occursin("RLPF", whole) && occursin("passe-bas", whole)
-        @test occursin("CONTRÔLES", whole) && occursin("freq", whole)
-        @test occursin("sustain", whole) && occursin("release", whole)
+        @test occursin("Saw", whole) && occursin("dent-de-scie", whole)
+        @test occursin("freq", whole) && occursin("sustain", whole)
     end
 
     @testset "structural perception cues (low cutoff → dark, resonance)" begin

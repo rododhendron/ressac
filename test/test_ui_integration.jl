@@ -801,7 +801,7 @@ end
                                 "  ugen(:RLPF, n1, 300, 0.2)\nend\n")
         Ressac._handle_ex_command!(app, "explain")
         @test app.modal === :explain
-        @test any(l -> occursin("CHAÎNE", l), app.explain_lines)
+        @test any(l -> occursin("SYNTHÈSE", l) || occursin("EN SORTIE", l), app.explain_lines)
         @test any(l -> occursin("RLPF", l) || occursin("Saw", l), app.explain_lines)
     end
 end

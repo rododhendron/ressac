@@ -52,6 +52,78 @@ end
 const _CHAOS_UGENS = Set{Symbol}((:LorenzL, :HenonL, :LatoocarfianL, :CuspL, :QuadL,
                                   :GbmanL, :StandardL, :FBSineL, :Logistic, :Crackle))
 
+# ── Analyse fonctionnelle (groupes acoustiques) ────────────────────
+const _EFFECT_UGENS     = Set{Symbol}((:FreeVerb, :CombC, :AllpassC))
+const _RESONATOR_UGENS  = Set{Symbol}((:Ringz, :Formlet, :Resonz))
+const _SATURATION_UGENS = Set{Symbol}((:Tanh, :Clip2, :Fold2, :Round))
+
+# Rôle FONCTIONNEL (plus parlant que le role du catalogue) pour la narration.
+function _func_role(u::Symbol)
+    u === :FbIn && return :feedback
+    u in _EFFECT_UGENS && return :espace
+    u in _RESONATOR_UGENS && return :corps
+    u in _SATURATION_UGENS && return :grain
+    u in _CHAOS_UGENS && return :chaos
+    spec = ugen_spec(u)
+    spec === nothing && return :autre
+    spec.role === :source && return :matière
+    spec.role === :filter && return :corps
+    spec.role === :mod && return :mouvement
+    spec.role === :math && return :mélange
+    return :autre
+end
+
+# Entrée-signal PRINCIPALE d'un nœud : son slot audio, sinon son 1er NodeRef.
+function _main_input(g::Genome, n::UGenNode)
+    spec = ugen_spec(n.ugen)
+    if spec !== nothing
+        for (i, sp) in enumerate(spec.slots)
+            sp.kind === :audio && i <= length(n.args) && n.args[i] isa NodeRef &&
+                return n.args[i].id
+        end
+    end
+    for a in n.args
+        a isa NodeRef && return a.id
+    end
+    return 0
+end
+
+# Chaîne principale, de la sortie vers la matière (suit l'entrée principale).
+function _main_path(g::Genome)
+    path = Int[]; seen = Set{Int}(); cur = g.output_id
+    while cur != 0 && haskey(g.nodes, cur) && !(cur in seen)
+        push!(path, cur); push!(seen, cur)
+        cur = _main_input(g, g.nodes[cur])
+    end
+    return path
+end
+
+# Modulations de paramètres : (modulateur, nom du slot, cible). Un nœud branché
+# sur un slot SIGNAL (pas audio) d'un autre, et qui est modulateur/chaos/source.
+function _modulations(g::Genome)
+    out = Tuple{Int,Symbol,Int}[]
+    for (id, n) in g.nodes
+        spec = ugen_spec(n.ugen); spec === nothing && continue
+        for (i, sp) in enumerate(spec.slots)
+            (i <= length(n.args) && n.args[i] isa NodeRef && sp.kind === :signal) || continue
+            src = get(g.nodes, n.args[i].id, nothing); src === nothing && continue
+            _func_role(src.ugen) in (:mouvement, :chaos, :matière) &&
+                push!(out, (n.args[i].id, sp.name, id))
+        end
+    end
+    return out
+end
+
+_sources(g::Genome) = [id for (id, n) in g.nodes if
+    (s = ugen_spec(n.ugen); s !== nothing && s.role === :source && n.ugen !== :FbIn)]
+
+# "3× Saw, 1× GbmanL" depuis une liste de noms.
+function _count_phrase(names)
+    counts = Dict{String,Int}()
+    for nm in names; counts[nm] = get(counts, nm, 0) + 1; end
+    return ["$(v)× $k" for (k, v) in sort(collect(counts); by = x -> -x[2])]
+end
+
 # Sens des slots fréquents (par nom de slot, cf. UGenSpec).
 const _SLOT_DESC = Dict{Symbol,String}(
     :freq => "fréq", :rq => "résonance", :bwr => "bande", :width => "largeur",
@@ -144,33 +216,99 @@ pourquoi ça sonne comme ça. Si `descriptors` (vecteur mesuré, cf.
 `DESCRIPTORS`) est fourni, ajoute la lecture acoustique. Déterministe.
 """
 function explain_genome(g::Genome; descriptors = nothing)
+    (g.output_id == 0 || isempty(g.nodes)) && return ["(son vide)"]
     lines = String[]
-    push!(lines, "CHAÎNE DE SIGNAL  (source → sortie)")
-    order = _topo_order(g)
-    if isempty(order)
-        push!(lines, "  (vide)")
-    else
-        for id in order
-            push!(lines, "  • " * _ugen_phrase(g, g.nodes[id]))
+    roles = Set(_func_role(n.ugen) for n in values(g.nodes))
+    srcs  = _sources(g)
+    path  = _main_path(g)
+    mods  = _modulations(g)
+
+    # ── SYNTHÈSE (la gestalt en une ligne) ──
+    bits = String["$(length(srcs)) source$(length(srcs) > 1 ? "s" : "")"]
+    :corps in roles && push!(bits, "mises en forme/résonance")
+    :grain in roles && push!(bits, "saturation")
+    :espace in roles && push!(bits, "espace")
+    push!(lines, "SYNTHÈSE"); push!(lines, "  " * join(bits, " → "))
+    extra = String[]
+    :feedback in roles && push!(extra, "boucle de feedback")
+    :chaos in roles && push!(extra, "chaos")
+    isempty(mods) || push!(extra, "$(length(mods)) modulation$(length(mods) > 1 ? "s" : "") de paramètre")
+    isempty(extra) || push!(lines, "  + " * join(extra, " · "))
+
+    # ── EN SORTIE (le dernier geste) ──
+    push!(lines, ""); push!(lines, "EN SORTIE (le dernier geste sur le son)")
+    push!(lines, "  • " * _ugen_phrase(g, g.nodes[g.output_id]))
+
+    # ── EN REMONTANT (sortie → matière), avec les branches latérales ──
+    if length(path) > 1
+        push!(lines, ""); push!(lines, "EN REMONTANT (de la sortie vers la matière)")
+        for id in path
+            n = g.nodes[id]
+            side = _side_branches(g, n, _main_input(g, n))
+            tag = isempty(side) ? "" : "   ⟵ + " * join(side, " + ")
+            push!(lines, "  ← [$(_func_role(n.ugen))] " * _ugen_phrase(g, n) * tag)
         end
     end
-    push!(lines, "")
-    push!(lines, "CONTRÔLES")
-    for c in CONTROL_EDIT_ORDER
-        push!(lines, "  • $c = $(_explain_fmt(control(g, c)))$(_control_role(c))")
+
+    # ── INTERACTIONS (ce qui se passe vraiment) ──
+    inter = String[]
+    nmix = count(n -> n.ugen === :Mix, values(g.nodes))
+    nmix > 0 && length(srcs) > 1 &&
+        push!(inter, "$(length(srcs)) sources superposées/mixées → épaisseur")
+    detuned = count(id -> (n = g.nodes[id];
+        !isempty(n.args) && n.args[1] isa ControlRef && n.args[1].name === :freq), srcs)
+    detuned >= 2 && push!(inter, "plusieurs voix autour de `freq` → détune/épaississement")
+    for id in srcs
+        n = g.nodes[id]
+        if !isempty(n.args) && n.args[1] isa NodeRef
+            push!(inter, "$(n.ugen) en FM : sa fréquence est pilotée par un autre signal")
+            break
+        end
     end
-    push!(lines, "")
-    push!(lines, "POURQUOI ÇA SONNE COMME ÇA")
+    for (mid, slot, tid) in first(mods, 3)
+        push!(inter, "$(g.nodes[mid].ugen) module « $slot » de $(g.nodes[tid].ugen)")
+    end
+    :feedback in roles && push!(inter, "signal réinjecté (feedback) → drone/larsen")
+    if !isempty(inter)
+        push!(lines, ""); push!(lines, "INTERACTIONS")
+        for x in inter; push!(lines, "  • $x"); end
+    end
+
+    # ── À LA BASE (la matière première) ──
+    push!(lines, ""); push!(lines, "À LA BASE (la matière)")
+    if isempty(srcs)
+        push!(lines, "  • pas de source directe (son tiré du feedback / de constantes)")
+    else
+        push!(lines, "  • " * join(_count_phrase([String(g.nodes[id].ugen) for id in srcs]), ", "))
+    end
+    push!(lines, "  • hauteur : freq = $(_explain_fmt(control(g, :freq))) · durée : sustain = $(_explain_fmt(control(g, :sustain)))")
+
+    # ── POURQUOI ÇA SONNE COMME ÇA ──
+    push!(lines, ""); push!(lines, "POURQUOI ÇA SONNE COMME ÇA")
     cues = _structural_cues(g)
     descriptors !== nothing && append!(cues, _acoustic_cues(descriptors))
     if isempty(cues)
         push!(lines, "  • son simple, sans couleur particulière marquée")
     else
-        for c in cues
-            push!(lines, "  • $c")
-        end
+        for c in cues; push!(lines, "  • $c"); end
     end
     return lines
+end
+
+# Branches-signal SECONDAIRES d'un nœud (autres entrées que la principale) :
+# décrit "aussi alimenté par <UGen (rôle)>".
+function _side_branches(g::Genome, n::UGenNode, main_id::Int)
+    out = String[]
+    spec = ugen_spec(n.ugen)
+    for (i, a) in enumerate(n.args)
+        a isa NodeRef && a.id != main_id || continue
+        # ne compter que les entrées qui portent un signal (audio ou signal)
+        kind = (spec !== nothing && i <= length(spec.slots)) ? spec.slots[i].kind : :signal
+        kind in (:audio, :signal) || continue
+        src = get(g.nodes, a.id, nothing); src === nothing && continue
+        push!(out, "$(src.ugen)")
+    end
+    return out
 end
 
 # ── Persistance du génome dans les synths exportés ─────────────────
