@@ -139,6 +139,7 @@ mutable struct SynthExplorerPane <: PaneImpl
     guidance_dir::Symbol           # direction perceptive active (∈ GUIDANCE_ORDER)
     mode::Symbol                   # :brew (rebrassage structurel) | :tune (réglage fin)
     show_explain::Bool             # `x` overlay « pourquoi ça sonne comme ça »
+    explain_cursor::Int            # composante sélectionnée dans l'overlay explain
 end
 
 # Default-fill the v2 UI state so existing positional constructions stay
@@ -148,7 +149,7 @@ function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
     return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                              naming, name_buf, seed_dir, synth_dir,
                              Tuple{Int,NTuple{4,Int}}[], false, 1, false, false,
-                             0.6, false, 1, :none, :brew, false)
+                             0.6, false, 1, :none, :brew, false, 1)
 end
 
 function _synth_explorer_pane_ctor(args::AbstractDict)
@@ -346,30 +347,88 @@ function render!(p::SynthExplorerPane, area, buf)
     return nothing
 end
 
-# Overlay « pourquoi ça sonne comme ça » : explication déterministe du
-# candidat focalisé (+ descripteurs mesurés s'ils existent).
+# Touches de l'overlay explain : navigation des composantes (j/k),
+# solo (Espace/Entrée), onde (V), fermeture (Esc/x/q).
+function _explorer_explain_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
+    ch = evt.char; k = evt.key
+    comps = decompose(p.pop.candidates[p.focus].genome)
+    n = length(comps)
+    if k === :escape || ch == 'x' || ch == 'q'
+        p.show_explain = false
+        return true
+    end
+    (ch == 'j' || k === :down) && (p.explain_cursor = clamp(p.explain_cursor + 1, 1, max(n, 1)); return true)
+    (ch == 'k' || k === :up)   && (p.explain_cursor = clamp(p.explain_cursor - 1, 1, max(n, 1)); return true)
+    (ch == ' ' || k === :enter) && return _explorer_solo_component!(p, comps)
+    ch == 'V' && return _explorer_waveform_component!(p, comps)
+    return true   # overlay modal : on consomme le reste
+end
+
+# Joue EN SOLO la composante sélectionnée (son sous-génome), réparée audible.
+function _explorer_solo_component!(p::SynthExplorerPane, comps)
+    osc = _explorer_osc(); osc === nothing && return true
+    isempty(comps) && return true
+    c = comps[clamp(p.explain_cursor, 1, length(comps))]
+    sub = subgenome(p.pop.candidates[p.focus].genome, c.root)
+    sub === nothing && return true
+    repair_audible!(sub)
+    audition_hold!(p.audition, osc, sub, control(sub, :freq), control(sub, :sustain))
+    _explorer_log!("[INFO] solo : $(c.label) (t arrête)")
+    return true
+end
+
+# Ouvre l'onde de la composante sélectionnée (sous-génome → pane :waveform).
+function _explorer_waveform_component!(p::SynthExplorerPane, comps)
+    isempty(comps) && return true
+    c = comps[clamp(p.explain_cursor, 1, length(comps))]
+    sub = subgenome(p.pop.candidates[p.focus].genome, c.root)
+    sub === nothing && return true
+    repair_audible!(sub)
+    _EXPLORER_WAVEFORM_REQUEST[] = (serialize_genome(sub), c.label)
+    _explorer_log!("[INFO] onde : $(c.label)")
+    return true
+end
+
+# Overlay « pourquoi ça sonne comme ça » : composantes navigables (solo +
+# onde) + explication déterministe du candidat focalisé (+ descripteurs).
 function _render_explain_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
     blank = " "^inner.width
     for y in inner.y:(inner.y + inner.height - 1)
         TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
     end
-    c = p.pop.candidates[p.focus]
-    descr = get(get(p.pop.state, :descr, Dict{Int,Vector{Float64}}()), c.id, nothing)
+    cand = p.pop.candidates[p.focus]
+    comps = decompose(cand.genome)
+    isempty(comps) && (comps = SynthComponent[SynthComponent("son complet", cand.genome.output_id)])
+    cur = clamp(p.explain_cursor, 1, length(comps))
+    sel = comps[cur]
+    # descripteurs mesurés seulement pour le son COMPLET (pas une sous-partie)
+    descr = sel.root == cand.genome.output_id ?
+            get(get(p.pop.state, :descr, Dict{Int,Vector{Float64}}()), cand.id, nothing) : nothing
     TK.set_string!(buf, inner.x, inner.y,
-                   first("EXPLAIN · candidat $(p.focus)" *
-                         (descr === nothing ? " (mesure : H pour descripteurs)" : " (mesuré)"),
-                         inner.width), TK.tstyle(:accent, bold = true))
+                   first("EXPLAIN · candidat $(p.focus)", inner.width),
+                   TK.tstyle(:accent, bold = true))
+    TK.set_string!(buf, inner.x, inner.y + 1,
+                   first("COMPOSANTES  (j/k · Espace = solo · V = onde) :", inner.width),
+                   TK.tstyle(:text_dim))
     y = inner.y + 2
-    for line in explain_genome(c.genome; descriptors = descr)
+    for (i, c) in enumerate(comps)
+        i > 7 && break                         # garde de la place pour l'explication
+        TK.set_string!(buf, inner.x, y, first("$(i == cur ? "▸ " : "  ")$(c.label)", inner.width),
+                       i == cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+        y += 1
+    end
+    y += 1
+    sub = subgenome(cand.genome, sel.root)
+    for line in explain_genome(sub === nothing ? cand.genome : sub; descriptors = descr)
         y > inner.y + inner.height - 2 && break
-        # titres de section (sans puce, non vides) en accent ; corps en texte
         is_header = !isempty(line) && !startswith(line, " ")
         TK.set_string!(buf, inner.x, y, first(line, inner.width),
                        is_header ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
         y += 1
     end
     TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
-                   "Esc/x/q : fermer", TK.tstyle(:text_dim))
+                   "Esc/x/q fermer · j/k composante · Espace écouter · V onde",
+                   TK.tstyle(:text_dim))
     return nothing
 end
 
@@ -649,9 +708,7 @@ function handle_key!(p::SynthExplorerPane, evt)
         return true
     end
     if p.show_explain
-        (evt.key === :escape || evt.char == 'x' || evt.char == 'q') &&
-            (p.show_explain = false)
-        return true
+        return _explorer_explain_key!(p, evt)
     end
     if p.ga_panel
         return _explorer_ga_panel_key!(p, evt)

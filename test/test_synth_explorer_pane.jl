@@ -852,7 +852,7 @@ end
 end
 
 @testset "synth explorer pane — explainer overlay (x)" begin
-    @testset "x opens the explainer, Esc closes it" begin
+    @testset "x opens the explainer (composantes + explication), Esc closes" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
         @test p.show_explain == false
         Ressac.handle_key!(p, Tachikoma.KeyEvent('x'))
@@ -860,20 +860,67 @@ end
         tb = Tachikoma.TestBackend(100, 30)
         Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
         whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
-        @test occursin("EXPLAIN", whole)
-        @test occursin("CHAÎNE", whole) || occursin("POURQUOI", whole)
+        @test occursin("EXPLAIN", whole) && occursin("COMPOSANTES", whole)
+        @test occursin("SYNTHÈSE", whole) || occursin("POURQUOI", whole)
+        @test occursin("son complet", whole)
         Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
         @test p.show_explain == false
     end
 
-    @testset "explainer overlay uses measured descriptors when present" begin
+    @testset "j/k navigates components; a part shows its own explanation" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
-        p.pop.state[:descr] = Dict{Int,Vector{Float64}}(
-            p.pop.candidates[p.focus].id => [0.1, 0.85, 0.05, 0.4, 0.8, 0.95])
+        # génome connu multi-composantes : Saw → RLPF
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)])
+        g.output_id = f
+        p.pop.candidates[p.focus].genome = g
+        @test length(Ressac.decompose(g)) >= 2
         p.show_explain = true
+        @test p.explain_cursor == 1
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))   # → composante 2
+        @test p.explain_cursor == 2
         tb = Tachikoma.TestBackend(100, 30)
         Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
         whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
-        @test occursin("mesuré", whole)              # en-tête signale la mesure
+        @test occursin("matière", whole)            # la 2e composante = la source
+    end
+
+    @testset "measured descriptors feed the full-sound explanation" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+        p.pop.state[:descr] = Dict{Int,Vector{Float64}}(
+            p.pop.candidates[p.focus].id => [0.1, 0.85, 0.05, 0.4, 0.8, 0.95])
+        p.show_explain = true                        # curseur=1 → son complet
+        tb = Tachikoma.TestBackend(100, 30)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
+        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
+        @test occursin("sombre", whole) || occursin("basse", whole)   # indice acoustique mesuré
+    end
+
+    @testset "Space solos the selected component via the scheduler (mock)" begin
+        mock = MockOSCClient()
+        sched = Ressac.Scheduler(mock; cps = 0.5)
+        Ressac._LIVE_SCHEDULER[] = sched
+        try
+            p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+            p.show_explain = true
+            n0 = length(mock.sent)
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(' '))
+            @test length(mock.sent) > n0
+            @test p.audition.held_active == true
+        finally
+            Ressac._LIVE_SCHEDULER[] = nothing
+        end
+    end
+
+    @testset "V posts a waveform request for the selected component" begin
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
+        p.show_explain = true
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('j'))   # composante 2 (matière)
+        Ressac._EXPLORER_WAVEFORM_REQUEST[] = nothing
+        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('V')) == true
+        @test Ressac._EXPLORER_WAVEFORM_REQUEST[] !== nothing
+        Ressac._EXPLORER_WAVEFORM_REQUEST[] = nothing
     end
 end

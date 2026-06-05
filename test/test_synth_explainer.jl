@@ -114,6 +114,51 @@ using Ressac
         rm(path; force = true)
     end
 
+    @testset "subgenome extracts a playable sub-graph" begin
+        g = _dark_filtered()           # Saw(src) → RLPF(out)
+        src = nothing
+        for (id, n) in g.nodes
+            n.ugen === :Saw && (src = id)
+        end
+        # sous-génome de la source seule : juste le Saw
+        sub = Ressac.subgenome(g, src)
+        @test sub isa Ressac.Genome
+        @test length(sub.nodes) == 1
+        @test sub.nodes[sub.output_id].ugen === :Saw
+        @test Ressac.control(sub, :freq) == Ressac.control(g, :freq)
+        # il se rend (audio valide)
+        @test occursin("Saw.ar", Ressac.render_synthdef(sub, :x))
+        # sous-génome de la sortie = tout le graphe
+        full = Ressac.subgenome(g, g.output_id)
+        @test length(full.nodes) == length(g.nodes)
+        @test occursin("RLPF.ar", Ressac.render_synthdef(full, :x))
+    end
+
+    @testset "decompose lists navigable components" begin
+        # DSL inline (pas de dépendance à un fichier — Pkg.test change de cwd)
+        dsl = "@synth :m (freq=200, sustain=1.0) begin\n" *
+              "  n1 = ugen(:Saw, :freq)\n" *
+              "  n2 = ugen(:Saw, :freq)\n" *
+              "  n3 = n1 + n2\n" *
+              "  n4 = ugen(:RLPF, n3, 800, 0.3)\n" *
+              "  n5 = ugen(:FreeVerb, n4, 0.3, 0.5, 0.5)\n" *
+              "  ugen(:Limiter, ugen(:LeakDC, ugen(:Sanitize, n5)), 0.95)\nend\n"
+        g = Ressac.genome_from_dsl(dsl)
+        comps = Ressac.decompose(g)
+        @test !isempty(comps)
+        @test comps[1].label == "son complet"
+        @test comps[1].root == g.output_id
+        # racines uniques
+        roots = [c.root for c in comps]
+        @test length(unique(roots)) == length(roots)
+        # au moins une étape « matière » et une branche
+        @test any(c -> occursin("matière", c.label), comps)
+        # chaque composante donne un sous-génome valide
+        for c in comps
+            @test Ressac.subgenome(g, c.root) isa Ressac.Genome
+        end
+    end
+
     @testset "simple sound → no spurious cues" begin
         g = Ressac.Genome()
         s = Ressac.add_node!(g, :SinOsc, :ar, Ressac.Arg[Ressac.ControlRef(:freq), Ressac.ConstArg(0.0)])

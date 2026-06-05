@@ -208,6 +208,81 @@ _control_role(c::Symbol) =
     c === :gain    ? " — volume" :
     c === :release ? " — temps de relâche" : ""
 
+# ── Décomposition en composantes jouables (Phase 2) ────────────────
+# Chaque composante = un sous-graphe enraciné sur un nœud → un Genome
+# autonome, qu'on peut écouter en solo (audition) et visualiser (onde).
+
+function _collect_subtree(g::Genome, root::Int, acc::Set{Int} = Set{Int}())
+    (root in acc || !haskey(g.nodes, root)) && return acc
+    push!(acc, root)
+    for a in g.nodes[root].args
+        a isa NodeRef && _collect_subtree(g, a.id, acc)
+    end
+    return acc
+end
+
+"""
+    subgenome(g, root) -> Genome | nothing
+
+Extrait le sous-graphe enraciné sur le nœud `root` comme Genome autonome
+(mêmes contrôles). Permet d'écouter/visualiser CE morceau du son isolément.
+"""
+function subgenome(g::Genome, root::Int)
+    haskey(g.nodes, root) || return nothing
+    nodes = Dict{Int,UGenNode}()
+    for id in _collect_subtree(g, root)
+        n = g.nodes[id]
+        nodes[id] = UGenNode(n.id, n.ugen, n.rate, copy(n.args))
+    end
+    return Genome(nodes, root, g.next_id, copy(g.controls))
+end
+
+struct SynthComponent
+    label::String      # nom lisible de la composante
+    root::Int          # nœud-racine dans le génome d'origine
+end
+
+"""
+    decompose(g) -> Vector{SynthComponent}
+
+Composantes fonctionnelles navigables : le son complet, les étapes de la
+chaîne principale (aux changements de rôle), et les branches parallèles
+(entrées des Mix). Dédupliquées par racine, ordre matière→sortie.
+"""
+function decompose(g::Genome)
+    comps = SynthComponent[]
+    g.output_id == 0 && return comps
+    # étapes de la chaîne principale, de la matière vers la sortie
+    last_role = :none
+    for id in reverse(_main_path(g))
+        r = _func_role(g.nodes[id].ugen)
+        if r !== last_role && r in (:matière, :corps, :grain, :espace, :feedback)
+            label = r === :matière ? "matière (source)" :
+                    r === :corps   ? "+ corps (filtre/résonateur)" :
+                    r === :grain   ? "+ grain (saturation)" :
+                    r === :espace  ? "+ espace (réverbe/délai)" : "feedback"
+            push!(comps, SynthComponent(label, id))
+            last_role = r
+        end
+    end
+    # branches parallèles : chaque entrée d'un Mix
+    for (id, n) in sort(collect(g.nodes); by = first)
+        n.ugen === :Mix || continue
+        for (k, a) in enumerate(n.args)
+            a isa NodeRef &&
+                push!(comps, SynthComponent("branche $(Char('A' + k - 1)) (mix #$id)", a.id))
+        end
+    end
+    # le son complet en tête
+    pushfirst!(comps, SynthComponent("son complet", g.output_id))
+    # dédup par racine, en gardant le 1er label rencontré
+    seen = Set{Int}(); out = SynthComponent[]
+    for c in comps
+        c.root in seen || (push!(seen, c.root); push!(out, c))
+    end
+    return out
+end
+
 """
     explain_genome(g; descriptors=nothing) -> Vector{String}
 
