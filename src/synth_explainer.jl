@@ -117,6 +117,37 @@ end
 _sources(g::Genome) = [id for (id, n) in g.nodes if
     (s = ugen_spec(n.ugen); s !== nothing && s.role === :source && n.ugen !== :FbIn)]
 
+# Comment la SORTIE d'un nœud est consommée : :audio (sommée/filtrée → audible)
+# et/ou :signal (branchée sur une fréquence/paramètre → modulation/FM).
+function _consumed_as(g::Genome, id::Int)
+    kinds = Set{Symbol}()
+    for (_, n) in g.nodes
+        spec = ugen_spec(n.ugen)
+        for (i, a) in enumerate(n.args)
+            (a isa NodeRef && a.id == id) || continue
+            k = (spec !== nothing && i <= length(spec.slots)) ? spec.slots[i].kind : :signal
+            n.ugen === :Mix && (k = :audio)         # entrée de Mix = sommation audible
+            push!(kinds, k === :audio ? :audio : :signal)
+        end
+    end
+    return kinds
+end
+
+# Voix PARALLÈLES (sources dont la sortie est sommée/audible) vs oscillateurs
+# en CASCADE FM (sources dont la sortie pilote une fréq/param d'un autre).
+function _voices_and_fm(g::Genome, srcs)
+    voices = Int[]; fm = Int[]
+    for id in srcs
+        cons = _consumed_as(g, id)
+        if id == g.output_id || :audio in cons
+            push!(voices, id)
+        elseif :signal in cons
+            push!(fm, id)
+        end
+    end
+    return voices, fm
+end
+
 # "3× Saw, 1× GbmanL" depuis une liste de noms.
 function _count_phrase(names)
     counts = Dict{String,Int}()
@@ -327,21 +358,19 @@ function explain_genome(g::Genome; descriptors = nothing)
 
     # ── INTERACTIONS (ce qui se passe vraiment) ──
     inter = String[]
-    nmix = count(n -> n.ugen === :Mix, values(g.nodes))
-    nmix > 0 && length(srcs) > 1 &&
-        push!(inter, "$(length(srcs)) sources superposées/mixées → épaisseur")
-    detuned = count(id -> (n = g.nodes[id];
-        !isempty(n.args) && n.args[1] isa ControlRef && n.args[1].name === :freq), srcs)
-    detuned >= 2 && push!(inter, "plusieurs voix autour de `freq` → détune/épaississement")
-    for id in srcs
-        n = g.nodes[id]
-        if !isempty(n.args) && n.args[1] isa NodeRef
-            push!(inter, "$(n.ugen) en FM : sa fréquence est pilotée par un autre signal")
-            break
-        end
+    voices, fm = _voices_and_fm(g, srcs)
+    if length(voices) >= 2
+        detuned = count(id -> (n = g.nodes[id];
+            !isempty(n.args) && n.args[1] isa ControlRef && n.args[1].name === :freq), voices)
+        push!(inter, "$(length(voices)) voix en parallèle, mixées → épaisseur" *
+                     (detuned >= 2 ? " (détune autour de `freq`)" : ""))
     end
-    for (mid, slot, tid) in first(mods, 3)
-        push!(inter, "$(g.nodes[mid].ugen) module « $slot » de $(g.nodes[tid].ugen)")
+    isempty(fm) || push!(inter, "$(length(fm)) oscillateur$(length(fm) > 1 ? "s" : "") en cascade FM" *
+        " (pilotent la fréquence d'un autre) → spectre riche/mouvant")
+    # modulations par LFO/chaos (pas la FM source→source, déjà comptée)
+    lfo_mods = [m for m in mods if _func_role(g.nodes[m[1]].ugen) in (:mouvement, :chaos)]
+    for (mid, slot, tid) in first(lfo_mods, 3)
+        push!(inter, "$(g.nodes[mid].ugen) module « $slot » de $(g.nodes[tid].ugen) → mouvement")
     end
     :feedback in roles && push!(inter, "signal réinjecté (feedback) → drone/larsen")
     if !isempty(inter)

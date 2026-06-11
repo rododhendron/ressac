@@ -114,6 +114,22 @@ using Ressac
         rm(path; force = true)
     end
 
+    @testset "INTERACTIONS distinguish parallel voices from FM cascades" begin
+        g = Ressac.Genome()
+        v1 = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        v2 = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        mod = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        car = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.NodeRef(mod)])  # FM : freq = mod
+        mix1 = Ressac.add_node!(g, :Mix, :ar, Ressac.Arg[Ressac.NodeRef(v1), Ressac.NodeRef(v2)])
+        out = Ressac.add_node!(g, :Mix, :ar, Ressac.Arg[Ressac.NodeRef(mix1), Ressac.NodeRef(car)])
+        g.output_id = out
+        whole = join(Ressac.explain_genome(g), "\n")
+        @test occursin("voix en parallèle", whole)     # v1, v2, car sommés
+        @test occursin("cascade FM", whole)            # mod pilote la fréq de car
+        # le modulateur FM n'est PAS compté comme voix
+        @test occursin("3 voix", whole)
+    end
+
     @testset "subgenome extracts a playable sub-graph" begin
         g = _dark_filtered()           # Saw(src) → RLPF(out)
         src = nothing
