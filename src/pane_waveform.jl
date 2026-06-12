@@ -22,6 +22,7 @@ mutable struct WaveformPane <: PaneImpl
     focus::Int                      # index du knob focalisé
     value_edit::Bool                # saisie directe d'une valeur en cours
     value_buf::String               # tampon de saisie
+    structure_dirty::Bool           # un édit structurel a changé le graphe
     labels::Vector{Int}             # quartier par knob
     strength::Vector{Float64}       # vivacité d'appartenance par knob
     dgraph::Matrix{Float64}         # distances de graphe (cache par structure)
@@ -40,7 +41,7 @@ end
 # Constructeur de compatibilité 7-args (anciens appels + tests viewer).
 WaveformPane(samples, sr, vs, vl, label, genome, last_rect) =
     WaveformPane(samples, sr, vs, vl, label, genome, last_rect,
-                 false, Knob[], 1, false, "", Int[], Float64[], zeros(0, 0),
+                 false, Knob[], 1, false, "", false, Int[], Float64[], zeros(0, 0),
                  KnobSignatures(), Float64[], 0, 0, 0, false, false,
                  nothing, AuditionState(1), ReentrantLock())
 
@@ -115,6 +116,34 @@ function _sculpt_tug!(p::WaveformPane, steps::Int)
     p.last_tugged = (p.last_tugged == 0 || p.last_tugged == p.focus) ? p.focus : -1
     p.req_version += 1
     return
+end
+
+# Ré-énumère après un édit STRUCTUREL : le set de knobs a changé → on
+# recalcule knobs/quartiers et on réapprend les signatures (indices décalés).
+# Marque l'explainer à rafraîchir (structure_dirty).
+function _sculpt_reinit_structure!(p::WaveformPane)
+    p.genome === nothing && return
+    p.knobs = enumerate_knobs(p.genome)
+    p.focus = clamp(p.focus, 1, max(1, length(p.knobs)))
+    p.dgraph = knob_graph_distances(p.genome, p.knobs)
+    p.sigs = KnobSignatures()
+    p.last_descr = Float64[]
+    p.last_tugged = 0
+    _sculpt_recluster!(p)
+    p.structure_dirty = true
+    p.req_version += 1
+    return
+end
+
+# o/O : remplace l'UGen du nœud du knob focalisé par le suivant/précédent de
+# même rôle (cyclique). Sans effet sur un knob global (pas de nœud).
+function _sculpt_swap_focus_ugen!(p::WaveformPane, dir::Int)
+    (isempty(p.knobs) || p.genome === nothing) && return false
+    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
+    kb.kind === :node || return false
+    swap_node_ugen!(p.genome, kb.node_id; dir = dir) === nothing && return false
+    _sculpt_reinit_structure!(p)
+    return true
 end
 
 # Tab/⇧Tab : avance/recule le focus en BOUCLE (cyclique) le long de l'épine.
@@ -347,6 +376,8 @@ function handle_key!(p::WaveformPane, evt)
         (ch == 'l' || k === :right) && (_sculpt_tug!(p, +1); return true)
         (ch == 'h' || k === :left)  && (_sculpt_tug!(p, -1); return true)
         ch == '=' && (_sculpt_begin_value!(p); return true)          # saisie exacte
+        ch == 'o' && (_sculpt_swap_focus_ugen!(p, +1); return true)  # swap UGen (suivant)
+        ch == 'O' && (_sculpt_swap_focus_ugen!(p, -1); return true)  # swap UGen (précédent)
         ch == 'L' && (_wave_pan!(p, p.view_len ÷ 8); return true)   # pan reste accessible
         ch == 'H' && (_wave_pan!(p, -(p.view_len ÷ 8)); return true)
         (ch == ' ' || ch == '\r' || k === :enter) && return _wave_play!(p)   # Espace OU ⏎ = jouer

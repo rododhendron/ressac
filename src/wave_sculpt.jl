@@ -121,6 +121,27 @@ function knob_groups(g::Genome, knobs::Vector{Knob})
     return [(gl, buckets[gl]) for gl in order]
 end
 
+# ── Édition structurelle : swap d'UGen dirigé (cyclique) ───────────
+# Remplace l'UGen d'un nœud par le suivant (dir) de MÊME RÔLE, ordre stable
+# (par nom). repair! recolle l'arité ; on garde un rate valide. Renvoie le
+# nouveau symbole, ou nothing (nœud absent / pas d'alternative).
+function swap_node_ugen!(g::Genome, node_id::Int; dir::Int = 1)
+    haskey(g.nodes, node_id) || return nothing
+    n = g.nodes[node_id]
+    spec = ugen_spec(n.ugen)
+    spec === nothing && return nothing
+    cands = sort!([s.name for s in catalog_by_role(spec.role)])
+    length(cands) <= 1 && return nothing
+    i = something(findfirst(==(n.ugen), cands), 1)
+    nxt = cands[mod1(i + dir, length(cands))]
+    nxt === n.ugen && return nothing
+    nspec = ugen_spec(nxt)
+    n.ugen = nxt
+    n.rate in nspec.rates || (n.rate = nspec.rates[1])
+    repair!(g)
+    return nxt
+end
+
 # ── Proximité de graphe (épine + quartiers) ────────────────────────
 # Adjacence NON ORIENTÉE : les NodeRef de node.args sont les arêtes ;
 # pas d'index inverse stocké → on le construit en scannant une fois.

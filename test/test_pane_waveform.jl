@@ -270,5 +270,29 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_waveform.jl"))
             p = mkscu()
             @test Ressac.handle_key!(p, Tachikoma.KeyEvent(' ')) == true
         end
+
+        @testset "o swaps the focused node's UGen and re-enumerates" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)
+            p.focus = ni
+            nid = p.knobs[ni].node_id
+            before = p.genome.nodes[nid].ugen
+            @test before === :RLPF
+            v0 = p.req_version
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('o')) == true
+            @test p.genome.nodes[nid].ugen !== before     # UGen changé
+            @test Ressac.ugen_spec(p.genome.nodes[nid].ugen).role === :filter
+            @test p.structure_dirty                       # explainer à rafraîchir
+            @test p.req_version > v0                       # re-render demandé
+            @test !isempty(p.knobs)                        # ré-énumérés
+        end
+
+        @testset "o on a global control knob is a no-op" begin
+            p = mkscu()
+            p.focus = 1                                    # 1er knob = control :freq
+            @test p.knobs[1].kind === :control
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('o')) == true
+            @test !p.structure_dirty                       # rien n'a changé
+        end
     end
 end

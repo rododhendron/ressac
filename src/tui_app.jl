@@ -3621,6 +3621,13 @@ function _handle_sculpt_key!(m::RessacApp, evt::TK.KeyEvent)
         m.modal_scroll = max(0, m.modal_scroll - 1); return
     end
     handle_key!(p, evt)
+    # Édit structurel (swap d'UGen…) → la structure a changé : on rafraîchit
+    # la prose de l'explainer à droite (et on remonte le scroll).
+    if p.structure_dirty
+        p.genome === nothing || (m.explain_lines = explain_genome(p.genome))
+        p.structure_dirty = false
+        m.modal_scroll = 0
+    end
     # `e` (export) posté par la pane → on draine ICI (le drain habituel ne
     # tourne pas en contexte modal) et on ferme le studio pour voir l'éditeur :
     # l'utilisateur sauve ensuite avec `:w <nom>` (→ plugins/user-synths/).
@@ -3643,7 +3650,7 @@ function _render_sculpt_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     p.sculpt && _sculpt_pump!(p)             # consomme un re-render prêt
     inner = _render_modal_block!(buf, area;
         title = "SCULPT · $(p.label)",
-        title_right = "j/k · Tab · h/l tire · = saisir · ␣ joue · </> explik · e export · Esc",
+        title_right = "j/k · h/l tire · = val · o swap UGen · ␣ joue · </> explik · e export · Esc",
         w_max = max(60, area.width - 4),
         h_target = max(12, area.height - 4))
     (inner.width < 8 || inner.height < 6) && return

@@ -178,3 +178,23 @@ end
         @test Dm == Dg
     end
 end
+
+@testset "wave_sculpt — structural swap" begin
+    @testset "swap_node_ugen cycles to another same-role UGen, stays valid" begin
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)])
+        g.output_id = f
+        @test g.nodes[f].ugen === :RLPF
+        nxt = Ressac.swap_node_ugen!(g, f; dir = 1)
+        @test nxt !== nothing
+        @test g.nodes[f].ugen !== :RLPF
+        @test Ressac.ugen_spec(g.nodes[f].ugen).role === :filter   # même rôle
+        @test occursin(".ar", Ressac.render_synthdef(g, :x))       # rendu-valide
+    end
+
+    @testset "swap on a missing node returns nothing" begin
+        @test Ressac.swap_node_ugen!(Ressac.Genome(), 999) === nothing
+    end
+end
