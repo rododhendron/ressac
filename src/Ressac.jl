@@ -577,6 +577,16 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         tag_example!(pop, 1, true)
         harvest_topk!(pop, rngpc; pool_size = 12, k = 9, analyze = fakeanalyze)
 
+        # Sculpt de l'onde : warm le chemin pur knobs/quartiers.
+        scg = Genome()
+        scs = add_node!(scg, :Saw, :ar, Arg[ControlRef(:freq)])
+        scf = add_node!(scg, :RLPF, :ar, Arg[NodeRef(scs), ConstArg(800.0), ConstArg(0.3)])
+        scg.output_id = scf
+        sck = enumerate_knobs(scg)
+        scd = knob_graph_distances(scg, sck)
+        soft_quartiers(mixed_distances(scd, KnobSignatures(), sck))
+        descriptors_from_samples(Float32[sin(2π * 110 * i / 44100) for i in 0:1000], 44100)
+
         # Pane :explorer standalone — render! + tout le routeur de touches.
         ep = _pane_new(:explorer, Dict{String,Any}("seed" => "pluck", "rng" => 3))
         title(ep)

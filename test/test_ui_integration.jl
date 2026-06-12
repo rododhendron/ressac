@@ -1425,4 +1425,45 @@ end
         app = _no_editor_app()
         @test Ressac._tap_emit_line!(app, ["bd", "~"], "") == 0
     end
+
+    @testset "sculpt entry points" begin
+        # test_pane_interface.jl vide _PANE_KINDS ; on (ré)enregistre les
+        # kinds dont on a besoin ici (ré-enregistrés plus loin par leurs tests).
+        Ressac.register_pane_kind!(:explorer, Ressac._synth_explorer_pane_ctor)
+        Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
+
+        @testset "explorer M posts a sculpt request" begin
+            Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
+            p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 5))
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('M')) == true
+            @test Ressac._EXPLORER_SCULPT_REQUEST[] !== nothing
+            Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
+        end
+
+        @testset ":sculpt <name> opens a sculpt waveform pane" begin
+            dir = joinpath(pwd(), "plugins", "user-synths")
+            mkpath(dir)
+            path = joinpath(dir, "scutest.jl")
+            write(path, "@synth :scutest (freq=120, sustain=0.5) begin\n" *
+                        "  n1 = ugen(:Saw, :freq)\n" *
+                        "  ugen(:Limiter, ugen(:LeakDC, ugen(:Sanitize, " *
+                        "ugen(:RLPF, n1, 800, 0.3))), 0.95)\nend\n")
+            try
+                old = Ressac._WAVE_RENDER[]
+                Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100))
+                app, _ = _new_app()
+                try
+                    _exec_ex_command!(app, "sculpt scutest")
+                    ws = Ressac.current_workspace(app.workspaces)
+                    found = any(l -> any(t -> t isa Ressac.WaveformPane && t.sculpt, l.tabs),
+                                collect(Ressac._all_leaves(ws.tree)))
+                    @test found
+                finally
+                    Ressac._WAVE_RENDER[] = old
+                end
+            finally
+                rm(path; force = true)
+            end
+        end
+    end
 end

@@ -346,6 +346,16 @@ end
 # A synth pane is open when at least one synth-role buffer exists.
 _synth_pane_open(m::RessacApp) = !isempty(_all_synth_buffers(m))
 
+# Le pane focalisé est-il un WaveformPane en mode sculpt ? (laisse passer Tab)
+function _is_waveform_sculpt_focused(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return false
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    (leaf === nothing || isempty(leaf.tabs)) && return false
+    pane = leaf.tabs[leaf.current_tab]
+    return pane isa WaveformPane && pane.sculpt
+end
+
 """
     _current_synth_tab(m) -> Union{EditorBuffer, Nothing}
 
@@ -505,10 +515,11 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
         cmd = TK.pending_command!(pane.tabs[pane.current_tab].code_editor)
         isempty(cmd) || _handle_ex_command!(m, cmd)
     end
-    if pane isa SynthExplorerPane
-        _drain_explorer_export!(m)
-        _drain_explorer_waveform!(m)
-    end
+    # Seams app-level (no-op si rien posté) : un export/onde/sculpt peut
+    # être posté par l'explorer OU par un WaveformPane → on draine toujours.
+    _drain_explorer_export!(m)
+    _drain_explorer_waveform!(m)
+    _drain_explorer_sculpt!(m)
     return true
 end
 
@@ -551,6 +562,21 @@ function _drain_explorer_waveform!(m::RessacApp)
     gser, label = req
     cmd_split!(m.workspaces, "waveform",
                Dict{String,Any}("genome" => gser, "label" => label))
+    return true
+end
+
+"""
+    _drain_explorer_sculpt!(m) -> Bool
+
+Open a :waveform pane in SCULPT mode for a posted genome (explorer `M`).
+"""
+function _drain_explorer_sculpt!(m::RessacApp)
+    req = _EXPLORER_SCULPT_REQUEST[]
+    req === nothing && return false
+    _EXPLORER_SCULPT_REQUEST[] = nothing
+    gser, label = req
+    cmd_split!(m.workspaces, "waveform",
+               Dict{String,Any}("genome" => gser, "label" => label, "sculpt" => true))
     return true
 end
 
@@ -1399,7 +1425,8 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # Track insert-session text so `.` has something to replay.
     _vim_record_keystroke!(m, ed, evt, is_press)
     # Tab in :normal swaps focus between patterns and the active synth tab.
-    if is_press && evt.key === :tab && ed.mode === :normal && _synth_pane_open(m)
+    if is_press && evt.key === :tab && ed.mode === :normal && _synth_pane_open(m) &&
+       !_is_waveform_sculpt_focused(m)
         _swap_focus!(m)
         return
     end
@@ -2629,6 +2656,35 @@ end
 _register_literal!(m -> _explain_command!(m, ""), "explain")
 _register_regex!(r"^explain\s+([\w.-]+)$",
     (m, mt) -> _explain_command!(m, mt.captures[1]))
+
+# ── Sculpt : :sculpt [nom] ──────────────────────────────────────────
+# Ouvre un synth en mode sculpt. `:sculpt <nom>` lit
+# plugins/user-synths/<nom>.jl ; `:sculpt` seul prend le buffer focalisé.
+function _sculpt_command!(m::RessacApp, name::AbstractString)
+    nm = strip(String(name))
+    g = if isempty(nm)
+        ed = _active_editor(m)
+        ed === nothing ? nothing : genome_from_dsl(TK.text(ed))
+    else
+        path = joinpath(pwd(), "plugins", "user-synths", "$nm.jl")
+        if isfile(path)
+            txt = read(path, String)
+            gg = genome_from_text(txt)            # génome embarqué (exports récents)
+            gg === nothing ? genome_from_dsl(txt) : gg   # sinon parse le DSL nu
+        else
+            nothing
+        end
+    end
+    g === nothing &&
+        (_push_app_log!(m, "[ERROR] :sculpt — pas un synth DSL reconnu"); return)
+    cmd_split!(m.workspaces, "waveform",
+               Dict{String,Any}("genome" => serialize_genome(g),
+                                "label" => isempty(nm) ? "buffer" : nm, "sculpt" => true))
+    return
+end
+_register_literal!(m -> _sculpt_command!(m, ""), "sculpt")
+_register_regex!(r"^sculpt\s+([\w.-]+)$",
+    (m, mt) -> _sculpt_command!(m, mt.captures[1]))
 
 # ── SC autodiscover commands (sub-project 8) ────────────────────────
 _register_literal!(m -> _sc_rediscover_command!(m), "sc-rediscover")

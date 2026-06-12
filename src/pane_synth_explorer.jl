@@ -15,6 +15,9 @@ const _EXPLORER_EXPORT_REQUEST = Ref{Union{Nothing,Tuple{String,String}}}(nothin
 # Porte (génome sérialisé, label) ; drainé par tui_app (_drain_explorer_waveform!).
 const _EXPLORER_WAVEFORM_REQUEST = Ref{Union{Nothing,Tuple{Any,String}}}(nothing)
 
+# Seam : ouvrir le candidat focalisé en mode SCULPT (pane :waveform sculpt).
+const _EXPLORER_SCULPT_REQUEST = Ref{Union{Nothing,Tuple{Any,String}}}(nothing)
+
 # Seam d'analyse acoustique : par défaut le rendu NRT (sclang headless),
 # surchargeable en test par un analyseur simulé (pas de sclang dans la suite).
 const _EXPLORER_ANALYZE = Ref{Function}(analyze_genomes)
@@ -63,6 +66,14 @@ function _explorer_open_waveform!(p)
     g = p.pop.candidates[p.focus].genome
     _EXPLORER_WAVEFORM_REQUEST[] = (serialize_genome(g), "candidat #$(p.focus)")
     _explorer_log!("[INFO] ouverture de l'onde du candidat #$(p.focus)…")
+    return true
+end
+
+# M : ouvre le candidat focalisé en mode SCULPT (manipuler les params).
+function _explorer_sculpt_focus!(p)
+    g = p.pop.candidates[p.focus].genome
+    _EXPLORER_SCULPT_REQUEST[] = (serialize_genome(g), "candidat #$(p.focus)")
+    _explorer_log!("[INFO] sculpt du candidat #$(p.focus)…")
     return true
 end
 
@@ -743,6 +754,7 @@ function handle_key!(p::SynthExplorerPane, evt)
     # Ciblage par usage : u cycle le rôle · H récolte NRT (top-k) · +/− tags (mode C)
     ch == 'u' && return _explorer_cycle_role!(p)
     ch == 'V' && return _explorer_open_waveform!(p)
+    ch == 'M' && return _explorer_sculpt_focus!(p)
     ch == 'H' && return _explorer_harvest!(p)
     ch == '+' && return _explorer_tag!(p, true)
     ch == '-' && return _explorer_tag!(p, false)
