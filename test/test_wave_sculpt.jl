@@ -48,7 +48,7 @@ end
         @test Ressac.control(g, :freq) == 110.0
     end
 
-    @testset "tug: log moves multiplicatively, clamps to range" begin
+    @testset "tug: log moves multiplicatively, overflow allowed (no hard cap)" begin
         g, _, _ = _sculpt_genome()
         ks = Ressac.enumerate_knobs(g)
         cutoff = ks[findfirst(k -> k.kind === :node && k.arg_index == 2, ks)]
@@ -56,8 +56,18 @@ end
         @test up > 800.0
         down = Ressac.knob_tug(cutoff, 800.0, -4)
         @test down < 800.0
-        @test Ressac.knob_tug(cutoff, cutoff.hi, 10) <= cutoff.hi
-        @test Ressac.knob_tug(cutoff, cutoff.lo, -10) >= cutoff.lo
+        # overflow : on peut dépasser la plage nominale du catalogue
+        @test Ressac.knob_tug(cutoff, cutoff.hi, 10) > cutoff.hi
+        # mais reste borné par le bon sens absolu
+        @test Ressac.knob_tug(cutoff, 1.0e9, 1) <= 2.0e4
+    end
+
+    @testset "knob_set_value: exact value, beyond nominal range, sane bounds" begin
+        g, _, _ = _sculpt_genome()
+        ks = Ressac.enumerate_knobs(g)
+        cutoff = ks[findfirst(k -> k.kind === :node && k.arg_index == 2, ks)]
+        @test Ressac.knob_set_value(cutoff, 2500.0) == 2500.0   # exact, > nominal hi
+        @test Ressac.knob_set_value(cutoff, 1.0e9) <= 2.0e4     # borné
     end
 
     @testset "linear tug for non-log knob" begin

@@ -72,16 +72,28 @@ function set_knob!(g::Genome, kb::Knob, v::Float64)
     return g
 end
 
-# Tire le knob de `steps` crans (± entiers). Log = multiplicatif, sinon
-# linéaire. Toujours clampé dans [lo, hi].
+# Bornes absolues de bon sens (on autorise l'overflow hors plage catalogue).
+const _KNOB_LOG_FLOOR = 1.0e-4
+const _KNOB_LOG_CEIL  = 2.0e4
+const _KNOB_LIN_BOUND = 1.0e6
+
+# Tire le knob de `steps` crans (± entiers). Log = **pas multiplicatif fixe**
+# (1/24 d'octave par cran), indépendant de la portée → on peut DÉPASSER la
+# plage nominale du catalogue (overflow autorisé, comme le ressort d'énergie).
+# Linéaire = pas = fraction de la portée nominale. Clamp uniquement à des
+# bornes absolues larges — jamais à la valeur courante.
 function knob_tug(kb::Knob, cur::Float64, steps::Int)
-    if kb.logscale && kb.lo > 0 && kb.hi > 0
-        ratio = (kb.hi / kb.lo)^(steps / _KNOB_STEPS)
-        return clamp(cur * ratio, kb.lo, kb.hi)
-    else
-        return clamp(cur + steps * (kb.hi - kb.lo) / _KNOB_STEPS, kb.lo, kb.hi)
+    if kb.logscale && cur > 0
+        return clamp(cur * 2.0^(steps / 24), _KNOB_LOG_FLOOR, _KNOB_LOG_CEIL)
     end
+    unit = (kb.hi > kb.lo ? kb.hi - kb.lo : max(abs(cur), 1.0)) / _KNOB_STEPS
+    return clamp(cur + steps * unit, -_KNOB_LIN_BOUND, _KNOB_LIN_BOUND)
 end
+
+# Pose une valeur EXACTE (saisie manuelle), bornée seulement par le bon sens.
+knob_set_value(kb::Knob, v::Float64) =
+    kb.logscale ? clamp(v, _KNOB_LOG_FLOOR, _KNOB_LOG_CEIL) :
+                  clamp(v, -_KNOB_LIN_BOUND, _KNOB_LIN_BOUND)
 
 # ── Proximité de graphe (épine + quartiers) ────────────────────────
 # Adjacence NON ORIENTÉE : les NodeRef de node.args sont les arêtes ;

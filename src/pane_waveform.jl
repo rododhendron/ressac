@@ -20,6 +20,8 @@ mutable struct WaveformPane <: PaneImpl
     sculpt::Bool
     knobs::Vector{Knob}
     focus::Int                      # index du knob focalisé
+    value_edit::Bool                # saisie directe d'une valeur en cours
+    value_buf::String               # tampon de saisie
     labels::Vector{Int}             # quartier par knob
     strength::Vector{Float64}       # vivacité d'appartenance par knob
     dgraph::Matrix{Float64}         # distances de graphe (cache par structure)
@@ -38,7 +40,7 @@ end
 # Constructeur de compatibilité 7-args (anciens appels + tests viewer).
 WaveformPane(samples, sr, vs, vl, label, genome, last_rect) =
     WaveformPane(samples, sr, vs, vl, label, genome, last_rect,
-                 false, Knob[], 1, Int[], Float64[], zeros(0, 0),
+                 false, Knob[], 1, false, "", Int[], Float64[], zeros(0, 0),
                  KnobSignatures(), Float64[], 0, 0, 0, false, false,
                  nothing, AuditionState(1), ReentrantLock())
 
@@ -115,20 +117,33 @@ function _sculpt_tug!(p::WaveformPane, steps::Int)
     return
 end
 
-# Saute au knob dont le nœud est le plus proche dans le graphe (≠ position
-# courante), dans la direction `dir` (avant/arrière de l'épine en cas d'égalité).
+# Tab/⇧Tab : avance/recule le focus en BOUCLE (cyclique) le long de l'épine.
+# Cyclique → jamais coincé au bout (contrairement à j/k qui clampent).
 function _sculpt_focus_neighbour!(p::WaveformPane, dir::Int)
     n = length(p.knobs); n <= 1 && return
-    i = clamp(p.focus, 1, n)
-    cand = dir > 0 ? (i+1:n) : (i-1:-1:1)
-    best = i; bd = Inf
-    for j in cand
-        d = p.dgraph[i, j]
-        if d < bd
-            bd = d; best = j
-        end
+    p.focus = mod1(clamp(p.focus, 1, n) + dir, n)
+    return
+end
+
+# = : commence la saisie directe de la valeur du knob focalisé (tampon vide,
+# la valeur courante reste affichée comme repère dans la bande).
+function _sculpt_begin_value!(p::WaveformPane)
+    isempty(p.knobs) && return
+    p.value_buf = ""
+    p.value_edit = true
+    return
+end
+
+# ⏎ en saisie : pose la valeur exacte tapée (si parseable), marque un re-render.
+function _sculpt_commit_value!(p::WaveformPane)
+    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
+    v = tryparse(Float64, strip(p.value_buf))
+    if v !== nothing
+        set_knob!(p.genome, kb, knob_set_value(kb, v))
+        p.last_tugged = (p.last_tugged == 0 || p.last_tugged == p.focus) ? p.focus : -1
+        p.req_version += 1
     end
-    p.focus = best == i ? clamp(i + dir, 1, n) : best
+    p.value_edit = false; p.value_buf = ""
     return
 end
 
@@ -256,11 +271,14 @@ end
 function _render_knob_strip!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
     isempty(p.knobs) && return
     kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
-    val = knob_value(p.genome, kb)
-    line = "[$(kb.name)] $(round(val; sigdigits = 4))   "
-    for (i, k) in enumerate(p.knobs)
-        mark = i == p.focus ? "◉" : (get(p.strength, i, 1.0) > 0.5 ? "●" : "·")
-        line *= mark
+    head = if p.value_edit
+        "[$(kb.name)] = $(p.value_buf)▏  (actuel $(round(knob_value(p.genome, kb); sigdigits = 4)) · ⏎ ok · Esc)"
+    else
+        "[$(kb.name)] $(round(knob_value(p.genome, kb); sigdigits = 5))   (= saisir)"
+    end
+    line = head * "   "
+    for (i, _) in enumerate(p.knobs)
+        line *= i == p.focus ? "◉" : (get(p.strength, i, 1.0) > 0.5 ? "●" : "·")
     end
     TK.set_string!(buf, area.x, area.y, first(line, area.width), TK.tstyle(:text))
     return
@@ -306,6 +324,20 @@ end
 function handle_key!(p::WaveformPane, evt)
     evt isa TK.KeyEvent || return false
     ch = evt.char; k = evt.key
+    # ── saisie directe d'une valeur (prioritaire sur tout le reste) ──
+    if p.sculpt && p.value_edit
+        if k === :enter || ch == '\r'
+            _sculpt_commit_value!(p); return true
+        elseif k === :escape
+            p.value_edit = false; p.value_buf = ""; return true
+        elseif k === :backspace || ch == '\b' || ch == '\x7f'
+            isempty(p.value_buf) || (p.value_buf = p.value_buf[1:prevind(p.value_buf, lastindex(p.value_buf))])
+            return true
+        elseif ch isa Char && (isdigit(ch) || ch == '.' || ch == '-' || ch == 'e' || ch == 'E')
+            p.value_buf *= ch; return true
+        end
+        return true   # on consomme tout pendant la saisie
+    end
     ch == 's' && (p.sculpt ? (p.sculpt = false) : _sculpt_init!(p); return true)
     if p.sculpt && !isempty(p.knobs)
         (ch == 'j' || k === :down) && (p.focus = clamp(p.focus + 1, 1, length(p.knobs)); return true)
@@ -314,9 +346,10 @@ function handle_key!(p::WaveformPane, evt)
         (k === :backtab)           && (_sculpt_focus_neighbour!(p, -1); return true)
         (ch == 'l' || k === :right) && (_sculpt_tug!(p, +1); return true)
         (ch == 'h' || k === :left)  && (_sculpt_tug!(p, -1); return true)
+        ch == '=' && (_sculpt_begin_value!(p); return true)          # saisie exacte
         ch == 'L' && (_wave_pan!(p, p.view_len ÷ 8); return true)   # pan reste accessible
         ch == 'H' && (_wave_pan!(p, -(p.view_len ÷ 8)); return true)
-        (ch == '\r' || k === :enter) && return _wave_play!(p)
+        (ch == ' ' || ch == '\r' || k === :enter) && return _wave_play!(p)   # Espace OU ⏎ = jouer
         ch == 'e' && return _wave_export!(p)
         ch == '0' && (p.view_start = 1; p.view_len = max(length(p.samples), 1); return true)
         return false

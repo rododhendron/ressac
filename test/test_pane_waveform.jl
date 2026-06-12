@@ -228,5 +228,47 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_waveform.jl"))
             @test occursin("ressac-genome:", dsl)
             Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
         end
+
+        @testset "Tab cycles (wraps) and never gets stuck at the end" begin
+            p = mkscu()
+            p.focus = length(p.knobs)
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:tab))   # au bout → wrap vers 1
+            @test p.focus == 1
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:backtab))  # recule → wrap vers la fin
+            @test p.focus == length(p.knobs)
+        end
+
+        @testset "= enters an exact value (beyond nominal range)" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)
+            p.focus = ni
+            v0 = p.req_version
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('='))    # ouvre la saisie
+            @test p.value_edit
+            for c in "2500"
+                Ressac.handle_key!(p, Tachikoma.KeyEvent(c))
+            end
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:enter)) # valide
+            @test !p.value_edit
+            @test Ressac.knob_value(p.genome, p.knobs[ni]) == 2500.0
+            @test p.req_version > v0
+        end
+
+        @testset "Esc cancels value entry without changing the knob" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)
+            p.focus = ni
+            before = Ressac.knob_value(p.genome, p.knobs[ni])
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('='))
+            Ressac.handle_key!(p, Tachikoma.KeyEvent('9'))
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
+            @test !p.value_edit
+            @test Ressac.knob_value(p.genome, p.knobs[ni]) == before
+        end
+
+        @testset "Space plays (alias of ⏎), no crash without a session" begin
+            p = mkscu()
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent(' ')) == true
+        end
     end
 end
