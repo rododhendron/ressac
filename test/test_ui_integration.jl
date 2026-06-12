@@ -1491,5 +1491,28 @@ end
                 Ressac._WAVE_RENDER[] = old
             end
         end
+
+        @testset "e in the sculpt modal exports to an editor (then :w saves)" begin
+            Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
+            old = Ressac._WAVE_RENDER[]
+            Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
+            Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+            app, _ = _new_app()
+            try
+                g = Ressac.archetype(:pluck)
+                Ressac._open_sculpt_modal!(app, Ressac.serialize_genome(g), "mybass")
+                @test app.modal === :sculpt
+                ws0 = Ressac.current_workspace(app.workspaces)
+                n0 = length(collect(Ressac._all_leaves(ws0.tree)))
+                Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
+                @test app.modal === :none                          # studio fermé
+                @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing # export drainé
+                ws1 = Ressac.current_workspace(app.workspaces)
+                @test length(collect(Ressac._all_leaves(ws1.tree))) == n0 + 1  # éditeur ouvert
+            finally
+                Ressac._WAVE_RENDER[] = old
+                Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+            end
+        end
     end
 end
