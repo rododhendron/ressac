@@ -2835,15 +2835,40 @@ _register_special!(
 
 # Small named helpers — kept out of the inline lambdas above so they
 # stay readable + greppable. Each takes (m, mt::RegexMatch).
+# Sauve le génome sculpté du studio en synth DSL (.jl) avec génome embarqué
+# → rejouable (:synth) et re-sculptable (:sculpt). `name` vide = label courant.
+function _save_sculpt!(m::RessacApp, name::AbstractString)
+    p = m.sculpt_pane
+    (p === nothing || p.genome === nothing) &&
+        (_push_app_log!(m, "[ERROR] :w — pas de sculpt actif"); return)
+    nm = strip(String(name))
+    isempty(nm) && (nm = replace(p.label, r"[^\w]" => "_"))
+    sym = Symbol(nm)
+    dsl = render_dsl(p.genome, sym) * "\n" * genome_comment(p.genome) * "\n"
+    path = _app_synth_path(nm; mode = :dsl)
+    isdir(dirname(path)) || mkpath(dirname(path))
+    write(path, dsl)
+    register_synth!(SynthEntry(sym, "user-synths",
+        Dict{String,Any}("description" => "sculpted synth",
+                         "tags" => ["user", "dsl", "sculpt"])))
+    p.label = nm
+    _push_app_log!(m, "[INFO] sculpt sauvé → $path")
+    return
+end
+
 function _save_or_session(m::RessacApp)
-    if _focused_role(m) === :synth && _synth_pane_open(m)
+    if m.modal === :sculpt
+        _save_sculpt!(m, "")
+    elseif _focused_role(m) === :synth && _synth_pane_open(m)
         _save_current_synth!(m)
     else
         _save_session_app!(m, "_last")
     end
 end
 function _save_or_session_named(m::RessacApp, mt::RegexMatch)
-    if _focused_role(m) === :synth && _synth_pane_open(m)
+    if m.modal === :sculpt
+        _save_sculpt!(m, mt.captures[1])
+    elseif _focused_role(m) === :synth && _synth_pane_open(m)
         _save_current_synth!(m; new_name = mt.captures[1])
     else
         _save_session_app!(m, mt.captures[1])
@@ -4940,24 +4965,45 @@ function TK.view(m::RessacApp, f::TK.Frame)
         end
     end
 
-    # Modal overlay sits on top of everything.
-    if m.modal === :browse
-        _render_browser_modal!(m, area, buf)
-    elseif m.modal === :synth_library
-        _render_synth_library_modal!(m, area, buf)
-    elseif m.modal === :sccode
-        _render_sccode_modal!(m, area, buf)
-    elseif m.modal === :snippets
-        _render_snippets_modal!(m, area, buf)
-    elseif m.modal === :wiki
-        _render_wiki_modal!(m, area, buf)
-    elseif m.modal === :mixer
-        _render_mixer_modal!(m, area, buf)
-    elseif m.modal === :sculpt
-        _render_sculpt_modal!(m, area, buf)
-    elseif m.modal !== :none
-        _render_modal!(m, area, buf)
+    # Modal overlay sits on top of everything — BUT leaves the bottom row
+    # free for a persistent command bar (toujours à disposition, même dans
+    # un modal). `marea` = aire du modal moins cette ligne.
+    if m.modal !== :none
+        marea = TK.Rect(area.x, area.y, area.width, max(1, area.height - 1))
+        if m.modal === :browse
+            _render_browser_modal!(m, marea, buf)
+        elseif m.modal === :synth_library
+            _render_synth_library_modal!(m, marea, buf)
+        elseif m.modal === :sccode
+            _render_sccode_modal!(m, marea, buf)
+        elseif m.modal === :snippets
+            _render_snippets_modal!(m, marea, buf)
+        elseif m.modal === :wiki
+            _render_wiki_modal!(m, marea, buf)
+        elseif m.modal === :mixer
+            _render_mixer_modal!(m, marea, buf)
+        elseif m.modal === :sculpt
+            _render_sculpt_modal!(m, marea, buf)
+        else
+            _render_modal!(m, marea, buf)
+        end
+        _render_modal_cmdbar!(m, TK.Rect(area.x, area.y + area.height - 1,
+                                         area.width, 1), buf)
     end
+end
+
+# Barre commande persistante au bas d'un modal : l'input quand elle est
+# active, sinon un prompt `:` discret (+ raccourcis utiles selon le modal).
+function _render_modal_cmdbar!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
+    if is_active(m.command_line)
+        render_bar!(m.command_line, rect, buf)
+    else
+        hint = m.modal === :sculpt ?
+            ": commande   ·   :w <nom> sauver · :synth <nom> jouer · :sculpt <nom>" :
+            ": commande"
+        TK.set_string!(buf, rect.x, rect.y, first(hint, rect.width), TK.tstyle(:text_dim))
+    end
+    return
 end
 
 

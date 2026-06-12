@@ -1514,5 +1514,26 @@ end
                 Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
             end
         end
+
+        @testset ":w <name> in the sculpt modal saves the synth directly" begin
+            Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
+            old = Ressac._WAVE_RENDER[]
+            Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
+            path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")
+            rm(path; force = true)
+            app, _ = _new_app()
+            try
+                g = Ressac.archetype(:pluck)
+                Ressac._open_sculpt_modal!(app, Ressac.serialize_genome(g), "x")
+                @test app.modal === :sculpt
+                _exec_ex_command!(app, "w scusave")
+                @test isfile(path)                       # fichier écrit
+                @test app.modal === :sculpt              # on reste dans le studio
+                @test occursin("ressac-genome:", read(path, String))   # re-sculptable
+            finally
+                Ressac._WAVE_RENDER[] = old
+                rm(path; force = true)
+            end
+        end
     end
 end
