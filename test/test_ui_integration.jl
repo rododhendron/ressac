@@ -1440,7 +1440,7 @@ end
             Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
         end
 
-        @testset ":sculpt <name> opens a sculpt waveform pane" begin
+        @testset ":sculpt <name> opens the fullscreen sculpt modal" begin
             dir = joinpath(pwd(), "plugins", "user-synths")
             mkpath(dir)
             path = joinpath(dir, "scutest.jl")
@@ -1451,13 +1451,18 @@ end
             try
                 old = Ressac._WAVE_RENDER[]
                 Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100))
-                app, _ = _new_app()
+                app, frame = _new_app()
                 try
                     _exec_ex_command!(app, "sculpt scutest")
-                    ws = Ressac.current_workspace(app.workspaces)
-                    found = any(l -> any(t -> t isa Ressac.WaveformPane && t.sculpt, l.tabs),
-                                collect(Ressac._all_leaves(ws.tree)))
-                    @test found
+                    @test app.modal === :sculpt
+                    @test app.sculpt_pane isa Ressac.WaveformPane
+                    @test app.sculpt_pane.sculpt
+                    @test !isempty(app.explain_lines)        # explainer chargé
+                    # le rendu plein écran ne plante pas
+                    @test (Tachikoma.view(app, frame); true)
+                    # Esc ferme le modal
+                    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+                    @test app.modal === :none
                 finally
                     Ressac._WAVE_RENDER[] = old
                 end

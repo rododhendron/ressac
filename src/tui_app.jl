@@ -57,6 +57,9 @@ non-empty), and the focus toggle for keystroke routing.
     modal_scroll::Int            = 0
     # Lines shown by the generic :explain modal (`:explain <name>`).
     explain_lines::Vector{String} = String[]
+    # Sculpt studio modal (`:sculpt` / explorer `M`) : une WaveformPane en
+    # mode sculpt rendue plein écran avec l'explainer en regard.
+    sculpt_pane::Union{Nothing,WaveformPane} = nothing
     # Synth library picker state (only meaningful when modal === :synth_library).
     synthlib_cursor::Int         = 1
     # Snippet picker state (only meaningful when modal === :snippets).
@@ -566,17 +569,34 @@ function _drain_explorer_waveform!(m::RessacApp)
 end
 
 """
+    _open_sculpt_modal!(m, gser, label) -> Bool
+
+Open the fullscreen **sculpt studio** modal : a WaveformPane in sculpt
+mode (`gser` = serialized genome) plus the explainer prose alongside.
+"""
+function _open_sculpt_modal!(m::RessacApp, gser, label::AbstractString)
+    p = _pane_new(:waveform,
+                  Dict{String,Any}("genome" => gser, "label" => label, "sculpt" => true))
+    p isa WaveformPane || return false
+    m.sculpt_pane = p
+    m.explain_lines = p.genome === nothing ? String["(génome indisponible)"] :
+                      explain_genome(p.genome)
+    m.modal = :sculpt
+    m.modal_scroll = 0
+    return true
+end
+
+"""
     _drain_explorer_sculpt!(m) -> Bool
 
-Open a :waveform pane in SCULPT mode for a posted genome (explorer `M`).
+Open the sculpt studio modal for a genome posted by the explorer (`M`).
 """
 function _drain_explorer_sculpt!(m::RessacApp)
     req = _EXPLORER_SCULPT_REQUEST[]
     req === nothing && return false
     _EXPLORER_SCULPT_REQUEST[] = nothing
     gser, label = req
-    cmd_split!(m.workspaces, "waveform",
-               Dict{String,Any}("genome" => gser, "label" => label, "sculpt" => true))
+    _open_sculpt_modal!(m, gser, label)
     return true
 end
 
@@ -2677,9 +2697,7 @@ function _sculpt_command!(m::RessacApp, name::AbstractString)
     end
     g === nothing &&
         (_push_app_log!(m, "[ERROR] :sculpt — pas un synth DSL reconnu"); return)
-    cmd_split!(m.workspaces, "waveform",
-               Dict{String,Any}("genome" => serialize_genome(g),
-                                "label" => isempty(nm) ? "buffer" : nm, "sculpt" => true))
+    _open_sculpt_modal!(m, serialize_genome(g), isempty(nm) ? "buffer" : nm)
     return
 end
 _register_literal!(m -> _sculpt_command!(m, ""), "sculpt")
@@ -3511,6 +3529,9 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif m.modal === :mixer
         _handle_mixer_key!(m, evt)
         return
+    elseif m.modal === :sculpt
+        _handle_sculpt_key!(m, evt)
+        return
     end
     lines = _modal_lines(m)
     n = length(lines)
@@ -3555,6 +3576,106 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         line = i <= length(visible) ? visible[i] : ""
         TK.set_string!(buf, inner.x, inner.y + i - 1,
                        first(line, inner.width), TK.tstyle(:text))
+    end
+end
+
+# ── Sculpt studio modal (plein écran) ──────────────────────────────
+# Esc/q ferment — sauf pendant une saisie de valeur (Esc l'annule alors).
+# `<`/`>` font défiler l'explainer ; tout le reste va à la WaveformPane.
+function _handle_sculpt_key!(m::RessacApp, evt::TK.KeyEvent)
+    p = m.sculpt_pane
+    p === nothing && (m.modal = :none; return)
+    editing = p.sculpt && p.value_edit
+    if (evt.key === :escape || evt.char == 'q') && !editing
+        m.modal = :none; m.modal_scroll = 0; return
+    end
+    if !editing && evt.char == '>'
+        m.modal_scroll = min(m.modal_scroll + 1, max(0, length(m.explain_lines) - 1)); return
+    elseif !editing && evt.char == '<'
+        m.modal_scroll = max(0, m.modal_scroll - 1); return
+    end
+    handle_key!(p, evt)
+    return
+end
+
+"""
+    _render_sculpt_modal!(m, area, buf)
+
+Plein écran : onde en haut, puis knobs groupés par fonction (gauche) ⟷
+explainer (droite). Réutilise toute la logique sculpt de la WaveformPane.
+"""
+function _render_sculpt_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    p = m.sculpt_pane
+    p === nothing && (m.modal = :none; return)
+    p.sculpt && _sculpt_pump!(p)             # consomme un re-render prêt
+    inner = _render_modal_block!(buf, area;
+        title = "SCULPT · $(p.label)",
+        title_right = "j/k knob · Tab cycle · h/l tire · = saisir · ␣ joue · </> explik · Esc",
+        w_max = max(60, area.width - 4),
+        h_target = max(12, area.height - 4))
+    (inner.width < 8 || inner.height < 6) && return
+    # 1. onde (tiers supérieur)
+    waveh = clamp(inner.height ÷ 3, 3, inner.height - 5)
+    warea = TK.Rect(inner.x, inner.y, inner.width, waveh)
+    if !isempty(p.samples)
+        p.last_rect = (warea.x, warea.y, warea.width, waveh)
+        _render_wave_buffer!(p, warea, buf)
+    else
+        TK.set_string!(buf, inner.x, inner.y, "  (rendu en cours / indisponible)", TK.tstyle(:text_dim))
+    end
+    # séparateur
+    sepy = inner.y + waveh
+    TK.set_string!(buf, inner.x, sepy, "─"^inner.width, TK.tstyle(:text_dim))
+    # 2. zone basse : knobs (gauche) | explainer (droite)
+    bottomy = sepy + 1
+    bottomh = inner.y + inner.height - bottomy
+    bottomh < 2 && return
+    kw = clamp(inner.width ÷ 2, 16, inner.width - 10)
+    _render_sculpt_knobs!(p, TK.Rect(inner.x, bottomy, kw - 1, bottomh), buf)
+    # cloison verticale
+    for yy in bottomy:(bottomy + bottomh - 1)
+        TK.set_string!(buf, inner.x + kw, yy, "│", TK.tstyle(:text_dim))
+    end
+    _render_sculpt_explain!(m, TK.Rect(inner.x + kw + 2, bottomy,
+                                       inner.width - kw - 2, bottomh), buf)
+    return
+end
+
+# Knobs groupés par fonction ; le focalisé surligné (+ saisie en cours).
+function _render_sculpt_knobs!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
+    p.genome === nothing && return
+    groups = knob_groups(p.genome, p.knobs)
+    y = area.y
+    for (label, idxs) in groups
+        y >= area.y + area.height && break
+        TK.set_string!(buf, area.x, y, first("▸ $label", area.width), TK.tstyle(:text_dim))
+        y += 1
+        for i in idxs
+            y >= area.y + area.height && break
+            kb = p.knobs[i]
+            mark = i == p.focus ? "◉" : (get(p.strength, i, 1.0) > 0.5 ? "●" : "·")
+            val = if i == p.focus && p.value_edit
+                "= $(p.value_buf)▏"
+            else
+                string(round(knob_value(p.genome, kb); sigdigits = 5))
+            end
+            row = "  $mark $(rpad(String(kb.name), 8)) $val"
+            sty = i == p.focus ? TK.tstyle(:primary) : TK.tstyle(:text)
+            TK.set_string!(buf, area.x, y, first(row, area.width), sty)
+            y += 1
+        end
+    end
+end
+
+# Prose de l'explainer (défilable via </>), depuis m.explain_lines.
+function _render_sculpt_explain!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    lines = m.explain_lines
+    isempty(lines) && return
+    start = clamp(m.modal_scroll + 1, 1, max(1, length(lines)))
+    for i in 0:(area.height - 1)
+        idx = start + i
+        idx > length(lines) && break
+        TK.set_string!(buf, area.x, area.y + i, first(lines[idx], area.width), TK.tstyle(:text))
     end
 end
 
@@ -4824,6 +4945,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_wiki_modal!(m, area, buf)
     elseif m.modal === :mixer
         _render_mixer_modal!(m, area, buf)
+    elseif m.modal === :sculpt
+        _render_sculpt_modal!(m, area, buf)
     elseif m.modal !== :none
         _render_modal!(m, area, buf)
     end

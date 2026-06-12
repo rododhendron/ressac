@@ -95,6 +95,32 @@ knob_set_value(kb::Knob, v::Float64) =
     kb.logscale ? clamp(v, _KNOB_LOG_FLOOR, _KNOB_LOG_CEIL) :
                   clamp(v, -_KNOB_LIN_BOUND, _KNOB_LIN_BOUND)
 
+# ── Groupe fonctionnel d'un knob (pour l'affichage groupé en sculpt) ──
+# Dérivé du rôle de l'UGen porteur (source/filtre/…) ; les controls
+# globaux forment leur propre groupe.
+const _ROLE_LABELS = Dict{Symbol,String}(
+    :source => "source", :filter => "filtre", :math => "mix",
+    :env => "enveloppe", :mod => "modulation")
+
+function knob_group(g::Genome, kb::Knob)
+    kb.kind === :control && return "global"
+    spec = ugen_spec(g.nodes[kb.node_id].ugen)
+    spec === nothing && return "autre"
+    return get(_ROLE_LABELS, spec.role, String(spec.role))
+end
+
+# Indices des knobs regroupés par fonction, dans l'ordre de l'épine.
+# Renvoie un Vector{Tuple{String,Vector{Int}}} (groupe → indices de knobs).
+function knob_groups(g::Genome, knobs::Vector{Knob})
+    order = String[]; buckets = Dict{String,Vector{Int}}()
+    for (i, kb) in enumerate(knobs)
+        gl = knob_group(g, kb)
+        haskey(buckets, gl) || (push!(order, gl); buckets[gl] = Int[])
+        push!(buckets[gl], i)
+    end
+    return [(gl, buckets[gl]) for gl in order]
+end
+
 # ── Proximité de graphe (épine + quartiers) ────────────────────────
 # Adjacence NON ORIENTÉE : les NodeRef de node.args sont les arêtes ;
 # pas d'index inverse stocké → on le construit en scannant une fois.
