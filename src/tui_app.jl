@@ -1314,6 +1314,19 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             end
         end
     end
+    # Modal overlay owns all keys BEFORE focus-pane routing, so a modal
+    # opened by a pane keystroke (sculpt via explorer `M`) still gets input
+    # instead of the still-focused pane swallowing it.
+    if m.modal !== :none
+        mevt = _normalise_event(evt)
+        is_nav = mevt.char == 'j' || mevt.char == 'k' ||
+                 mevt.key === :up || mevt.key === :down
+        if mevt.action === TK.key_press ||
+           (mevt.action === TK.key_repeat && is_nav)
+            _handle_modal_key!(m, mevt)
+        end
+        return
+    end
     # ── Sub-project 10: focus-driven key routing ──────────────────────
     # When the focused workspace pane is NOT the legacy patterns editor
     # (_active_editor(m)), its keystrokes must go to that pane's own TK.CodeEditor
@@ -1383,19 +1396,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     evt = _normalise_event(evt)
-    if m.modal !== :none
-        # Modal navigation (j/k/up/down) wants key-repeat too so the user
-        # can hold the key to scrub through a long list. Action keys
-        # (Space preview, Enter load, q close, /search, ...) stay
-        # press-only — we don't want Enter held to import 80 synths.
-        is_nav = evt.char == 'j' || evt.char == 'k' ||
-                 evt.key === :up || evt.key === :down
-        if evt.action === TK.key_press ||
-           (evt.action === TK.key_repeat && is_nav)
-            _handle_modal_key!(m, evt)
-        end
-        return
-    end
+    # (Modal keys are handled earlier, before focus-pane routing.)
     ed = _active_editor(m)
     is_press = evt.action === TK.key_press
     # Vim `.` repeat — replay the text typed during the last insert

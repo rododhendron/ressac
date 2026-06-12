@@ -1470,5 +1470,26 @@ end
                 rm(path; force = true)
             end
         end
+
+        @testset "modal keys reach the sculpt modal even with a pane focused" begin
+            old = Ressac._WAVE_RENDER[]
+            Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
+            app, _ = _new_app()
+            try
+                # focus un pane explorer (non-patterns) — c'est lui qui mangeait
+                # les touches avant le fix du routage modal.
+                Ressac.cmd_vsplit!(app.workspaces, "explorer", Dict{String,Any}("rng" => 2))
+                g = Ressac.archetype(:pluck)
+                Ressac._open_sculpt_modal!(app, Ressac.serialize_genome(g), "x")
+                @test app.modal === :sculpt
+                f0 = app.sculpt_pane.focus
+                Tachikoma.update!(app, Tachikoma.KeyEvent('j'))   # doit atteindre le modal
+                @test app.sculpt_pane.focus == f0 + 1
+                Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+                @test app.modal === :none
+            finally
+                Ressac._WAVE_RENDER[] = old
+            end
+        end
     end
 end
