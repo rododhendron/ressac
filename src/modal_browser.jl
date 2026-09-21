@@ -154,7 +154,7 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     n = length(entries)
     inner = _render_modal_block!(buf, area;
         title = "BROWSE SOUNDS",
-        title_right = "Tab category · / search · j/k · Space preview · Enter insert · q",
+        title_right = _modal_hint_text(m, :modal_browse),
         w_max = 120,
         h_target = max(14, min(area.height - 4, n + 8)))
     inner.width < 20 && return
@@ -213,7 +213,7 @@ end
 #    doivent exister au moment du bind!) ──
 _browser_cur(m::RessacApp) = (e = _browser_entries(m); 1 <= m.browser_cursor <= length(e) ? e[m.browser_cursor] : nothing)
 scope!(:modal_browse, "Sons (samples, instruments, synths)")
-bind!(:modal_browse, "Enter", "insérer dans le pattern"; group = :edit,
+bind!(:modal_browse, "Enter", "insérer dans le pattern"; short = "insérer", group = :edit,
       action = m -> (e = _browser_cur(m); e === nothing || _browser_insert!(m, e); m.modal = :none))
 bind!(:modal_browse, ["K", "Space"], "écouter"; group = :audio,
       action = m -> (e = _browser_cur(m); e === nothing || _browser_preview!(m, e)))

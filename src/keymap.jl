@@ -25,6 +25,7 @@ Une touche (ou plusieurs synonymes) → une action, dans un scope.
 - `when`   : `cible -> Bool`, disponibilité (mode normal, pane ouverte…).
 - `group`  : regroupement dans l'aide (`:nav`, `:edit`, `:audio`…).
 - `hint`   : apparaît dans la barre de touches.
+- `short`  : label court pour la barre ("" = `label`).
 - `repeat` : se déclenche aussi sur une touche maintenue (key_repeat).
 """
 struct Binding
@@ -36,7 +37,9 @@ struct Binding
     group::Symbol
     hint::Bool
     repeat::Bool
+    short::String
 end
+hint_label(b::Binding) = isempty(b.short) ? b.label : b.short
 
 const _KEYMAP = Dict{Symbol,Vector{Binding}}()
 const _SCOPE_TITLES = Dict{Symbol,String}()
@@ -72,7 +75,7 @@ pane_scope(::Any) = :none
 
 """
     bind!(scope, keys, label; action=nothing, when=_always, group=:misc,
-          hint=true, repeat=false) -> Binding
+          hint=true, repeat=false, short="") -> Binding
 
 Enregistre un binding. `keys` : une `String` ou un vecteur de synonymes.
 Un même accord déjà ACTIF (avec action) dans ce scope est remplacé, pour
@@ -80,10 +83,10 @@ qu'un re-`include` en dev n'accumule pas de doublons.
 """
 function bind!(scope::Symbol, keys, label::AbstractString;
                action = nothing, when::Function = _always, group::Symbol = :misc,
-               hint::Bool = true, repeat::Bool = false)
+               hint::Bool = true, repeat::Bool = false, short::AbstractString = "")
     ks = keys isa AbstractString ? [String(keys)] : String[String(k) for k in keys]
     isempty(ks) && throw(ArgumentError("bind!: au moins une touche"))
-    b = Binding(ks, String(label), scope, action, when, group, hint, repeat)
+    b = Binding(ks, String(label), scope, action, when, group, hint, repeat, String(short))
     lst = get!(_KEYMAP, scope, Binding[])
     filter!(o -> !(o.label == b.label && o.keys == b.keys), lst)
     push!(lst, b)
@@ -256,4 +259,52 @@ function keymap_conflicts()
         end
     end
     return sort!(out)
+end
+
+"""
+    hints(layers; prefix="") -> Vector{Tuple{String,String}}
+
+Pour la barre de touches : (touche affichée, label) des bindings `hint`
+disponibles, dans l'ordre des couches puis de déclaration. Une touche
+déjà proposée par une couche prioritaire n'est pas répétée. Les accords
+(« g t ») ne sont listés qu'avec leur `prefix`, affichés sans lui.
+"""
+function hints(layers; prefix::AbstractString = "")
+    out = Tuple{String,String}[]
+    seen = Set{String}()
+    for (scope, target) in layers
+        if isempty(prefix)
+            for b in bindings(scope)
+                (b.hint && b.when(target)) || continue
+                any(occursin(' ', k) for k in b.keys) && continue
+                k = first(b.keys)
+                k in seen && continue
+                push!(seen, k); push!(out, (k, hint_label(b)))
+            end
+        else
+            for (suffix, b) in prefix_bindings(scope, prefix; target = target)
+                b.hint || continue
+                suffix in seen && continue
+                push!(seen, suffix); push!(out, (suffix, hint_label(b)))
+            end
+        end
+    end
+    return out
+end
+
+"""
+    hint_text(layers; prefix="", max_width=0, sep=" · ") -> String
+
+`hints` rendus en une ligne « k label · k label … », coupée sur un
+séparateur pour tenir dans `max_width` (0 = illimité).
+"""
+function hint_text(layers; prefix::AbstractString = "", max_width::Int = 0, sep::AbstractString = " · ")
+    parts = String[k * " " * l for (k, l) in hints(layers; prefix = prefix)]
+    out = ""
+    for p in parts
+        cand = isempty(out) ? p : out * sep * p
+        max_width > 0 && textwidth(cand) > max_width && break
+        out = cand
+    end
+    return out
 end

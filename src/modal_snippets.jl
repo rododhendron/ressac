@@ -186,7 +186,7 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                 ctx === :synth_sc  ? "synth SC (.scd)" : "patterns"
     inner = _render_modal_block!(buf, area;
         title = "SNIPPETS · $ctx_label",
-        title_right = "Tab/h-l category · / search · j/k · Space preview · Enter insert · q",
+        title_right = _modal_hint_text(m, :modal_snippets),
         w_max = 110,
         h_target = max(14, area.height - 4))
     inner.width < 20 && return

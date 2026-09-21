@@ -240,6 +240,17 @@ modal_scope(m::RessacApp) = m.modal === :none ? :none : get(_MODAL_SCOPES, m.mod
 # Entrées communes à tous les modaux (documentaires : la navigation j/k
 # et la fermeture Esc/q sont gérées par _modal_cursor_nav! /
 # _modal_close_key! ou leur variante « query-aware » dans chaque handler).
+"""
+    _modal_hint_text(m, scope; max_width=90) -> String
+
+`title_right` d'un modal : ses bindings `hint` + « ? aide », générés.
+"""
+function _modal_hint_text(m::RessacApp, scope::Symbol; max_width::Int = 90)
+    txt = hint_text(((scope, m),); max_width = max_width)
+    lookup(scope, "?") === nothing || return txt          # le scope a déjà sa touche ?
+    return isempty(txt) ? "? aide" : txt * " · ? aide"
+end
+
 function _bind_modal_common!(scope::Symbol; nav::Bool = true)
     nav && bind!(scope, ["j", "k", "↓", "↑"], "naviguer"; group = :nav, hint = false)
     bind!(scope, ["Esc", "q"], "fermer"; group = :nav, hint = false)
@@ -274,7 +285,7 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             m.modal === :explain     ? "EXPLAIN" : "INFO"
     inner = _render_modal_block!(buf, area;
         title = title,
-        title_right = "j/k scroll · q close",
+        title_right = _modal_hint_text(m, :modal_text),
         w_max = 100,
         h_target = min(length(lines) + 2, area.height - 4))
     visible_end = min(length(lines), m.modal_scroll + inner.height)
@@ -529,7 +540,7 @@ function _render_help_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     lines = _help_lines(m)
     inner = _render_modal_block!(buf, area;
         title = "AIDE",
-        title_right = "j/k défiler · Tab tout · ? Esc q fermer",
+        title_right = _modal_hint_text(m, :modal_help),
         w_max = 100,
         h_target = min(length(lines) + 2, area.height - 4))
     start = clamp(m.modal_scroll + 1, 1, max(1, length(lines)))
@@ -559,6 +570,6 @@ bind!(:modal_help, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint =
       action = m -> (m.modal_scroll = max(0, m.modal_scroll - 20)))
 bind!(:modal_help, ["g", "G"], "début / fin"; group = :nav, hint = false,
       action = (m, evt) -> (m.modal_scroll = evt.char == 'g' ? 0 : _help_last(m)))
-bind!(:modal_help, "Tab", "toutes les sections ⟷ contexte"; group = :help,
+bind!(:modal_help, "Tab", "toutes les sections ⟷ contexte"; short = "tout", group = :help,
       action = m -> (m.help_expanded = !m.help_expanded; m.help_scopes = _help_scopes(m); m.modal_scroll = 0))
-bind!(:modal_help, ["?", "Esc", "q"], "fermer l'aide"; group = :help, action = _close_help!)
+bind!(:modal_help, ["?", "Esc", "q"], "fermer l'aide"; short = "fermer", group = :help, action = _close_help!)

@@ -40,7 +40,7 @@ function _render_wiki_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     page = m.wiki_pages[m.wiki_idx]
     inner = _render_modal_block!(buf, area;
         title = "WIKI · $(page.title)",
-        title_right = "j/k scroll · n/p page · g/G top/bot · d/u jump · q close",
+        title_right = _modal_hint_text(m, :modal_wiki),
         w_max = max(80, area.width - 4),
         h_target = max(20, area.height - 4))
     inner.width < 30 && return

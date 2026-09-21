@@ -140,7 +140,7 @@ function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffe
     n = length(entries)
     inner = _render_modal_block!(buf, area;
         title = "SYNTH LIBRARY",
-        title_right = "$n synths · j/k · Space preview · Enter open · q close",
+        title_right = "$n synths · " * _modal_hint_text(m, :modal_lib),
         w_max = 100,
         h_target = max(10, min(area.height - 4, n + 4)))
     inner.width < 20 && return
@@ -170,6 +170,6 @@ end
 #    doivent exister au moment du bind!) ──
 scope!(:modal_lib, "Librairie de synths")
 bind!(:modal_lib, "Space", "écouter"; group = :audio, action = _preview_synth_from_library!)
-bind!(:modal_lib, "Enter", "ouvrir dans une pane synth"; group = :file,
+bind!(:modal_lib, "Enter", "ouvrir dans une pane synth"; short = "ouvrir", group = :file,
       action = _instantiate_synth_from_library!)
 _bind_modal_common!(:modal_lib)

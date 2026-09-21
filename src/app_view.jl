@@ -661,48 +661,63 @@ function _render_mode_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
 end
 
 """
+    _keybar_layers(m) -> (layers, prefix)
+
+Couches du registre à afficher dans la barre de touches selon le
+contexte : modal ouvert, leader Space, mode pane, tap/piano/visuel,
+insertion, pane focalisée (+ global), éditeur (rôle + éditeur + global).
+"""
+function _keybar_layers(m::RessacApp)
+    m.modal !== :none && return ((modal_scope(m), m),), ""
+    m.pending_leader && return ((:leader, m),), "Space"
+    _PANE_MODE.active && return ((:pane_mode, m),), "Ctrl-w"
+    m.tap_recording && return ((:tap, m),), ""
+    m.piano_active && return ((:piano, m),), ""
+    m.visual_active && return ((:visual, m),), ""
+    pane = _focused_pane_impl(m)
+    if pane !== nothing && pane_scope(pane) !== :none
+        return ((pane_scope(pane), pane), (:global, m)), ""
+    end
+    ed = _active_editor(m)
+    ed === nothing && return ((:global, m),), ""
+    ed.mode === :insert && return ((:insert, m),), ""
+    return _editor_layers(m), ""
+end
+
+"""
     _render_footer(m, area, buf)
 
-Bottom hints row. Keeps the per-context cheat-sheet but renders the
-mode badge in `:accent` and the rest in `:text_dim` so the eye lands
-on the mode first.
+Barre de touches du bas, GÉNÉRÉE depuis le registre (app_keymap.jl et
+les scopes des panes/modaux) : touche en :title, label en :text_dim,
+coupée à la largeur. Un placeholder de snippet en cours a sa propre
+ligne (Tab / S-Tab / Esc + compteur).
 """
 function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    ed = _active_editor(m)
-    # Context-aware hint sets — leader pending / placeholder active
-    # win over the default key cheatsheet so the user sees what's
-    # available at the moment they need it. Mode label is NOT
-    # prefixed here — the status bar already shows ⟪ <MODE> @ … ⟫.
-    hints = if m.pending_leader
-        [(string(k), v) for (k, v) in _LEADER_LABELS]
-    elseif m.placeholder_active
-        [("Tab", "next"), ("S-Tab", "prev"), ("Esc", "exit"),
-         ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "filling")]
-    elseif ed !== nothing && ed.mode === :normal && _focused_role(m) === :patterns
-        [("?", "help"), ("Space", "snippet"), ("e", "eval"),
-         ("E", "eval-all"), ("i", "insert"), ("dd.", "repeat"),
-         (":tap", "loop"), (":tutorial", "tour"), (":q", "quit")]
-    elseif !_synth_pane_open(m)
-        [("e", "eval"), ("i", "insert"), ("Esc", "normal"),
-         (":synth", "<name>"), (":lib", "library"),
-         (":tap", "loop"), (":wiki", "docs"), (":q", "quit")]
-    elseif length(_all_synth_buffers(m)) > 1
-        [("e", "eval"), ("T", "test"), ("Tab", "swap"),
-         ("gt/gT", "cycle"), (":w", "save"), (":close", ""), (":back", "")]
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), TK.tstyle(:text))
+    pairs = if m.placeholder_active
+        [("Tab", "suivant"), ("S-Tab", "précédent"), ("Esc", "sortir"),
+         ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "placeholders")]
     else
-        [("e", "eval"), ("T", "test"), ("Tab", "swap"),
-         (":w", "save"), (":back", "close"), (":q", "quit")]
+        layers, prefix = _keybar_layers(m)
+        hints(layers; prefix = prefix)
     end
-    x = area.x + 1
     sep_style = TK.tstyle(:text_dim)
     key_style = TK.tstyle(:title, bold = true)
     txt_style = TK.tstyle(:text_dim)
-    for (i, (k, t)) in enumerate(hints)
-        # Stop early if we'd overflow the row.
+    # « ? aide » toujours visible, épinglé à droite ; retiré de la liste.
+    filter!(p -> p[1] != "?", pairs)
+    pin = "? aide"
+    right = area.x + area.width - textwidth(pin) - 1
+    if right > area.x + 8
+        TK.set_string!(buf, right, area.y, "?", key_style)
+        TK.set_string!(buf, right + 1, area.y, " aide", txt_style)
+    else
+        right = area.x + area.width
+    end
+    x = area.x + 1
+    for (i, (k, t)) in enumerate(pairs)
         chunk_w = textwidth(k) + (isempty(t) ? 0 : 1 + textwidth(t))
-        if x + chunk_w + (i == length(hints) ? 0 : 3) > area.x + area.width
-            break
-        end
+        x + chunk_w + (i == 1 ? 0 : 3) > right - 2 && break
         if i > 1
             TK.set_string!(buf, x, area.y, " · ", sep_style)
             x += 3

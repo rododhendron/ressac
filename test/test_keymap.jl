@@ -110,3 +110,22 @@ end
     @test !any(occursin("t_conf", c) for c in Ressac.keymap_conflicts())
     for s in (:t_scope, :t_global, :t_leader, :t_help, :t_conf); Ressac.clear_scope!(s); end
 end
+
+@testset "keymap — hints / hint_text (barre de touches)" begin
+    Ressac.clear_scope!(:t_bar); Ressac.clear_scope!(:t_bar_g)
+    Ressac.bind!(:t_bar, ["e", "E"], "évaluer la ligne courante"; action = identity, short = "évaluer")
+    Ressac.bind!(:t_bar, "x", "caché"; action = identity, hint = false)
+    Ressac.bind!(:t_bar, "Space d", "slot"; action = identity)           # accord : which-key seulement
+    Ressac.bind!(:t_bar, "z", "si vrai"; action = identity, when = t -> t)
+    Ressac.bind!(:t_bar_g, "e", "global e (masqué par la couche pane)"; action = identity)
+    Ressac.bind!(:t_bar_g, "?", "aide"; action = identity)
+    h = Ressac.hints(((:t_bar, false), (:t_bar_g, false)))
+    @test h == [("e", "évaluer"), ("?", "aide")]
+    h2 = Ressac.hints(((:t_bar, true),))
+    @test ("z", "si vrai") in h2
+    @test Ressac.hints(((:t_bar, true),); prefix = "Space") == [("d", "slot")]
+    txt = Ressac.hint_text(((:t_bar, false), (:t_bar_g, false)))
+    @test txt == "e évaluer · ? aide"
+    @test Ressac.hint_text(((:t_bar, false), (:t_bar_g, false)); max_width = 12) == "e évaluer"
+    Ressac.clear_scope!(:t_bar); Ressac.clear_scope!(:t_bar_g)
+end

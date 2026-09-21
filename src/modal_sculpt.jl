@@ -146,7 +146,7 @@ function _render_sculpt_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     busy = _sculpt_busy(p) ? " ↻" : ""
     inner = _render_modal_block!(buf, area;
         title = "SCULPT · $(p.label)$busy",
-        title_right = "j/k·Tab nav · h/l tire · = val · édit n/o/d/i/r/x/m · ␣ joue · </> doc · e export · Esc",
+        title_right = hint_text(((:sculpt, p), (:modal_sculpt, m)); max_width = max(20, area.width - 30)),
         w_max = max(60, area.width - 4),
         h_target = max(12, area.height - 4))
     (inner.width < 8 || inner.height < 6) && return
@@ -224,10 +224,10 @@ end
 # ── Registre : touches propres au studio (la pane a le scope :sculpt) ──
 _sculpt_not_editing(m::RessacApp) = (p = m.sculpt_pane; p === nothing || !(p.sculpt && p.value_edit))
 scope!(:modal_sculpt, "Studio sculpt")
-bind!(:modal_sculpt, ["Esc", "q"], "fermer le studio"; group = :nav,
+bind!(:modal_sculpt, ["Esc", "q"], "fermer le studio"; short = "fermer", group = :nav,
       when = _sculpt_not_editing, action = _close_sculpt_modal!)
 bind!(:modal_sculpt, "?", "aide"; group = :help, when = _sculpt_not_editing, action = _open_help!)
-bind!(:modal_sculpt, [">", "<"], "défiler l'explication"; group = :view,
+bind!(:modal_sculpt, [">", "<"], "défiler l'explication"; short = "explication", group = :view,
       when = _sculpt_not_editing,
       action = (m, evt) -> (m.modal_scroll = evt.char == '>' ?
           min(m.modal_scroll + 1, max(0, length(m.explain_lines) - 1)) :

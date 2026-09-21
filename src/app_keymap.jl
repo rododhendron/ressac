@@ -26,8 +26,8 @@ _km_reservoir(m::RessacApp) = _km_normal(m) &&
 # ── :global — partout où l'on n'est pas en train de taper du texte ──
 scope!(:global, "Partout")
 bind!(:global, "?", "aide"; group = :help, action = _open_help!)
-bind!(:global, "!", "panic (coupe tout)"; group = :audio, action = _panic!)
-bind!(:global, ",", "hush (laisse finir les queues)"; group = :audio,
+bind!(:global, "!", "panic (coupe tout)"; short = "panic", group = :audio, action = _panic!)
+bind!(:global, ",", "hush (laisse finir les queues)"; short = "hush", group = :audio,
       when = _km_normal, action = _hush!)
 bind!(:global, "S", "scope suivant"; group = :view, when = _km_normal,
       action = m -> _scope_cycle_key!(m))
@@ -64,7 +64,7 @@ bind!(:global, "-", "réservoir : plus lent"; group = :view, hint = false, when 
 
 # ── :editor — commun aux panes patterns et synth (mode normal) ─────
 scope!(:editor, "Éditeur (patterns et synth)")
-bind!(:editor, "Tab", "basculer patterns ⟷ synth"; group = :nav,
+bind!(:editor, "Tab", "basculer patterns ⟷ synth"; short = "patterns⟷synth", group = :nav,
       when = m -> _km_normal_ed(m) && _synth_pane_open(m) && !_is_waveform_sculpt_focused(m),
       action = _swap_focus!)
 bind!(:editor, ".", "répéter la dernière édition"; group = :edit, hint = false,
@@ -107,13 +107,13 @@ bind!(:editor, "u", "annuler"; group = :edit, hint = false)
 
 # ── :patterns ──────────────────────────────────────────────────────
 scope!(:patterns, "Pane patterns")
-bind!(:patterns, "e", "évaluer la ligne"; group = :eval, when = _km_patterns,
+bind!(:patterns, "e", "évaluer la ligne"; short = "évaluer", group = :eval, when = _km_patterns,
       action = _eval_current_line!)
 bind!(:patterns, "E", "tout évaluer"; group = :eval, when = _km_patterns,
       action = m -> _eval_pattern_blocks!(m, :all))
-bind!(:patterns, "m", "mute / unmute le slot"; group = :audio, when = _km_patterns,
+bind!(:patterns, "m", "mute / unmute le slot"; short = "mute", group = :audio, when = _km_patterns,
       action = _toggle_mute_current_line!)
-bind!(:patterns, "K", "écouter le mot sous le curseur"; group = :audio, when = _km_patterns,
+bind!(:patterns, "K", "écouter le mot sous le curseur"; short = "écouter", group = :audio, when = _km_patterns,
       action = _preview_word_under_cursor!)
 bind!(:patterns, "Space", "snippet…"; group = :edit,
       when = m -> _km_patterns(m) && !m.tap_recording,
@@ -131,7 +131,7 @@ bind!(:patterns, "X", "pattern : silence le token (~)"; group = :edit, hint = fa
 
 # ── :synth ─────────────────────────────────────────────────────────
 scope!(:synth, "Pane synth")
-bind!(:synth, ["t", "T", "Space"], "tester le synth (maintenir = rafale)"; group = :audio,
+bind!(:synth, ["t", "T", "Space"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
       repeat = true, when = _km_synth,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
 bind!(:synth, "g t", "synth suivant"; group = :nav, hint = false,

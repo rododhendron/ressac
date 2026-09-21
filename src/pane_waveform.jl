@@ -374,13 +374,13 @@ function render!(p::WaveformPane, area, buf)
     p.sculpt && _sculpt_pump!(p)              # consomme un rendu prêt
     n = length(p.samples)
     head = if p.sculpt
-        "SCULPT · $(p.label)$(_sculpt_busy(p) ? " ↻" : "") · j/k · Tab nœud · h/l tire · n/o édit · ⏎ · s vue"
+        "SCULPT · $(p.label)$(_sculpt_busy(p) ? " ↻" : "")"
     elseif n == 0
         "WAVE · $(p.label) · (pas d'audio)"
     else
         vm = round(p.view_len / p.sr * 1000; digits = 1)
         tm = round(n / p.sr * 1000; digits = 0)
-        "WAVE · $(p.label) · $(vm)ms/$(tm)ms · molette zoom · h/l défile · 0 tout"
+        "WAVE · $(p.label) · $(vm)ms/$(tm)ms"
     end
     _render_pane_block_simple!(rect, head, buf)
     inner = _inner_rect_simple(rect)
@@ -484,7 +484,7 @@ bind!(:sculpt, ["j", "↓"], "knob suivant"; group = :nav, when = _sc_has,
       action = p -> (p.focus = clamp(p.focus + 1, 1, length(p.knobs))))
 bind!(:sculpt, ["k", "↑"], "knob précédent"; group = :nav, when = _sc_has,
       action = p -> (p.focus = clamp(p.focus - 1, 1, length(p.knobs))))
-bind!(:sculpt, "Tab", "nœud suivant"; group = :nav, when = _sc_has,
+bind!(:sculpt, "Tab", "nœud suivant"; short = "nœud", group = :nav, when = _sc_has,
       action = p -> _sculpt_focus_neighbour!(p, +1))
 bind!(:sculpt, "S-Tab", "nœud précédent"; group = :nav, hint = false, when = _sc_has,
       action = p -> _sculpt_focus_neighbour!(p, -1))
@@ -492,31 +492,31 @@ bind!(:sculpt, ["l", "→"], "tirer +"; group = :edit, when = _sc_has,
       action = p -> _sculpt_tug!(p, +1))
 bind!(:sculpt, ["h", "←"], "tirer −"; group = :edit, when = _sc_has,
       action = p -> _sculpt_tug!(p, -1))
-bind!(:sculpt, "=", "saisir une valeur"; group = :edit, when = _sc_has,
+bind!(:sculpt, "=", "saisir une valeur"; short = "valeur", group = :edit, when = _sc_has,
       action = p -> _sculpt_begin_value!(p))
 bind!(:sculpt, ["Space", "Enter"], "jouer"; group = :audio, when = _sc_has,
       action = p -> _wave_play!(p))
-bind!(:sculpt, "o", "UGen suivant (même rôle)"; group = :structure, when = _sc_has,
+bind!(:sculpt, "o", "UGen suivant (même rôle)"; short = "UGen", group = :structure, when = _sc_has,
       action = p -> _sculpt_swap_focus_ugen!(p, +1))
 bind!(:sculpt, "O", "UGen précédent"; group = :structure, hint = false, when = _sc_has,
       action = p -> _sculpt_swap_focus_ugen!(p, -1))
-bind!(:sculpt, "n", "insérer un filtre après"; group = :structure, when = _sc_has,
+bind!(:sculpt, "n", "insérer un filtre après"; short = "filtre+", group = :structure, when = _sc_has,
       action = p -> _sculpt_insert_focus!(p))
-bind!(:sculpt, "d", "supprimer le nœud (bypass)"; group = :structure, when = _sc_has,
+bind!(:sculpt, "d", "supprimer le nœud (bypass)"; short = "supprimer", group = :structure, when = _sc_has,
       action = p -> _sculpt_structural!(p, :delete))
-bind!(:sculpt, "i", "recâbler l'entrée →"; group = :structure, when = _sc_has,
+bind!(:sculpt, "i", "recâbler l'entrée →"; short = "recâbler", group = :structure, when = _sc_has,
       action = p -> _sculpt_structural!(p, :rewire; dir = +1))
 bind!(:sculpt, "I", "recâbler l'entrée ←"; group = :structure, hint = false, when = _sc_has,
       action = p -> _sculpt_structural!(p, :rewire; dir = -1))
-bind!(:sculpt, "r", "taux ar/kr suivant"; group = :structure, when = _sc_has,
+bind!(:sculpt, "r", "taux ar/kr suivant"; short = "taux", group = :structure, when = _sc_has,
       action = p -> _sculpt_structural!(p, :rate; dir = +1))
 bind!(:sculpt, "R", "taux précédent"; group = :structure, hint = false, when = _sc_has,
       action = p -> _sculpt_structural!(p, :rate; dir = -1))
-bind!(:sculpt, "x", "dupliquer en parallèle"; group = :structure, when = _sc_has,
+bind!(:sculpt, "x", "dupliquer en parallèle"; short = "dupliquer", group = :structure, when = _sc_has,
       action = p -> _sculpt_structural!(p, :duplicate))
-bind!(:sculpt, "m", "greffer un LFO sur le slot"; group = :structure, when = _sc_has,
+bind!(:sculpt, "m", "greffer un LFO sur le slot"; short = "LFO", group = :structure, when = _sc_has,
       action = p -> _sculpt_graft_focus!(p))
-bind!(:sculpt, "e", "exporter dans l'éditeur"; group = :file, when = _sc_has,
+bind!(:sculpt, "e", "exporter dans l'éditeur"; short = "exporter", group = :file, when = _sc_has,
       action = p -> _wave_export!(p))
 bind!(:sculpt, "L", "défiler l'onde →"; group = :view, hint = false, when = _sc_has,
       action = p -> _wave_pan!(p, p.view_len ÷ 8))
@@ -524,6 +524,6 @@ bind!(:sculpt, "H", "défiler l'onde ←"; group = :view, hint = false, when = _
       action = p -> _wave_pan!(p, -(p.view_len ÷ 8)))
 bind!(:sculpt, "0", "toute l'onde"; group = :view, hint = false, when = _sc_has,
       action = p -> (p.view_start = 1; p.view_len = max(length(p.samples), 1)))
-bind!(:sculpt, "s", "revenir à la vue d'onde"; group = :view, action = p -> (p.sculpt = false))
+bind!(:sculpt, "s", "revenir à la vue d'onde"; short = "vue", group = :view, action = p -> (p.sculpt = false))
 bind!(:sculpt, ["Enter", "Esc", "Bksp"], "saisie de valeur : valider / annuler / effacer";
       group = :submode, hint = false)

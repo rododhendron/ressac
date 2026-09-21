@@ -125,3 +125,64 @@ end
 @testset "help — aucun conflit de touches dans le registre" begin
     @test Ressac.keymap_conflicts() == String[]
 end
+
+# ── Barre de touches générée ────────────────────────────────────────
+function _bottom_bar(app, tb, frame)
+    scr = _screen(app, tb, frame)
+    rows = split(scr, "\n")
+    # la barre est la ligne juste au-dessus de la boîte LOG (╭ LOG …)
+    i = findfirst(r -> startswith(r, "╭ LOG"), rows)
+    i === nothing ? "" : rows[i - 1]
+end
+
+@testset "keybar — suit le focus : patterns, synth, explorer, log" begin
+    app, tb, frame = _help_app()
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("? aide", bar)
+    @test occursin("e évaluer", bar)
+    @test occursin("Space snippet", bar)
+    _hex(app, "synth kick")
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("t tester", bar)
+    @test occursin("Tab patterns⟷synth", bar)
+    @test !occursin("e évaluer", bar)
+    app2, tb2, frame2 = _help_app()
+    _hex(app2, "vsplit explorer")
+    bar = _bottom_bar(app2, tb2, frame2)
+    @test occursin("Space jouer", bar)
+    @test occursin("n génération", bar)
+    @test occursin("? aide", bar)
+end
+
+@testset "keybar — leader Space liste les snippets, mode pane ses touches, insertion" begin
+    app, tb, frame = _help_app()
+    _hkey(app, ' ')
+    @test app.pending_leader
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("d slot", bar) && occursin("g gain", bar)
+    _hkey(app, :escape)
+    @test !app.pending_leader
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    @test Ressac._PANE_MODE.active
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("v split vertical", bar)
+    _hkey(app, :escape)
+    Ressac._PANE_MODE.active = false
+    _hkey(app, 'i')
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("Esc retour", bar)
+    _hkey(app, :escape)
+end
+
+@testset "keybar — modal : title_right généré depuis son scope" begin
+    app, tb, frame = _help_app()
+    _hex(app, "lib")
+    scr = _screen(app, tb, frame)
+    @test occursin("Space écouter", scr)
+    @test occursin("Enter ouvrir", scr)
+    @test occursin("? aide", scr)
+    _hkey(app, :escape)
+    _hex(app, "mixer")
+    scr = _screen(app, tb, frame)
+    @test occursin("u tout démuter", scr)      # (m mute demande un slot actif)
+end

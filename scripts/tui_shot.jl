@@ -65,6 +65,7 @@ end
 let (app, tb, frame) = newapp()
     ex(app, "synth kick"); snap(app, tb, frame, "10_synth_pane")
     key(app, '?');         snap(app, tb, frame, "11_help_from_synth")
+    key(app, :escape)
     ex(app, "sculpt");     snap(app, tb, frame, "12_sculpt_from_synth")
 end
 let (app, tb, frame) = newapp()

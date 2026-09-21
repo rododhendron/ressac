@@ -78,7 +78,7 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     slots = _mixer_slots(m)
     inner = _render_modal_block!(buf, area;
         title = "MIXER",
-        title_right = "j/k · +/- gain ±0.1 · */ gain ±0.5 · m mute · s solo · u unmute-all · ! panic · q close",
+        title_right = _modal_hint_text(m, :modal_mixer),
         w_max = 90,
         h_target = max(8, min(area.height - 4, length(slots) + 5)))
     inner.width < 20 && return
@@ -239,7 +239,7 @@ end
 _mixer_cur(m::RessacApp) = (s = _mixer_slots(m); 1 <= m.mixer_cursor <= length(s) ? s[m.mixer_cursor] : nothing)
 _mixer_has_cur(m::RessacApp) = _mixer_cur(m) !== nothing
 scope!(:modal_mixer, "Mixer")
-bind!(:modal_mixer, "m", "mute / unmute"; group = :audio, when = _mixer_has_cur,
+bind!(:modal_mixer, "m", "mute / unmute"; short = "mute", group = :audio, when = _mixer_has_cur,
       action = m -> (slot = _mixer_cur(m);
                      haskey(_APP_MUTED_PATTERNS, slot) ? _unmute_pattern_slot!(m, slot) :
                                                           _mute_pattern_slot!(m, slot)))

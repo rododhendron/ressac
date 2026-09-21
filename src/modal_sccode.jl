@@ -240,7 +240,7 @@ end
 function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     inner = _render_modal_block!(buf, area;
         title = "SCCODE.ORG",
-        title_right = "/ search · j/k · Space play · Enter import · n/p page · q close",
+        title_right = _modal_hint_text(m, :modal_sccode),
         w_max = 120,
         h_target = max(10, area.height - 4))
     inner.width < 20 && return
@@ -292,7 +292,7 @@ end
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
 scope!(:modal_sccode, "sccode.org")
-bind!(:modal_sccode, "Enter", "charger dans une pane synth"; group = :file, action = _load_sccode_filtered!)
+bind!(:modal_sccode, "Enter", "charger dans une pane synth"; short = "charger", group = :file, action = _load_sccode_filtered!)
 bind!(:modal_sccode, "Space", "aperçu"; group = :view, action = _preview_sccode_filtered!)
 bind!(:modal_sccode, ["n", "p"], "page suivante / précédente"; group = :nav,
       action = (m, evt) -> _sccode_paginate!(m, evt.char == 'n' ? +1 : -1))
