@@ -84,8 +84,64 @@ For `Event{Symbol}`, dispatch is two-tier:
 
 Override by adding a method for your own event value types.
 """
+# ── Variantes « nom:3 » et effets SuperDirt ────────────────────────
+"""
+    _split_variant(sym) -> (base::Symbol, idx::Union{Nothing,Int})
+
+`Symbol("sn:3")` → `(:sn, 3)` ; `:sn` → `(:sn, nothing)`. SuperDirt ne
+sépare pas lui-même : c'est nous qui envoyons `s sn n 3` (comme Tidal).
+"""
+function _split_variant(sym::Symbol)
+    str = String(sym)
+    i = findlast(':', str)
+    i === nothing && return (sym, nothing)
+    idx = tryparse(Int, str[nextind(str, i):end])
+    idx === nothing && return (sym, nothing)
+    return (Symbol(str[1:prevind(str, i)]), idx)
+end
+
+# Paramètres que SuperDirt applique lui-même (filtres, réverb, delay,
+# waveshaping…). Un synth utilisateur qui en porte un doit passer par
+# SuperDirt (/dirt/play) — le chemin direct /ressac/play les ignorerait.
+const _DIRT_FX_KEYS = Set{Symbol}([
+    :lpf, :cutoff, :hpf, :hcutoff, :resonance, :hresonance, :bandf, :bandq,
+    :room, :size, :dry, :delay, :delaytime, :delayfeedback, :shape, :crush,
+    :coarse, :vowel, :djf, :squiz, :comb, :distort, :triode, :krush, :kcutoff,
+    :leslie, :lrate, :lsize, :ring, :ringf, :ringdf, :octer, :octersub,
+    :octersubsub, :waveloss, :binshift, :hbrick, :lbrick, :xsdelay, :tsdelay,
+    :scram, :enhance, :freeze, :smear, :fshift, :fshiftnote, :fshiftphase,
+    :real, :imag, :phaserrate, :phaserdepth, :tremolorate, :tremolodepth,
+    :speed, :accelerate, :cut, :legato, :orbit, :attack, :hold, :release,
+])
+
+# Défauts déclarés d'un synth utilisateur (`@synth :x (freq=220, …)`),
+# depuis les métadonnées du registre. Vide si inconnus.
+function _user_synth_params(name::Symbol)
+    e = synth_info(name)
+    e === nothing && return Dict{String,Any}()
+    p = get(e.metadata, "params", nothing)
+    p isa AbstractDict ? Dict{String,Any}(String(k) => v for (k, v) in p) : Dict{String,Any}()
+end
+
+# Quand un synth utilisateur passe par SuperDirt, on lui injecte ses
+# propres défauts pour freq / sustain — sauf si l'événement pilote déjà
+# la hauteur (n / note / freq / degree) ou la durée (sustain / legato).
+function _inject_user_synth_defaults!(final::AbstractDict, name::Symbol)
+    params = _user_synth_params(name)
+    isempty(params) && return final
+    pitch_keys = (:n, :note, :freq, :degree)
+    if haskey(params, "freq") && !any(k -> haskey(final, k), pitch_keys)
+        final[:freq] = params["freq"]
+    end
+    if haskey(params, "sustain") && !haskey(final, :sustain) && !haskey(final, :legato)
+        final[:sustain] = params["sustain"]
+    end
+    return final
+end
+
 function event_to_osc(ev::Event{Symbol})
-    instr = instrument_info(ev.value)
+    base, idx = _split_variant(ev.value)
+    instr = instrument_info(base)
     if instr !== nothing
         args = Any[]
         for (k, v) in instr.params
@@ -100,11 +156,13 @@ function event_to_osc(ev::Event{Symbol})
     # SynthDef \wob1: ship the SC name and route through /ressac/play
     # so the SynthDef's own defaults apply (SuperDirt has no record
     # of user synths and would reject the bare name).
-    sc_name = resolve_synth_name(ev.value)
+    sc_name = resolve_synth_name(base)
     if _is_user_synth(sc_name)
         return OSCMessage("/ressac/play", Any[String(sc_name)])
     end
-    return OSCMessage("/dirt/play", Any["s", String(ev.value)])
+    args = Any["s", String(base)]
+    idx === nothing || (push!(args, "n"); push!(args, idx))
+    return OSCMessage("/dirt/play", args)
 end
 
 """
@@ -151,13 +209,27 @@ function event_to_osc(ev::Event{ControlMap})
     # Samples + super* synths from SuperDirt keep /dirt/play (they need
     # SuperDirt's machinery). When the `:s` is an alias, ship the
     # resolved SC SynthDef name (the alias is purely client-side).
+    # « sn:3 » → s = sn, n = 3 (sauf n explicite).
+    if haskey(final, :s)
+        base, idx = _split_variant(final[:s] isa Symbol ? final[:s] : Symbol(final[:s]))
+        final[:s] = base
+        idx === nothing || haskey(final, :n) || (final[:n] = idx)
+    end
     target = haskey(final, :s) ? Symbol(final[:s] isa Symbol ? final[:s] : Symbol(final[:s])) : nothing
     sc_target = target === nothing ? nothing : resolve_synth_name(target)
     if sc_target !== nothing && _is_user_synth(sc_target)
-        args = Any[String(sc_target)]
-        delete!(final, :s)
-        _push_kv_args!(args, final)
-        return OSCMessage("/ressac/play", args)
+        if any(k -> k in _DIRT_FX_KEYS, keys(final))
+            # Un effet SuperDirt est demandé : SuperDirt joue le synth
+            # (par son nom de SynthDef), avec les défauts du synth pour
+            # freq / sustain afin de garder son caractère.
+            final[:s] = sc_target
+            _inject_user_synth_defaults!(final, sc_target)
+        else
+            args = Any[String(sc_target)]
+            delete!(final, :s)
+            _push_kv_args!(args, final)
+            return OSCMessage("/ressac/play", args)
+        end
     end
 
     args = Any[]

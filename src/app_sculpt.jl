@@ -125,7 +125,8 @@ function _save_sculpt!(m::RessacApp, name::AbstractString; pane = nothing)
     write(path, dsl)
     register_synth!(SynthEntry(sym, "user-synths",
         Dict{String,Any}("description" => "sculpted synth",
-                         "tags" => ["user", "dsl", "sculpt"])))
+                         "tags" => ["user", "dsl", "sculpt"],
+                         "params" => Dict{String,Any}(String(k) => v for (k, v) in p.genome.controls))))
     p.label = nm
     _push_app_log!(m, "[INFO] sculpt sauvé → $path")
     return

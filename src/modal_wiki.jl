@@ -66,7 +66,10 @@ function _render_wiki_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     content_x = sep_x + 2
     content_w = inner.width - toc_w - 2
     visible = page.lines[max(1, m.wiki_scroll + 1):end]
-    in_code = false
+    # L'état « dans un bloc ``` » se calcule depuis le début de la page,
+    # pas depuis la première ligne visible — sinon le style s'inverse dès
+    # qu'une clôture sort de l'écran.
+    in_code = isodd(count(l -> startswith(strip(l), "```"), page.lines[1:min(m.wiki_scroll, length(page.lines))]))
     for (i, line) in enumerate(visible)
         i > inner.height && break
         if startswith(strip(line), "```")

@@ -18,10 +18,38 @@ function _livedoc_under_cursor(m::RessacApp)
     isempty(line_chars) && return nothing
     col = clamp(ed.cursor_col + 1, 1, length(line_chars))
     word = _word_under_cursor_chars(line_chars, col)
-    isempty(word) && return nothing
-    doc = _lookup_livedoc(word)
-    doc === nothing && return nothing
+    doc = isempty(word) ? nothing : _lookup_livedoc(word)
+    if doc === nothing
+        # Pas de doc sur le mot : celle de l'appel qui l'englobe
+        # (`every(4, fast(2))` avec le curseur sur 4 → every).
+        word = _enclosing_call(line_chars, col)
+        isempty(word) && return nothing
+        doc = _lookup_livedoc(word)
+        doc === nothing && return nothing
+    end
     return (String(word), String(doc))
+end
+
+# Nom de l'appel dont la parenthèse ouvrante non fermée précède `col`
+# (profondeur comptée), sans suffixe .ar/.kr ; "" si aucun.
+function _enclosing_call(chars::Vector{Char}, col::Integer)
+    depth = 0
+    i = min(col, length(chars))
+    while i >= 1
+        c = chars[i]
+        if c == ')'
+            depth += 1
+        elseif c == '('
+            if depth == 0
+                w = _word_under_cursor_chars(chars, max(1, i - 1))
+                w = replace(w, r"\.(ar|kr|ir)$" => "")
+                return isempty(w) ? "" : w
+            end
+            depth -= 1
+        end
+        i -= 1
+    end
+    return ""
 end
 
 function _word_under_cursor_chars(chars::Vector{Char}, col::Integer)

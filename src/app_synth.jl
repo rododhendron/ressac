@@ -221,7 +221,8 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
         write(_app_synth_path(old_name; mode = tab.synth_mode), text)
         register_synth!(SynthEntry(Symbol(old_name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
-                             "tags" => ["user", String(tab.synth_mode)])))
+                             "tags" => ["user", String(tab.synth_mode)],
+                             "params" => _dsl_params_from_text(text))))
         _push_app_log!(m, "[INFO] synth sauvé → $(_app_synth_path(old_name; mode = tab.synth_mode))")
     else
         # :w newname — Save-As. Same mode as the originating tab; the
@@ -231,7 +232,8 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
         write(_app_synth_path(name; mode = tab.synth_mode), new_text)
         register_synth!(SynthEntry(Symbol(name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
-                             "tags" => ["user", String(tab.synth_mode)])))
+                             "tags" => ["user", String(tab.synth_mode)],
+                             "params" => _dsl_params_from_text(new_text))))
         _push_app_log!(m, "[INFO] synth sauvé sous → $(_app_synth_path(name; mode = tab.synth_mode))")
         _open_synth_tab!(m, name)
     end
@@ -339,6 +341,21 @@ function _align_synthdef_name(src::AbstractString, target::AbstractString)
 end
 
 # ── Sub-project 9 — WorkspaceManager bootstrap ─────────────────────
+
+# Défauts numériques de `@synth :x (freq=220, sustain=0.5) …` dans un texte
+# DSL (pour le routage SuperDirt d'un synth utilisateur). Vide sinon.
+function _dsl_params_from_text(text::AbstractString)
+    out = Dict{String,Any}()
+    mt = match(r"@synth\s+:\w+\s*\(([^)]*)\)", text)
+    mt === nothing && return out
+    for kv in split(mt.captures[1], ',')
+        m2 = match(r"^\s*(\w+)\s*=\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*$", kv)
+        m2 === nothing && continue
+        v = tryparse(Int, m2.captures[2]); v === nothing && (v = tryparse(Float64, m2.captures[2]))
+        v === nothing || (out[m2.captures[1]] = v)
+    end
+    return out
+end
 
 # ── Ponts son ⟷ patterns ────────────────────────────────────────────
 # Recette de librairie intégrée (pas les fichiers utilisateur) par nom.

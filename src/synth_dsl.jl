@@ -722,9 +722,13 @@ function play_synth(sc_name::Symbol, sig::Sig;
                  encode(OSCMessage("/ressac/evalAndPlay",
                                     Any[String(sc_name), src])))
     end
+    kw = Dict{Symbol,Any}(kwargs)
+    declared = get(kw, :params, NamedTuple())
     register_synth!(SynthEntry(sc_name, "user-dsl",
                                Dict{String,Any}("description" => "DSL-defined",
-                                                "tags" => ["dsl"])))
+                                                "tags" => ["dsl"],
+                                                "params" => Dict{String,Any}(String(k) => v for (k, v) in pairs(declared)
+                                                                             if v isa Real))))
     alias !== nothing && register_synth_alias!(alias, sc_name)
     src
 end

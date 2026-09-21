@@ -403,3 +403,40 @@ end
     _click(app, x_close, 2)                                  # ferme la pane focalisée
     @test length(collect(Ressac._all_leaves(ws.tree))) == n0
 end
+
+# ── Wiki : le style « bloc de code » survit au défilement ; livedoc englobante ──
+@testset "wiki — une ligne de bloc de code reste stylée quand la clôture est hors écran" begin
+    app, tb, frame = _help_app()
+    _hex(app, "wiki")
+    # une page avec un bloc de code (l'intro n'en a plus)
+    pi = findfirst(pg -> any(l -> startswith(strip(l), "```"), pg.lines), app.wiki_pages)
+    @test pi !== nothing
+    app.wiki_idx = pi
+    page = app.wiki_pages[pi]
+    fence = findfirst(l -> startswith(strip(l), "```"), page.lines)
+    app.wiki_scroll = fence                                  # 1re ligne visible = dans le bloc
+    _screen(app, tb, frame)
+    rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
+    y = findfirst(r -> occursin("WIKI ·", r), rows) + 1
+    # colonnes des « │ » : bordure de pane, bord du modal, séparateur TOC, …
+    bars = [i for i in 1:120 if _cell(tb, i, y).char == '│']
+    @test length(bars) >= 3
+    x = bars[3] + 2                                          # début de la colonne contenu
+    xs = [i for i in x:min(bars[4] - 1, 120) if _cell(tb, i, y).char != ' ']
+    @test !isempty(xs)
+    @test _cell(tb, xs[1], y).style.fg == Tachikoma.tstyle(:primary).fg
+    _hkey(app, :escape)
+end
+
+@testset "livedoc — dans les parenthèses d'un appel, la doc de l'appel reste affichée" begin
+    app, tb, frame = _help_app()
+    ed = Ressac._active_editor(app)
+    Tachikoma.set_text!(ed, "SinOsc.ar(440, 0)")
+    ed.cursor_row = 1; ed.cursor_col = 11                    # sur « 440 »
+    ld = Ressac._livedoc_under_cursor(app)
+    @test ld !== nothing && ld[1] == "SinOsc"
+    ed.cursor_col = 15                                       # sur « 0 »
+    @test Ressac._livedoc_under_cursor(app)[1] == "SinOsc"
+    Tachikoma.set_text!(ed, "x = 42"); ed.cursor_col = 5
+    @test Ressac._livedoc_under_cursor(app) === nothing
+end
