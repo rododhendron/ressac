@@ -401,6 +401,10 @@ function TK.view(m::RessacApp, f::TK.Frame)
         end
     end
 
+    # Which-key : popup des suites possibles d'un préfixe (Space, g, Ctrl-w),
+    # juste au-dessus de la barre de touches.
+    _render_whichkey!(m, TK.Rect(area.x, area.y, area.width, footer_y - area.y), buf)
+
     # Modal overlay sits on top of everything — BUT leaves the bottom row
     # free for a persistent command bar (toujours à disposition, même dans
     # un modal). `marea` = aire du modal moins cette ligne.
@@ -846,4 +850,82 @@ function _copy_logs_to_clipboard!(m::RessacApp)
         end
     end
     _push_app_log!(m, "[ERROR] :copylogs — no clipboard tool found (install wl-copy, xclip, or xsel)")
+end
+
+# ── Which-key ──────────────────────────────────────────────────────
+const _WHICHKEY_DELAY_S = 0.3
+
+"""
+    _whichkey_state(m) -> (kind, prefix, layers, immediate)
+
+Préfixe en attente : `:leader` (Space, immédiat), `:g` (g de l'éditeur,
+après délai), `:pane_mode` (Ctrl-w, après délai), ou `:none`.
+"""
+function _whichkey_state(m::RessacApp)
+    m.modal !== :none && return (:none, "", (), false)
+    m.pending_leader && return (:leader, "Space", ((:leader, m),), true)
+    _PANE_MODE.active && return (:pane_mode, "Ctrl-w", ((:pane_mode, m),), false)
+    ed = _active_editor(m)
+    if ed !== nothing && ed.mode === :normal && ed.pending_key == 'g' &&
+       _focused_pane_impl(m) isa EditorPane
+        return (:g, "g", _editor_layers(m), false)
+    end
+    return (:none, "", (), false)
+end
+
+"""
+    _render_whichkey!(m, area, buf)
+
+Popup which-key ancré en bas à droite de `area` : une ligne par suite
+possible du préfixe (« d  slot @dN »), sur 1 à 3 colonnes selon le
+nombre. Met à jour `prefix_kind` / `prefix_since` (la vue est appelée
+à chaque frame, c'est notre horloge).
+"""
+function _render_whichkey!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    kind, prefix, layers, immediate = _whichkey_state(m)
+    if kind !== m.prefix_kind
+        m.prefix_kind = kind
+        m.prefix_since = time()
+    end
+    kind === :none && return
+    immediate || time() - m.prefix_since >= _WHICHKEY_DELAY_S || return
+    entries = Tuple{String,String}[]
+    seen = Set{String}()
+    for (scope, target) in layers
+        for (k, b) in prefix_bindings(scope, prefix; target = target)
+            k in seen && continue
+            push!(seen, k); push!(entries, (k, hint_label(b)))
+        end
+    end
+    isempty(entries) && return
+    n = length(entries)
+    kw = maximum(textwidth(k) for (k, _) in entries)
+    cells = String[rpad(k, kw) * "  " * l for (k, l) in entries]
+    cw = min(maximum(textwidth, cells), 30) + 2
+    ncol = n > 16 ? 3 : n > 8 ? 2 : 1
+    ncol = max(1, min(ncol, (area.width - 4) ÷ cw))
+    nrow = cld(n, ncol)
+    w = min(area.width - 2, ncol * cw + 2)
+    h = min(area.height - 1, nrow + 2)
+    h < 3 && return
+    x0 = area.x + area.width - w - 1
+    y0 = area.y + area.height - h
+    rect = TK.Rect(x0, y0, w, h)
+    inner = _inner_rect(rect)
+    blank = " " ^ inner.width
+    for y in inner.y:(inner.y + inner.height - 1)
+        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
+    end
+    TK.render(TK.Block(title = " $prefix + … ", title_style = TK.tstyle(:accent, bold = true),
+                       border_style = TK.tstyle(:accent), box = TK.BOX_ROUNDED,
+                       title_padding = 0), rect, buf)
+    for (i, (k, l)) in enumerate(entries)
+        col, row = divrem(i - 1, nrow)
+        y = inner.y + row
+        y >= inner.y + inner.height && continue
+        x = inner.x + col * cw
+        TK.set_string!(buf, x, y, rpad(k, kw), TK.tstyle(:title, bold = true))
+        TK.set_string!(buf, x + kw + 2, y, first(l, max(0, cw - kw - 4)), TK.tstyle(:text))
+    end
+    return
 end

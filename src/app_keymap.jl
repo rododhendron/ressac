@@ -148,13 +148,14 @@ const _LEADER_FR = Dict{Char,String}(
     'f' => "fast", 's' => "slow", 'r' => "room", 'n' => "n()", 'e' => "every",
     'm' => "mask", 'D' => "chaîne delay", 'c' => "cat", 'S' => "stack", 'v' => "rev",
     'E' => "euclidien", 'R' => "euclidien tourné", 'J' => "jersey (bd(3,8))",
-    'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ librairie de synths",
+    'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ librairie synths",
     'I' => "▸ snippets", 'w' => "▸ wiki", '?' => "▸ aide",
 )
 for (c, _) in _LEADER_LABELS
     label = get(_LEADER_FR, c, String([c]))
     if haskey(_LEADER_ACTIONS, c)
-        bind!(:leader, "Space $c", label; group = :help, action = _LEADER_ACTIONS[c])
+        bind!(:leader, "Space $c", label; group = :help, action = _LEADER_ACTIONS[c],
+              short = first(split(label, " (")))
     else
         tpl = _LEADER_SNIPPETS[c]
         bind!(:leader, "Space $c", label; group = :edit,

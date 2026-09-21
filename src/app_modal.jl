@@ -573,3 +573,46 @@ bind!(:modal_help, ["g", "G"], "début / fin"; group = :nav, hint = false,
 bind!(:modal_help, "Tab", "toutes les sections ⟷ contexte"; short = "tout", group = :help,
       action = m -> (m.help_expanded = !m.help_expanded; m.help_scopes = _help_scopes(m); m.modal_scroll = 0))
 bind!(:modal_help, ["?", "Esc", "q"], "fermer l'aide"; short = "fermer", group = :help, action = _close_help!)
+
+# ── Wiki des touches (docs/wiki/04-keys.md), généré ──────────────
+"""
+    keys_wiki_markdown() -> String
+
+La page « Touches » du wiki, générée depuis le registre : une section
+par scope (ordre de `_HELP_ALL_SCOPES`), un tableau par groupe, puis les
+notes du scope. `scripts/gen_keys_wiki.jl` l'écrit dans
+docs/wiki/04-keys.md ; un test échoue si la page diverge.
+"""
+function keys_wiki_markdown()
+    io = IOBuffer()
+    println(io, "# Touches")
+    println(io)
+    println(io, "Page générée depuis le registre de bindings (`src/keymap.jl`, ",
+                "`src/app_keymap.jl` et les scopes des panes/modaux) par ",
+                "`scripts/gen_keys_wiki.jl` — ne pas éditer à la main. Dans l'app, ",
+                "`?` ouvre la même chose pour le contexte courant.")
+    println(io)
+    println(io, "Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · ",
+                "`g t` = g puis t. Les touches séparées par ` / ` sont des synonymes.")
+    for sec in help_sections(Symbol[s for s in _HELP_ALL_SCOPES if !isempty(bindings(s))])
+        println(io)
+        println(io, "## ", sec.title)
+        for g in sec.groups
+            println(io)
+            println(io, "**", g.title, "**")
+            println(io)
+            println(io, "| Touche | Action |")
+            println(io, "|---|---|")
+            for r in g.rows
+                println(io, "| `", replace(r.keys, "|" => "\\|"), "` | ", r.label, " |")
+            end
+        end
+        if !isempty(sec.notes)
+            println(io)
+            println(io, "```")
+            foreach(n -> println(io, n), sec.notes)
+            println(io, "```")
+        end
+    end
+    return String(take!(io))
+end

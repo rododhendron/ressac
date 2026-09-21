@@ -57,6 +57,11 @@ non-empty), and the focus toggle for keystroke routing.
     help_scopes::Vector{Symbol}  = Symbol[]
     help_return::Symbol          = :none
     help_expanded::Bool          = false
+    # Which-key : préfixe en attente (:leader, :g, :pane_mode ou :none) et
+    # depuis quand — le popup apparaît tout de suite (Space) ou après un
+    # délai (g, Ctrl-w) pour ne pas gêner les habitués.
+    prefix_kind::Symbol          = :none
+    prefix_since::Float64        = 0.0
     # Lines shown by the generic :explain modal (`:explain <name>`).
     explain_lines::Vector{String} = String[]
     # Sculpt studio modal (`:sculpt` / explorer `M`) : une WaveformPane en

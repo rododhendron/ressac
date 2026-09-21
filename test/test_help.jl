@@ -186,3 +186,57 @@ end
     scr = _screen(app, tb, frame)
     @test occursin("u tout démuter", scr)      # (m mute demande un slot actif)
 end
+
+# ── Which-key ─────────────────────────────────────────────────────────
+@testset "whichkey — Space : popup immédiat avec les snippets ; Esc le ferme" begin
+    app, tb, frame = _help_app()
+    scr = _screen(app, tb, frame)
+    @test !occursin("Space + …", scr)
+    _hkey(app, ' ')
+    scr = _screen(app, tb, frame)
+    @test occursin("Space + …", scr)
+    @test occursin("slot @dN", scr) && occursin("▸ wiki", scr)
+    @test app.prefix_kind === :leader
+    _hkey(app, :escape)
+    scr = _screen(app, tb, frame)
+    @test !occursin("Space + …", scr)
+    @test app.prefix_kind === :none
+end
+
+@testset "whichkey — g et Ctrl-w : après le délai seulement" begin
+    app, tb, frame = _help_app()
+    _hex(app, "synth kick"); _hex(app, "synth snare")           # deux synths → g t disponible
+    _hkey(app, 'g')
+    @test Ressac._active_editor(app).pending_key == 'g'
+    scr = _screen(app, tb, frame)
+    @test !occursin("g + …", scr)                               # trop tôt
+    app.prefix_since = time() - 1.0
+    scr = _screen(app, tb, frame)
+    @test occursin("g + …", scr)
+    @test occursin("synth suivant", scr)
+    @test occursin("début / fin du buffer", scr)
+    _hkey(app, 't')                                             # g t : consomme le préfixe
+    @test Ressac._active_editor(app).pending_key === nothing
+    @test !occursin("g + …", _screen(app, tb, frame))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+    @test !occursin("Ctrl-w + …", _screen(app, tb, frame))
+    app.prefix_since = time() - 1.0
+    scr = _screen(app, tb, frame)
+    @test occursin("Ctrl-w + …", scr) && occursin("split vertical", scr)
+    _hkey(app, :escape)
+    Ressac._PANE_MODE.active = false
+end
+
+@testset "wiki — docs/wiki/04-keys.md est à jour avec le registre" begin
+    path = joinpath(@__DIR__, "..", "docs", "wiki", "04-keys.md")
+    md = Ressac.keys_wiki_markdown()
+    @test startswith(md, "# Touches")
+    @test occursin("## Pane patterns", md) && occursin("| `e` | évaluer la ligne |", md)
+    @test occursin("## Explorateur de synths (GA)", md)
+    if read(path, String) != md
+        @test false   # → julia --project=. scripts/gen_keys_wiki.jl
+        println("docs/wiki/04-keys.md diverge du registre : lance scripts/gen_keys_wiki.jl")
+    else
+        @test true
+    end
+end
