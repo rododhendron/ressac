@@ -84,9 +84,14 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
         end
     end
     # Mode detection: prefer existing `.jl` (DSL); fall back to `.scd`
-    # (raw SC); otherwise a fresh DSL starter.
+    # (raw SC); then a LIBRARY recipe (copied into user-synths, comme le
+    # fait :lib) ; otherwise a fresh DSL starter.
     dsl_path = _app_synth_path(name; mode = :dsl)
     sc_path  = _app_synth_path(name; mode = :sc)
+    if !isfile(dsl_path) && !isfile(sc_path)
+        entry = _synthlib_builtin_entry(name)
+        entry === nothing || return _instantiate_synth_entry!(m, entry)
+    end
     src, mode = if isfile(dsl_path)
         (read(dsl_path, String), :dsl)
     elseif isfile(sc_path)
@@ -94,13 +99,11 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     else
         (_STARTER_DSL(name), :dsl)
     end
-    cmd_vsplit!(m.workspaces, "editor", Dict{String,Any}(
+    pane = _place_pane!(m, :editor, Dict{String,Any}(
         "buffer_role" => "synth",
         "name"        => name,
     ))
-    ws = current_workspace(m.workspaces)
-    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
-    pane = leaf.tabs[1]
+    pane isa EditorPane || return
     eb = pane.tabs[1]
     eb.synth_mode = mode
     TK.set_text!(eb.code_editor, src)
@@ -336,3 +339,100 @@ function _align_synthdef_name(src::AbstractString, target::AbstractString)
 end
 
 # ── Sub-project 9 — WorkspaceManager bootstrap ─────────────────────
+
+# ── Ponts son ⟷ patterns ────────────────────────────────────────────
+# Recette de librairie intégrée (pas les fichiers utilisateur) par nom.
+function _synthlib_builtin_entry(name::AbstractString)
+    for e in _synthlib_all_entries()
+        e.name == name && e.category != "user" && return e
+    end
+    return nothing
+end
+
+# Le mot sous le curseur, sans le `:` d'un symbole (`s(:kick)` → kick).
+function _word_under_cursor_plain(m::RessacApp)
+    ed = _active_editor(m)
+    ed === nothing && return ""
+    1 <= ed.cursor_row <= length(ed.lines) || return ""
+    chars = ed.lines[ed.cursor_row]
+    isempty(chars) && return ""
+    w = _word_under_cursor_chars(chars, clamp(ed.cursor_col + 1, 1, length(chars)))
+    return String(lstrip(String(w), ':'))
+end
+
+_is_known_synth(name::AbstractString) =
+    isfile(_app_synth_path(name; mode = :dsl)) || isfile(_app_synth_path(name; mode = :sc)) ||
+    _synthlib_builtin_entry(name) !== nothing || haskey(_SYNTH_REGISTRY, Symbol(name))
+
+"""
+    _goto_synth_under_cursor!(m)
+
+`gs` dans la pane patterns : ouvre le synth sous le curseur (fichier
+utilisateur, recette de librairie ou synth enregistré) dans DESIGN.
+"""
+function _goto_synth_under_cursor!(m::RessacApp)
+    w = _word_under_cursor_plain(m)
+    if isempty(w) || !_is_known_synth(w)
+        _push_app_log!(m, "[WARN] gs — « $w » n'est pas un synth connu (fichier user-synths, librairie ou synth enregistré)")
+        return
+    end
+    _switch_workspace_named!(m, "DESIGN")
+    _open_synth_tab!(m, w)
+    return
+end
+
+# L'éditeur patterns du workspace courant (le crée si besoin).
+function _patterns_editor!(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    if ws !== nothing
+        for leaf in _all_leaves(ws.tree), (ti, tab) in enumerate(leaf.tabs)
+            tab isa EditorPane || continue
+            1 <= tab.current_tab <= length(tab.tabs) || continue
+            if tab.tabs[tab.current_tab].role === :patterns
+                ws.focused_pane = leaf.id; leaf.current_tab = ti
+                return tab.tabs[tab.current_tab].code_editor
+            end
+        end
+    end
+    return _open_or_reuse_editable_pane!(m; role = "patterns", name = "main")
+end
+
+# Ajoute une ligne après la dernière ligne non vide, curseur dessus.
+function _append_pattern_line!(ed::TK.CodeEditor, line::AbstractString)
+    lines = collect(split(TK.text(ed), '\n'; keepempty = true))
+    last = something(findlast(l -> !isempty(strip(l)), lines), 0)
+    insert!(lines, last + 1, String(line))
+    TK.set_text!(ed, join(lines, '\n'))
+    ed.cursor_row = last + 1
+    ed.cursor_col = 0
+    return
+end
+
+"""
+    _use_synth_in_pattern!(m, name)
+
+Pont « utiliser ce son » : bascule dans PLAY, ajoute
+`@dN p"name*4"` à la fin du buffer patterns (N = premier slot libre),
+focalise la ligne. L'appelant a sauvé/enregistré le synth avant.
+"""
+function _use_synth_in_pattern!(m::RessacApp, name::AbstractString)
+    _switch_workspace_named!(m, "PLAY")
+    ed = _patterns_editor!(m)
+    ed === nothing && (_push_app_log!(m, "[ERROR] U — pas d'éditeur patterns"); return)
+    slot = _next_free_d_slot(ed)
+    line = "@d$slot p\"$(name)*4\""
+    _append_pattern_line!(ed, line)
+    ed.mode = :normal
+    ed.focused = true
+    _push_app_log!(m, "[INFO] $line ajouté — e pour jouer, m pour mute")
+    return
+end
+
+# U depuis une pane synth : sauve (:w) puis utilise.
+function _use_current_synth_in_pattern!(m::RessacApp)
+    tab = _current_synth_tab(m)
+    tab === nothing && (_push_app_log!(m, "[ERROR] U — pas de synth ouvert"); return)
+    _save_current_synth!(m)
+    _use_synth_in_pattern!(m, tab.name)
+    return
+end

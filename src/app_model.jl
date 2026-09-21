@@ -426,26 +426,96 @@ later tasks (split commands, persistence). The legacy view() path
 still drives the visible UI; Task 15 swaps view to dispatch through
 the workspace manager and removes the legacy m.layout_* fields.
 """
+# Les trois façons de travailler. Créés au premier rendu ; chacun se
+# remplit à la demande (première visite) : PLAY = patterns, DESIGN = une
+# pane synth « sketch », EXPLORE = l'explorateur GA.
+const _DEFAULT_WORKSPACES = ("PLAY", "DESIGN", "EXPLORE")
+
 function _ensure_default_workspace!(m::RessacApp)
     if isempty(m.workspaces.workspaces)
-        create_workspace!(m.workspaces, "")
+        for n in _DEFAULT_WORKSPACES
+            create_workspace!(m.workspaces, n)
+        end
+        m.workspaces.current_idx = 1
     end
     # Make sure the global log Ref points at the live app log so the
     # LogPane and the chrome log row share storage.
     _APP_LOG[] = m.logs
     ws = current_workspace(m.workspaces)
     ws === nothing && return
+    _fill_workspace!(ws)
+    return
+end
+
+"""
+    _fill_workspace!(ws)
+
+Peuple un workspace dont la racine est un leaf vide, selon son nom :
+PLAY (ou sans nom) → éditeur patterns avec le buffer de démarrage ;
+DESIGN → pane synth « sketch » (starter DSL) ; EXPLORE → explorateur.
+No-op si le workspace a déjà du contenu (chemin :layout load).
+"""
+function _fill_workspace!(ws::Workspace)
     leaf = ws.tree
-    if leaf isa PaneLeaf && isempty(leaf.tabs)
+    (leaf isa PaneLeaf && isempty(leaf.tabs)) || return
+    if ws.name == "DESIGN"
+        ep = _pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "sketch"))
+        eb = ep.tabs[1]
+        eb.synth_mode = :dsl
+        TK.set_text!(eb.code_editor, _STARTER_DSL("sketch"))
+        eb.code_editor.mode = :normal
+        push!(leaf.tabs, ep)
+    elseif ws.name == "EXPLORE"
+        push!(leaf.tabs, _pane_new(:explorer, Dict{String,Any}()))
+    else
         ep = _pane_new(:editor, Dict{String,Any}())
-        # Seed the fresh editor with the starter buffer so the user
-        # sees the welcome + sample patterns on first boot. No-op for
-        # the load-layout path since that path replaces the workspace
-        # before this branch runs.
         TK.set_text!(ep.tabs[1].code_editor, _STARTER_BUFFER)
         push!(leaf.tabs, ep)
-        leaf.current_tab = 1
     end
+    leaf.current_tab = 1
+    ws.focused_pane = leaf.id
+    return
+end
+
+"""
+    _switch_workspace_named!(m, name) -> Bool
+
+Bascule sur le workspace `name` (le crée s'il n'existe pas) et le
+remplit s'il est vide. `:play` / `:design` / `:explore`, et les ponts
+gs / U.
+"""
+function _switch_workspace_named!(m::RessacApp, name::AbstractString)
+    wm = m.workspaces
+    idx = findfirst(w -> w.name == name, wm.workspaces)
+    if idx === nothing
+        create_workspace!(wm, name)
+    else
+        cmd_workspace_switch!(wm, idx)
+    end
+    ws = current_workspace(wm)
+    ws === nothing || _fill_workspace!(ws)
+    return true
+end
+
+"""
+    _place_pane!(m, kind, args) -> PaneImpl | Nothing
+
+Met une pane dans le workspace courant : DANS le leaf racine s'il est
+vide (workspace fraîchement créé), sinon en vsplit à droite du focus.
+"""
+function _place_pane!(m::RessacApp, kind::Symbol, args::AbstractDict)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return nothing
+    leaf = ws.tree
+    if leaf isa PaneLeaf && isempty(leaf.tabs)
+        pane = _pane_new(kind, args)
+        push!(leaf.tabs, pane)
+        leaf.current_tab = 1
+        ws.focused_pane = leaf.id
+        return pane
+    end
+    cmd_vsplit!(m.workspaces, String(kind), args)
+    return _focused_pane_impl(m)
 end
 
 """

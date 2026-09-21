@@ -38,6 +38,8 @@ bind!(:global, ["Ctrl-1", "Ctrl-2", "Ctrl-3", "Ctrl-4", "Ctrl-5",
                 "Ctrl-6", "Ctrl-7", "Ctrl-8", "Ctrl-9"],
       "workspace 1…9"; group = :layout, hint = false)
 bind!(:global, "Ctrl-f", "montrer/cacher les floats"; group = :layout, hint = false)
+bind!(:global, "Ctrl-1 / :play · Ctrl-2 / :design · Ctrl-3 / :explore",
+      "workspaces PLAY (patterns) · DESIGN (synth) · EXPLORE (GA)"; group = :layout, hint = false)
 # Zoom du scope :wave / vitesse du scope réservoir. Après le nudge des
 # nombres de :editor (même touches, garde « nombre sous le curseur »).
 bind!(:global, "+", "scope : zoom Y +"; group = :view, hint = false, when = _km_wave,
@@ -128,12 +130,16 @@ bind!(:patterns, "H", "pattern : décaler le token ←"; group = :edit, hint = f
       action = m -> _pat_shift!(m, _km_ed(m), -1))
 bind!(:patterns, "X", "pattern : silence le token (~)"; group = :edit, hint = false, when = _km_in_pattern,
       action = m -> _pat_silence!(m, _km_ed(m)))
+bind!(:patterns, "g s", "ouvrir le synth sous le curseur (DESIGN)"; group = :nav, hint = false,
+      when = _km_patterns, action = _goto_synth_under_cursor!)
 
 # ── :synth ─────────────────────────────────────────────────────────
 scope!(:synth, "Pane synth")
 bind!(:synth, ["t", "T", "Space"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
       repeat = true, when = _km_synth,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
+bind!(:synth, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
+      group = :file, when = _km_synth, action = _use_current_synth_in_pattern!)
 bind!(:synth, "g t", "synth suivant"; group = :nav, hint = false,
       when = m -> _km_synth(m) && length(_all_synth_buffers(m)) > 1,
       action = m -> _cycle_synth_tab!(m; dir = +1))

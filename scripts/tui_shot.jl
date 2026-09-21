@@ -79,4 +79,9 @@ let (app, tb, frame) = newapp()
     ex(app, "vsplit log");  snap(app, tb, frame, "30_vsplit_log")
     key(app, '?');          snap(app, tb, frame, "31_help_from_log")
 end
+let (app, tb, frame) = newapp()
+    ex(app, "design");  snap(app, tb, frame, "40_design_workspace")
+    key(app, 'U');      snap(app, tb, frame, "41_use_in_pattern")
+    ex(app, "explore"); snap(app, tb, frame, "42_explore_workspace")
+end
 println("→ $OUT")

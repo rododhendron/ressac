@@ -25,12 +25,13 @@ if !isdefined(Main, :MockOSCClient)
     Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
 end
 
-@testset "_ensure_default_workspace! initializes one editor pane" begin
+@testset "_ensure_default_workspace! crée PLAY/DESIGN/EXPLORE et remplit PLAY d'un éditeur" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
-    @test length(app.workspaces.workspaces) == 1
+    @test length(app.workspaces.workspaces) == 3
+    @test app.workspaces.current_idx == 1
     ws = Ressac.current_workspace(app.workspaces)
     @test ws !== nothing
     @test ws.tree isa Ressac.PaneLeaf
@@ -39,7 +40,7 @@ end
 
     # Idempotent — calling again doesn't create another workspace.
     Ressac._ensure_default_workspace!(app)
-    @test length(app.workspaces.workspaces) == 1
+    @test length(app.workspaces.workspaces) == 3
 end
 
 # Helper: read one row of a Tachikoma Buffer as a String. Tachikoma
@@ -102,7 +103,7 @@ end
     Ressac.create_workspace!(app.workspaces, "live")
     Ressac.create_workspace!(app.workspaces, "synth")
     Ressac._PANE_MODE.active = false
-    @test app.workspaces.current_idx == 3
+    @test app.workspaces.current_idx == 5          # 3 par défaut + 2
     # Ctrl-1 → workspace 1
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '1'))
     @test app.workspaces.current_idx == 1

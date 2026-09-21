@@ -476,6 +476,10 @@ _register_literal!(m -> (m.paused = true;
     "pause", "freeze")
 _register_literal!(m -> _copy_logs_to_clipboard!(m), "copylogs", "yanklogs")
 _register_literal!(m -> _cycle_log_tail!(m), "log")
+# Les trois workspaces de travail (Ctrl-1/2/3 aussi).
+_register_literal!(m -> _switch_workspace_named!(m, "PLAY"),    "play")
+_register_literal!(m -> _switch_workspace_named!(m, "DESIGN"),  "design")
+_register_literal!(m -> _switch_workspace_named!(m, "EXPLORE"), "explore")
 _register_regex!(r"^log\s+(\d+)$", (m, mt) -> _cycle_log_tail!(m, parse(Int, mt.captures[1])))
 
 # ── Starter / scale / cps ───────────────────────────────────────────

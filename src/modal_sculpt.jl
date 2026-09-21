@@ -47,22 +47,34 @@ end
 # plugins/user-synths/<nom>.jl ; `:sculpt` seul prend le buffer focalisé.
 function _sculpt_command!(m::RessacApp, name::AbstractString)
     nm = strip(String(name))
+    txt_for_msg = ""
     g = if isempty(nm)
         ed = _active_editor(m)
-        ed === nothing ? nothing : genome_from_dsl(TK.text(ed))
+        txt_for_msg = ed === nothing ? "" : TK.text(ed)
+        ed === nothing ? nothing : _genome_from_any(txt_for_msg)
     else
         path = joinpath(pwd(), "plugins", "user-synths", "$nm.jl")
         if isfile(path)
-            txt = read(path, String)
-            gg = genome_from_text(txt)            # génome embarqué (exports récents)
-            gg === nothing ? genome_from_dsl(txt) : gg   # sinon parse le DSL nu
+            txt_for_msg = read(path, String)
+            _genome_from_any(txt_for_msg)
         else
+            txt_for_msg = ""
             nothing
         end
     end
-    g === nothing &&
-        (_push_app_log!(m, "[ERROR] :sculpt — pas un synth DSL reconnu"); return)
-    _open_sculpt_modal!(m, serialize_genome(g), isempty(nm) ? "buffer" : nm)
+    if g === nothing
+        _push_app_log!(m, "[ERROR] :sculpt — " * _sculpt_refusal(nm, txt_for_msg))
+        return
+    end
+    # Label : le nom demandé, sinon celui du synth focalisé (→ :w et U
+    # sauvent sous ce nom), sinon « buffer ».
+    label = if !isempty(nm)
+        nm
+    else
+        tab = _current_synth_tab(m)
+        tab === nothing ? "buffer" : tab.name
+    end
+    _open_sculpt_modal!(m, serialize_genome(g), label)
     return
 end
 _register_literal!(m -> _sculpt_command!(m, ""), "sculpt")
@@ -232,3 +244,39 @@ bind!(:modal_sculpt, [">", "<"], "défiler l'explication"; short = "explication"
       action = (m, evt) -> (m.modal_scroll = evt.char == '>' ?
           min(m.modal_scroll + 1, max(0, length(m.explain_lines) - 1)) :
           max(0, m.modal_scroll - 1)))
+
+# Génome depuis un texte : génome embarqué (exports récents) sinon DSL
+# parsé ; jamais d'exception (un DSL exotique donne `nothing`).
+function _genome_from_any(txt::AbstractString)
+    try
+        gg = genome_from_text(txt)
+        gg === nothing || return gg
+        # SC brut (Sig / SynthDef) : pas de graphe DSL à sculpter.
+        (occursin("Sig(", txt) || occursin("SynthDef(", txt)) && return nothing
+        return genome_from_dsl(txt)
+    catch
+        return nothing
+    end
+end
+
+# Pourquoi :sculpt refuse — pour un message actionnable.
+function _sculpt_refusal(nm::AbstractString, txt::AbstractString)
+    isempty(nm) && isempty(txt) && return "aucun buffer à sculpter (:sculpt <nom> ou ouvre un synth DSL)"
+    isempty(txt) && return "« $nm » introuvable dans plugins/user-synths (.jl)"
+    occursin("Sig(", txt) && return "« $nm » est un synth SC brut (Sig) — pas sculptable ; :synth $nm pour l'éditer"
+    occursin("SynthDef(", txt) && return "« $nm » est du SuperCollider brut — pas sculptable ; :synth $nm pour l'éditer"
+    return "« $nm » n'est pas un DSL @synth parsable"
+end
+
+# U : sauve le sculpt sous son label et l'utilise dans un pattern (PLAY).
+function _use_sculpt_in_pattern!(m::RessacApp)
+    p = m.sculpt_pane
+    (p === nothing || p.genome === nothing) && return
+    nm = replace(p.label, r"[^\w]" => "_")
+    _save_sculpt!(m, nm)
+    _close_sculpt_modal!(m)
+    _use_synth_in_pattern!(m, nm)
+    return
+end
+bind!(:modal_sculpt, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
+      group = :file, when = _sculpt_not_editing, action = _use_sculpt_in_pattern!)

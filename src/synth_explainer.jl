@@ -469,6 +469,9 @@ function _synth_body(expr)
         body = expr.args[end]
         body isa Expr || return nothing
         body.head === :block && return body
+        # Forme une-ligne : `@synth :x (freq=220) sin_osc(:freq)` — le corps
+        # est un appel nu ; on l'enveloppe dans un bloc.
+        (body.head === :call || body.head === :macrocall) && return Expr(:block, body)
         if body.head === :do && length(body.args) == 2 && body.args[2] isa Expr &&
            body.args[2].head === :-> && body.args[2].args[2] isa Expr
             return body.args[2].args[2]        # corps du do fb … end

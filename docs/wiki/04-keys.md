@@ -46,6 +46,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Ctrl-w` | mode pane |
 | `Ctrl-1 / Ctrl-2 / Ctrl-3 / Ctrl-4 / Ctrl-5 / Ctrl-6 / Ctrl-7 / Ctrl-8 / Ctrl-9` | workspace 1…9 |
 | `Ctrl-f` | montrer/cacher les floats |
+| `Ctrl-1 / :play · Ctrl-2 / :design · Ctrl-3 / :explore` | workspaces PLAY (patterns) · DESIGN (synth) · EXPLORE (GA) |
 
 ## Éditeur (patterns et synth)
 
@@ -114,6 +115,12 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `H` | pattern : décaler le token ← |
 | `X` | pattern : silence le token (~) |
 
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `g s` | ouvrir le synth sous le curseur (DESIGN) |
+
 ## Space + …
 
 **Éditer**
@@ -156,6 +163,12 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | Touche | Action |
 |---|---|
 | `t / T / Space` | tester le synth (maintenir = rafale) |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
 
 **Naviguer**
 
@@ -662,3 +675,9 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `> / <` | défiler l'explication |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |

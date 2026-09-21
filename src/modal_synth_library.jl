@@ -102,10 +102,21 @@ the copy without affecting the canonical template.
 function _instantiate_synth_from_library!(m::RessacApp)
     entries = _synthlib_all_entries()
     1 <= m.synthlib_cursor <= length(entries) || return
-    entry = entries[m.synthlib_cursor]
+    m.modal = :none
+    _instantiate_synth_entry!(m, entries[m.synthlib_cursor])
+end
+
+"""
+    _instantiate_synth_entry!(m, entry)
+
+Ouvre une entrée de librairie : un synth utilisateur s'ouvre tel quel ;
+une recette intégrée est COPIÉE dans plugins/user-synths (nom
+désambiguïsé si le fichier existe) puis ouverte — :w y écrit ensuite.
+Partagé par le modal :lib et par `:synth <nom>` / `gs`.
+"""
+function _instantiate_synth_entry!(m::RessacApp, entry::_SynthLibEntry)
     # User-saved synths: don't deep-copy, just open the existing file.
     if entry.category == "user"
-        m.modal = :none
         _open_synth_tab!(m, entry.name)
         return
     end
@@ -130,7 +141,6 @@ function _instantiate_synth_from_library!(m::RessacApp)
         replace(entry.source, "SynthDef(\\$(entry.name)" => "SynthDef(\\$(final_name)")
     end
     write(target, src)
-    m.modal = :none
     _open_synth_tab!(m, final_name)
     _push_app_log!(m, "[INFO] synth library: instantiated $final_name from \"$(entry.name)\" [$( entry.mode )]")
 end

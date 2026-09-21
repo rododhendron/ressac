@@ -128,15 +128,15 @@ function _drain_explorer_export!(m::RessacApp)
     req === nothing && return false
     _EXPLORER_EXPORT_REQUEST[] = nothing
     name, dsl = req
-    cmd_split!(m.workspaces, "editor",
-               Dict{String,Any}("buffer_role" => "synth", "name" => name))
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return true
-    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
-    if leaf !== nothing && !isempty(leaf.tabs)
-        pane = leaf.tabs[leaf.current_tab]
-        pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs) &&
-            TK.set_text!(pane.tabs[pane.current_tab].code_editor, dsl)
+    # Le candidat s'édite dans DESIGN (l'explorer reste dans EXPLORE).
+    _switch_workspace_named!(m, "DESIGN")
+    pane = _place_pane!(m, :editor,
+                        Dict{String,Any}("buffer_role" => "synth", "name" => name))
+    if pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs)
+        eb = pane.tabs[pane.current_tab]
+        eb.synth_mode = :dsl
+        TK.set_text!(eb.code_editor, dsl)
+        eb.code_editor.mode = :normal
     end
     return true
 end

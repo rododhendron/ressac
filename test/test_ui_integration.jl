@@ -218,11 +218,11 @@ end
     app, _ = _new_app()
     Ressac.create_workspace!(app.workspaces, "alpha")
     Ressac.create_workspace!(app.workspaces, "beta")
-    @test app.workspaces.current_idx == 3
+    @test app.workspaces.current_idx == 5           # PLAY/DESIGN/EXPLORE + alpha + beta
     _exec_ex_command!(app, "workspace prev")
-    @test app.workspaces.current_idx == 2
+    @test app.workspaces.current_idx == 4
     _exec_ex_command!(app, "workspace next")
-    @test app.workspaces.current_idx == 3
+    @test app.workspaces.current_idx == 5
     _exec_ex_command!(app, "workspace alpha")
     @test app.workspaces.workspaces[app.workspaces.current_idx].name == "alpha"
 end
@@ -245,7 +245,7 @@ end
     app, _ = _new_app()
     Ressac.create_workspace!(app.workspaces, "scratch")
     Ressac.create_workspace!(app.workspaces, "perf")
-    @test app.workspaces.current_idx == 3
+    @test app.workspaces.current_idx == 5           # 3 par défaut + 2
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '1'))
     @test app.workspaces.current_idx == 1
     @test Ressac._PANE_MODE.active == false

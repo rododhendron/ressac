@@ -253,7 +253,7 @@ end
     @test occursin("? aide", rows[i - 1])                 # barre juste au-dessus
     @test !any(occursin("insert · visual", r) for r in rows)   # plus de mode strip
     # workspaces à droite de la status line
-    @test occursin("[1]", rows[1])
+    @test occursin("[1 PLAY]", rows[1])
     # :log replie / déplie
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
     @test findfirst(r -> startswith(r, "╭ LOG"), rows) == 40 - 11
