@@ -453,15 +453,6 @@ function _genome_depth(g::Genome, id::Int = g.output_id, seen = Set{Int}())
     return 1 + child
 end
 
-function _wrap_text(s::AbstractString, w::Int)
-    w <= 0 && return String[s]
-    out = String[]
-    for i in 1:w:lastindex(s)
-        push!(out, s[i:min(i + w - 1, lastindex(s))])
-    end
-    return out
-end
-
 # Arbre lisible du DAG depuis la sortie : chaque nœud = un UGen + ses
 # constantes/contrôles inline ; les entrées-signal deviennent des
 # enfants indentés. Bien plus clair que le code SC brut.

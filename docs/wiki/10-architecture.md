@@ -1,288 +1,298 @@
 # Architecture
 
-A map of how a keystroke becomes audio, and which file owns what.
-Useful if you're contributing, debugging a stuck pattern, or just
-curious.
+Comment une touche devient du son, et quel fichier possède quoi. Utile
+pour contribuer, déboguer un pattern qui ne joue pas, ou par curiosité.
 
-## The 30-second version
+## La version en 30 secondes
 
 ```
-your keystroke
+ta touche
       ↓
-Tachikoma terminal loop (~/.julia/packages/Tachikoma)
+boucle terminal Tachikoma (~/.julia/packages/Tachikoma)
       ↓ KeyEvent
-src/app.jl :: update!(m, evt)
-      ↓ mutates m.editor / m.scheduler
-src/scheduler.jl :: _step! (background task, every lookahead/2 s)
-      ↓ query patterns, build OSC bundles
-src/osc.jl :: encode → UDP datagram
+src/app_input.jl :: TK.update!(m, evt)
+      ↓ mute l'éditeur / le scheduler
+src/io_scheduler.jl :: _step! (tâche de fond, toutes les lookahead/2 s)
+      ↓ interroge les patterns, construit les bundles OSC
+src/io_osc.jl :: encode → datagramme UDP
       ↓
 SuperCollider / SuperDirt (port 57120)
       ↓
-your speakers
+tes enceintes
 ```
 
-Everything in Ressac is in **one Julia module** named `Ressac`. There
-are no plugin boundaries inside the codebase — files just `include`
-each other. The directory layout matches concern, not visibility.
+Tout Ressac vit dans **un seul module Julia** nommé `Ressac`. Pas de
+frontière de module à l'intérieur : les fichiers s'`include`nt dans
+l'ordre fixé par `src/Ressac.jl`, qui est **l'unique table des
+includes** et donc la meilleure table des matières. Le découpage suit la
+responsabilité, pas la visibilité.
 
-## File responsibilities
+## Qui possède quoi
 
 ```
 src/
-  Ressac.jl              ★ module root: exports + load order
-  app.jl                   the TUI — the big one (~5800 LOC). Tachikoma
-                           Model + render + key dispatch + modals.
-                           To be split into smaller modules; see the
-                           ROADMAP section at the end of this file.
-  tui.jl                   `live()` entry point, scheduler bootstrap.
-  config.jl                RessacConfig + ressac.toml loader.
-  themes.jl                custom themes (cyberpunk / solarpunk) +
-                           Tachikoma built-ins routing.
+  Ressac.jl                ★ racine du module : ordre d'include + exports
 
-  core.jl                ★ Pattern{T} + Event{T} type
-  algebra.jl               binary ops (stack/cat/mask), broadcast lifts
-  combinators.jl           every/fast/slow/rev/jux/off/degrade/…
-  controls.jl              the |> chain operators (gain/lpf/pan/n/…)
-                           and the SuperDirt param auto-helpers.
+  ── Domaine pur (aucune I/O) ──
+  core_patterns.jl         ★ Pattern{T}, Event{T}, query
+  core_mininotation.jl       le parseur de p"…"
+  core_combinators.jl        fast/slow/jux/every/sometimes/…
+  core_algebra.jl            stack/cat/mask
+  core_tuning.jl             Scale, registre des gammes
+  core_controls.jl           gain/lpf/hpf/pan/n/… (les |> )
 
-  scheduler.jl           ★ real-time scheduling loop. The hot path.
-                           Holds the pattern dict + lookahead state.
-                           See "lock discipline" below.
-  osc.jl                   OSC encode/decode (no networking)
-  osc_listen.jl            UDP listen socket + scope-data dispatch
+  ── I/O ──
+  io_osc.jl                  format OSC (encode/decode, pas de réseau)
+  io_scheduler.jl          ★ la boucle temps réel — le chemin chaud.
+                             Voir « discipline de verrou » plus bas.
 
-  parse_minino.jl          mini-notation parser (the inside of "…")
+  ── Session live ──
+  live_boot.jl               _LIVE_SCHEDULER, start_live!, live()
+  live_api.jl                @d1..@d64, hush_all!, cps!, _route_to_slot!
 
-  live_api.jl              @d1..@d64 macros, hush_all!, cps!
-  live_api_helpers.jl      helpers shared with the legacy LiveModel
+  ── Plugins ──
+  plugin_registry.jl       ★ _SAMPLE/_INSTRUMENT/_SYNTH_REGISTRY + loader
+  plugin_handlers.jl         [samples] [instruments] [synths] [julia]
+  extension_registry.jl      docs + snippets apportés par les plugins
 
-  plugins.jl             ★ plugin loader + the three live registries:
-                             _SAMPLE_REGISTRY :: Dict{Symbol,SampleEntry}
-                             _INSTRUMENT_REGISTRY :: Dict{Symbol,InstrumentEntry}
-                             _SYNTH_REGISTRY :: Dict{Symbol,SynthEntry}
-  plugin_handlers.jl       [samples], [instruments], [synths], [julia]
-                           handlers — each declares one [section] of
-                           plugin.toml manifests.
+  ── Synthèse ──
+  synth_dsl.jl               SynthDSL : Julia → SC à la compilation
+  synth_library.jl           recettes DSL intégrées (kick, acid303, …)
+  genome*.jl, ga_*.jl        explorateur GA : génome, validité, rendu,
+                             opérateurs, moteur, ciblage, analyse
+  nrt_analysis.jl            descripteurs acoustiques hors-ligne
+  synth_roles.jl             rôles d'usage (bass/kick/…) + adéquation
+  synth_explainer.jl         « pourquoi ça sonne comme ça » + genome_from_dsl
+  synth_audition.jl          écoute des candidats (OSC)
+  wave_sculpt.jl             sculpt : knobs, proximité, bricks structurels
 
-  synth_dsl.jl             SynthDSL module — Julia → SC compile-time DSL
-  synth_library.jl         built-in DSL synth recipes (kick, kickbrut,
-                           subdrop, …, 909 kit)
-  snippets.jl              the ~80 named snippet templates
-                           (patterns + synth_dsl + synth_sc + reference)
+  ── Panes (workspace) ──
+  pane_interface.jl        ★ contrat PaneImpl + register_pane_kind!
+  workspace_manager.jl       arbre de splits, focus, floats, workspaces
+  workspace_commands.jl      cmd_split!/cmd_close!/cmd_focus!/…
+  workspace_keymap.jl        mode pane (Ctrl-w …)
+  workspace_persistence.jl   :layout-save / :layout-load
+  pane_editor.jl             EditorPane (patterns et synth)
+  pane_log.jl, pane_doc.jl, pane_scope.jl, pane_tuning.jl
+  pane_synth_explorer.jl     :explorer (GA)
+  pane_waveform.jl           :waveform (vue d'onde + mode sculpt)
+  snippet_panes.jl           panes créées par :snippet
+  command_line.jl            la barre `:` / `/` (widget indépendant)
 
-  wiki.jl                  in-app wiki page loader (reads docs/wiki/*.md)
+  ── L'application (chaque fichier prend un m::RessacApp) ──
+  app_model.jl             ★ RessacApp + accesseurs (_active_editor,
+                             _focused_role, …) + workspace par défaut
+  app_input.jl             ★ TK.update! clavier/souris : barre de
+                             commande → panic → mode pane → modal →
+                             pane focalisée → flux patterns
+  app_editor.jl              motions vim, nudge des nombres, raccourcis
+  app_patterns.jl            mute/solo, preview, eval @dN + cascade
+  app_scope.jl               :scope + rendu des 12 vues
+  app_synth.jl               panes synth : ouvrir/fermer/sauver/tester
+  app_transport.jl           rec / export / panic / hush
+  app_commands.jl            tables ex (littéral/regex/spécial) + commandes
+  app_modal.jl               infra modaux + guide/tutoriel/explain
+  app_view.jl              ★ TK.view : chrome + arbre de panes + modal
+  tui_pattern_editor.jl      playhead, zoom/shift/subdivise dans p"…"
+  tui_leader_snippets.jl     Space-leader : templates + placeholders
+  tui_autocomplete.jl        Tab : identifiants, ghost, commandes
+  tui_editor_ops.jl          opérations texte pures
+  tui_input_modes.jl         tap / piano / bpm
+  tui_hints.jl               candidats de complétion
+  tui_livedoc.jl             docs UGen/params, _GUIDE_LINES
+  tui_scope.jl               écoute OSC des scopes, _APP_SCOPE_*
+  modal_*.jl                 browse, mixer, lib, sculpt, wiki, snip, sccode
 
-  tui_docs.jl              _PARAM_DOCS, _PARAM_EXAMPLES, _STARTER_PACKS
-  tui_livedoc.jl           _SC_UGEN_DOCS, _SYNTH_GUIDE_LINES, livedoc widget
-  tui_bindings.jl          _GUIDE_LINES + the legacy LiveModel dispatch
-  tui_hints.jl             autocomplete candidates for the legacy TUI
-  tui_buffer.jl, tui_overlay.jl, tui_search.jl, tui_eval.jl
-                           remnants of the pre-Tachikoma TUI; some are
-                           still used (tui_docs/tui_livedoc/tui_bindings)
-                           and some are vestigial.
+  ── Contenu / configuration ──
+  session_config.jl, session_themes.jl, content_sccode.jl, content_wiki.jl
 ```
 
-★ = file you read first if you want to understand the core
-mechanics.
+★ = à lire en premier pour comprendre la mécanique.
 
-## Globals — who writes them, who reads
+## Globals — qui écrit, qui lit
 
-Ressac has a handful of module-level mutable globals. They're
-documented one-by-one below so you can audit any of them.
+Ressac a une poignée de globals mutables au niveau du module.
 
 ```
-_LIVE_SCHEDULER :: Ref{Union{Nothing,Scheduler}}    in tui.jl
-  Writers: start_live! / stop_live!   (tui.jl)
-  Readers: most of app.jl (mute / panic / preview / kill voice / …),
-           live_api.jl (@d1..@d64), controls.jl indirectly via the
-           pattern callbacks running on the scheduler thread.
+_LIVE_SCHEDULER :: Ref{Union{Nothing,Scheduler}}    live_boot.jl
+  Écrit par : start_live! / stop_live!
+  Lu par : app_* (mute / panic / preview / kill voice…), live_api.jl,
+           les callbacks de pattern sur le thread du scheduler.
 
-_SAMPLE_REGISTRY      :: Dict{Symbol, SampleEntry}     in plugins.jl
-_INSTRUMENT_REGISTRY  :: Dict{Symbol, InstrumentEntry} in plugins.jl
-_SYNTH_REGISTRY       :: Dict{Symbol, SynthEntry}      in plugins.jl
-  Writers: register_sample! / register_instrument! / register_synth!
-           — called by plugin_handlers.jl at load time, and by
-           _import_wav! / _save_session_app! / sccode-import for
-           hot-add at runtime.
-  Readers: app.jl browser, autocomplete, ghost suggestions,
-           snippets picker, scheduler event_to_osc routing.
+_SAMPLE_REGISTRY / _INSTRUMENT_REGISTRY / _SYNTH_REGISTRY
+                                                     plugin_registry.jl
+  Écrits par : register_sample! / register_instrument! / register_synth!
+           (plugin_handlers.jl au chargement ; :import-wav, :w, sculpt
+           :w à chaud).
+  Lus par : browse, complétion, ghost, snippets, event_to_osc.
 
-_APP_SCOPE_TYPE :: Ref{Symbol}                         in app.jl
-_APP_SCOPE_DATA :: Ref{Vector{Float32}}                in app.jl
-_APP_SPECTROGRAM_HISTORY :: Vector{Vector{Float32}}    in app.jl
-  Writers: osc_listen.jl when an /ressac/scope/* message comes back
-           from SC. Triggered on demand by the :scope command.
-  Readers: _render_app_scope (per-frame, in view()).
+_APP_SCOPE_TYPE, _APP_SCOPE_DATA, _APP_SPECTROGRAM_HISTORY   tui_scope.jl
+  Écrits par : le listener OSC (/ressac/scope/*), déclenché par :scope.
+  Lus par : _render_app_scope (app_scope.jl) à chaque frame.
 
-_CURRENT_SCALE   :: Ref{Symbol}                        in controls.jl
-  Writers: _scale_set      (`:scale <name>` ex-command)
-  Readers: degree() control op for scale-aware note offsets.
+_GHOST_USAGE                                         tui_autocomplete.jl
+  Fréquence d'usage des complétions, persistée dans
+  ~/.config/ressac/ghost_usage.json.
 
-_GHOST_USAGE     :: Dict{String, Dict{String, Int}}    in app.jl
-  Writers: _ghost_bump! on Tab accept / explicit completion.
-  Readers: _compute_ghost! to rank suggestions by usage frequency.
-  Persisted to ~/.config/ressac/ghost_usage.json.
+_LEADER_SNIPPETS / _LEADER_ACTIONS / _LEADER_LABELS  tui_leader_snippets.jl
+  Constantes, lues par le dispatcher Space-leader et le footer.
 
-_LEADER_SNIPPETS / _LEADER_ACTIONS / _LEADER_LABELS    in app.jl
-  Const Dicts — write-once at load, read by the leader dispatcher.
+_EVAL_MODE                                           live_api.jl
+  Écrit par _eval_pattern_blocks! (:freeze) ; lu par _route_to_slot!.
 
-_EVAL_MODE       :: Ref{Tuple{Symbol,Int}}             in live_api.jl
-  Writers: _eval_pattern_blocks! when entering ":freeze" mode.
-  Readers: _route_to_slot! (the @d1..@d64 expansion target).
+_APP_MUTED_PATTERNS                                  app_patterns.jl
+  Écrit par mute/solo ; lu par unmute et le mixer.
 
-_APP_MUTED_PATTERNS :: Dict{Symbol, Pattern}           in app.jl
-  Writers: _mute_pattern_slot! / _solo_pattern_slot!.
-  Readers: _unmute_pattern_slot! / mixer modal.
+_PANE_MODE                                           workspace_keymap.jl
+  État du mode pane (Ctrl-w). Les tests le remettent à false.
+
+_EXPLORER_EXPORT_REQUEST / _EXPLORER_WAVEFORM_REQUEST / _EXPLORER_SCULPT_REQUEST
+                                                     pane_synth_explorer.jl
+  « Seams » : une pane poste une requête, app_input.jl la draine au
+  prochain update! (une pane ne connaît pas RessacApp).
 ```
 
-## Lock discipline (scheduler.jl)
+## Discipline de verrou (io_scheduler.jl)
 
-The scheduler holds the only synchronised state in Ressac — the
-pattern dict (`s.patterns`), the cycle cursor (`s.last_end_cycles`),
-the tempo (`s.cps`). All four are protected by `s.lock`. The hot
-path `_step!` is split into two phases:
+Le scheduler détient le seul état synchronisé de Ressac : le dict de
+patterns (`s.patterns`), le curseur de cycle (`s.last_end_cycles`), le
+tempo (`s.cps`). Tous protégés par `s.lock`. Le chemin chaud `_step!` est
+en deux phases :
 
-1. **Snapshot phase** (lock held, fast):
-   - Drain pending pattern swaps
-   - Copy `cps`, `t_start`, and a shallow copy of the patterns dict
-   - Advance `last_end_cycles`
+1. **Snapshot** (verrou tenu, rapide) : draine les swaps de patterns en
+   attente, copie `cps`, `t_start` et une copie superficielle du dict,
+   avance `last_end_cycles`.
+2. **Query + envoi** (verrou relâché) : pour chaque (slot, pattern),
+   interroge les events de la fenêtre de lookahead, encode le bundle,
+   envoie en UDP, accumule `last_fired_at` localement.
 
-2. **Query + ship phase** (lock released):
-   - For each (slot, pattern), query events in the lookahead window
-   - Encode OSCBundle, ship over UDP
-   - Accumulate `last_fired_at` updates locally
+Une troisième prise de verrou minuscule réécrit `last_fired_at`. Les
+mutateurs `set_pattern!` / `set_cps!` / `hush!` ne sont donc JAMAIS
+bloqués par la complexité d'un pattern : l'eval ne fait pas bégayer
+l'audio.
 
-A tiny 3rd lock acquisition writes back `last_fired_at`. This means
-`set_pattern!` / `set_cps!` / `hush!` mutators are NEVER blocked by
-user pattern complexity — eval doesn't stutter the audio.
+Si tu ajoutes de l'état au scheduler, garde la même discipline :
+snapshot + avance + relâche avant tout travail long.
 
-If you add new scheduler state, follow the same discipline: snapshot
-+ advance + release before doing any long work.
+## Routage OSC
 
-## OSC routing
-
-Two outgoing paths, both UDP to localhost:57120:
+Deux chemins sortants, tous deux en UDP vers localhost:57120 :
 
 ```
-/dirt/play       SuperDirt-managed dispatch. Used for samples and
-                 instruments (anything that should go through
-                 SuperDirt's freq/sustain/gain calculator + global
-                 effects). The synth name is in the `s` field.
+/dirt/play       dispatch géré par SuperDirt. Samples et instruments
+                 (tout ce qui doit passer par le calcul freq/sustain/
+                 gain de SuperDirt + les effets globaux). Le nom du
+                 synth est dans le champ `s`.
 
-/ressac/play     Bypasses SuperDirt for user-defined synths. Picks
-                 up the SynthDef's own param defaults so a DSL synth
-                 with `(freq=110, sustain=999)` actually keeps those
-                 instead of being overridden. event_to_osc decides
-                 between the two via `_is_user_synth(name)`.
+/ressac/play     contourne SuperDirt pour les synths utilisateur. Reprend
+                 les defaults de params du SynthDef, donc un synth DSL
+                 avec (freq=110, sustain=999) les garde vraiment.
+                 event_to_osc choisit via `_is_user_synth(name)`.
 ```
 
-Plus a handful of side-channels:
+Plus quelques canaux annexes :
 
 ```
-/ressac/evalAndPlay     T in the synth pane — sends SC source +
-                         instantiates one voice for preview.
-/ressac/freeByName       Mute on a slot — frees running voices of
-                         the named SynthDef (drone-kill).
-/ressac/panic            ! / :panic / :hush — s.freeAll on SC side.
-/ressac/safety           [LeakDC + HPF 10Hz + Limiter 0.95] toggle.
-/ressac/scope            Subscribe / unsubscribe scope analysis.
-/dirt/loadSampleFolder   :import-wav — tells SC to load a new bank.
+/ressac/evalAndPlay      T dans la pane synth — envoie le source SC et
+                         instancie une voix pour écoute.
+/ressac/freeByName       mute d'un slot — libère les voix du SynthDef.
+/ressac/panic            ! / :panic / :hush — s.freeAll côté SC.
+/ressac/safety           bascule [LeakDC + HPF 10 Hz + Limiter 0.95].
+/ressac/scope            abonne / désabonne l'analyse scope.
+/dirt/loadSampleFolder   :import-wav — SC charge une nouvelle banque.
 ```
 
-Incoming (UDP 57121, listened by osc_listen.jl):
+Entrant (UDP 57121, écouté par tui_scope.jl) :
 
 ```
-/ressac/scope/amp        per-frame RMS (60 Hz)
-/ressac/scope/wave       braille waveform sample buffer (60 Hz)
-/ressac/scope/spectrum   FFT magnitudes (45 Hz)
+/ressac/scope/amp        RMS par frame (60 Hz)
+/ressac/scope/wave       buffer d'onde braille (60 Hz)
+/ressac/scope/spectrum   magnitudes FFT (45 Hz)
 /ressac/scope/{xy,goni,spectrogram,peak,pitch,onset,hist,corr}
-/ressac/rms              per-orbit RMS (Amplitude.kr taps)
-/ressac/audio_in         input bus RMS + bands (audio_in scope)
-/ressac/sc-meta-reply    SC version + UGen count (sc-autodiscover)
-/ressac/sc-discovery-done   discovery ack with UGen count
+/ressac/rms              RMS par orbit (taps Amplitude.kr)
+/ressac/audio_in         RMS + bandes du bus d'entrée
+/ressac/sc-meta-reply    version SC + nombre d'UGens (sc-autodiscover)
+/ressac/sc-discovery-done
 ```
 
-These land in `_APP_SCOPE_DATA[]` (or the appropriate `_APP_*` ref)
-and the per-frame `view()` reads the global to render the scope pane.
+Ils atterrissent dans `_APP_SCOPE_DATA[]` (ou le `_APP_*` idoine) et
+`view()` lit le global à chaque frame pour rendre le scope.
 
-### Convention: SC → Ressac replies must use `~ressacScopeAddr`
+### Convention : les réponses SC → Ressac passent par `~ressacScopeAddr`
 
-The OSCdef callback's `addr` argument is the SENDER's ephemeral
-outbound port, NOT Ressac's listen port. Replying via
-`addr.sendMsg(...)` drops the packet on a closed socket — the live
-session looks fine until you wait for a response that never lands.
+L'argument `addr` d'un callback OSCdef est le port éphémère SORTANT de
+l'émetteur, pas le port d'écoute de Ressac. Répondre via
+`addr.sendMsg(...)` jette le paquet sur un socket fermé : la session
+semble saine jusqu'à ce qu'on attende une réponse qui n'arrive jamais.
 
-Every SC handler that needs to reply to Ressac uses the global
-`~ressacScopeAddr` (= `NetAddr("127.0.0.1", 57121)`, declared near
-the top of `scripts/superdirt-startup.scd`). See `/ressac/rms`,
-`/ressac/audio_in`, `/ressac/sc-meta` in that file for the canonical
-pattern.
+Tout handler SC qui doit répondre utilise le global `~ressacScopeAddr`
+(= `NetAddr("127.0.0.1", 57121)`, déclaré en tête de
+`scripts/superdirt-startup.scd`). Voir `/ressac/rms`, `/ressac/audio_in`,
+`/ressac/sc-meta` dans ce fichier pour le motif canonique.
 
-Common symptom of getting this wrong: a Julia roundtrip helper
-(`_sc_meta_roundtrip`, `_handle_sc_discover`, …) times out every
-time despite the SC log showing the handler ran.
+Symptôme classique : un helper aller-retour Julia (`_sc_meta_roundtrip`,
+`_handle_sc_discover`…) expire à chaque fois alors que le log SC montre
+que le handler a tourné.
 
-### Listener is lazy-started
+### Le listener démarre à la demande
 
-`_ensure_app_scope_listener!()` is what binds the receive socket and
-spawns the dispatch loop. It's called on demand — first `:scope`,
-first `:audio-in`, first sc-autodiscover handler invocation. Code
-that ships an OSC packet expecting a reply must call this helper
-first; otherwise the reply arrives at a port nobody is listening on.
+`_ensure_app_scope_listener!()` ouvre le socket de réception et lance la
+boucle de dispatch. Appelé à la demande : premier `:scope`, premier
+`:audio-in`, premier handler sc-autodiscover. Tout code qui envoie un
+paquet OSC en attendant une réponse doit l'appeler d'abord.
 
-## Render flow
+## Flux de rendu
 
-`TK.view(m::RessacApp, f::TK.Frame)` runs at the configured fps
-(default 120). It:
+`TK.view(m::RessacApp, f::TK.Frame)` (app_view.jl) tourne au fps
+configuré (120 par défaut). Il :
 
-1. Layouts the screen into rows: status / body / livedoc / footer / log
-2. Renders status bar (sections + cycle gradient + state badges)
-3. Renders the patterns pane (and the synth pane if open) wrapped in
-   focus-aware `TK.Block` borders
-4. Renders the scope (if active)
-5. Paints the eval-flash overlay (post-:e green pulse, 0.6 s fade)
-6. Paints the playhead overlay (active token in :accent — cached per
-   line hash so unchanged lines skip the regex)
-7. Renders the ghost autocomplete suggestion
-8. Livedoc row (the word under cursor → param doc)
-9. Footer (mode chip + context-aware hint set)
-10. Log pane (severity-stripe per line, scroll indicator)
-11. Modal overlay (if any) — `_render_*_modal!` clears its inner
-    rect then draws on top of everything else
+1. découpe l'écran : status / workspace / strip / mode / livedoc /
+   commande / footer / log ;
+2. rend l'arbre de panes du workspace courant (`_render_tree!`, chaque
+   `PaneImpl.render!` dans son rect, bordure accentuée sur le focus),
+   puis les floats ;
+3. peint les overlays de la pane patterns : flash d'eval, sélection
+   visuelle, playhead, ghost ;
+4. rend le chrome : status bar, strip de workspaces, strip de mode,
+   livedoc, barre de commande (si active), footer, journal ;
+5. rend le modal par-dessus tout, en laissant la dernière ligne à la
+   barre de commande persistante.
 
-The playhead and eval-flash overlays paint AFTER the editor renders,
-so they layer on top of cell contents without needing to know about
-the editor's state.
+Le playhead et le flash peignent APRÈS l'éditeur, donc par-dessus les
+cellules sans rien savoir de l'état de l'éditeur.
 
-## Background tasks
+## Routage d'une touche
 
-```
-Scheduler loop          src/scheduler.jl::start! — Threads.@spawn
-                         iterates every lookahead/2 s (default 25ms).
-Stdin monitor           ~/.julia/.../Tachikoma — wakes the render
-                         loop on terminal input.
-Ghost usage save        async write to ~/.config/ressac/ghost_usage.json
-                         on app exit and periodically.
-sccode HTTP fetch       sync (blocks the modal). #TODO move to async
-                         so the UI stays responsive on slow networks.
-```
+`TK.update!(m, ::KeyEvent)` (app_input.jl), dans cet ordre :
 
-## What's planned to change
+1. barre de commande active → elle prend tout ;
+2. `!` → panic, depuis n'importe où (sauf saisie de texte) ;
+3. `Ctrl-1..9` workspaces, `Ctrl-w` mode pane (persistant) ;
+4. modal ouvert → `_handle_modal_key!` ;
+5. pane focalisée non-patterns → `PaneImpl.handle_key!` ;
+6. flux patterns : leader Space, `?`, `e`/`E`, `m`, `K`, nudge, puis
+   le CodeEditor Tachikoma.
 
-The biggest pending refactor is splitting `app.jl` (5800 LOC) into
-~5 cohesive modules:
+Une pane ne connaît pas `RessacApp` : quand elle a besoin de l'app
+(ouvrir un synth, un sculpt, exporter), elle poste une requête dans un
+`Ref` global que `update!` draine (« seams », voir globals).
+
+## Tâches de fond
 
 ```
-modals.jl          render + key handlers for :browse / :lib / :sccode /
-                   :snip / :wiki / :mixer / :guide / :tutorial
-pattern_editor.jl  playhead, eval flash, zoom/shift/silence/subdivide,
-                   _eval_pattern_blocks!, mute / unschedule
-input_modes.jl     tap, piano, leader-snippet expansion
-autocomplete.jl    ghost, Tab-cycle, ex-command autocomplete
-editor_ops.jl      vim word motions, visual modes, `.` repeat,
-                   nudge-number-under-cursor
+boucle scheduler        io_scheduler.jl::start! — Threads.@spawn,
+                        toutes les lookahead/2 s (25 ms par défaut).
+moniteur stdin          Tachikoma — réveille la boucle de rendu.
+rendu sculpt            pane_waveform.jl — Threads.@spawn par
+                        version demandée, résultat déposé sous verrou.
+sauvegarde ghost usage  écriture asynchrone de ghost_usage.json.
+fetch sccode            synchrone (bloque le modal).
 ```
 
-Each will be `include`-d from `Ressac.jl` and refer to `RessacApp`
-without a module boundary — the goal is locality, not encapsulation.
+## Ce qui va changer
+
+La refonte UI/UX en cours est décrite dans
+`docs/journal/20260921_ui_ux_refonte_design.md` : registre de bindings
+unique (hints, aide `?` et wiki des touches générés), chrome réduit à
+trois lignes, workspaces PLAY / DESIGN / EXPLORE, sculpt en pane
+zoomable, UI en français.

@@ -275,7 +275,16 @@ complétion, `docs/wiki/10-architecture.md` réécrit sur la carte réelle
 Chaque étape : design→tests→impl, suite complète verte, un commit par
 brique, comme pour le sculpt.
 
-## 5. Décisions ouvertes
+## 5. Décisions (prises le 2026-09-21)
+
+- **Sculpt** : pane zoomable dans EXPLORE (plus de modal à part).
+- **Log** : 3 lignes repliables ; `:copylogs` et la pane log restent pour
+  relire ce qui a défilé.
+- **Langue de l'UI** : français, partout (chrome, aide, wiki, messages).
+- **Which-key** : immédiat sur Space, après 300 ms sur `g` et `Ctrl-w`.
+
+Les questions telles qu'elles étaient posées :
+
 
 1. **Sculpt : modal plein écran (actuel) ou pane zoomable dans EXPLORE ?**
    Recommandation : pane zoomable — même conteneur que le reste, patterns

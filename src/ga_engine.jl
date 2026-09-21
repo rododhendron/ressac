@@ -383,19 +383,6 @@ function diverge!(pop::Population, rng::AbstractRNG)
     return pop
 end
 
-# Ancien nom conservé : re-mute simplement la base.
-function reshuffle!(pop::Population, rng::AbstractRNG)
-    n = pop.gen_size
-    pop.candidates = Candidate[]
-    for _ in 1:n
-        cid = _new_cid!(pop)
-        _record!(pop, cid, "graine", Int[])
-        push!(pop.candidates,
-              Candidate(_mutate(pop, pop.base, rng), 0.0, cid, "graine"))
-    end
-    return pop
-end
-
 # 7. Bayésien (surrogate de préférences) : un modèle linéaire léger du
 #    goût (appris sur tes notes) pré-score un GRAND pool interne d'enfants ;
 #    on garde les mieux notés (exploitation) + quelques-uns lointains
