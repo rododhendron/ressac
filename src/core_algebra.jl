@@ -97,3 +97,12 @@ end
 Curried form: `mask(q)(p) == mask(p, q)`.
 """
 mask(q::Pattern{Bool}) = x -> mask(_as_pattern(x), q)
+# `mask("1 0 1 1")` / `mask("t f t t")` : la chaîne devient un Pattern{Bool}.
+mask(q::AbstractString) = mask(_as_bool_pattern(q))
+mask(p::Pattern, q::AbstractString) = mask(p, _as_bool_pattern(q))
+_truthy(v::Symbol) = String(v) in ("1", "t", "true", "x")
+function _as_bool_pattern(q::AbstractString)
+    sp = parse_minino(String(q))
+    Pattern{Bool}((s::Rational, e::Rational) -> Event{Bool}[Event{Bool}(ev.start, ev.stop, _truthy(ev.value)) for ev in sp(s, e)])
+end
+_as_bool_pattern(q::Pattern{Bool}) = q

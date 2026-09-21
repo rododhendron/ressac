@@ -80,13 +80,28 @@ l'ouvre. SuperCollider brut OU le DSL Julia embarqué
 (`@synth :wob saw(:freq) |> rlpf(800, 0.3)`). `T` joue, `:w` sauve, `U`
 pose le synth dans un pattern, `gs` remonte d'un pattern au synth.
 
-### Ce qui manque par rapport à Tidal (et ce qui est prévu)
+### Couverture des fonctions Tidal
 
-- **L'arithmétique par événement** `(|+|)` entre deux patterns — `stack(p1,
-  p2)` pour du parallèle ; pas de maths inter-patterns natives.
-- **`swingBy` / `whenmod`** — pas encore (`every`, `chunk`, `pump`).
+| Tidal | Ressac | Remarque |
+|---|---|---|
+| `fast` `slow` `hurry` `rev` `iter` `iter'` `palindrome` | `fast` `slow` `hurry` `rev` `iter` `iterBack` `palindrome` | |
+| `every` `every'` `whenmod` `sometimesBy` `someCyclesBy` | `every` `lastOf`/`firstOf` `whenmod` `sometimesBy` `someCyclesBy` | `sometimesBy` décide par cycle |
+| `degradeBy` `unDegradeBy` | `degradeBy` | pas de `unDegradeBy` |
+| `jux` `juxBy` `off` `superimpose` `layer` `stut` `echo` | `jux` `juxBy` `off` `superimpose` `layer` `stut` | `echo` = `stut` |
+| `euclid` `euclidInv` `euclidOff` `euclidFull` | `euclid` `euclidInv` `euclidOff` | `euclidFull` = `stack(euclid, euclidInv(f))` |
+| `struct` `mask` `sew` `stitch` | `structPat` `mask("1 0 1 1")` | pas de `sew`/`stitch` |
+| `rot` `shuffle` `scramble` `linger` `brak` `swingBy` `swing` | idem | |
+| `fastGap` `compress` `zoom` `inside` `outside` `ply` `segment` | idem | |
+| `chunk` `chunk'` | `chunk` | pas de `chunk'` |
+| `arp` `rolled` `rolledBy` accords `c'maj` | idem | |
+| `n` `note` avec noms de notes `c e g` | idem | octave 5 = 0 |
+| `range` `irand` `rand` `sine` `perlin` `saw` `tri` `square` | `range_pat` `rand_pat` `sine` `perlin` `saw` `tri` `square` | `range`/`rand` clashent avec Base |
+| `striate` `chop` `slice` `splice` `loopAt` | `striate` `chopp` | pas de `slice`/`splice`/`loopAt` |
+| `nudge` `fix` `bite` `squeeze` `ur` `weave` `wedge` `ncat` `wchoose` `select` `pickF` | — | pas encore |
+| `(|+|)` `(|*|)` arithmétique entre patterns | — | `stack` pour le parallèle |
+| `setcps` `hush` `once` `solo` `mute` | `cps!` `:hush` `:solo` `:mute` | `once` : joue avec `T` |
+
 - **Entrée MIDI** — pas de driver natif (voir `13-external-midi`).
-- **`weave` / `linger`** — pas encore.
 
 S'il te manque quelque chose de précis, ouvre une issue.
 

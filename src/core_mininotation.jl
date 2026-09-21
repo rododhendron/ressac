@@ -400,12 +400,10 @@ end
 function _emit!(out::Vector{Event{Symbol}}, node::EuclidNode,
                 a::Rational, b::Rational, cycle::Int)
     pulses = _euclidean_pulses(node.k, node.n)
-    # Apply rotation: shift the pulse vector forward by `rot` steps,
-    # wrapping. `bd(3,8,2)` → pulses originally [1,0,0,1,0,0,1,0]
-    # become [0,1,1,0,0,1,0,0] for rot=2. Negative rotates backward.
+    # Rotation comme Tidal : `bd(3,8,2)` tourne les pas de 2 vers la
+    # GAUCHE — [1,0,0,1,0,0,1,0] devient [0,1,0,0,1,0,1,0].
     if node.rot != 0
-        r = mod(node.rot, node.n)
-        pulses = vcat(pulses[end-r+1:end], pulses[1:end-r])
+        pulses = circshift(collect(pulses), -node.rot)
     end
     width = b - a
     for i in 0:(node.n - 1)
@@ -434,12 +432,11 @@ function _build_pattern(root::MNode)
             _emit!(events, root,
                    Rational{Int64}(cyc), Rational{Int64}(cyc + 1), cyc)
         end
-        clipped = Event{Symbol}[]
-        for ev in events
-            a = max(ev.start, s)
-            b = min(ev.stop,  e)
-            a < b && push!(clipped, Event{Symbol}(a, b, ev.value))
-        end
+        # Sémantique « onset » comme `pure` : un événement est émis entier
+        # si et seulement s'il DÉMARRE dans [s, e). Couper des fragments
+        # faisait rejouer un coup à cheval sur deux fenêtres (late, off,
+        # stut… doublaient des coups).
+        clipped = Event{Symbol}[ev for ev in events if s <= ev.start < e]
         sort!(clipped, by = ev -> ev.start)
         clipped
     end)

@@ -946,3 +946,339 @@ function arp(modes, p::Pattern{T}) where {T}
     end)
 end
 arp(modes) = p -> arp(modes, _as_pattern(p))
+
+# ---------------------------------------------------------------------------
+# Tour des fonctions Tidal — rot, hurry, shuffle, scramble, linger, swing,
+# whenmod, someCycles, fastGap, compress, zoom, euclid*, superimpose,
+# inside/outside, rolled, brak, layer, stut. Cf. docs/wiki/02-patterns.md.
+# ---------------------------------------------------------------------------
+
+# Cycles entiers touchés par une fenêtre [s, e).
+_cycles(s::Rational, e::Rational) = floor(Int, s):(ceil(Int, e) - 1)
+# Un événement « démarre » dans la fenêtre (sémantique onset des patterns).
+_onset_in(ev, s, e) = ev.start >= s && ev.start < e
+# Valeur de `p` active à l'instant t (l'événement dont le créneau contient t).
+function _value_at(p::Pattern{T}, t::Rational) where {T}
+    c = Rational{Int64}(floor(Int, t))
+    for ev in p(c, c + 1)
+        ev.start <= t < ev.stop && return ev.value
+    end
+    return nothing
+end
+
+"""
+    rot(n, p) / p |> rot(n)
+
+Fait tourner les VALEURS de `n` crans dans chaque cycle, en gardant la
+structure rythmique : `"bd hh sn" |> rot(1)` joue `hh sn bd`.
+"""
+function rot(n::Int, p::Pattern{T}) where {T}
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            a = Rational{Int64}(cyc)
+            evs = sort(p(a, a + 1); by = ev -> (ev.start, _arp_key(ev.value)))
+            isempty(evs) && continue
+            vals = [ev.value for ev in evs]
+            for (i, ev) in enumerate(evs)
+                _onset_in(ev, s, e) && push!(out, Event{T}(ev.start, ev.stop, vals[mod1(i + n, length(vals))]))
+            end
+        end
+        out
+    end)
+end
+rot(n::Int) = p -> rot(n, _as_pattern(p))
+
+"""
+    hurry(n, p) — fast(n) ET speed × n (les samples montent d'autant).
+"""
+hurry(n::Real, p::Pattern) = fast(n, p) |> speed(n)
+hurry(n::Real) = p -> hurry(n, _as_pattern(p))
+
+# Le morceau `src` (0-based, sur n) du cycle `cyc` de p, joué au morceau `dst`.
+function _slice_moved(p::Pattern{T}, cyc::Int, src::Int, dst::Int, n::Int, out::Vector{Event{T}}, s, e) where {T}
+    a = Rational{Int64}(cyc) + Rational{Int64}(src, n)
+    b = a + Rational{Int64}(1, n)
+    shift = Rational{Int64}(dst - src, n)
+    for ev in p(a, b)
+        ev.start >= a || continue
+        ns = ev.start + shift; ne = min(ev.stop, b) + shift
+        _onset_in((start = ns,), s, e) && push!(out, Event{T}(ns, ne, ev.value))
+    end
+end
+_onset_in(ev::NamedTuple, s, e) = ev.start >= s && ev.start < e
+
+"""
+    shuffle(n, p) — découpe chaque cycle en n morceaux joués dans un ordre
+    aléatoire (déterministe par cycle), chacun une fois.
+    scramble(n, p) — idem mais chaque position tire un morceau au hasard
+    (avec répétitions possibles).
+"""
+function shuffle(n::Int, p::Pattern{T}) where {T}
+    n > 0 || throw(ArgumentError("shuffle needs n > 0"))
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            perm = sortperm([hash((cyc, i, :shuffle)) for i in 1:n])
+            for (dst, src) in enumerate(perm)
+                _slice_moved(p, cyc, src - 1, dst - 1, n, out, s, e)
+            end
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+shuffle(n::Int) = p -> shuffle(n, _as_pattern(p))
+
+function scramble(n::Int, p::Pattern{T}) where {T}
+    n > 0 || throw(ArgumentError("scramble needs n > 0"))
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e), dst in 0:(n - 1)
+            src = Int(hash((cyc, dst, :scramble)) % UInt(n))
+            _slice_moved(p, cyc, src, dst, n, out, s, e)
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+scramble(n::Int) = p -> scramble(n, _as_pattern(p))
+
+"""
+    linger(f, p) — répète la première fraction `f` de chaque cycle pour le
+    remplir : `linger(1//4)` boucle le premier quart.
+"""
+function linger(f::Real, p::Pattern{T}) where {T}
+    fr = _to_rat(f)
+    (0 < fr <= 1) || throw(ArgumentError("linger needs 0 < f ≤ 1"))
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            a = Rational{Int64}(cyc)
+            head = [ev for ev in p(a, a + fr) if ev.start >= a && ev.start < a + fr]
+            k = 0
+            while k * fr < 1
+                shift = k * fr
+                for ev in head
+                    ns = ev.start + shift
+                    ns < a + 1 || continue
+                    (ns >= s && ns < e) && push!(out, Event{T}(ns, min(ev.stop + shift, a + 1), ev.value))
+                end
+                k += 1
+            end
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+linger(f::Real) = p -> linger(f, _as_pattern(p))
+
+"""
+    swingBy(x, n, p) — swing : dans chacun des n créneaux du cycle, ce qui
+    tombe dans la seconde moitié est retardé de `x` créneau.
+    swing(n, p) = swingBy(1//3, n, p).
+"""
+function swingBy(x::Real, n::Int, p::Pattern{T}) where {T}
+    xr = _to_rat(x); nr = Rational{Int64}(n)
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for ev in p(s - 1//1, e)           # un peu avant : un événement décalé peut entrer dans la fenêtre
+            slot = floor(Int, ev.start * nr) // nr
+            pos = (ev.start - slot) * nr
+            shift = pos >= 1//2 ? xr / nr : 0//1
+            ns = ev.start + shift
+            (ns >= s && ns < e) && push!(out, Event{T}(ns, ev.stop + shift, ev.value))
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+swingBy(x::Real, n::Int) = p -> swingBy(x, n, _as_pattern(p))
+swing(n::Int, p::Pattern) = swingBy(1//3, n, p)
+swing(n::Int) = p -> swing(n, _as_pattern(p))
+
+"""
+    whenmod(a, b, f, p) — applique `f` aux cycles dont le numéro modulo `a`
+    est ≥ `b` : `whenmod(8, 6, rev)` inverse les cycles 6 et 7 sur 8.
+"""
+function whenmod(a::Int, b::Int, f, p::Pattern{T}) where {T}
+    fp = f(p)
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            q = mod(cyc, a) >= b ? fp : p
+            lo = max(Rational{Int64}(cyc), s); hi = min(Rational{Int64}(cyc + 1), e)
+            lo < hi && append!(out, q(lo, hi))
+        end
+        out
+    end)
+end
+whenmod(a::Int, b::Int, f) = p -> whenmod(a, b, f, _as_pattern(p))
+
+"""
+    someCyclesBy(prob, f, p) / someCycles(f, p) — `f` sur certains cycles
+    entiers (tirage déterministe par cycle). Alias Tidal de sometimesBy ici.
+"""
+someCyclesBy(prob::Real, f, p::Pattern) = sometimesBy(prob, f, p)
+someCyclesBy(prob::Real, f) = p -> someCyclesBy(prob, f, _as_pattern(p))
+someCycles(f, p::Pattern) = someCyclesBy(0.5, f, p)
+someCycles(f) = p -> someCycles(f, _as_pattern(p))
+
+"""
+    compress(b, e, p) — tasse chaque cycle de `p` dans l'intervalle [b, e)
+    du cycle (silence ailleurs). fastGap(n, p) = compress(0, 1/n, p).
+"""
+function compress(b::Real, e_::Real, p::Pattern{T}) where {T}
+    br = _to_rat(b); er = _to_rat(e_)
+    (0 <= br < er <= 1) || throw(ArgumentError("compress needs 0 ≤ b < e ≤ 1"))
+    w = er - br
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            a = Rational{Int64}(cyc)
+            for ev in p(a, a + 1)
+                ev.start >= a || continue
+                ns = a + br + (ev.start - a) * w
+                ne = a + br + (min(ev.stop, a + 1) - a) * w
+                (ns >= s && ns < e) && push!(out, Event{T}(ns, ne, ev.value))
+            end
+        end
+        out
+    end)
+end
+compress(b::Real, e_::Real) = p -> compress(b, e_, _as_pattern(p))
+fastGap(n::Real, p::Pattern) = compress(0, 1 // _to_rat(n), p)
+fastGap(n::Real) = p -> fastGap(n, _as_pattern(p))
+
+"""
+    zoom(b, e, p) — ne joue que la portion [b, e) de chaque cycle, étirée
+    sur tout le cycle : `zoom(0, 1//2)` = la première moitié, en double.
+"""
+function zoom(b::Real, e_::Real, p::Pattern{T}) where {T}
+    br = _to_rat(b); er = _to_rat(e_)
+    (0 <= br < er <= 1) || throw(ArgumentError("zoom needs 0 ≤ b < e ≤ 1"))
+    w = er - br
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            a = Rational{Int64}(cyc)
+            for ev in p(a + br, a + er)
+                ev.start >= a + br || continue
+                ns = a + (ev.start - a - br) / w
+                ne = a + (min(ev.stop, a + er) - a - br) / w
+                (ns >= s && ns < e) && push!(out, Event{T}(ns, ne, ev.value))
+            end
+        end
+        out
+    end)
+end
+zoom(b::Real, e_::Real) = p -> zoom(b, e_, _as_pattern(p))
+
+# Structure booléenne → valeurs de p échantillonnées à chaque coup.
+function _struct_from_bools(bools::AbstractVector{Bool}, p::Pattern{T}) where {T}
+    n = length(bools)
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e), i in 0:(n - 1)
+            bools[i + 1] || continue
+            a = Rational{Int64}(cyc) + Rational{Int64}(i, n)
+            (a >= s && a < e) || continue
+            v = _value_at(p, a)
+            v === nothing || push!(out, Event{T}(a, a + Rational{Int64}(1, n), v))
+        end
+        out
+    end)
+end
+
+"""
+    euclid(k, n, p) — rythme euclidien : k coups sur n pas, valeurs prises
+    dans `p`. euclidInv joue les pas vides, euclidOff(k, n, r, p) tourne de r.
+"""
+euclid(k::Int, n::Int, p::Pattern) = _struct_from_bools(_euclidean_pulses(k, n), p)
+euclid(k::Int, n::Int) = p -> euclid(k, n, _as_pattern(p))
+euclidInv(k::Int, n::Int, p::Pattern) = _struct_from_bools(.!(_euclidean_pulses(k, n)), p)
+euclidInv(k::Int, n::Int) = p -> euclidInv(k, n, _as_pattern(p))
+function euclidOff(k::Int, n::Int, r::Int, p::Pattern)
+    b = _euclidean_pulses(k, n)
+    _struct_from_bools(circshift(collect(b), -r), p)
+end
+euclidOff(k::Int, n::Int, r::Int) = p -> euclidOff(k, n, r, _as_pattern(p))
+
+"""
+    superimpose(f, p) — p plus f(p) par-dessus : `superimpose(fast(2))`.
+    layer([f, g], p) — empile f(p), g(p), … (sans p lui-même).
+"""
+superimpose(f, p::Pattern) = stack(p, f(p))
+superimpose(f) = p -> superimpose(f, _as_pattern(p))
+layer(fs, p::Pattern) = stack([f(p) for f in fs]...)
+layer(fs) = p -> layer(fs, _as_pattern(p))
+
+"""
+    inside(n, f, p) — applique f « à l'intérieur » d'un cycle découpé en n :
+    `inside(2, rev)` inverse chaque moitié séparément. outside = l'inverse.
+"""
+inside(n::Real, f, p::Pattern) = fast(n, f(slow(n, p)))
+inside(n::Real, f) = p -> inside(n, f, _as_pattern(p))
+outside(n::Real, f, p::Pattern) = inside(1 // _to_rat(n), f, p)
+outside(n::Real, f) = p -> outside(n, f, _as_pattern(p))
+
+"""
+    rolledBy(t, p) / rolled(p) — « roule » les accords : la i-ème note (par
+    hauteur) part plus tard, de i/k × t × durée. rolled = rolledBy(1//4).
+"""
+function rolledBy(t::Real, p::Pattern{T}) where {T}
+    tr = _to_rat(t)
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        evs = p(s, e)
+        groups = Dict{Tuple{Rational{Int64},Rational{Int64}},Vector{Event{T}}}()
+        order = Tuple{Rational{Int64},Rational{Int64}}[]
+        for ev in evs
+            k = (ev.start, ev.stop)
+            haskey(groups, k) || (groups[k] = Event{T}[]; push!(order, k))
+            push!(groups[k], ev)
+        end
+        out = Event{T}[]
+        for k in order
+            notes = sort(groups[k]; by = ev -> _arp_key(ev.value))
+            n = length(notes); dur = k[2] - k[1]
+            for (i, ev) in enumerate(notes)
+                push!(out, Event{T}(ev.start + dur * tr * (i - 1) // n, ev.stop, ev.value))
+            end
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+rolledBy(t::Real) = p -> rolledBy(t, _as_pattern(p))
+rolled(p::Pattern) = rolledBy(1//4, p)
+rolled(p) = rolled(_as_pattern(p))
+
+"""
+    brak(p) — un cycle sur deux, le pattern est tassé dans la première
+    moitié et décalé d'un quart : le « break » de Tidal.
+"""
+function brak(p::Pattern{T}) where {T}
+    alt = late(1//4, compress(0, 1//2, p))
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            q = isodd(cyc) ? alt : p
+            lo = max(Rational{Int64}(cyc), s); hi = min(Rational{Int64}(cyc + 1), e)
+            lo < hi && append!(out, q(lo, hi))
+        end
+        out
+    end)
+end
+brak(p) = brak(_as_pattern(p))
+
+"""
+    stut(n, feedback, time, p) — écho : n copies, chacune `time` cycle plus
+    tard et gain × feedback à chaque fois.
+"""
+function stut(n::Int, feedback::Real, time::Real, p)
+    n >= 1 || throw(ArgumentError("stut needs n ≥ 1"))
+    base = _lift_to_control(_as_pattern(p))
+    layers = [i == 0 ? base : (late(time * i, base) |> gain(feedback^i)) for i in 0:(n - 1)]
+    return stack(layers...)
+end
+stut(n::Int, feedback::Real, time::Real) = p -> stut(n, feedback, time, p)

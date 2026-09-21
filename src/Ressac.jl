@@ -132,6 +132,10 @@ export lastOf, firstOf, early, late, ply, runp, choose, seq, structPat
 # `Ressac.chop` still works for copy-pasted Tidal code.
 export striate, chopp, nrun
 export arp, chord_names
+export rot, hurry, shuffle, scramble, linger, swingBy, swing, whenmod
+export someCyclesBy, someCycles, fastGap, compress, zoom
+export euclid, euclidInv, euclidOff, superimpose, layer, inside, outside
+export rolled, rolledBy, brak, stut
 # Continuous signals. `range_pat` / `rand_pat` keep `_pat` to avoid
 # clashing with Base.range / Base.rand respectively.
 export sine, cosine, tri, saw, square, perlin, segment

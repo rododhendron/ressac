@@ -39,11 +39,21 @@ Chaque ligne `@dN` est du Julia. `|>` enchaîne les combinateurs :
 Combinateurs disponibles :
 
 **Transformations de pattern** (remodèlent le temps / les valeurs) :
-- `fast` `slow` `density` `rev` `every` `stack` `cat` `mask` `gate`
-- `jux` `juxBy` `off` `degrade` `degradeBy`
-- `sometimes` `often` `rarely` `sometimesBy`
-- `palindrome` `iter` `chunk`
+- temps : `fast` `slow` `density` `hurry` `rev` `iter` `iterBack` `palindrome`
+  `early` `late` `off` `swingBy` `swing` `fastGap` `compress` `zoom` `inside`
+  `outside` `linger` `ply` `brak`
+- structure : `stack` `cat` `seq` `superimpose` `layer` `mask` `gate` `structPat`
+  `euclid` `euclidInv` `euclidOff` `chunk` `shuffle` `scramble` `rot`
+- conditionnel : `every` `whenmod` `sometimes` `sometimesBy` `often` `rarely`
+  `someCycles` `someCyclesBy` `degrade` `degradeBy` `lastOf` `firstOf`
+- accords : `arp` `rolled` `rolledBy`
+- effets de structure : `jux` `juxBy` `stut` `striate` `chopp`
+- signaux : `sine` `cosine` `tri` `saw` `square` `perlin` `rand_pat` `range_pat`
+  `segment` `runp` `choose`
 - `pure` `silence`
+
+`:doc <nom>` donne la description et des exemples de chacune ; la
+livedoc les montre dès que le curseur est dans l'appel.
 
 **Contrôles** (paramètres par événement, en chaîne `|>`) :
 - `gain` `speed` `pan` `n` `degree`
@@ -68,6 +78,40 @@ Valeur numérique ou pattern : `gain(0.8)` est constant ; `gain("0.5 1
 @d1 "bd hh sn hh" |> palindrome         # à l'endroit puis à l'envers
 @d1 "bd hh sn hh" |> chunk(4, fast(2))  # un morceau par cycle passe en rapide
 @d1 :pad |> pump(8, 0.7)                 # pompage sidechain 4 temps
+```
+
+## Notes, accords et arpèges
+
+`n` et `note` acceptent des noms de notes comme Tidal (octave 5 = 0,
+`s`/`#` dièse, `f`/`b` bémol) :
+
+```julia
+@d1 :pad |> n("c e g")           # 0 4 7
+@d1 :pad |> n("cs5 df a4")       # 1 1 -3
+```
+
+Un accord s'écrit `racine'nom` dans la mini-notation : ses notes jouent
+ensemble. Racine = nom de note ou nombre ; `chord_names()` liste les noms
+(maj, min, dom7, min7, maj7, sus4, dim, aug, nine, m9, six, add9…).
+Modificateurs Tidal : `'i` `'ii` renversements, `'o` ouvert, `'N` nombre
+de notes.
+
+```julia
+@d1 :pad |> n("c'maj e'min a4'min7")
+@d1 :pad |> n("0'dom7 5'maj")
+@d1 :pad |> n("c'maj'ii")        # second renversement
+```
+
+`arp(mode)` égrène chaque accord dans son créneau : `up`, `down`,
+`updown`, `downup`, `up&down`, `down&up`, `converge`, `diverge`,
+`disconverge`, `pinkyup`, `pinkyupdown`, `thumbup`, `thumbupdown` ; le mode
+peut être un pattern. `rolled` / `rolledBy(t)` décalent légèrement les
+notes d'un accord comme une main sur un piano.
+
+```julia
+@d1 :pad |> n("c'maj e'min") |> arp("<up down>")
+@d1 :pad |> n("c'maj7") |> arp("converge") |> fast(2)
+@d1 :pad |> n("c'maj") |> rolled
 ```
 
 ## Slots

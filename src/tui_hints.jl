@@ -116,6 +116,10 @@ const _COMMAND_NAMES = [
 
 const _COMBINATOR_NAMES = [
     "pure", "silence", "fast", "slow", "density", "rev", "every", "arp",
+    "rot", "hurry", "shuffle", "scramble", "linger", "swingBy", "swing", "whenmod",
+    "someCyclesBy", "someCycles", "fastGap", "compress", "zoom", "euclid", "euclidInv",
+    "euclidOff", "superimpose", "layer", "inside", "outside", "rolled", "rolledBy",
+    "brak", "stut",
     "stack", "cat", "mask", "gate",
     "gain", "speed", "lpf", "hpf", "pan", "n", "room", "delay",
     "shape", "set", "degree",
