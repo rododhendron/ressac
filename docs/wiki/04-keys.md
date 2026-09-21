@@ -19,6 +19,14 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `!` | panic (coupe tout) |
 | `,` | hush (laisse finir les queues) |
 
+**Divers**
+
+| Touche | Action |
+|---|---|
+| `Esc` | sur la dernière pane : quitter (deux fois) |
+| `:` | commande |
+| `/` | rechercher |
+
 **Vues**
 
 | Touche | Action |
@@ -31,13 +39,6 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `=` | scope : zoom reset |
 | `+` | réservoir : plus rapide |
 | `-` | réservoir : plus lent |
-
-**Divers**
-
-| Touche | Action |
-|---|---|
-| `:` | commande |
-| `/` | rechercher |
 
 **Panes & workspaces**
 

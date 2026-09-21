@@ -306,3 +306,36 @@ end
     Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'k', Tachikoma.key_repeat))
     @test p.scroll == 1
 end
+
+# ── :q ferme une pane, quitte sur la dernière ; Échap ×2 quitte ────────
+@testset ":q — ferme la pane focalisée, quitte l'app sur la dernière ; :qa quitte" begin
+    app, tb, frame = _br_app()
+    _bex(app, "vsplit log")
+    ws = Ressac.current_workspace(app.workspaces)
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 2
+    _bex(app, "q")
+    @test !app.quit
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 1
+    _bex(app, "q")
+    @test app.quit
+    app2, _, _ = _br_app()
+    _bex(app2, "vsplit log"); _bex(app2, "qa")
+    @test app2.quit
+end
+
+@testset "Échap — une fois prévient, deux fois quitte ; rien avec plusieurs panes" begin
+    app, tb, frame = _br_app()
+    _bkey(app, :escape)
+    @test !app.quit
+    @test occursin("Échap encore", app.logs[end])
+    _bkey(app, :escape)
+    @test app.quit
+    app2, _, _ = _br_app()
+    _bex(app2, "vsplit log")
+    _bkey(app2, :escape); _bkey(app2, :escape)
+    @test !app2.quit
+    # en insertion, Échap reste « retour au mode normal »
+    app3, _, _ = _br_app()
+    _bkey(app3, 'i'); _bkey(app3, :escape)
+    @test Ressac._active_editor(app3).mode === :normal && !app3.quit
+end

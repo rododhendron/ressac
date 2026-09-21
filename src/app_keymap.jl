@@ -27,6 +27,9 @@ _km_reservoir(m::RessacApp) = _km_normal(m) &&
 scope!(:global, "Partout")
 bind!(:global, "?", "aide"; group = :help, action = _open_help!)
 bind!(:global, "!", "panic (coupe tout)"; short = "panic", group = :audio, action = _panic!)
+bind!(:global, "Esc", "sur la dernière pane : quitter (deux fois)"; group = :misc, hint = false,
+      when = m -> _km_normal(m) && !m.visual_active && m.modal === :none && _pane_count(m) <= 1,
+      action = _esc_quit_step!)
 bind!(:global, ",", "hush (laisse finir les queues)"; short = "hush", group = :audio,
       when = _km_normal, action = _hush!)
 bind!(:global, "S", "scope suivant"; group = :view, when = _km_normal,

@@ -272,7 +272,7 @@ end
 
 # ── Quit flow ───────────────────────────────────────────────────────
 
-@testset ":q from a multi-pane workspace saves layout and flips quit" begin
+@testset ":q ferme une pane ; :qa quitte et sauve le layout" begin
     app, frame = _new_app()
     Ressac._active_editor(app).mode = :normal
     # Build a non-trivial tree so save_layout has something to write.
@@ -284,8 +284,13 @@ end
     # the user's real layout during the test run. Easiest: stub
     # _default_layout_path via monkey-patch? No — just trust the
     # write; the path is under HOME and the test environment owns it.
+    # :q ferme d'abord une pane (workspace multi-panes) ; :qa quitte et
+    # sauve le layout.
     Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('q'))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
+    @test app.quit == false
+    for c in ":qa"; Tachikoma.update!(app, Tachikoma.KeyEvent(c)); end
     Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
     @test app.quit == true
     @test isfile(Ressac._default_layout_path())

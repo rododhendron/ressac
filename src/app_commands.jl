@@ -145,11 +145,45 @@ end
 # Bodies wrapped in `m -> fn(m)` instead of bare `fn` so the function
 # names resolve at CALL time, not at registration time — most helpers
 # are defined later in the same file.
-_register_literal!(m -> _quit!(m),               "q", "quit", "q!", "qa", "qa!")
+# :q ferme la pane focalisée ; sur la dernière pane du workspace, quitte
+# l'app. :qa / :q! quittent tout de suite.
+_register_literal!(m -> _close_pane_or_quit!(m),  "q", "quit")
+_register_literal!(m -> _quit!(m),               "q!", "qa", "qa!")
 
 # Sub-project 10: save the workspace layout before exit so the next
 # session restores it. Errors are logged and swallowed — refusing
 # to quit because of a serializer bug would be hostile.
+# Nombre de panes (tuiles + flottantes) du workspace courant.
+function _pane_count(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return 0
+    return length(collect(_all_leaves(ws.tree))) + length(ws.floats)
+end
+
+function _close_pane_or_quit!(m::RessacApp)
+    if _pane_count(m) > 1
+        cmd_close!(m.workspaces)
+        m.zoom_leaf = 0
+        _push_app_log!(m, "[INFO] pane fermée — :q sur la dernière pane quitte (:qa quitte tout de suite)")
+    else
+        _quit!(m)
+    end
+    return
+end
+
+# Échap en mode normal sur la dernière pane : la première pression
+# prévient, la seconde (< 2 s) quitte.
+function _esc_quit_step!(m::RessacApp)
+    now = time()
+    if now - m.esc_quit_at < 2.0
+        _quit!(m)
+    else
+        m.esc_quit_at = now
+        _push_app_log!(m, "[INFO] Échap encore pour quitter Ressac (dernière pane) — :qa quitte tout de suite")
+    end
+    return
+end
+
 function _quit!(m::RessacApp)
     try
         save_layout(m.workspaces, _default_layout_path())
