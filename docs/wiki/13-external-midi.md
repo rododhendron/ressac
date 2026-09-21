@@ -1,38 +1,36 @@
-# MIDI + external OSC control
+# MIDI et contrôle OSC externe
 
-Ressac doesn't ship its own MIDI driver. Instead it exposes two OSC
-endpoints that anything OSC-capable can drive: MIDI controllers,
-hardware sequencers, TouchOSC layouts, Max patches, even another
-Julia process. The MIDI bridge is 6 lines of SuperCollider you paste
-once.
+Ressac n'embarque pas de driver MIDI. Il expose deux points d'entrée OSC
+que tout ce qui parle OSC peut piloter : contrôleurs MIDI, séquenceurs
+matériels, layouts TouchOSC, patches Max, ou un autre processus Julia. Le
+pont MIDI, ce sont 6 lignes de SuperCollider à coller une fois.
 
-## Endpoints
+## Points d'entrée
 
-Bind: UDP `127.0.0.1:57121` (the scope listener — Ressac shares
-the socket).
+Écoute : UDP `127.0.0.1:57121` (le socket du scope — partagé).
 
 ```
-/ressac/trigger  s:<name>  [key value ...]
-    → one-shot fire of <name> through SuperDirt. Extra args are
-      passed verbatim, so you can include freq, gain, n, cut, etc.
+/ressac/trigger  s:<nom>  [clé valeur ...]
+    → un tir de <nom> via SuperDirt. Les arguments supplémentaires
+      passent tels quels : freq, gain, n, cut, etc.
 
-/ressac/set      s:<key>   v:<value>
-    → mutate live state. Currently supported:
-        key = "cps"  → set_cps!(value)
+/ressac/set      s:<clé>   v:<valeur>
+    → modifie l'état live. Pour l'instant :
+        clé = "cps"  → set_cps!(valeur)
 ```
 
-Both endpoints become live the first time something binds the scope
-listener (any `:scope` cycle), or you can run `:scope amp` then
-`:scope off` once at boot to open the socket without a visible scope.
+Les deux s'activent dès que quelque chose ouvre l'écouteur du scope (un
+`:scope` quelconque). `:scope amp` puis `:scope off` au démarrage ouvre le
+socket sans scope visible.
 
-## MIDI bridge — paste into SuperCollider
+## Pont MIDI — à coller dans SuperCollider
 
-A 6-line `MIDIFunc` that translates every MIDI note-on into a
-/ressac/trigger pointing at one sample, with the MIDI note number
-mapped to `n` (semitone offset from middle C):
+Un `MIDIFunc` de 6 lignes qui traduit chaque note-on MIDI en
+/ressac/trigger vers un sample, le numéro de note mappé sur `n`
+(demi-tons depuis le do du milieu) :
 
 ```supercollider
-// In SuperCollider's editor, run once per SC boot:
+// Dans l'éditeur de SuperCollider, une fois par démarrage de SC :
 MIDIClient.init;
 MIDIIn.connectAll;
 ~ressacOSC = NetAddr.new("127.0.0.1", 57121);
@@ -43,10 +41,10 @@ MIDIFunc.noteOn({ |vel, num, chan|
 });
 ```
 
-…and you can drop a MIDI keyboard on a `:supersaw` synth without
-ever leaving the patterns pane.
+…et tu poses un clavier MIDI sur un synth `:supersaw` sans quitter la
+pane patterns.
 
-Per-channel routing (e.g., ch 1 → drums, ch 2 → bass):
+Routage par canal (canal 1 → batterie, canal 2 → basse) :
 
 ```supercollider
 MIDIFunc.noteOn({ |vel, num, chan|
@@ -57,16 +55,16 @@ MIDIFunc.noteOn({ |vel, num, chan|
 });
 ```
 
-CC → cps:
+CC → cps :
 
 ```supercollider
 MIDIFunc.cc({ |val, num, chan|
-    // CC 7 (volume) → cps from 0.1 to 1.5
+    // CC 7 (volume) → cps de 0.1 à 1.5
     if(num == 7) { ~ressacOSC.sendMsg("/ressac/set", "cps", (0.1 + (val/127) * 1.4)) };
 });
 ```
 
-## From a Julia REPL
+## Depuis un REPL Julia
 
 ```julia
 using Sockets
@@ -75,9 +73,9 @@ send(sock, ip"127.0.0.1", 57121,
      encode(Ressac.OSCMessage("/ressac/trigger", Any["bd"])))
 ```
 
-## From a shell
+## Depuis un shell
 
-`oscchief` or `sendosc` will do:
+`oscchief` ou `sendosc` font l'affaire :
 
 ```bash
 oscchief send 127.0.0.1 57121 /ressac/trigger s bd
@@ -86,23 +84,22 @@ oscchief send 127.0.0.1 57121 /ressac/set s cps f 0.75
 
 ## TouchOSC / Lemur
 
-Point them at `127.0.0.1` UDP `57121` and send the same paths. A
-single pad can be a /ressac/trigger with a hard-coded sample name;
-a fader can drive /ressac/set s:cps v:0..1.5.
+Pointe-les sur `127.0.0.1` UDP `57121` avec les mêmes chemins. Un pad =
+un /ressac/trigger avec un nom de sample en dur ; un fader pilote
+/ressac/set s:cps v:0..1.5.
 
-## Why no native MIDI?
+## Pourquoi pas de MIDI natif ?
 
-Two reasons:
+Deux raisons :
 
-1. **Dependency cost** — adding PortMidi.jl forces every user to
-   build a native PortMIDI library at install time. The OSC route
-   has zero new deps and reuses the socket Ressac already owns.
+1. **Le coût de la dépendance** — PortMidi.jl force chaque utilisateur à
+   compiler une bibliothèque native à l'installation. La route OSC
+   n'ajoute rien et réutilise le socket que Ressac possède déjà.
 
-2. **More versatile** — once you've wired MIDI → OSC in SC, you
-   can also wire it into anything else (Tidal, Pd, Max) the same
-   way. Locking MIDI behind a Julia-side driver would make Ressac
-   the only consumer.
+2. **Plus souple** — une fois MIDI → OSC câblé dans SC, tu peux le
+   brancher ailleurs (Tidal, Pd, Max) de la même façon. Un driver côté
+   Julia ferait de Ressac le seul consommateur.
 
-If you want a hard MIDI dep one day (auto-discovery, hot-plug, no
-SC bridge needed), open an issue — the listener socket is already
-in place, just the input source would change.
+Si un jour tu veux une vraie dépendance MIDI (découverte automatique,
+branchement à chaud, sans pont SC), ouvre une issue : le socket d'écoute
+existe déjà, seule la source changerait.

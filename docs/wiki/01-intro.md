@@ -1,81 +1,90 @@
-# Welcome to Ressac
+# Bienvenue dans Ressac
 
-Ressac is a Julia-based live-coding environment for SuperCollider /
-SuperDirt. You write **patterns** (TidalCycles-style mini-notation),
-**synths** (Julia DSL that compiles to SC), and the running session
-makes sound through SuperDirt.
+Ressac est un environnement de live-coding en Julia pour SuperCollider /
+SuperDirt. Tu écris des **patterns** (mini-notation façon TidalCycles),
+des **synths** (un DSL Julia compilé en SC), et la session en cours fait
+du son à travers SuperDirt.
 
-## Quick start
+## Démarrage rapide
 
-1. Start SuperCollider with the Ressac startup script
-   (`just audio` or equivalent — see the project README).
-2. Launch the TUI: `julia --project=. scripts/live.jl`
-3. **First time?** Type `:tutorial` for the 5-minute interactive tour.
-   Otherwise:
-   - `i` enters insert mode, type a line
-   - `Esc` then `e` evaluates the current line, OR `E` evaluates everything
-   - `m` mutes the slot under cursor, `,` hushes everything, `!` panic-stops
+1. Lance SuperCollider avec le script de démarrage de Ressac
+   (`just audio` ou équivalent — voir le README du projet).
+2. Lance la TUI : `julia --project=. scripts/live.jl`
+3. **Première fois ?** Tape `:tutorial` pour la visite guidée de 5 minutes.
+   Sinon :
+   - `i` passe en insertion, tape une ligne
+   - `Esc` puis `e` évalue la ligne courante, OU `E` évalue tout
+   - `m` mute le slot sous le curseur, `,` arrête tout en douceur, `!` coupe tout
 
-The boot buffer is pre-filled with `cps!(0.5)` + a kick/clap/hat pattern
-so you can hit `Esc` then `E` immediately and hear something.
+Le buffer de démarrage contient déjà `cps!(0.5)` + un pattern kick/clap/
+charley : `Esc` puis `E` et tu entends quelque chose.
 
-## The two panes
+## Trois workspaces, trois façons de travailler
 
-- **Patterns pane** (always open) — Julia code with `@dN` slot definitions.
-  Each slot fires events into SuperDirt; `e` evals the current line,
-  `E` evals all `@dN` blocks. The playhead highlight moves through the
-  active token in each `"…"` so you see what's playing right now.
+- **PLAY** (`Ctrl-1` / `:play`) — la pane **patterns** : du code Julia avec
+  des slots `@dN`. Chaque slot envoie des événements à SuperDirt ; `e` évalue
+  la ligne, `E` tous les blocs `@dN`. La tête de lecture surligne le token
+  qui joue dans chaque `"…"`.
 
-- **Synth pane** (opens on `:synth <name>` or `:lib`) — Julia DSL by
-  default (`.jl`), or raw SuperCollider (`.scd`). `t` / `T` / `Space`
-  fires the synth, hold to auto-repeat with acceleration.
+- **DESIGN** (`Ctrl-2` / `:design`) — la pane **synth** : DSL Julia par
+  défaut (`.jl`) ou SuperCollider brut (`.scd`). `t` / `T` / `Espace`
+  joue le synth (maintenir = rafale accélérée), `:w` sauve, `U` l'utilise
+  dans un pattern.
 
-## Discoverability — keys to remember
+- **EXPLORE** (`Ctrl-3` / `:explore`) — l'**explorateur** génétique de
+  synths et le studio **sculpt** (les paramètres d'un son manipulés
+  directement sur son onde).
 
-| Key      | What it does                                           |
-|----------|--------------------------------------------------------|
-| `?`      | open the keybinding cheat-sheet (`:guide`)             |
-| `Space`  | leader — followed by a letter, expands a snippet       |
-| `:`      | command line (`:tap`, `:browse`, `:synth wob`, …)      |
-| `Esc`    | exit insert mode                                       |
-| `e`      | eval current line                                      |
-| `E`      | eval ALL `@dN` blocks                                  |
-| `m`      | mute / unmute slot under cursor                        |
-| `,`      | hush (soft stop, voices fade)                          |
-| `!`      | PANIC — kill every SC voice immediately                |
-| `:q`     | quit                                                   |
+Les ponts : depuis un pattern, `gs` ouvre le synth sous le curseur dans
+DESIGN ; depuis un synth ou un sculpt, `U` pose `@dN p"nom*4"` dans PLAY.
 
-The footer at the bottom of the screen always shows the relevant keys
-for your current context (different in insert mode, after a Space
-leader, while filling a snippet placeholder, etc).
+## Se repérer
 
-## Featured commands
+| Touche   | Ce qu'elle fait                                         |
+|----------|---------------------------------------------------------|
+| `?`      | l'aide du contexte (les touches de la pane focalisée)   |
+| `Espace` | leader — suivi d'une lettre, insère un snippet          |
+| `:`      | la ligne de commande (`:tap`, `:browse`, `:synth wob`…) |
+| `Esc`    | quitter l'insertion                                     |
+| `e`      | évaluer la ligne courante                               |
+| `E`      | évaluer TOUS les blocs `@dN`                            |
+| `m`      | mute / démute le slot sous le curseur                   |
+| `,`      | hush (arrêt doux, les voix s'éteignent)                 |
+| `!`      | PANIC — coupe toutes les voix SC immédiatement          |
+| `:q`     | quitter                                                 |
 
-- `:tutorial` — interactive onboarding tour
-- `:tap` — tap a rhythm with Space; Ressac auto-detects period, sets
-  cps, writes the `@dN "…"` line for you
-- `:browse` — searchable picker over every sample / instrument / synth
-- `:lib` — synth library: preview + instantiate sounds (built-in or
-  user-saved). Includes the 909 kit.
-- `:snip` — context-aware snippet picker (rhythm / melody / fx /
-  cheat-sheet templates). Tab cycles categories.
-- `:starter <genre>` — load a starter pack: house, trap, lofi,
-  dubstep, jungle, idm, hardcore, amapiano, witchhouse, ambient
-- `:import path/to/sample.wav` — add your own audio to the registry
-- `:mixer` — per-slot meters, mute / solo / gain editing
-- `:save name` / `:load name` — session snapshots in `sessions/`
-- `:wiki` — this documentation
+La **barre de touches** en bas de l'écran montre toujours les touches
+utiles à l'endroit où tu es (elle change avec la pane focalisée, en
+insertion, après un Espace-leader, dans un modal…). La **status line**
+en haut montre le mode, la surface focalisée et les workspaces.
 
-## Where to go next
+## Commandes à connaître
 
-- `02-patterns` — mini-notation cheat sheet (now with `?`, `_`, rotation)
-- `03-synth-dsl` — the DSL cookbook (now with chorus / flanger /
-  phaser / granular)
-- `04-keys` — every keystroke including leader / placeholder nav
-- `05-cookbook` — recipes for common sounds + genre snippets
-- `09-samples` — adding your own audio
-- `10-architecture` — internals + data flow + file responsibilities
-- `11-tidal-migration` — if you're coming from TidalCycles
-- `12-troubleshooting` — when something doesn't work
-- `13-external-midi` — MIDI + OSC control from anything that speaks OSC
-- `14-chaos-reservoir` — chaotic generators and spiking-reservoir patterns
+- `:tutorial` — visite guidée interactive
+- `:tap` — tape un rythme avec Espace ; Ressac détecte la période, règle
+  le cps et écrit la ligne `@dN "…"`
+- `:browse` — tous les samples / instruments / synths, avec recherche
+- `:lib` — la librairie de synths : écoute + copie éditable (intégrés ou
+  sauvés par toi). Inclut le kit 909.
+- `:snip` — snippets selon le contexte (rythme / mélodie / fx / fiches).
+  Tab change de catégorie.
+- `:starter <genre>` — un starter pack : house, trap, lofi, dubstep,
+  jungle, idm, hardcore, amapiano, witchhouse, ambient
+- `:import chemin/vers/sample.wav` — ajoute ton audio au registre
+- `:mixer` — vu-mètres par slot, mute / solo / gain
+- `:save nom` / `:load nom` — instantanés de session dans `sessions/`
+- `:log` — replie / déplie le journal (3, 10, 0 lignes)
+- `:wiki` — cette documentation
+
+## Pour aller plus loin
+
+- `02-patterns` — la mini-notation (avec `?`, `_`, rotation)
+- `03-synth-dsl` — le DSL de synthèse et ses recettes
+- `04-keys` — toutes les touches, générées depuis le registre
+- `05-cookbook` — recettes de sons et snippets de genres
+- `09-samples` — ajouter tes propres samples
+- `10-architecture` — les internes, le flux de données, qui possède quoi
+- `11-tidal-migration` — si tu viens de TidalCycles
+- `12-troubleshooting` — quand quelque chose ne marche pas
+- `13-external-midi` — MIDI + OSC depuis tout ce qui parle OSC
+- `14-chaos-reservoir` — générateurs chaotiques et patterns par réservoir

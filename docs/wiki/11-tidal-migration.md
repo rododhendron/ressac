@@ -1,93 +1,96 @@
-# Coming from TidalCycles
+# Venir de TidalCycles
 
-If you've used Tidal Haskell, the mental model and most of the
-vocabulary carry over. The big differences:
+Si tu as pratiqué Tidal en Haskell, le modèle mental et presque tout le
+vocabulaire se transposent. Les grandes différences :
 
-| Tidal (Haskell)            | Ressac (Julia)                |
-|----------------------------|-------------------------------|
-| `cps 0.5`                  | `cps!(0.5)`                   |
-| `d1 $ s "bd"`              | `@d1 "bd"`  or `@d1 :bd`     |
-| `d1 silence`               | `@d1`        (no body unsets) |
-| `hush`                     | `:hush` or `,`                |
-| pipe `#`                   | pipe `\|>`                    |
-| `s "bd" # gain 0.7`        | `"bd" \|> gain(0.7)`         |
-| `n "0 3 5"`                | `n("0 3 5")`                 |
-| `every 4 rev`              | `every(4, rev)`               |
-| `jux rev`                  | `jux(rev)`                    |
-| `degradeBy 0.3`            | `degradeBy(0.3)`              |
-| `(|+|) pat1 pat2`          | not yet — use `stack`         |
+| Tidal (Haskell)            | Ressac (Julia)                 |
+|----------------------------|--------------------------------|
+| `cps 0.5`                  | `cps!(0.5)`                    |
+| `d1 $ s "bd"`              | `@d1 "bd"`  ou `@d1 :bd`       |
+| `d1 silence`               | `@d1`        (sans corps = vide) |
+| `hush`                     | `:hush` ou `,`                 |
+| pipe `#`                   | pipe `\|>`                     |
+| `s "bd" # gain 0.7`        | `"bd" \|> gain(0.7)`           |
+| `n "0 3 5"`                | `n("0 3 5")`                   |
+| `every 4 rev`              | `every(4, rev)`                |
+| `jux rev`                  | `jux(rev)`                     |
+| `degradeBy 0.3`            | `degradeBy(0.3)`               |
+| `(|+|) pat1 pat2`          | pas encore — utilise `stack`   |
 
-## What's the same
+## Ce qui est pareil
 
-- The clock: cycles per second, lookahead, polyphonic per-event scheduling.
-- The mini-notation grammar: `~`, `[…]`, `<…>`, `*`, `!`, `(k,n)`, `:`.
-- Most combinators by name: `fast`, `slow`, `rev`, `every`, `stack`,
-  `cat`, `mask`, `gate`, `degrade`, `sometimes`, `often`, `rarely`,
-  `palindrome`, `iter`, `chunk`, `jux`, `juxBy`, `off`.
-- Sample naming convention via Dirt-Samples (bd, sn, hh, amen, …).
-- SuperCollider / SuperDirt as the audio engine (you can use the same
-  setup you already have).
+- L'horloge : cycles par seconde, lookahead, ordonnancement polyphonique
+  par événement.
+- La grammaire de la mini-notation : `~`, `[…]`, `<…>`, `*`, `!`,
+  `(k,n)`, `:`.
+- La plupart des combinateurs, par nom : `fast`, `slow`, `rev`, `every`,
+  `stack`, `cat`, `mask`, `gate`, `degrade`, `sometimes`, `often`,
+  `rarely`, `palindrome`, `iter`, `chunk`, `jux`, `juxBy`, `off`.
+- Les noms de samples via Dirt-Samples (bd, sn, hh, amen, …).
+- SuperCollider / SuperDirt comme moteur audio (ton installation
+  existante marche).
 
-## What's different
+## Ce qui change
 
-### Pattern values
+### Les valeurs de pattern
 
-In Tidal, `s "bd hh sn"` is a `Pattern String`. In Ressac the equivalent
-`"bd hh sn"` is a `Pattern{Symbol}`. The string atom becomes a Julia
-`Symbol`. Variant indices stay as part of the symbol: `"bd:2"` →
+Dans Tidal, `s "bd hh sn"` est un `Pattern String`. Dans Ressac,
+`"bd hh sn"` est un `Pattern{Symbol}` : l'atome devient un `Symbol`
+Julia. Les indices de variante restent dans le symbole : `"bd:2"` →
 `Symbol("bd:2")`.
 
-The bare-symbol shorthand `@d1 :bd` lifts to `pure(:bd)` automatically
-— useful for single-name patterns.
+Le raccourci `@d1 :bd` devient `pure(:bd)` automatiquement — pratique
+pour un pattern à un seul nom.
 
-### The pipe operator is Julia's `|>`
+### Le pipe est le `|>` de Julia
 
 ```julia
 @d1 "bd hh sn hh" |> fast(2) |> gain(0.8) |> lpf(1500)
 ```
 
-Composition rules (same as Tidal's `#`):
+Règles de composition (comme le `#` de Tidal) :
 - `gain` × · `lpf` min · `hpf` max · `speed` × · `pan` / `n` / `room` /
-  `delay` / `shape` last-write-wins.
+  `delay` / `shape` : le dernier gagne.
 
-### `set` for arbitrary params
+### `set` pour n'importe quel paramètre
 
-If a SuperDirt param isn't auto-exposed as a helper, `set(:key, value)`
-slots it in:
+Si un paramètre SuperDirt n'a pas de helper, `set(:clé, valeur)` le
+passe :
 ```julia
 @d1 "bd" |> set(:cut, 1) |> set(:vibrato, 4)
 ```
 
-### Probabilistic mini-notation
+### Mini-notation probabiliste
 
 ```julia
-"bd? hh? sn? hh?"      # drop each with 50% probability
-"bd?0.3 hh sn hh"      # only bd drops, with 30% prob
-"bd _ _ sn"            # bd extended to occupy 3 slots
-"bd(3,8,2)"            # 3-of-8 Euclidean rotated by 2 steps
+"bd? hh? sn? hh?"      # chacun tombe à 50 %
+"bd?0.3 hh sn hh"      # seul bd tombe, à 30 %
+"bd _ _ sn"            # bd prolongé sur 3 pas
+"bd(3,8,2)"            # euclidien 3-sur-8 tourné de 2 pas
 ```
 
-The drops are seeded by `hash(event_start)` — they're deterministic,
-not random per render.
+Les tirages sont semés par `hash(début_de_l'événement)` : déterministes,
+pas aléatoires à chaque rendu.
 
-### Synth design lives in the same TUI
+### La conception de sons vit dans la même TUI
 
-In Tidal you write SynthDefs in sclang (a separate editor). In Ressac
-the synth pane is right next to the patterns pane — `:synth wob` opens
-a tab. You can write raw SuperCollider OR use the embedded Julia DSL
-(`@synth :wob saw(:freq) |> rlpf(800, 0.3)`). `T` plays your synth.
+Dans Tidal on écrit les SynthDefs en sclang (un autre éditeur). Dans
+Ressac, le workspace DESIGN (`Ctrl-2`) tient la pane synth — `:synth wob`
+l'ouvre. SuperCollider brut OU le DSL Julia embarqué
+(`@synth :wob saw(:freq) |> rlpf(800, 0.3)`). `T` joue, `:w` sauve, `U`
+pose le synth dans un pattern, `gs` remonte d'un pattern au synth.
 
-### What's missing vs Tidal (and what's planned)
+### Ce qui manque par rapport à Tidal (et ce qui est prévu)
 
-- **`#` per-event arithmetic** like `(|+|)` between two patterns — use
-  `stack(p1, p2)` for parallel; no native cross-pattern math yet.
-- **`swingBy` / `whenmod`** — not yet (use `every`, `chunk`, `pump`).
-- **MIDI input** — not yet (samples + synths only at the moment).
-- **`weave` / `linger`** — not yet.
+- **L'arithmétique par événement** `(|+|)` entre deux patterns — `stack(p1,
+  p2)` pour du parallèle ; pas de maths inter-patterns natives.
+- **`swingBy` / `whenmod`** — pas encore (`every`, `chunk`, `pump`).
+- **Entrée MIDI** — pas de driver natif (voir `13-external-midi`).
+- **`weave` / `linger`** — pas encore.
 
-If you miss something specific, open an issue and we'll prioritize.
+S'il te manque quelque chose de précis, ouvre une issue.
 
-## Quick crib sheet
+## Antisèche rapide
 
 ```haskell
 -- Tidal                              -- Ressac
@@ -96,9 +99,9 @@ d1 $ s "bd*4" # gain 0.8              -- @d1 "bd*4" |> gain(0.8)
 d1 $ every 4 (fast 2) $ s "bd"        -- @d1 :bd |> every(4, fast(2))
 d1 $ jux rev $ s "bd hh sn hh"        -- @d1 "bd hh sn hh" |> jux(rev)
 d1 $ s "bd" # n "0 3 5"               -- @d1 :bd |> n("0 3 5")
-hush                                  -- :hush  or  ,
+hush                                  -- :hush  ou  ,
 ```
 
-The Ressac `:tutorial` walks through the first beat → eval → mute
-cycle for users without a Tidal background. Once you've done that
-once, everything else is "translate the syntax in this table".
+`:tutorial` parcourt le cycle premier beat → évaluer → mute pour ceux qui
+ne connaissent pas Tidal. Une fois fait, tout le reste est « traduire la
+syntaxe avec ce tableau ».

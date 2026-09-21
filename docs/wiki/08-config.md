@@ -1,13 +1,14 @@
-# Config & themes
+# Configuration et thèmes
 
 ## `ressac.toml`
 
-Project-root config file, loaded on `live()` and reloadable in-session
-with `:reload-config`. All keys are optional; defaults below.
+Fichier de configuration à la racine du projet, chargé par `live()` et
+rechargeable en session avec `:reload-config`. Toutes les clés sont
+optionnelles ; valeurs par défaut ci-dessous.
 
 ```toml
 [ui]
-theme = "cyberpunk"   # any built-in or custom
+theme = "cyberpunk"   # un thème intégré ou personnalisé
 fps   = 60
 
 [input]
@@ -25,44 +26,51 @@ scope_zoom_step = 1.5
 scope_zoom_max  = 32.0
 ```
 
-## Themes
+## Thèmes
 
-Switch live: `:theme <name>`. List all: `:theme` alone.
+Changer en live : `:theme <nom>`. Lister : `:theme` seul.
 
-**Ressac customs:**
-- `cyberpunk` — hot magenta + electric cyan on black
-- `solarpunk` — sage + gold + forest green on warm cream
+**Thèmes Ressac :**
+- `cyberpunk` — magenta chaud + cyan électrique sur noir
+- `solarpunk` — sauge + or + vert forêt sur crème
 
-**Tachikoma built-ins (dark):**
+**Intégrés à Tachikoma (sombres) :**
 kokaku · esper · motoko · kaneda · neuromancer · catppuccin ·
 solarized · dracula · outrun · zenburn · iceberg
 
-**Tachikoma built-ins (light):**
+**Intégrés à Tachikoma (clairs) :**
 paper · latte · solaris · sakura · ayu · gruvbox · frost ·
 meadow · dune · lavender · horizon · overcast · dusk
 
-Set the default in `ressac.toml` under `[ui] theme = ...`.
+Le thème par défaut se règle dans `ressac.toml`, `[ui] theme = ...`.
 
-## T held-key acceleration
+## Accélération de T maintenu
 
-Holding `t` / `T` / `Space` on the synth pane re-fires the synth at
-increasing speed. Initial interval = `t_hold_initial_ms` (250ms by
-default), each fire multiplies by `t_hold_accel` (0.85) down to
-`t_hold_min_ms` (60ms). So ~4 fires/sec ramps up to ~17 fires/sec
-over a couple seconds.
+Maintenir `t` / `T` / `Espace` sur une pane synth rejoue le synth de
+plus en plus vite. Intervalle initial = `t_hold_initial_ms` (250 ms),
+chaque tir multiplie par `t_hold_accel` (0.85) jusqu'à `t_hold_min_ms`
+(60 ms). Donc ~4 tirs/s qui montent à ~17 tirs/s en deux secondes.
 
-Tune these in `ressac.toml` if you want slower / snappier ramp.
+Règle ça dans `ressac.toml` pour une rampe plus lente ou plus nerveuse.
 
-## Safety chain
+## Chaîne de sécurité
 
-Engaged by default on SC boot:
+Active par défaut au démarrage de SC :
 
-- **LeakDC** — strips DC offset (a stuck-low oscillator can damage
-  speakers without producing audible sound).
-- **HPF 10Hz** — cuts infrasonic rumble. Below human hearing, but
-  leaves musical sub content (15-25Hz) intact.
-- **Limiter @ 0.95** — true-peak safe ceiling. Stops runaway
-  feedback / stacked oscillators from blasting eardrums.
-- **80ms fade-in** at boot so initial frames don't thump.
+- **LeakDC** — enlève la composante continue (un oscillateur bloqué en
+  bas peut abîmer des enceintes sans produire de son audible).
+- **HPF 10 Hz** — coupe les infrasons. Sous l'audition humaine, mais
+  laisse le sub musical (15-25 Hz) intact.
+- **Limiteur à 0.95** — plafond true-peak. Empêche un feedback ou une
+  pile d'oscillateurs d'exploser les tympans.
+- **Fondu de 80 ms** au démarrage pour que les premières trames ne
+  claquent pas.
 
-Toggle with `:safety on|off`.
+Bascule avec `:safety on|off`.
+
+## Journal
+
+`:log` bascule la hauteur du journal en bas de l'écran : 3 lignes (par
+défaut) → 10 → replié → 3. `:log N` fixe une hauteur. `:copylogs` copie
+tout le journal dans le presse-papier, `:vsplit log` l'ouvre dans une
+pane à part.

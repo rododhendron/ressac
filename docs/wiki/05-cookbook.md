@@ -1,50 +1,50 @@
-# Cookbook
+# Recettes
 
-Copy-paste recipes for common live-coding moves. Drop them into the
-patterns pane, eval with `e` (current line) or `E` (everything).
+Des recettes à copier-coller pour les gestes courants du live-coding.
+Dans la pane patterns, `e` évalue la ligne, `E` évalue tout.
 
-## Build a beat from scratch
+## Construire un beat de zéro
 
 ```julia
 cps!(0.5)
-@d1 "bd ~ bd ~"               # kick on 1+3
-@d2 "~ cp ~ cp"               # clap on 2+4
-@d3 "hh*8" |> gain(0.4)       # hat 8ths
+@d1 "bd ~ bd ~"               # kick sur 1 et 3
+@d2 "~ cp ~ cp"               # clap sur 2 et 4
+@d3 "hh*8" |> gain(0.4)       # charley en croches
 ```
 
-Layer a bass:
+Ajoute une basse :
 
 ```julia
 @d4 :subdrop |> n("0 ~ -2 ~ 0 ~ 5 ~") |> gain(0.6)
 ```
 
-Or use Space-leader to write it faster — `Space d` expands `@d$1 "$2"`
-with placeholder navigation: type slot, Tab, type body, Esc.
+Ou plus vite avec Espace-leader — `Espace d` insère `@d$1 "$2"` avec
+navigation entre les trous : tape le slot, Tab, tape le corps, Esc.
 
-## Add variation with one keystroke
+## Varier en une touche
 
-The Tidal-style combinators let you mutate any pattern in place:
-
-```julia
-@d1 "bd hh sn hh" |> jux(rev)              # stereo: L original, R reversed
-@d1 "bd hh sn hh" |> sometimes(fast(2))    # 50% of cycles double-time
-@d1 "hh*8" |> degradeBy(0.3)               # drop 30% of hits (seeded)
-@d1 "bd hh sn hh" |> iter(4)               # rotate by 1/4 each cycle
-@d1 "bd hh sn hh" |> palindrome            # forward then reverse
-@d1 "bd hh sn hh" |> chunk(4, fast(2))     # one chunk per cycle goes fast
-@d1 "bd hh sn hh" |> off(1//8, fast(2))    # overlay shifted copy
-```
-
-Or directly in mini-notation:
+Les combinateurs façon Tidal transforment un pattern sur place :
 
 ```julia
-@d1 "bd? hh? sn hh?"           # ?  = drop with 50% probability
-@d1 "bd?0.3 hh sn hh"           # ?N = drop with custom probability
-@d1 "bd _ _ sn"                 # _  = extend the previous slot
-@d1 "bd(3,8,2) cp(1,8,4)"       # 3rd arg = Euclidean rotation
+@d1 "bd hh sn hh" |> jux(rev)              # stéréo : G original, D inversé
+@d1 "bd hh sn hh" |> sometimes(fast(2))    # un cycle sur deux en double vitesse
+@d1 "hh*8" |> degradeBy(0.3)               # laisse tomber 30 % des coups
+@d1 "bd hh sn hh" |> iter(4)               # tourne d'1/4 par cycle
+@d1 "bd hh sn hh" |> palindrome            # à l'endroit puis à l'envers
+@d1 "bd hh sn hh" |> chunk(4, fast(2))     # un morceau par cycle en rapide
+@d1 "bd hh sn hh" |> off(1//8, fast(2))    # superpose une copie décalée
 ```
 
-## Genre starters
+Ou directement en mini-notation :
+
+```julia
+@d1 "bd? hh? sn hh?"           # ?  = laisse tomber à 50 %
+@d1 "bd?0.3 hh sn hh"           # ?N = probabilité personnalisée
+@d1 "bd _ _ sn"                 # _  = prolonge le pas précédent
+@d1 "bd(3,8,2) cp(1,8,4)"       # 3e arg = rotation euclidienne
+```
+
+## Starters de genre
 
 ```
 :starter house       :starter dnb        :starter jersey
@@ -53,104 +53,105 @@ Or directly in mini-notation:
 :starter hardcore    :starter witchhouse :starter ambient
 ```
 
-…and the `:snip` picker offers more under the `genre` category
-(Tab to cycle): jersey, footwork, garage, breakcore, drill, dembow,
-boombap, lofi_hiphop, phonk, witch_house, bossanova.
+…et `:snip` en propose d'autres dans la catégorie `genre` (Tab pour y
+aller) : jersey, footwork, garage, breakcore, drill, dembow, boombap,
+lofi_hiphop, phonk, witch_house, bossanova.
 
-## Sidechain pumping
+## Pompage sidechain
 
-Without real audio sidechain (which needs SC plumbing), the recognisable
-pumping sound is just a cycle-locked gain curve:
+Sans vrai sidechain audio (qui demande de la plomberie SC), le son
+reconnaissable du pompage est juste une courbe de gain calée sur le
+cycle :
 
 ```julia
-@d1 :super808 |> n("0 ~ ~ 0") |> gain(1.2)    # kick on 1+3
+@d1 :super808 |> n("0 ~ ~ 0") |> gain(1.2)    # kick sur 1 et 3
 @d2 :supersaw |> n("-7 -5 -3 -7") |> pump(8, 0.7) |> gain(0.6)
-#                                       └── 8 ducks per cycle, depth 0.7
+#                                       └── 8 creux par cycle, profondeur 0.7
 ```
 
-The pad audibly ducks on every kick beat — what most users want
-when they say "sidechain".
+La nappe s'efface à chaque kick — ce que la plupart des gens veulent
+dire par « sidechain ».
 
-## Filter sweeps and LFO motion
+## Balayages de filtre et mouvement de LFO
 
-Time-pattern values (`"<...>"`) advance one slot per cycle:
+Les valeurs `"<...>"` avancent d'un pas par cycle :
 
 ```julia
 @d1 :acid303 |> n("0 3 5 7") |> set(:cutoff, "<400 800 1600 3200>")
 ```
 
-`<>` rotates each cycle; combine with cycle-multipliers for slow sweeps:
+`<>` tourne à chaque cycle ; avec un multiplicateur pour un balayage
+lent :
 
 ```julia
 @d1 :supersaw |> set(:cutoff, "<400 800 1200 2000 1200 800>" |> slow(2))
 ```
 
-## Chaos as control-rate modulation
+## Le chaos comme modulation
 
-Pattern-side chaos generators ship in the `chaos` plugin. Each
-returns a `Pattern{Float64}` you can drop into `set(...)` like
-`sine()` or `perlin()`. Full reference in
+Les générateurs chaotiques côté pattern vivent dans le plugin `chaos`.
+Chacun renvoie un `Pattern{Float64}` à mettre dans `set(...)` comme
+`sine()` ou `perlin()`. Référence complète dans
 [14-chaos-reservoir](14-chaos-reservoir.md).
 
-> **Quick start:** type `:starter chaos` to load a ready-to-eval
-> demo into the buffer.
+> **Vite fait :** `:starter chaos` charge une démo prête à évaluer.
 
 ```julia
-# Lorenz attractor sweeping the filter cutoff
+# Attracteur de Lorenz sur le cutoff
 @d1 :acid303 |> n("0 3 5 7") |>
    set(:cutoff, Chaos.lorenz(axis=:x) |> range_pat(400, 4000))
 
-# Hénon map glitches the speed every step
+# Carte de Hénon qui glitche la vitesse à chaque pas
 @d2 "bd hh sn hh" |> set(:speed, Chaos.henon() |> range_pat(0.8, 1.4))
 
-# Logistic at the chaos edge controls pan
+# Logistique au bord du chaos sur le pan
 @d3 :supersaw |> n("0 3 7 10") |>
    set(:pan, Chaos.logistic(r=3.95) |> range_pat(-0.8, 0.8))
 ```
 
-`segment(N)` discretises a continuous chaos signal into N steps
-per cycle if you want quantised rather than smooth modulation:
+`segment(N)` discrétise un signal chaotique continu en N pas par cycle
+pour une modulation quantifiée plutôt que lisse :
 
 ```julia
 @d1 :pad |> set(:cutoff,
    Chaos.rossler() |> segment(8) |> range_pat(500, 3000))
 ```
 
-## Reservoir-driven patterns
+## Patterns pilotés par réservoir
 
-Spiking-neuron + cellular-automaton reservoirs ship in the
-`reservoir` plugin. Three routes from reservoir state to sound:
+Des réservoirs de neurones à impulsions + automates cellulaires vivent
+dans le plugin `reservoir`. Trois routes de l'état du réservoir au son :
 
-> **Quick start:** `:starter reservoir-spike` (Route I),
-> `:starter reservoir-spectral` (Route II), or
-> `:starter reservoir-mix` (all three).
+> **Vite fait :** `:starter reservoir-spike` (route I),
+> `:starter reservoir-spectral` (route II), ou
+> `:starter reservoir-mix` (les trois).
 
 ```julia
-# Route I — each spike fires a sineburst at a layout-assigned freq.
-# AdEx in bursting mode, mapped to a pentatonic scale.
+# Route I — chaque impulsion tire une bouffée de sinus à une fréquence
+# assignée par la disposition. AdEx en mode bursting, gamme pentatonique.
 r = Reservoir.adex(N=48, params=Reservoir.ADEX_BURSTING, seed=42)
 @d1 Reservoir.spike_burst(r; drive=600.0, layout=:scale,
                           layout_args=(scale=:minor_pentatonic, root=220))
 
-# Route II — additive resynthesis (16 partials per frame).
-# RECA rule 110 (Turing-complete, edge of chaos) over a harmonic series.
+# Route II — resynthèse additive (16 partiels par trame).
+# RECA règle 110 (Turing-complète, bord du chaos) sur une série harmonique.
 r2 = Reservoir.reca(N=16, rule=110, init=:single)
 @d2 Reservoir.spectral_cloud(r2; frames_per_cycle=8,
                              layout=:harmonic, layout_args=(fund=110,))
 
-# Route III — reservoir as a scalar modulator for any synth param.
+# Route III — le réservoir comme modulateur scalaire d'un paramètre.
 r3 = Reservoir.adex(N=16, seed=1)
 mod = Reservoir.modulator(r3, neuron=5, drive=500.0) |> range_pat(400, 4000)
 @d3 p"bd*4" |> set(:cutoff, mod)
 ```
 
-Different rules / parameter sets give very different textures —
-rule 30 is fully chaotic, rule 90 makes Sierpinski-like recurring
-patterns, rule 184 looks like traffic flow, `ADEX_BURSTING` fires
-bursts, `ADEX_FAST` fires tonic spikes. Combine with `slow(N)` /
-`fast(N)` to retime to musical cycles.
+Règles et paramètres donnent des textures très différentes — la règle 30
+est entièrement chaotique, la 90 fait des motifs de Sierpinski, la 184
+ressemble à du trafic routier, `ADEX_BURSTING` tire des bouffées,
+`ADEX_FAST` des impulsions toniques. `slow(N)` / `fast(N)` recalent sur
+des cycles musicaux.
 
-## Modulation effects (DSL synth design)
+## Effets de modulation (DSL)
 
 ```julia
 :synth wob
@@ -158,11 +159,11 @@ bursts, `ADEX_FAST` fires tonic spikes. Combine with `slow(N)` /
     saw(:freq) |> rlpf(lfo(4; low=300, high=2400), 0.3)
     |> chorus(0.4, 0.003, 0.5)
 
-# Then in patterns:
+# Puis dans les patterns :
 @d1 :wob |> n("-12 -7 -12 -10") |> gain(0.7)
 ```
 
-Three modulated-delay effects exposed as DSL helpers:
+Trois effets à delay modulé exposés dans le DSL :
 
 ```julia
 saw(:freq) |> chorus(rate=0.5, depth=0.002, mix=0.5)
@@ -170,30 +171,30 @@ saw(:freq) |> flanger(rate=0.2, depth=0.005, feedback=0.3)
 saw(:freq) |> phaser(rate=0.3, depth=800)
 ```
 
-## 909-style drum kit (built-in synth library)
+## Kit 909 (librairie intégrée)
 
-The `tr909` synth library category gives you editable 909 voices:
+La catégorie `tr909` de la librairie donne des voix 909 éditables :
 
 ```julia
-@d1 "k909 ~ s909 ~"                          # kick + snare on 2/4
-@d2 "hh909*8" |> gain(0.4)                   # closed hats
-@d3 "~ ~ ~ ~ ~ ~ oh909 ~" |> gain(0.5)       # open hat fill
-@d4 "~ ~ cp909 ~" |> room(0.3)               # clap with verb
-@d5 "tom909(3,8)" |> n("<-5 0 5 12>")       # tom fill cycling pitch
+@d1 "k909 ~ s909 ~"                          # kick + caisse claire sur 2/4
+@d2 "hh909*8" |> gain(0.4)                   # charleys fermés
+@d3 "~ ~ ~ ~ ~ ~ oh909 ~" |> gain(0.5)       # charley ouvert
+@d4 "~ ~ cp909 ~" |> room(0.3)               # clap avec réverb
+@d5 "tom909(3,8)" |> n("<-5 0 5 12>")       # toms qui changent de hauteur
 ```
 
-Open them in tabs (`:lib`, find e.g. `k909`, Enter) to edit the
-underlying DSL recipe.
+Ouvre-les (`:lib`, cherche `k909`, Entrée — ou `:synth k909`) pour
+éditer la recette DSL.
 
-## Polyrhythmic textures
+## Textures polyrythmiques
 
 ```julia
-@d1 "bd*3"          # 3 hits per bar
+@d1 "bd*3"          # 3 coups par mesure
 @d2 "sn*4" |> gain(0.5)
 @d3 "hh*5" |> gain(0.3)
 ```
 
-Or Euclidean for the rolling-pulse feel:
+Ou euclidien pour la pulsation roulante :
 
 ```julia
 @d1 "bd(3,8)"
@@ -201,103 +202,103 @@ Or Euclidean for the rolling-pulse feel:
 @d3 "hh(7,16)" |> gain(0.4)
 ```
 
-Add rotation to offset each layer:
+Avec une rotation pour décaler chaque couche :
 
 ```julia
 @d1 "bd(3,8,0)"
-@d2 "cp(1,8,4)"     # clap on beat 3
+@d2 "cp(1,8,4)"     # clap sur le 3
 @d3 "hh(11,16,2)"
 ```
 
-## Dub-style FX chain
+## Chaîne d'effets dub
 
 ```julia
 @d1 "bd ~ sn ~" |> delay(0.5) |> delaytime(0.375) |>
     delayfeedback(0.6) |> room(0.7)
 ```
 
-`Space D` expands the whole delay-chain template at once.
+`Espace D` insère toute la chaîne de delay d'un coup.
 
-## Tap a rhythm with your hands
+## Taper un rythme avec les mains
 
 ```
-:tap                                    # start tap recording
-Space Space Space ...                   # tap the rhythm twice (loop detection)
-Enter                                   # commits as cps!() + @dN "..."
-                                        # and evals immediately
+:tap                                    # démarre l'enregistrement
+Espace Espace Espace ...                # tape le rythme deux fois (détection de boucle)
+Entrée                                  # valide en cps!() + @dN "..."
+                                        # et évalue tout de suite
 ```
 
-The status bar shows your hit count live. Output is what you played —
-period auto-detected, cps adjusted, written + eval'd in one keystroke.
+La status line compte les coups en direct. La sortie est ce que tu as
+joué : période détectée, cps ajusté, écrit + évalué en une touche.
 
-For a one-shot rhythm without loop detection: `:tap-strict`.
-For just tempo: `:bpm` (4 taps = 1 bar).
+Pour un rythme unique sans détection : `:tap-strict`.
+Pour le tempo seul : `:bpm` (4 taps = 1 mesure).
 
-## Play a melody on the keyboard
+## Jouer une mélodie au clavier
 
 ```
 :piano-rec fmbell
 ```
 
-Then letter keys play notes (z/x/c/v/b/n/m = naturals,
-s/d/g/h/j = sharps), `[` `]` shift octave, Enter commits the
-recorded notes as `@dN :fmbell |> n("…")`.
+Les lettres jouent des notes (z/x/c/v/b/n/m = naturelles, s/d/g/h/j =
+dièses), `[` `]` changent d'octave, Entrée valide les notes enregistrées
+en `@dN :fmbell |> n("…")`.
 
-## Mix live with `:mixer`
+## Mixer en live avec `:mixer`
 
-Open `:mixer` (or `Space b L` for browse / library). Inside:
+Dans `:mixer` :
 
-- `j` / `k` — navigate slots
-- `+` / `-` — bump gain ±0.1 (writes to buffer + re-evals slot)
-- `*` / `/` — bump gain ±0.5
-- `m`       — mute / unmute
-- `s`       — solo (mute everything else)
-- `u`       — unmute all
-- `!`       — panic (kill all voices)
-- `q`       — close
+- `j` / `k` — naviguer entre les slots
+- `+` / `-` — gain ±0.1 (écrit dans le buffer + ré-évalue le slot)
+- `*` / `/` — gain ±0.5
+- `m`       — mute / démute
+- `s`       — solo (mute tout le reste)
+- `u`       — tout démuter
+- `!`       — panic
+- `q`       — fermer
 
-The activity bar shows recent fires (decays over 0.6 s from
-last-fired-at — not true RMS but enough to see what's playing).
+La barre d'activité montre les derniers tirs (décroît sur 0,6 s — pas un
+vrai RMS mais assez pour voir ce qui joue).
 
-## Save / load a session
+## Sauver / charger une session
 
 ```
-:save trackidea     → sessions/trackidea.txt
-:load trackidea     → reloads the buffer (press E to eval)
-:sessions           → list all saved sessions
-:load <Tab>         → autocomplete on session names
+:save idee          → sessions/idee.txt
+:load idee          → recharge le buffer (E pour évaluer)
+:sessions           → liste les sessions
+:load <Tab>         → complète les noms de sessions
 ```
 
-## Add your own sample
+## Ajouter un sample
 
 ```
 :import ~/Downloads/mykick.wav as fatkick
 @d1 "fatkick ~ fatkick ~"
 ```
 
-Re-importing the same name appends a variant (so `fatkick:1`,
-`fatkick:2` become available for `n()`). See
-[09-samples](09-samples.md) for the longer story.
+Ré-importer sous le même nom ajoute une variante (`fatkick:1`,
+`fatkick:2` deviennent disponibles pour `n()`). Voir
+[09-samples](09-samples.md).
 
-## Export a sound to WAV
+## Exporter un son en WAV
 
 ```
-:export 6           → records the current synth tab for 6s,
-                      writes to ./recordings/<name>_<timestamp>.wav
+:export 6           → enregistre le synth focalisé pendant 6 s,
+                      écrit ./recordings/<nom>_<horodatage>.wav
 ```
 
-Or record a longer take from the master:
+Ou une prise plus longue du master :
 
 ```
 :rec start mytrack
-... play ...
+... joue ...
 :rec stop           → ./recordings/mytrack.wav
 ```
 
-## Drive Ressac from a MIDI keyboard
+## Piloter Ressac depuis un clavier MIDI
 
-Paste 6 lines of SC into your SuperCollider session and any
-note-on becomes a Ressac trigger:
+Colle 6 lignes de SC dans ta session SuperCollider et chaque note-on
+devient un déclencheur Ressac :
 
 ```supercollider
 MIDIClient.init; MIDIIn.connectAll;
@@ -309,4 +310,4 @@ MIDIFunc.noteOn({ |vel, num, chan|
 });
 ```
 
-Full walkthrough in [13-external-midi](13-external-midi.md).
+Le détail dans [13-external-midi](13-external-midi.md).

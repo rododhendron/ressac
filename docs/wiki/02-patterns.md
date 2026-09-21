@@ -1,50 +1,51 @@
-# Patterns & mini-notation
+# Patterns et mini-notation
 
-Patterns live in the patterns pane as `@dN "..."` lines. `"..."` is
-the mini-notation parser — a compact DSL for rhythms.
+Les patterns vivent dans la pane patterns sous forme de lignes
+`@dN "..."`. `"..."` est la mini-notation : un petit langage compact
+pour les rythmes.
 
 ## Tokens
 
 ```
-~              rest (silence at this step)
-_              extend the previous slot's duration by one step
-bd             sample / synth name
-bd:2           the second variant of bd
-[bd hh]        a group: subdivide one step into multiple
-<bd sn cp>     alternate: one token per cycle
-bd*4           repeat in time (4 hits during one step)
-bd!3           repeat in slot (3 copies side by side)
-bd(3,8)        Euclidean: 3 beats spread evenly over 8 steps
-bd(3,8,2)      Euclidean with rotation: 3-of-8 shifted by 2 steps
-bd?            drop with 50% probability (deterministic by hash)
-bd?0.3         drop with custom probability 0..1
+~              silence à ce pas
+_              prolonge le pas précédent d'un pas
+bd             nom de sample / synth
+bd:2           la deuxième variante de bd
+[bd hh]        un groupe : subdivise un pas en plusieurs
+<bd sn cp>     alterne : un token par cycle
+bd*4           répète dans le temps (4 coups pendant un pas)
+bd!3           répète le pas (3 copies côte à côte)
+bd(3,8)        euclidien : 3 coups répartis sur 8 pas
+bd(3,8,2)      euclidien tourné : 3-sur-8 décalé de 2 pas
+bd?            laisse tomber à 50 % (déterministe, par hash)
+bd?0.3         probabilité personnalisée 0..1
 ```
 
-Combine them freely:
+Tout se combine :
 
 ```
 @d1 "<[bd*2] sn> ~ bd ~"
 @d2 "hh(7,16)" |> gain(0.4)
 ```
 
-## Effect chain (pipe operator)
+## Chaîne d'effets (l'opérateur pipe)
 
-Each `@dN` line is Julia code. The `|>` operator chains combinators:
+Chaque ligne `@dN` est du Julia. `|>` enchaîne les combinateurs :
 
 ```
 @d1 "bd hh sn hh" |> gain(0.8) |> lpf(2000) |> pan(0.3)
 ```
 
-Available combinators:
+Combinateurs disponibles :
 
-**Pattern transforms** (re-shape time / value):
+**Transformations de pattern** (remodèlent le temps / les valeurs) :
 - `fast` `slow` `density` `rev` `every` `stack` `cat` `mask` `gate`
 - `jux` `juxBy` `off` `degrade` `degradeBy`
 - `sometimes` `often` `rarely` `sometimesBy`
 - `palindrome` `iter` `chunk`
 - `pure` `silence`
 
-**Controls** (per-event params; `|>` chain):
+**Contrôles** (paramètres par événement, en chaîne `|>`) :
 - `gain` `speed` `pan` `n` `degree`
 - `lpf` `hpf` `cutoff` `resonance` `bandq` `bandf`
 - `room` `delay` `delaytime` `delayfeedback`
@@ -52,81 +53,84 @@ Available combinators:
 - `shape` `crush` `coarse` `vowel`
 - `octave` `accelerate` `vibrato`
 - `compress` `compressThreshold` `compressRatio`
-- `pump(steps, depth)` — sidechain-style gain ducking
+- `pump(steps, depth)` — ducking de gain façon sidechain
 
-Numeric vs pattern values: `gain(0.8)` is a constant; `gain("0.5 1
-0.5 1")` varies over the cycle.
+Valeur numérique ou pattern : `gain(0.8)` est constant ; `gain("0.5 1
+0.5 1")` varie au fil du cycle.
 
-## Combinator examples
+## Exemples de combinateurs
 
 ```julia
-@d1 "bd hh sn hh" |> jux(rev)           # stereo: left as-is, right reversed
-@d1 "bd hh sn hh" |> sometimes(fast(2)) # 50% of cycles go double-time
-@d1 "hh*8" |> degradeBy(0.3)            # drop 30% of hits (seeded)
-@d1 "bd hh sn hh" |> iter(4)            # rotate by 1/4 each cycle
-@d1 "bd hh sn hh" |> palindrome         # forward then reverse
-@d1 "bd hh sn hh" |> chunk(4, fast(2))  # one chunk per cycle goes fast
-@d1 :pad |> pump(8, 0.7)                 # 4-on-the-floor sidechain pump
+@d1 "bd hh sn hh" |> jux(rev)           # stéréo : gauche tel quel, droite inversée
+@d1 "bd hh sn hh" |> sometimes(fast(2)) # un cycle sur deux en double vitesse
+@d1 "hh*8" |> degradeBy(0.3)            # laisse tomber 30 % des coups (déterministe)
+@d1 "bd hh sn hh" |> iter(4)            # tourne d'1/4 à chaque cycle
+@d1 "bd hh sn hh" |> palindrome         # à l'endroit puis à l'envers
+@d1 "bd hh sn hh" |> chunk(4, fast(2))  # un morceau par cycle passe en rapide
+@d1 :pad |> pump(8, 0.7)                 # pompage sidechain 4 temps
 ```
 
 ## Slots
 
-Every `@dN` registers a pattern in slot `dN`. Re-evaluating the same
-slot replaces it. To stop a slot, comment it (`# @d1 ...`) and `:e`
-re-evals (muted slots are skipped). Or `:mute d1` from anywhere.
+Chaque `@dN` enregistre un pattern dans le slot `dN`. Ré-évaluer le
+même slot le remplace. Pour arrêter un slot, commente-le (`# @d1 ...`)
+et `:e` ré-évalue (les slots mutes sont sautés). Ou `:mute d1` de
+n'importe où.
 
 ## Snippets
 
-`:snip` (or `Space I`) opens a picker. Categories cycle with Tab:
-**rhythm** · **melody** · **fx** · **track** · **genre** · **reference**.
+`:snip` (ou `Espace I`) ouvre le sélecteur. Les catégories tournent avec
+Tab : **rythme** · **mélodie** · **fx** · **track** · **genre** ·
+**référence**.
 
-Genres available: jersey, footwork, garage, trap, dnb, techno, house,
+Genres disponibles : jersey, footwork, garage, trap, dnb, techno, house,
 breakcore, drill, dembow, boombap, lofi_hiphop, phonk, witch_house,
 bossanova.
 
-Reference snippets (insert commented cheat-sheets into the buffer):
+Snippets de référence (insèrent des fiches commentées dans le buffer) :
 cheat_combinators, cheat_controls, cheat_mini, cheat_commands,
 cheat_pipes, helpers_tour.
 
-## Space-leader templates
+## Modèles Espace-leader
 
-Press `Space` in normal mode, then a letter, to expand a template
-at the cursor with placeholders. Tab navigates between fields.
+`Espace` en mode normal, puis une lettre : un modèle avec des trous
+s'insère au curseur. Tab passe d'un champ à l'autre. Le popup which-key
+liste les lettres possibles.
 
-| Trigger    | Expands to                                    |
-|------------|-----------------------------------------------|
-| `Space d`  | `@d$1 "$2"`                                  |
-| `Space g`  | `\|> gain($1)`                                |
-| `Space l`  | `\|> lpf($1)`                                 |
-| `Space h`  | `\|> hpf($1)`                                 |
-| `Space p`  | `\|> pan($1)`                                 |
-| `Space f`  | `\|> fast($1)`                                |
-| `Space s`  | `\|> slow($1)`                                |
-| `Space r`  | `\|> room($1)`                                |
-| `Space n`  | `\|> n("$1")`                                |
-| `Space e`  | `\|> every($1, $2)`                           |
-| `Space m`  | `\|> mask("$1")`                             |
-| `Space D`  | `\|> delay($1) \|> delaytime($2) \|> ...`     |
-| `Space c`  | `\|> cat(["$1", "$2"])`                     |
-| `Space S`  | `\|> stack("$1", "$2")`                     |
-| `Space v`  | `rev`                                         |
-| `Space E`  | `$1($2,$3)` — Euclidean token                 |
-| `Space R`  | `$1($2,$3,$4)` — Euclidean with rotation      |
-| `Space J`  | `@d$1 "bd(3,8)" \|> gain($2)` — jersey       |
+| Touche      | Insère                                        |
+|-------------|-----------------------------------------------|
+| `Espace d`  | `@d$1 "$2"`                                   |
+| `Espace g`  | `\|> gain($1)`                                |
+| `Espace l`  | `\|> lpf($1)`                                 |
+| `Espace h`  | `\|> hpf($1)`                                 |
+| `Espace p`  | `\|> pan($1)`                                 |
+| `Espace f`  | `\|> fast($1)`                                |
+| `Espace s`  | `\|> slow($1)`                                |
+| `Espace r`  | `\|> room($1)`                                |
+| `Espace n`  | `\|> n("$1")`                                 |
+| `Espace e`  | `\|> every($1, $2)`                           |
+| `Espace m`  | `\|> mask("$1")`                              |
+| `Espace D`  | `\|> delay($1) \|> delaytime($2) \|> ...`     |
+| `Espace c`  | `\|> cat(["$1", "$2"])`                       |
+| `Espace S`  | `\|> stack("$1", "$2")`                       |
+| `Espace v`  | `rev`                                         |
+| `Espace E`  | `$1($2,$3)` — token euclidien                 |
+| `Espace R`  | `$1($2,$3,$4)` — euclidien tourné             |
+| `Espace J`  | `@d$1 "bd(3,8)" \|> gain($2)` — jersey        |
 
-Picker actions (open modals):
+Actions (ouvrent un modal) :
 
-| Trigger    | Opens                                         |
-|------------|-----------------------------------------------|
-| `Space b`  | `:browse` (all sounds picker)                 |
-| `Space L`  | `:lib` (synth library)                        |
-| `Space I`  | `:snip` (snippet picker)                      |
-| `Space w`  | `:wiki`                                       |
-| `Space ?`  | `:guide`                                      |
+| Touche      | Ouvre                                         |
+|-------------|-----------------------------------------------|
+| `Espace b`  | `:browse` (tous les sons)                     |
+| `Espace L`  | `:lib` (librairie de synths)                  |
+| `Espace I`  | `:snip` (snippets)                            |
+| `Espace w`  | `:wiki`                                       |
+| `Espace ?`  | l'aide                                        |
 
-## Shortcut DSL — `:s<verb>`
+## Raccourcis en ligne de commande — `:s<verbe>`
 
-Quick command-line chains, appended to the current line:
+Des chaînes rapides, ajoutées à la ligne courante :
 
 ```
 :sg0.9      → " |> gain(0.9)"
@@ -136,5 +140,5 @@ Quick command-line chains, appended to the current line:
 :st010110   → " |> gate(p\"0 1 0 1 1 0\")"
 ```
 
-Newline modifiers: `:sn<verb>...` puts the snippet on a new line
-below (indented), `:s<verb>...N` adds a trailing newline.
+Variantes : `:sn<verbe>...` met le snippet sur une nouvelle ligne en
+dessous (indentée), `:s<verbe>...N` ajoute un saut de ligne à la fin.

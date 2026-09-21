@@ -1,131 +1,126 @@
-# Troubleshooting
+# Dépannage
 
-When something goes wrong, work through these from top to bottom.
+Quand quelque chose ne va pas, parcours ceci de haut en bas.
 
-## "I don't hear anything"
+## « Je n'entends rien »
 
-1. **Is SuperCollider running?** Open a terminal and check `sclang` is
-   running, with SuperDirt loaded. Quick test:
+1. **SuperCollider tourne ?** Vérifie que `sclang` tourne avec SuperDirt
+   chargé. Test rapide :
    ```
    julia> using Ressac; live()
    ```
-   …then in Ressac press `E` to eval the starter buffer. If the log
-   says `[INFO] :e — ran 3 blocks` but you hear nothing, see step 2.
+   …puis dans Ressac, `E` évalue le buffer de démarrage. Si le journal
+   dit `[INFO] :e — 3 blocs évalués` et que tu n'entends rien, étape 2.
 
-2. **Is SC bound to the right port?** Ressac sends OSC to UDP 57120.
-   Open SC's own log: `("[ressac] " ++ msg).postln` lines should
-   appear when you eval. If they don't, your SC is on a different
-   port. Edit your `superdirt-startup.scd` to use 57120.
+2. **SC écoute le bon port ?** Ressac envoie l'OSC sur UDP 57120. Dans le
+   log de SC, des lignes `("[ressac] " ++ msg).postln` doivent apparaître
+   quand tu évalues. Sinon, ton SC est sur un autre port : édite
+   `superdirt-startup.scd` pour 57120.
 
-3. **Is SuperDirt actually instantiated?** In SC:
+3. **SuperDirt est vraiment instancié ?** Dans SC :
    ```supercollider
-   ~dirt.notNil  // should return true
+   ~dirt.notNil  // doit renvoyer true
    ```
-   If false, run the startup script. The shipped one is
-   `scripts/superdirt-startup.scd`.
+   Sinon, lance le script de démarrage : `scripts/superdirt-startup.scd`.
 
-4. **Master limiter killed it?** `:safety on` engages a LeakDC + HPF
-   10Hz + Limiter @ 0.95. `:safety off` removes the chain. If your
-   patterns sum to high amplitude, the limiter chokes them. Try
-   `gain(0.5)` and check if it comes back.
+4. **Le limiteur master l'a tué ?** `:safety on` engage LeakDC + HPF
+   10 Hz + limiteur à 0.95. `:safety off` retire la chaîne. Si tes
+   patterns additionnent beaucoup d'amplitude, le limiteur les étouffe.
+   Essaie `gain(0.5)`.
 
-5. **`:hush` left voices in release?** Long-release synths can take
-   a few seconds to die after `:hush`. Wait, or use `!` (panic) to
-   free all SC nodes immediately.
+5. **`:hush` a laissé des voix en release ?** Un synth à long release
+   peut mettre quelques secondes à mourir après `:hush`. Attends, ou `!`
+   (panic) libère tous les nœuds SC tout de suite.
 
-## "I get a `[ERROR] eval d1: …`"
+## « J'ai un `[ERROR] éval d1 : …` »
 
-The most common cases and what they mean:
+Les cas les plus fréquents :
 
-| Error                                           | Cause                                                                  | Fix                                                                  |
+| Erreur                                          | Cause                                                                  | Remède                                                               |
 |-------------------------------------------------|------------------------------------------------------------------------|----------------------------------------------------------------------|
-| `unknown name `foo``                            | typo, or sample/synth not registered                                   | `:browse` to see registered names · `:lib` for synths                |
-| `a Symbol slipped into a Pattern slot`          | wrote `:bd \|> n("0 3")` — Symbol can't accept Pattern                | Wrap with `pure(:bd)` or use mini-notation: `"bd" \|> n("0 3")`    |
-| `parse error — check matching brackets`        | unbalanced `(`, `[`, `<`, `"`                                          | scan the line, count opens and closes                                |
-| `bad arg: invalid base 10 digit`               | wrote a number where a name was expected, or vice versa                | check what the helper expects: `:doc gain` etc.                      |
-| `out-of-range index`                            | `degree()` or `n()` got a pattern longer than expected                 | check the indices fit the source                                     |
+| `unknown name `foo``                            | faute de frappe, ou sample/synth non enregistré                        | `:browse` pour les noms enregistrés · `:lib` pour les synths         |
+| `a Symbol slipped into a Pattern slot`          | tu as écrit `:bd \|> n("0 3")` — un Symbol n'accepte pas de Pattern    | `pure(:bd)` ou la mini-notation : `"bd" \|> n("0 3")`               |
+| `parse error — check matching brackets`         | `(`, `[`, `<`, `"` déséquilibrés                                       | relis la ligne, compte les ouvrants et les fermants                  |
+| `bad arg: invalid base 10 digit`                | un nombre là où on attendait un nom, ou l'inverse                      | vérifie ce que le helper attend : `:doc gain`, etc.                  |
+| `out-of-range index`                            | `degree()` ou `n()` a reçu un pattern plus long que prévu              | vérifie que les indices tiennent dans la source                      |
 
-The raw stacktrace is still visible if you enable `:keydebug` and look
-at the OS-level Ressac stderr — but the modal log gives you the gist.
+La stacktrace brute reste visible sur le stderr de Ressac — mais le
+journal donne l'essentiel.
 
-## "My pattern silently doesn't play"
+## « Mon pattern ne joue pas, sans erreur »
 
-1. **Slot is muted.** Look at the `# @d1` comment (the `#` prefix), or
-   open `:mixer` to see MUTED in the State column.
+1. **Le slot est mute.** Regarde le préfixe `# @d1`, ou `:mixer` (colonne
+   État : MUTED).
 
-2. **Slot got overwritten.** When two `@d1` lines exist in the buffer,
-   the LATEST non-muted one wins on the next `E` eval. Earlier
-   declarations are ignored.
+2. **Le slot a été écrasé.** Avec deux lignes `@d1` dans le buffer, la
+   DERNIÈRE non mutée gagne au prochain `E`.
 
-3. **Tempo is too slow / too fast.** `cps!(0.001)` makes the cycle take
-   16 minutes. The status bar shows current cps + BPM — verify.
+3. **Le tempo est trop lent / trop rapide.** `cps!(0.001)` fait durer le
+   cycle 16 minutes. La status line montre cps + BPM.
 
-4. **The pattern matched but the value is :silence.** `"~"` produces
-   no events. Check the mini-notation didn't reduce to silence.
+4. **Le pattern est vide.** `"~"` ne produit aucun événement. Vérifie
+   que la mini-notation ne s'est pas réduite à du silence.
 
-5. **`auto_env=false` drone never fires.** A drone synth fires once
-   per cycle. If you defined it with no envelope AND your cps is very
-   slow, you might just be waiting. Speed up cps, or use a normal
-   envelope.
+5. **Un drone `auto_env=false` ne part jamais.** Un drone se déclenche
+   une fois par cycle. Sans enveloppe ET avec un cps très lent, tu
+   attends peut-être simplement. Accélère le cps, ou mets une enveloppe.
 
-## "The TUI is laggy / glitching"
+## « La TUI rame / saute »
 
-1. **Bump fps.** Default is 120; if your terminal is fast, try `:reload-cfg`
-   after setting `[ui] fps = 240` in `ressac.toml`. If your terminal is
-   slow, drop to 60.
+1. **Monte le fps.** Par défaut 120 ; si ton terminal est rapide,
+   `[ui] fps = 240` dans `ressac.toml` puis `:reload-cfg`. S'il est
+   lent, descends à 60.
 
-2. **The patterns buffer is huge.** Past ~500 lines the playhead cache
-   is fine but the editor itself can hiccup. Split into smaller sessions
-   via `:save` / `:load`.
+2. **Le buffer de patterns est énorme.** Au-delà de ~500 lignes,
+   l'éditeur peut hoqueter. Découpe en sessions plus petites avec
+   `:save` / `:load`.
 
-3. **A pattern is querying very slowly.** Deep `every(N, every(M,
-   every(...) ...))` chains can hit O(depth) cost per cycle. The
-   scheduler split (snapshot phase + query phase, see architecture
-   page) prevents UI stutter but per-cycle CPU is still proportional
-   to chain depth.
+3. **Un pattern est très lent à interroger.** Des chaînes profondes
+   `every(N, every(M, every(...) ...))` coûtent O(profondeur) par cycle.
+   Le découpage du scheduler (snapshot + query, voir l'architecture)
+   évite le bégaiement de l'UI, mais le CPU par cycle reste
+   proportionnel à la profondeur.
 
-## "Synth library doesn't load my saved file"
+## « La librairie ne charge pas mon fichier »
 
-1. **The file is in `plugins/user-synths/`?** That's where `:w` writes
-   and where `:lib` reads.
+1. **Le fichier est dans `plugins/user-synths/` ?** C'est là que `:w`
+   écrit et que `:lib` lit.
 
-2. **Extension matches mode?** `.jl` is DSL, `.scd` is raw SC. Mixing
-   them confuses the library picker.
+2. **L'extension correspond au mode ?** `.jl` = DSL, `.scd` = SC brut.
 
-3. **Plugin reload after adding files?** New `.scd` files appear after
-   the next `live()` call. The library picker DOES rescan on each
-   `:lib` open though, so the synth WILL appear there even before you
-   restart — you just can't reference it from a pattern by name until
-   plugin metadata reloads.
+3. **Nouveau fichier `.scd` ?** Il apparaît au prochain `live()`. La
+   librairie rescanne à chaque `:lib`, donc le synth y apparaît avant —
+   mais un pattern ne peut le nommer qu'après rechargement des
+   métadonnées du plugin.
 
-## "Mouse selection in the terminal doesn't copy text"
+## « La sélection à la souris ne copie pas »
 
-Ressac captures the mouse for click-routing. Two options:
-- `:pause` freezes the render — now your terminal's native shift-drag
-  works. Press any key in Ressac to resume.
-- `:copylogs` sends the entire log buffer to your system clipboard via
-  `wl-copy` / `xclip` / `xsel` (whichever is installed).
+Ressac capture la souris pour router les clics. Deux options :
+- `:pause` fige le rendu — le shift-glisser natif de ton terminal marche.
+  Une touche dans Ressac reprend.
+- `:copylogs` envoie tout le journal dans le presse-papier via
+  `wl-copy` / `xclip` / `xsel`.
 
-## "I broke something and want to start over"
+## « J'ai tout cassé, je veux repartir »
 
 ```
-:starter house     # replaces the buffer with the house pack
+:starter house     # remplace le buffer par le pack house
 ```
 
-Or if you want literally an empty buffer:
+Ou pour un buffer vraiment vide :
 ```
 Esc → gg → V → G → d → i
 ```
 
-If Ressac itself is in a weird state, `:q` then `live()` again is a
-clean restart. The scheduler (and your SC) survive across restarts —
-voices from before will keep playing until `:hush` / `:panic`.
+Si Ressac lui-même est dans un état bizarre, `:q` puis `live()` est un
+redémarrage propre. Le scheduler (et ton SC) survivent : les voix d'avant
+continuent jusqu'à `:hush` / `:panic`.
 
-## Still stuck?
+## Toujours bloqué ?
 
-Open an issue with:
-- The exact log line(s) you see
-- The pattern that produces the issue
-- Your Julia + Ressac + SuperCollider versions
+Ouvre une issue avec :
+- Les lignes de journal exactes
+- Le pattern qui pose problème
+- Tes versions de Julia, Ressac et SuperCollider
 
-You can copy the log buffer to clipboard with `:copylogs`.
+`:copylogs` copie le journal dans le presse-papier.

@@ -1,106 +1,108 @@
-# Live input modes
+# Modes de saisie live
 
-Modes that take over the keyboard while active. All exit with `Esc`
-and show their state in the status bar.
+Des modes qui prennent le clavier tant qu'ils sont actifs. Tous se
+quittent avec `Esc` et s'affichent dans la status line ; la barre de
+touches montre leurs touches.
 
 ## Tap loop — `:tap [sample]`
 
-The default: tap a rhythm, Ressac detects the loop period
-automatically, sets `cps`, writes the `@dN "…"` line, and evals it.
+Le mode par défaut : tape un rythme, Ressac détecte la période de la
+boucle, règle `cps`, écrit la ligne `@dN "…"` et l'évalue.
 
 ```
-:tap                → defaults to sample = bd
+:tap                → sample = bd
 :tap kick           → sample = kick
 ```
 
-Press `Space` on each beat. **Tap the rhythm at least 2 times** so
-the detector can confirm the period (the more reps, the higher the
-confidence indicator in the commit log). `Enter` commits:
+`Espace` sur chaque temps. **Tape le rythme au moins 2 fois** pour que
+le détecteur confirme la période (plus de répétitions = plus de
+confiance dans le journal). `Entrée` valide :
 
-1. Period detection picks the bar duration (with bias toward the
-   current `cps` so tapping in-time with an existing beat snaps
-   cleanly).
-2. Step inference chooses the smallest musical grid (3, 4, 6, 8,
-   12, 16, 24, 32) where every tap lands on an integer step.
-3. Output: `cps!(<inferred>)` + `@d<next-free> "…"` lines, both
-   evaluated immediately.
-4. Confidence score in the log: `high`, `ok`, or `low — try more reps`.
+1. La détection de période choisit la durée de la mesure (avec un biais
+   vers le `cps` courant : taper en place sur un beat existant se cale
+   proprement).
+2. L'inférence de pas choisit la plus petite grille musicale (3, 4, 6, 8,
+   12, 16, 24, 32) où chaque coup tombe sur un pas entier.
+3. Sortie : `cps!(<déduit>)` + `@d<libre> "…"`, évalués tout de suite.
+4. Score de confiance dans le journal : `high`, `ok`, ou `low — try more
+   reps`.
 
-If no clear loop is detected (confidence too low, or only one rep),
-the command falls back to single-bar quantization: the bar = first
-hit to last + one average interval, hits placed across 16 steps.
+Sans boucle claire (confiance trop basse, une seule répétition), la
+commande retombe sur une quantification à une mesure : du premier coup au
+dernier + un intervalle moyen, coups placés sur 16 pas.
 
-Status bar: `● TAP-LOOP <n> hits` while recording.
+Status line : `● TAP-LOOP <n> hits` pendant l'enregistrement.
 
 ## Tap-strict — `:tap-strict [sample]`
 
-Single-bar quantize, no loop detection. Use when you tap a one-shot
-rhythm and want exactly what you played, not a detected loop.
+Quantification à une mesure, sans détection de boucle. Quand tu tapes un
+rythme une fois et que tu veux exactement ce que tu as joué.
 
 ## Tap-tempo — `:bpm` (alias `:tap-tempo`)
 
-Tap 2+ beats with `Space`, `Enter` sets cps. 4 taps = 1 bar
-convention (so 60 BPM = `cps!(0.25)`).
+Tape 2+ temps avec `Espace`, `Entrée` règle le cps. Convention 4 taps =
+1 mesure (60 BPM = `cps!(0.25)`).
 
-## Piano mode — `:piano [synth]`
+## Mode piano — `:piano [synth]`
 
-Letter keys map to chromatic semitones, each press fires the
-named synth at that pitch.
+Les lettres deviennent des demi-tons chromatiques ; chaque appui joue le
+synth nommé à cette hauteur.
 
 ```
-Bottom row (naturals):  z(w) x  c  v  b  n  m(,)  ;
-                         C   D  E  F  G  A   B   C
-Middle row (sharps):       s  d     g  h  j
-                          C#  D#    F# G# A#
+Rangée du bas (naturelles) :  z(w) x  c  v  b  n  m(,)  ;
+                               C   D  E  F  G  A   B   C
+Rangée du milieu (dièses) :      s  d     g  h  j
+                                C#  D#    F# G# A#
 ```
 
-`[` and `]` shift octave (0..9, default 4 = A4 region). `Esc` exits.
+`[` et `]` changent d'octave (0..9, 4 par défaut = région de A4). `Esc`
+quitte.
 
 ## Piano-record — `:piano-rec [synth]`
 
-Same as piano mode but every press is stashed with its timestamp.
-`Enter` commits: notes get quantized across 16 steps, output is
-`@d<next-free> :synth |> n("0 4 7 0 4 7 ...")` below the cursor.
+Comme le mode piano, mais chaque appui est mémorisé avec son instant.
+`Entrée` valide : les notes sont quantifiées sur 16 pas, la sortie est
+`@d<libre> :synth |> n("0 4 7 0 4 7 ...")` sous le curseur.
 
-Status bar shows `● PIANO REC oct=4 [n]`.
+Status line : `● PIANO REC oct=4 [n]`.
 
-## Space-leader mode (transient)
+## Espace-leader (transitoire)
 
-Pressing `Space` in normal mode arms a one-shot trigger:
+`Espace` en mode normal arme un déclencheur unique ; le popup which-key
+liste les suites possibles :
 
-- next char = `d` → expands `@d$1 "$2"` with cursor on `$1`
-- next char = `b` / `L` / `I` / `w` / `?` → opens browse / lib /
-  snippets / wiki / guide
-- next char = a letter in `_LEADER_SNIPPETS` → expands template
-- any other char → cancels silently
+- lettre suivante = `d` → insère `@d$1 "$2"` avec le curseur sur `$1`
+- `b` / `L` / `I` / `w` / `?` → ouvre sons / librairie / snippets /
+  wiki / aide
+- une lettre de la table des snippets → insère le modèle
+- autre chose → annule silencieusement
 
-While the trigger is pending, the footer shows the available
-options. Once a snippet expands with placeholders, you're in
-"placeholder mode": Tab next, Shift-Tab prev, Esc exit.
+Une fois un snippet inséré avec des trous, tu es en « mode placeholder » :
+Tab suivant, Maj-Tab précédent, Esc sortir.
 
-See [04-keys](04-keys.md) for the full leader table.
+Voir [04-keys](04-keys.md) pour la table complète.
 
-## Mixer mode — `:mixer` (alias `:mix`)
+## Mixer — `:mixer` (alias `:mix`)
 
-A modal showing all live + muted slots with their activity meter,
-state, gain, and source. Per-slot controls:
+Un modal avec tous les slots actifs + mutes, leur vu-mètre, leur état,
+leur gain et leur source. Par slot :
 
-- `j` / `k` — navigate slots
-- `m`       — mute / unmute the slot under cursor
+- `j` / `k` — naviguer
+- `m`       — mute / démute
 - `s`       — solo
-- `u`       — unmute all
-- `+` / `-` — nudge gain ±0.1 (modifies the buffer + re-evals)
-- `*` / `/` — nudge gain ±0.5
-- `!` / `.` — panic (kill all voices)
-- `q` / Esc — close
+- `u`       — tout démuter
+- `+` / `-` — gain ±0.1 (modifie le buffer + ré-évalue)
+- `*` / `/` — gain ±0.5
+- `!` / `.` — panic
+- `q` / Esc — fermer
 
-## Pause mode — `:pause`
+## Pause — `:pause`
 
-Freezes rendering so you can shift-drag-select text from the
-terminal to copy. Any keypress resumes.
+Fige le rendu pour sélectionner du texte à la souris (shift-glisser)
+et le copier. Une touche reprend.
 
-## Keydebug mode — `:keydebug`
+## Keydebug — `:keydebug`
 
-Toggle. While ON, every key event logs to the pane as
-`[KEY] <symbol> char='X' action=<press|repeat|release>`. Useful
-when diagnosing keyboard / layout quirks.
+Bascule. Tant que c'est ON, chaque événement clavier est journalisé :
+`[KEY] <symbole> char='X' action=<press|repeat|release>`. Utile pour
+diagnostiquer une disposition de clavier.

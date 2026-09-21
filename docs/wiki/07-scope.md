@@ -1,50 +1,49 @@
-# Scope visualisations
+# Le scope
 
-`S` cycles through scope types; `:scope <type>` picks one directly.
-Off = no scope panel (saves screen space).
+`S` fait tourner les types de scope ; `:scope <type>` en choisit un
+directement. Off = pas de scope (gagne de la place).
 
 ## Types
 
 ```
-amp           VU-style amplitude meter + dB readout
-wave          Edge-triggered oscilloscope (32ms window)
-spectrum      48 log-spaced bands, vertical bars
-xy            Lissajous: stereo L vs R scatter + connecting lines
-goni          Goniometer (XY rotated 45° — mono = vertical line)
-spectrogram   Waterfall of recent FFT frames
-peak          Peak meter with hold marker + clip flag
-pitch         Fundamental tracker → Hz + note name
-onset         Flash bar on each transient
-hist          Sample-value distribution histogram
-corr          Stereo L-R correlation: -1 phase, 0 stereo, +1 mono
+amp           vu-mètre d'amplitude + lecture en dB
+wave          oscilloscope déclenché (fenêtre de 32 ms)
+spectrum      48 bandes espacées en log, barres verticales
+xy            Lissajous : nuage L contre R + lignes
+goni          goniomètre (XY tourné de 45° — mono = ligne verticale)
+spectrogram   cascade des dernières trames FFT
+peak          crête avec marqueur de tenue + drapeau de clip
+pitch         suivi de fondamentale → Hz + nom de note
+onset         flash à chaque transitoire
+hist          histogramme des valeurs d'échantillon
+corr          corrélation stéréo L-R : -1 phase, 0 stéréo, +1 mono
 ```
 
-## Wave zoom
+## Zoom de l'onde
 
-When scope is `:wave`, the keys take dual meaning depending on
-whether the cursor is on a number:
+Quand le scope est `:wave`, ces touches agissent sur lui (sauf si le
+curseur est sur un nombre, où elles le nudgent) :
 
 ```
-+ / -         Y zoom (amplitude scale)
-> / <         X zoom (time-window width)
-=             reset both axes
++ / -         zoom Y (échelle d'amplitude)
+> / <         zoom X (largeur de la fenêtre)
+=             remet les deux axes à 1
 ```
 
-## Triggered display
+## Affichage déclenché
 
-The wave scope triggers on **rising zero-crossings**, so a sustained
-note appears locked in place instead of scrolling. If silence is
-detected, a 4Hz fallback impulse keeps the panel updating.
+Le scope d'onde se déclenche sur les **passages par zéro montants** : une
+note tenue reste en place au lieu de défiler. En silence, une impulsion
+de repli à 4 Hz garde le panneau vivant.
 
-## How the data flows
+## Le chemin des données
 
-1. SC's master bus is tapped by a small scope synth (per type) that
-   runs `SendReply` once per frame.
-2. `OSCFunc` forwarders relay the data to Ressac's UDP listener on
-   port 57121.
-3. The Julia listener writes into `_APP_SCOPE_DATA` (and the
-   spectrogram listener also pushes to a ring buffer).
-4. The render function for the active type reads from those globals.
+1. Le bus master de SC est écouté par un petit synth de scope (un par
+   type) qui fait un `SendReply` par trame.
+2. Des `OSCFunc` relaient les données vers l'écouteur UDP de Ressac sur
+   le port 57121.
+3. L'écouteur Julia écrit dans `_APP_SCOPE_DATA` (celui du spectrogramme
+   pousse aussi dans un tampon circulaire).
+4. Le rendu du type actif lit ces globals.
 
-So adding a new scope = one SC `SynthDef`, one `OSCFunc` forwarder,
-one Julia renderer.
+Ajouter un scope = un `SynthDef` SC, un relais `OSCFunc`, un rendu Julia.

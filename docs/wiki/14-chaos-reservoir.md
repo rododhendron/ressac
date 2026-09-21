@@ -1,76 +1,78 @@
-# Chaos & Reservoir
+# Chaos et réservoir
 
-Ressac ships two plugins that turn dynamical systems into musical
-material: **chaos** (chaotic generators as patterns) and **reservoir**
-(spiking neural / cellular-automaton reservoirs that drive synth
-events). Both follow the standard plugin architecture, so the same
-patterns can be extended by community plugins.
+Ressac embarque deux plugins qui font de la matière musicale à partir de
+systèmes dynamiques : **chaos** (générateurs chaotiques comme patterns) et
+**reservoir** (réservoirs de neurones à impulsions / automates
+cellulaires qui pilotent des événements de synthèse). Les deux suivent
+l'architecture de plugin standard : les mêmes patterns peuvent être
+étendus par des plugins communautaires.
 
-> **Just want to hear it?** Type one of these in the TUI:
+> **Tu veux juste entendre ?** Tape dans la TUI :
 > `:starter chaos` · `:starter reservoir-spike` ·
 > `:starter reservoir-spectral` · `:starter reservoir-mix`.
-> Each loads a 4-8 line demo ready to eval with `E`.
+> Chacun charge une démo de 4 à 8 lignes prête à évaluer avec `E`.
 
-There's also a parallel **audio-rate** chaos surface inside the synth
-DSL (see [03-synth-dsl](03-synth-dsl.md) §Chaotic / nonlinear sources)
-— that one is for chaos *inside* SynthDefs, computed by SuperCollider.
-This page is about the **Julia-side** chaos and reservoir generators,
-which emit patterns the scheduler ships to SC over OSC.
+Il existe aussi une surface chaotique **au taux audio** dans le DSL de
+synthèse (voir [03-synth-dsl](03-synth-dsl.md), § Sources chaotiques) —
+celle-là, c'est du chaos *dans* les SynthDefs, calculé par SuperCollider.
+Cette page concerne les générateurs **côté Julia**, qui émettent des
+patterns que le scheduler envoie à SC par OSC.
 
 ```
-                  control-rate (Julia)          audio-rate (SC)
-                  ─────────────────────         ────────────────
-chaos plugin      Pattern{Float64} sources      ─
-                  modulate pattern params
-synth DSL         ─                             lorenz(), henon(), …
-                  use inside @synth as you would white() / saw()
-reservoir plugin  Pattern{ControlMap} sources   (none yet — Routes II
-                  fire SC events from spikes    + III synthesise via
-                                                regular SynthDefs)
+                  taux de contrôle (Julia)     taux audio (SC)
+                  ─────────────────────        ────────────────
+plugin chaos      sources Pattern{Float64}     ─
+                  modulent les paramètres
+DSL de synthèse   ─                            lorenz(), henon(), …
+                  dans @synth comme white() / saw()
+plugin reservoir  sources Pattern{ControlMap}  (rien encore — les routes
+                  tirent des événements SC     II + III synthétisent via
+                  depuis les impulsions        des SynthDefs ordinaires)
 ```
 
-## chaos plugin
+## Plugin chaos
 
-Five built-in chaotic systems, each returning a `Pattern{Float64}`:
+Cinq systèmes chaotiques intégrés, chacun renvoyant un `Pattern{Float64}` :
 
-| Name          | Type                      | Output                  |
-| ------------- | ------------------------- | ----------------------- |
-| `lorenz`      | 3D continuous attractor   | `:x`, `:y`, or `:z` axis |
-| `henon`       | 2D discrete map           | `:x` or `:y`            |
-| `logistic`    | 1D discrete map           | scalar                  |
-| `rossler`     | 3D continuous attractor   | `:x`, `:y`, or `:z`     |
-| `standard`    | Chirikov standard map     | `:p` (momentum) or `:θ` |
+| Nom           | Type                      | Sortie                   |
+| ------------- | ------------------------- | ------------------------ |
+| `lorenz`      | attracteur continu 3D     | axe `:x`, `:y` ou `:z`   |
+| `henon`       | carte discrète 2D         | `:x` ou `:y`             |
+| `logistic`    | carte discrète 1D         | scalaire                 |
+| `rossler`     | attracteur continu 3D     | `:x`, `:y` ou `:z`       |
+| `standard`    | carte standard de Chirikov | `:p` (moment) ou `:θ`   |
 
 ```julia
-# Direct use
+# Usage direct
 p = Chaos.lorenz(σ=10, ρ=28, β=8/3, axis=:x)
 p(0//1, 1//1)   # => [Event{Float64}(...)]
 
-# Sweep a filter cutoff
+# Balayer un cutoff
 @d1 :acid303 |> set(:cutoff, Chaos.lorenz() |> range_pat(400, 4000))
 
-# Discretise to N steps per cycle
+# Discrétiser en N pas par cycle
 @d2 :pad |> set(:room, Chaos.henon() |> segment(8) |> range_pat(0.1, 0.7))
 ```
 
-### Discretising / scaling
+### Discrétiser / mettre à l'échelle
 
-A continuous chaos pattern emits one event per query covering the
-whole arc. Combine with:
+Un pattern chaotique continu émet un événement par requête couvrant tout
+l'arc. À combiner avec :
 
-- `segment(N)` — N discrete samples per cycle
-- `range_pat(lo, hi)` — linearly remap into `[lo, hi]`
-- `slow(N)` / `fast(N)` — rescale chaos time vs. musical time
+- `segment(N)` — N échantillons discrets par cycle
+- `range_pat(lo, hi)` — remappe linéairement dans `[lo, hi]`
+- `slow(N)` / `fast(N)` — recale le temps du chaos sur le temps musical
 
-### State semantics
+### Sémantique d'état
 
-Each call to `Chaos.lorenz(...)` builds a fresh, independent state.
-Queries are stateful (forward integration) — re-querying the same
-window returns the same value; querying further advances the system.
+Chaque appel à `Chaos.lorenz(...)` construit un état neuf et indépendant.
+Les requêtes ont un état (intégration en avant) : ré-interroger la même
+fenêtre rend la même valeur ; interroger plus loin fait avancer le
+système.
 
-### Extending — registering a new chaos system
+### Étendre — enregistrer un nouveau système
 
-Plugins (or live code) can add new generators:
+Un plugin (ou du code live) peut ajouter des générateurs :
 
 ```julia
 function mychaos(; r=3.9, init=0.5)
@@ -85,189 +87,191 @@ Chaos.register_chaos!(:mychaos, mychaos)
 @test :mychaos in Chaos.list_chaos()
 ```
 
-## reservoir plugin
+## Plugin reservoir
 
-Two reservoir kinds and three routes, all composable.
+Deux sortes de réservoirs et trois routes, tous composables.
 
-### Reservoir kinds
+### Sortes de réservoirs
 
-**AdEx** — adaptive exponential integrate-and-fire spiking neurons
-(Brette & Gerstner 2005). Rich firing patterns depending on params:
+**AdEx** — neurones à impulsions « adaptive exponential integrate-and-
+fire » (Brette & Gerstner 2005). Des motifs de décharge riches selon les
+paramètres :
 
 ```julia
 r = Reservoir.adex(
-    N=64,                         # number of neurons
-    params=ADEX_BURSTING,         # also ADEX_REGULAR (default), ADEX_FAST
-    dt=1.0,                       # ms per simulation step
-    steps_per_cycle=1000,         # → ~1 sec of neural time per Ressac cycle
-    p_connect=0.1,                # sparse recurrent connectivity
-    W_gain=180.0,                 # synaptic weight scale (pA per spike)
-    V_init=:scattered,            # uniform-random V at boot (less synchronous)
-    σ_noise=400.0,                # OU baseline noise volatility (pA)
-    τ_noise=20.0,                 # OU correlation time (ms)
-    inhibitory_fraction=0.2,      # Dale's principle: 20% inhibitory units
+    N=64,                         # nombre de neurones
+    params=ADEX_BURSTING,         # aussi ADEX_REGULAR (défaut), ADEX_FAST
+    dt=1.0,                       # ms par pas de simulation
+    steps_per_cycle=1000,         # → ~1 s de temps neuronal par cycle Ressac
+    p_connect=0.1,                # connectivité récurrente clairsemée
+    W_gain=180.0,                 # échelle des poids synaptiques (pA par impulsion)
+    V_init=:scattered,            # V aléatoire uniforme au départ (moins synchrone)
+    σ_noise=400.0,                # volatilité du bruit OU de base (pA)
+    τ_noise=20.0,                 # temps de corrélation OU (ms)
+    inhibitory_fraction=0.2,      # principe de Dale : 20 % d'unités inhibitrices
     seed=42,
 )
 ```
 
-**OU baseline noise** (`σ_noise`, `τ_noise`) injects coloured noise as
-extra current each step. With `σ_noise = 0` neurons sit silent at rest;
-with `σ_noise ≈ 400-600` V hovers near threshold — any external drive
-arriving on top synchronises the population. Mimics the in-vivo
-"high-conductance state" where cortical neurons are constantly noisy
-and become rhythmically active under thalamic drive.
+**Bruit OU de base** (`σ_noise`, `τ_noise`) injecte un bruit coloré comme
+courant supplémentaire à chaque pas. Avec `σ_noise = 0` les neurones
+restent au repos ; avec `σ_noise ≈ 400-600` V flotte près du seuil — toute
+excitation externe synchronise la population. Imite l'état « à haute
+conductance » in vivo, où les neurones corticaux sont toujours bruyants et
+deviennent rythmiques sous excitation thalamique.
 
-**Dale's principle** (`inhibitory_fraction`) marks a fraction of neurons
-as inhibitory — their outgoing weights are forced negative. `0.0`
-(default) keeps random-signed weights; `0.2` is cortical-typical (80% E,
-20% I).
+**Principe de Dale** (`inhibitory_fraction`) marque une fraction des
+neurones comme inhibiteurs — leurs poids sortants sont forcés négatifs.
+`0.0` (défaut) garde des poids de signe aléatoire ; `0.2` est la
+proportion corticale typique (80 % E, 20 % I).
 
-### Flexible drive sources
+### Sources d'excitation flexibles
 
-The `drive` kwarg on every route accepts any of these forms:
+Le mot-clé `drive` de chaque route accepte :
 
-| Form | Example | Effect |
-| ---- | ------- | ------ |
-| `Real` | `drive=500.0` | constant pA current to all neurons |
-| `Vector` | `drive=[100,200,...]` | static per-neuron (length N) |
-| `Function` | `drive=(c,s) -> 400+200*sin(2π*s/500)` | called per step, returns Real or Vector |
-| `Pattern{Symbol}` | `drive=p"bd ~ sn ~"` | each event pulses neuron `hash(value) % N + 1` for 10 steps |
-| `Pattern{Float64}` | `drive=sine() \|> range_pat(0,600)` | continuous signal sampled per cycle, broadcast |
+| Forme | Exemple | Effet |
+| ----- | ------- | ----- |
+| `Real` | `drive=500.0` | courant constant en pA sur tous les neurones |
+| `Vector` | `drive=[100,200,...]` | statique par neurone (longueur N) |
+| `Function` | `drive=(c,s) -> 400+200*sin(2π*s/500)` | appelée à chaque pas, renvoie Real ou Vector |
+| `Pattern{Symbol}` | `drive=p"bd ~ sn ~"` | chaque événement excite le neurone `hash(valeur) % N + 1` pendant 10 pas |
+| `Pattern{Float64}` | `drive=sine() \|> range_pat(0,600)` | signal continu échantillonné par cycle, diffusé |
 
-**RECA** — Reservoir Computing with Elementary Cellular Automata
-(Yilmaz 2014). 1D bit array evolving under a Wolfram rule:
+**RECA** — Reservoir Computing with Elementary Cellular Automata (Yilmaz
+2014). Un tableau de bits 1D qui évolue sous une règle de Wolfram :
 
 ```julia
 r = Reservoir.reca(
     N=128,
-    rule=110,                     # any of 0..255 — see notes below
-    init=:single,                 # :rand or :zero
-    boundary=:wrap,               # :zero for non-toroidal
+    rule=110,                     # 0..255 — voir les notes plus bas
+    init=:single,                 # :rand ou :zero
+    boundary=:wrap,               # :zero pour non torique
     steps_per_cycle=16,
     seed=42,
 )
 ```
 
-Interesting rules to try:
-- `30` — fully chaotic, the canonical RC reservoir
-- `90` — Sierpinski triangle from a single cell
-- `110` — Turing-complete, edge of chaos
-- `184` — traffic flow, very ordered
-- `54` — complex (class IV) behaviour
+Règles intéressantes :
+- `30` — entièrement chaotique, le réservoir RC canonique
+- `90` — triangle de Sierpinski depuis une cellule
+- `110` — Turing-complète, bord du chaos
+- `184` — trafic routier, très ordonné
+- `54` — comportement complexe (classe IV)
 
-### Route I — spike → sineburst
+### Route I — impulsion → bouffée de sinus
 
-Each spike on neuron `i` fires a percussive sine at the frequency
-assigned to `i` by the chosen layout. Layouts: `:logfreq`, `:scale`,
+Chaque impulsion du neurone `i` tire un sinus percussif à la fréquence
+que la disposition lui assigne. Dispositions : `:logfreq`, `:scale`,
 `:harmonic`, `:cluster`.
 
 ```julia
 r = Reservoir.adex(N=64, params=ADEX_BURSTING, seed=42)
 @d1 Reservoir.spike_burst(r;
-    drive=600.0,                    # constant input current (pA)
+    drive=600.0,                    # courant d'entrée constant (pA)
     layout=:scale,
     layout_args=(scale=:minor_pentatonic, root=220),
-    burst_dur=1//16,                # event sustain (cycles)
+    burst_dur=1//16,                # durée de l'événement (cycles)
     gain=0.5,
 )
 ```
 
-Available scales for `layout=:scale`:
+Gammes disponibles pour `layout=:scale` :
 `minor_pentatonic major_pentatonic dorian phrygian lydian
 mixolydian natural_minor harmonic_minor whole_tone chromatic`
 
-### Route II — spectral cloud (additive resynthesis)
+### Route II — nuage spectral (resynthèse additive)
 
-Fires `frames_per_cycle` events per cycle, each carrying 16 partial
-amplitudes sampled from the reservoir state. Cross-fade smooths
-frame transitions.
+Tire `frames_per_cycle` événements par cycle, chacun portant 16
+amplitudes de partiels lues dans l'état du réservoir. Un fondu enchaîné
+lisse les transitions.
 
 ```julia
 r = Reservoir.reca(N=16, rule=110, init=:single)
 @d2 Reservoir.spectral_cloud(r;
-    bins=16,                        # matches the specloud16 SynthDef
+    bins=16,                        # correspond au SynthDef specloud16
     frames_per_cycle=8,
     layout=:harmonic,
     layout_args=(fund=110,),
-    overlap=2.0,                    # 1.0 = abutting, 2.0 = 50% cross-fade
+    overlap=2.0,                    # 1.0 = bout à bout, 2.0 = 50 % de fondu
     gain=0.3,
 )
 ```
 
-For AdEx, the amplitude is read from `:V` (membrane potential) with a
-default clip-and-normalise into `[0, 1]`. For RECA it's the bit state
-(0 or 1). Customise via `amplitude_kind` and `amplitude_scale`.
+Pour AdEx, l'amplitude vient de `:V` (potentiel de membrane), écrêtée et
+normalisée dans `[0, 1]`. Pour RECA, c'est l'état du bit (0 ou 1).
+Personnalise avec `amplitude_kind` et `amplitude_scale`.
 
-### Route III — scalar modulator
+### Route III — modulateur scalaire
 
-Read one neuron's state as a continuous control signal — drop it
-into any `set(:param, …)` call.
+Lire l'état d'un neurone comme signal de contrôle continu — dans
+n'importe quel `set(:param, …)`.
 
 ```julia
 r = Reservoir.adex(N=16, seed=1)
 mod = Reservoir.modulator(r,
     neuron=5,
-    kind=:V,                        # or :w, :spike, :density
+    kind=:V,                        # ou :w, :spike, :density
     drive=500.0,
-    scale=identity,                 # post-transform Float64 → Float64
+    scale=identity,                 # transformation Float64 → Float64
 ) |> range_pat(400, 4000)
 
 @d3 p"bd*4" |> set(:cutoff, mod)
 ```
 
-Per-type `kind` cheatsheet:
-- **AdEx**: `:V` membrane potential · `:w` adaptation · `:spike` last-step bool · `:density` fraction active
-- **RECA**: `:bit` cell state · `:spike` last-step bool · `:density` fraction active
+`kind` par type :
+- **AdEx** : `:V` potentiel de membrane · `:w` adaptation · `:spike` bool du dernier pas · `:density` fraction active
+- **RECA** : `:bit` état de la cellule · `:spike` bool du dernier pas · `:density` fraction active
 
-### The interface contract
+### Le contrat d'interface
 
-A "reservoir kind" is any value implementing:
+Une « sorte de réservoir » est toute valeur qui implémente :
 
 ```julia
-step!(r, input::AbstractVector{Float64})        # advance one step
-spikes(r) -> AbstractVector{Bool}               # who fired this step
-Base.length(r) -> Int                           # number of units
-steps_per_cycle(r) -> Int                       # cycle ↔ step resolution
+step!(r, input::AbstractVector{Float64})        # avance d'un pas
+spikes(r) -> AbstractVector{Bool}               # qui a tiré à ce pas
+Base.length(r) -> Int                           # nombre d'unités
+steps_per_cycle(r) -> Int                       # résolution cycle ↔ pas
 read_state(r, kind::Symbol, neuron::Int) -> Float64
-default_modulator_kind(r) -> Symbol             # what `:auto` resolves to
+default_modulator_kind(r) -> Symbol             # ce que `:auto` résout
 ```
 
-Implement these and call `Reservoir.register_reservoir!(:mykind, ctor)` —
-your reservoir inherits Routes I/II/III with zero extra code.
+Implémente-les et appelle `Reservoir.register_reservoir!(:mykind, ctor)` :
+ton réservoir hérite des routes I/II/III sans rien d'autre.
 
-### Layouts (frequency mapping)
+### Dispositions (mapping de fréquences)
 
-Layouts decide which note each neuron / cell maps to in Routes I & II.
-Built-ins:
+Les dispositions décident quelle note chaque neurone / cellule reçoit
+dans les routes I et II. Intégrées :
 
-| Name        | Behavior                                  | Extra kwargs                |
-| ----------- | ----------------------------------------- | --------------------------- |
-| `:logfreq`  | Log-uniform between `lo` and `hi`         | —                           |
-| `:scale`    | Quantised to a musical scale across octaves | `scale=`, `root=`         |
-| `:harmonic` | i · fund (1f, 2f, 3f, …)                  | `fund=`                     |
-| `:cluster`  | Dense linear cluster around `center`      | `center=`, `spread=`        |
+| Nom         | Comportement                                 | Mots-clés                   |
+| ----------- | -------------------------------------------- | --------------------------- |
+| `:logfreq`  | log-uniforme entre `lo` et `hi`              | —                           |
+| `:scale`    | quantifiée sur une gamme à travers les octaves | `scale=`, `root=`         |
+| `:harmonic` | i · fund (1f, 2f, 3f, …)                     | `fund=`                     |
+| `:cluster`  | grappe linéaire dense autour de `center`     | `center=`, `spread=`        |
 
-Add your own:
+Ajoute la tienne :
 
 ```julia
 Reservoir.register_layout!(:my_layout, (N, lo, hi; kwargs...) -> begin
-    # … return Vector{Float64} of length N
+    # … renvoie un Vector{Float64} de longueur N
 end)
 ```
 
-## Combining the two worlds
+## Combiner les deux mondes
 
-Audio-rate chaos UGen as voice + control-rate reservoir as modulator:
+Un UGen chaotique audio comme voix + un réservoir au taux de contrôle
+comme modulateur :
 
 ```julia
-# A custom chaos-driven bass synth …
+# Une basse chaotique sur mesure …
 @synth :chaobass (freq=55, sustain=0.45, drive=1.4) begin
   logistic(:freq * 8, 3.9, 0.5) |> low_pass(:freq * 8) |>
   tanh_drive(:drive) |> env_perc(0.005, :sustain)
 end
 
-# … whose `drive` param is modulated by a slow Lorenz, with notes
-# triggered by AdEx spikes mapped to a minor pentatonic.
+# … dont le paramètre `drive` est modulé par un Lorenz lent, les notes
+# déclenchées par des impulsions AdEx sur une pentatonique mineure.
 r = Reservoir.adex(N=16, params=ADEX_BURSTING, seed=42)
 @d1 Reservoir.spike_burst(r; drive=600.0, layout=:scale,
                           layout_args=(scale=:minor_pentatonic, root=110),
@@ -275,25 +279,25 @@ r = Reservoir.adex(N=16, params=ADEX_BURSTING, seed=42)
    set(:drive, Chaos.lorenz() |> range_pat(0.8, 2.4))
 ```
 
-## Reference: where things live
+## Référence : où vivent les choses
 
 ```
-plugins/chaos/                    Julia-side chaos generators
-├── chaos.jl                      module Chaos + 5 systems
+plugins/chaos/                    générateurs chaotiques côté Julia
+├── chaos.jl                      module Chaos + 5 systèmes
 └── plugin.toml
 
-plugins/reservoir/                Reservoir + 3 routes
-├── reservoir.jl                  module Reservoir + interface contract
-├── adex.jl                       AdEx neurons + AdExReservoir
-├── reca.jl                       Elementary CA reservoir
-├── layouts.jl                    Frequency layouts (logfreq/scale/...)
-├── route_spike.jl                Route I — spike → burst
-├── route_modulator.jl            Route III — scalar readout
-├── route_spectral.jl             Route II — additive resynthesis
-├── sineburst.scd                 Route I voice
-├── specloud16.scd                Route II voice (16 additive partials)
+plugins/reservoir/                réservoir + 3 routes
+├── reservoir.jl                  module Reservoir + contrat d'interface
+├── adex.jl                       neurones AdEx + AdExReservoir
+├── reca.jl                       réservoir d'automate cellulaire élémentaire
+├── layouts.jl                    dispositions de fréquences (logfreq/scale/...)
+├── route_spike.jl                route I — impulsion → bouffée
+├── route_modulator.jl            route III — lecture scalaire
+├── route_spectral.jl             route II — resynthèse additive
+├── sineburst.scd                 voix de la route I
+├── specloud16.scd                voix de la route II (16 partiels additifs)
 └── plugin.toml
 
-src/synth_dsl.jl                  Audio-rate chaos UGens (in DSL)
-└── lorenz/henon/.../cusp         sc3-plugins wrappers
+src/synth_dsl.jl                  UGens chaotiques audio (dans le DSL)
+└── lorenz/henon/.../cusp         wrappers sc3-plugins
 ```

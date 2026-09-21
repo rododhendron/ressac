@@ -1,84 +1,84 @@
-# Adding your own samples
+# Ajouter tes propres samples
 
-Ressac comes with the full TidalCycles sample collection (bd, sn, hh, cp,
-amen, …) plus a starter set of instruments and synths. When you want to
-use your OWN recordings — a vocal chop, a found-sound texture, a kick
-you sampled from a record — there are two paths.
+Ressac embarque toute la collection de samples de TidalCycles (bd, sn,
+hh, cp, amen, …) plus un lot de départ d'instruments et de synths. Pour
+utiliser TES enregistrements — un chop de voix, une texture trouvée, un
+kick samplé sur un disque — il y a deux chemins.
 
-## The fast path: `:import`
+## Le chemin rapide : `:import`
 
 ```
-:import /path/to/your-sample.wav
-:import /path/to/your-sample.wav as kickheavy
+:import /chemin/vers/ton-sample.wav
+:import /chemin/vers/ton-sample.wav as kickheavy
 ```
 
-This:
-1. Copies the file into `plugins/user-samples/<name>/<name>_0.wav`
-2. Registers it as a sample bank named `<name>` (or the basename of the
-   file if you don't give `as ...`)
-3. Tells the running SuperCollider to load it — no restart needed
+Ça :
+1. Copie le fichier dans `plugins/user-samples/<nom>/<nom>_0.wav`
+2. L'enregistre comme banque de samples `<nom>` (ou le nom du fichier
+   si tu ne donnes pas `as ...`)
+3. Demande au SuperCollider en cours de le charger — sans redémarrer
 
-Use it immediately:
+Utilise-le tout de suite :
 ```julia
 @d1 "kickheavy ~ kickheavy ~"
 ```
 
-Re-running `:import` with the same name on a different file **adds a
-variant** rather than overwriting. So:
+Relancer `:import` avec le même nom sur un autre fichier **ajoute une
+variante** au lieu d'écraser :
 ```
 :import kick1.wav as mykick     # mykick:0
-:import kick2.wav as mykick     # mykick:1  (now you have 2)
+:import kick2.wav as mykick     # mykick:1  (tu en as 2)
 :import kick3.wav as mykick     # mykick:2
 ```
 
-In patterns you then pick variants with `n(...)`:
+Dans les patterns, tu choisis la variante avec `n(...)` :
 ```julia
-@d1 :mykick |> n("0 1 2 1")    # rotate through the three
-@d1 "mykick"                    # random variant
-@d1 "mykick:1"                  # variant #1 specifically
+@d1 :mykick |> n("0 1 2 1")    # tourne sur les trois
+@d1 "mykick"                    # variante aléatoire
+@d1 "mykick:1"                  # la variante 1 précisément
 ```
 
-## The plugin path
+## Le chemin plugin
 
-For a curated bank of dozens of samples organised by category, write a
-plugin descriptor instead of importing one file at a time.
+Pour une banque de dizaines de samples rangés par catégorie, écris un
+descripteur de plugin au lieu d'importer fichier par fichier.
 
-Create `plugins/<plugin-name>/plugin.toml`:
+Crée `plugins/<nom-du-plugin>/plugin.toml` :
 
 ```toml
 name = "my-pack"
 version = "0.1.0"
-description = "my found-sound collection"
+description = "ma collection de sons trouvés"
 
 [samples]
-# Either a list of root folders Ressac will scan, each subdir becoming
-# a sample bank named after the folder:
-roots = ["/absolute/path/to/your/sample/folders/"]
+# Soit une liste de dossiers racines que Ressac parcourt, chaque
+# sous-dossier devenant une banque nommée d'après le dossier :
+roots = ["/chemin/absolu/vers/tes/dossiers/de/samples/"]
 
-# OR explicit per-bank entries:
+# OU des banques explicites :
 [[samples.banks]]
 name = "vibegtr"
-path = "/absolute/path/to/guitar-textures/"
+path = "/chemin/absolu/vers/guitar-textures/"
 
 [[samples.banks]]
 name = "vinylhiss"
-path = "/absolute/path/to/vinyl-hiss/"
+path = "/chemin/absolu/vers/vinyl-hiss/"
 ```
 
-Restart Ressac (or use `:reload-config` if it's already running and
-you only changed the TOML — for new folders you need to relaunch SC).
-The names `vibegtr` and `vinylhiss` are now in `:browse`, in
-autocomplete, and in patterns.
+Redémarre Ressac (ou `:reload-config` s'il tourne déjà et que tu n'as
+changé que le TOML — pour de nouveaux dossiers il faut relancer SC).
+Les noms `vibegtr` et `vinylhiss` sont maintenant dans `:browse`, dans
+la complétion et dans les patterns.
 
-## Where things live
+## Où vivent les choses
 
 ```
 plugins/
-  dirt/                       # the vendored Dirt-Samples (bd, sn, hh, …)
-  superdirt-synths/           # SC synthdefs (super808, supersaw, …)
-  starter-instruments/        # preset chains like :kicklourd, :sub
-  user-synths/                # your :w-saved synthdefs (.scd or .jl)
-  user-samples/               # what :import populates
+  dirt/                       # les Dirt-Samples embarqués (bd, sn, hh, …)
+  superdirt-synths/           # synthdefs SC (super808, supersaw, …)
+  starter-instruments/        # chaînes préréglées comme :kicklourd, :sub
+  user-synths/                # tes synthdefs sauvés par :w (.scd ou .jl)
+  user-samples/               # ce que :import remplit
     mykick/
       mykick_0.wav
       mykick_1.wav
@@ -87,25 +87,25 @@ plugins/
       voxchop_0.wav
 ```
 
-The directory layout matches what Dirt itself uses, so anything you put
-in `plugins/user-samples/<name>/` works — `:import` is just sugar over
-the same convention.
+La disposition est celle de Dirt lui-même : tout ce que tu mets dans
+`plugins/user-samples/<nom>/` marche — `:import` n'est que du sucre sur
+la même convention.
 
-## File formats
+## Formats de fichiers
 
-Anything SuperCollider can read: WAV, AIFF, FLAC. Stereo or mono fine.
-For best playback, normalise to ~-3 dBFS so SuperDirt's per-event gain
-has headroom.
+Tout ce que SuperCollider lit : WAV, AIFF, FLAC. Stéréo ou mono. Pour
+une lecture propre, normalise vers −3 dBFS pour laisser de la marge au
+gain par événement de SuperDirt.
 
-## Tips
+## Conseils
 
-- **Naming**: stick to lowercase, no spaces, ASCII. Bad chars are
-  silently replaced with `_` by `:import` but the result might surprise
-  you. `:import kick_heavy.wav as kickheavy` is cleaner than letting
-  Ressac derive the name.
-- **Folder vs file**: a bank is a folder; each `.wav` inside is a
-  variant. Even a single sample lives in a folder.
-- **Discovery**: after import, `:browse` shows it in the "samples"
-  category. Tab-completion in `:s name` and `"name"` finds it too.
-- **Removal**: just delete the folder under `plugins/user-samples/`
-  and restart. There's no `:unimport` yet.
+- **Nommage** : minuscules, sans espaces, ASCII. Les caractères
+  interdits sont remplacés par `_` en silence par `:import`, avec
+  parfois des surprises. `:import kick_heavy.wav as kickheavy` est plus
+  propre que de laisser Ressac deviner.
+- **Dossier ou fichier** : une banque est un dossier ; chaque `.wav`
+  dedans est une variante. Même un sample seul vit dans un dossier.
+- **Découverte** : après l'import, `:browse` le montre dans la catégorie
+  « samples ». La complétion dans `:s nom` et `"nom"` le trouve aussi.
+- **Suppression** : supprime le dossier sous `plugins/user-samples/` et
+  redémarre. Pas de `:unimport` pour l'instant.
