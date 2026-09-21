@@ -466,8 +466,10 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Blank the row first so we don't leak previous-frame content
     # when sections shrink (e.g. recording stops).
     TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), _band_style())
+    empty!(m._status_hits)
+    m._status_y = area.y
     # Workspaces, alignés à droite : le courant en pastille accent, les
-    # autres en texte atténué sur le bandeau.
+    # autres en texte atténué sur le bandeau. Cliquables.
     wsx = area.x + area.width
     for (i, ws) in Iterators.reverse(collect(enumerate(m.workspaces.workspaces)))
         is_cur = i == m.workspaces.current_idx
@@ -476,7 +478,13 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         wsx <= area.x + 40 && break
         TK.set_string!(buf, wsx, area.y, label,
                        is_cur ? _pill_style(:accent) : _band_style(fg = TK.theme().text_dim))
+        let idx = i
+            push!(m._status_hits, (wsx, wsx + textwidth(label) - 1,
+                                   () -> (cmd_workspace_switch!(m.workspaces, idx); _ensure_default_workspace!(m))))
+        end
     end
+    # La pastille RESSAC ouvre l'aide.
+    push!(m._status_hits, (area.x, area.x + 7, () -> _open_help!(m)))
     sep = " "
     sep_style = _band_style()
     x = area.x
@@ -618,13 +626,17 @@ ligne (Tab / S-Tab / Esc + compteur).
 """
 function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), _band_style())
-    pairs = if m.placeholder_active
-        [("Tab", "suivant"), ("S-Tab", "précédent"), ("Esc", "sortir"),
-         ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "placeholders")]
+    empty!(m._keybar_hits)
+    m._keybar_y = area.y
+    entries = if m.placeholder_active
+        NamedTuple[(key = k, label = l, binding = nothing, target = nothing) for (k, l) in
+                   [("Tab", "suivant"), ("S-Tab", "précédent"), ("Esc", "sortir"),
+                    ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "placeholders")]]
     else
         layers, prefix = _keybar_layers(m)
-        hints(layers; prefix = prefix)
+        hint_entries(layers; prefix = prefix)
     end
+    pairs = Tuple{String,String}[(e.key, e.label) for e in entries]
     th = TK.theme()
     sep_style = _band_style(fg = th.text_dim)
     key_style = _band_style(fg = th.text_bright, bold = true)
@@ -633,11 +645,13 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Sous un modal, « : commande » l'accompagne (la barre de commande
     # reste accessible). Sinon, la livedoc du mot sous le curseur prend
     # la partie droite (au plus la moitié de la largeur).
-    filter!(p -> p[1] != "?", pairs)
+    keep = [e.key != "?" for e in entries]
+    entries = entries[keep]; pairs = pairs[keep]
     pin = " ? aide "
     right = area.x + area.width - textwidth(pin)
     if right > area.x + 8
         TK.set_string!(buf, right, area.y, pin, _pill_style(:accent))
+        push!(m._keybar_hits, (right, right + textwidth(pin) - 1, () -> _open_help!(m)))
     else
         right = area.x + area.width
     end
@@ -646,6 +660,7 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         right -= textwidth(cmd) + 3
         TK.set_string!(buf, right, area.y, ":", key_style)
         TK.set_string!(buf, right + 1, area.y, " commande  ", txt_style)
+        push!(m._keybar_hits, (right, right + textwidth(cmd), () -> enter!(m.command_line, :command)))
     elseif (ld = _livedoc_under_cursor(m)) !== nothing
         word, doc = ld
         maxw = area.width ÷ 2
@@ -664,6 +679,11 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         if i > 1
             TK.set_string!(buf, x, area.y, " · ", sep_style)
             x += 3
+        end
+        # Le morceau « touche libellé » est un bouton : clic = la touche.
+        let e = entries[i], x0 = x, x1 = x + chunk_w - 1
+            e.binding === nothing ||
+                push!(m._keybar_hits, (x0, x1, () -> click_binding!(e.binding, e.target)))
         end
         TK.set_string!(buf, x, area.y, k, key_style)
         x += textwidth(k)

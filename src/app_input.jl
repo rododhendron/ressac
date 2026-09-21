@@ -20,6 +20,11 @@ can map (x, y) → which widget under the pointer. Behaviours:
   • Middle-click in modal row                    → highlight + activate (Enter)
 """
 function TK.update!(m::RessacApp, evt::TK.MouseEvent)
+    # Boutons du chrome (barre de touches, status line) — même sous un
+    # modal, dont la barre montre les raccourcis.
+    if evt.action === TK.mouse_press && evt.button === TK.mouse_left
+        _chrome_click!(m, evt.x, evt.y) && return
+    end
     # Modal click routing has priority.
     if m.modal !== :none && evt.action === TK.mouse_press &&
        evt.button === TK.mouse_left
@@ -209,6 +214,12 @@ function _workspace_mouse_dispatch!(m::RessacApp, evt::TK.MouseEvent)
     for (leaf_id, r) in rects
         if _in_rect_xywh(r.x, r.y, r.w, r.h, evt.x, evt.y)
             ws.focused_pane = leaf_id
+            # Boutons du cadre (⊞ ⊟ ⤢ ✕) avant la pane elle-même.
+            act = _pane_button_at(TK.Rect(r.x, r.y, r.w, r.h), evt.x, evt.y)
+            if act !== nothing
+                _pane_button_action!(m, act)
+                return true
+            end
             leaf = _find_leaf_by_id(ws.tree, leaf_id)
             if leaf isa PaneLeaf && !isempty(leaf.tabs) &&
                1 <= leaf.current_tab <= length(leaf.tabs)
@@ -218,6 +229,35 @@ function _workspace_mouse_dispatch!(m::RessacApp, evt::TK.MouseEvent)
         end
     end
     return false
+end
+
+# Boutons du cadre d'une pane (elle est déjà focalisée).
+function _pane_button_action!(m::RessacApp, act::Symbol)
+    if act === :vsplit
+        cmd_vsplit!(m.workspaces, "editor", Dict{String,Any}())
+    elseif act === :hsplit
+        cmd_hsplit!(m.workspaces, "editor", Dict{String,Any}())
+    elseif act === :zoom
+        _toggle_zoom!(m)
+    elseif act === :close
+        cmd_close!(m.workspaces)
+    end
+    return
+end
+
+# Clic sur la barre de touches / la status line : exécute le bouton
+# sous le curseur. Les zones sont remplies par le rendu.
+function _chrome_click!(m::RessacApp, x::Int, y::Int)
+    hits = y == m._keybar_y ? m._keybar_hits :
+           y == m._status_y ? m._status_hits : nothing
+    hits === nothing && return false
+    for (x0, x1, f) in hits
+        if x0 <= x <= x1
+            f()
+            return true
+        end
+    end
+    return y == m._keybar_y || y == m._status_y   # le bandeau avale le clic
 end
 
 _in_rect_xywh(x::Int, y::Int, w::Int, h::Int, px::Int, py::Int) =

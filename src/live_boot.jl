@@ -10,7 +10,7 @@ const _LIVE_SCHEDULER = Ref{Union{Scheduler,Nothing}}(nothing)
 
 function _check_live()
     s = _LIVE_SCHEDULER[]
-    s === nothing && error("No live scheduler — call start_live!() or live() first.")
+    s === nothing && error("Pas de scheduler live — lance start_live!() ou live() d'abord.")
     return s
 end
 

@@ -132,9 +132,16 @@ function _render_pane_block_simple!(rect::TK.Rect, title::AbstractString,
     end
     TK.set_string!(buf, rect.x, rect.y + rect.height - 1,
                    "╰" * "─"^(rect.width - 2) * "╯", border)
+    # Boutons du cadre (⊞ split vertical · ⊟ split horizontal · ⤢ zoom ·
+    # ✕ fermer), en haut à droite ; app_input.jl les rend cliquables.
+    btns = _pane_buttons(rect)
+    bsty = fc === nothing ? TK.Style(fg = th.text_dim) : TK.Style(fg = fc, bold = true)
+    for (x, sym, _) in btns
+        TK.set_string!(buf, x, rect.y, " " * sym, bsty)
+    end
     # Titre tronqué à la largeur (jamais omis : une pane doit être nommée) ;
     # en pastille de la couleur du mode quand la pane est focalisée.
-    maxw = rect.width - 4
+    maxw = rect.width - 4 - (isempty(btns) ? 0 : 3 * length(btns) + 1)
     if maxw >= 3
         t = String(title)
         textwidth(t) > maxw && (t = first(t, max(1, maxw - 1)) * "…")
@@ -147,4 +154,30 @@ end
 function _inner_rect_simple(rect::TK.Rect)
     TK.Rect(rect.x + 1, rect.y + 1,
             max(0, rect.width - 2), max(0, rect.height - 2))
+end
+
+# ── Boutons de cadre ────────────────────────────────────────────────
+const _PANE_BUTTONS = (("⊞", :vsplit), ("⊟", :hsplit), ("⤢", :zoom), ("✕", :close))
+
+"""
+    _pane_buttons(rect) -> Vector{Tuple{Int,String,Symbol}}
+
+(x, glyphe, action) des boutons du bord supérieur d'une pane, de gauche
+à droite ; vide si la pane est trop étroite. Chaque bouton occupe 2
+colonnes (« ⊞» avec son espace) et répond au clic sur x ou x+1.
+"""
+function _pane_buttons(rect::TK.Rect)
+    rect.width < 28 && return Tuple{Int,String,Symbol}[]
+    n = length(_PANE_BUTTONS)
+    x0 = rect.x + rect.width - 2 - 3 * n
+    return Tuple{Int,String,Symbol}[(x0 + 3 * (i - 1), sym, act) for (i, (sym, act)) in enumerate(_PANE_BUTTONS)]
+end
+
+# Action d'un bouton de cadre au clic (x, y) dans `rect`, ou nothing.
+function _pane_button_at(rect::TK.Rect, x::Int, y::Int)
+    y == rect.y || return nothing
+    for (bx, _, act) in _pane_buttons(rect)
+        bx <= x <= bx + 1 && return act
+    end
+    return nothing
 end

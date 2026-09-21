@@ -343,3 +343,58 @@ end
     xj = _col(rows[2], "JOURNAL")
     @test _cell(tb, xj, 2).style.bg == th.primary           # le journal focalisé a la pastille
 end
+
+# ── Boutons : barre de touches, status line, cadre des panes ────────────
+_click(app, x, y) = Tachikoma.update!(app, Tachikoma.MouseEvent(x, y, Tachikoma.mouse_left, Tachikoma.mouse_press, false, false, false))
+
+@testset "boutons — la barre de touches est cliquable (touche = action), ? aide aussi" begin
+    app, tb, frame = _help_app()
+    rows = split(_screen(app, tb, frame), "\n")
+    ky = findfirst(r -> startswith(r, "╭ JOURNAL"), rows) - 1
+    _click(app, _col(rows[ky], "Space snippet"), ky)
+    @test app.pending_leader                                # « Space snippet… » = Space
+    _hkey(app, :escape)
+    _click(app, _col(rows[ky], "? aide"), ky)
+    @test app.modal === :help
+    # sous le modal, la barre montre ses raccourcis : « ? fermer » referme
+    rows = split(_screen(app, tb, frame), "\n")
+    _click(app, _col(rows[ky], ": commande"), ky)
+    @test Ressac.is_active(app.command_line)
+    _hkey(app, :escape)
+    _hkey(app, :escape)
+    @test app.modal === :none
+end
+
+@testset "boutons — pastilles de workspaces et RESSAC dans la status line" begin
+    app, tb, frame = _help_app()
+    rows = split(_screen(app, tb, frame), "\n")
+    _click(app, _col(rows[1], "2 DESIGN"), 1)
+    @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+    @test Ressac._focused_role(app) === :synth               # rempli à la visite
+    _click(app, _col(rows[1], "1 PLAY"), 1)
+    @test Ressac.current_workspace(app.workspaces).name == "PLAY"
+    _click(app, 3, 1)                                        # pastille RESSAC
+    @test app.modal === :help
+    _hkey(app, :escape)
+end
+
+@testset "boutons — ⊞ ⊟ ⤢ ✕ sur le cadre de la pane focalisée" begin
+    app, tb, frame = _help_app()
+    rows = split(_screen(app, tb, frame), "\n")
+    @test occursin("⊞", rows[2]) && occursin("✕", rows[2])
+    ws = Ressac.current_workspace(app.workspaces)
+    n0 = length(collect(Ressac._all_leaves(ws.tree)))
+    _click(app, _col(rows[2], "⊞"), 2)                      # split vertical
+    @test length(collect(Ressac._all_leaves(ws.tree))) == n0 + 1
+    rows = split(_screen(app, tb, frame), "\n")
+    # la nouvelle pane (à droite) est focalisée : son ⤢ zoome
+    xz = _col(rows[2], "⤢"); xz2 = findlast("⤢", rows[2])
+    x_last = length(rows[2][1:prevind(rows[2], xz2.start)]) + 1
+    _click(app, x_last, 2)
+    @test app.zoom_leaf == ws.focused_pane
+    _click(app, x_last, 2); @test app.zoom_leaf == 0        # re-clic dézoome
+    rows = split(_screen(app, tb, frame), "\n")
+    xc = findlast("✕", rows[2]); x_close = length(rows[2][1:prevind(rows[2], xc.start)]) + 1
+    _click(app, x_close, 2)                                  # ferme la pane focalisée
+    @test length(collect(Ressac._all_leaves(ws.tree))) == n0
+end

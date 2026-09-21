@@ -270,7 +270,17 @@ déjà proposée par une couche prioritaire n'est pas répétée. Les accords
 (« g t ») ne sont listés qu'avec leur `prefix`, affichés sans lui.
 """
 function hints(layers; prefix::AbstractString = "")
-    out = Tuple{String,String}[]
+    return Tuple{String,String}[(e.key, e.label) for e in hint_entries(layers; prefix = prefix)]
+end
+
+"""
+    hint_entries(layers; prefix="") -> Vector{NamedTuple}
+
+Comme `hints`, avec le binding et sa cible : (key, label, binding,
+target) — la barre de touches en fait des boutons cliquables.
+"""
+function hint_entries(layers; prefix::AbstractString = "")
+    out = NamedTuple[]
     seen = Set{String}()
     for (scope, target) in layers
         if isempty(prefix)
@@ -279,17 +289,31 @@ function hints(layers; prefix::AbstractString = "")
                 any(occursin(' ', k) for k in b.keys) && continue
                 k = first(b.keys)
                 k in seen && continue
-                push!(seen, k); push!(out, (k, hint_label(b)))
+                push!(seen, k); push!(out, (key = k, label = hint_label(b), binding = b, target = target))
             end
         else
             for (suffix, b) in prefix_bindings(scope, prefix; target = target)
                 b.hint || continue
                 suffix in seen && continue
-                push!(seen, suffix); push!(out, (suffix, hint_label(b)))
+                push!(seen, suffix); push!(out, (key = suffix, label = hint_label(b), binding = b, target = target))
             end
         end
     end
     return out
+end
+
+"""
+    click_binding!(b, target)
+
+Déclenche un binding « comme si » sa touche avait été pressée (bouton
+de la barre de touches). Sans effet pour une entrée documentaire.
+"""
+function click_binding!(b::Binding, target)
+    b.action === nothing && return false
+    k = first(b.keys)
+    evt = length(k) == 1 ? TK.KeyEvent(k[1]) : TK.KeyEvent(:char, '\0', TK.key_press)
+    _run_action(b.action, target, evt)
+    return true
 end
 
 """
