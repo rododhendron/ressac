@@ -25,8 +25,7 @@ _km_reservoir(m::RessacApp) = _km_normal(m) &&
 
 # ── :global — partout où l'on n'est pas en train de taper du texte ──
 scope!(:global, "Partout")
-bind!(:global, "?", "aide"; group = :help,
-      action = m -> (m.modal = :guide; m.modal_scroll = 0))
+bind!(:global, "?", "aide"; group = :help, action = _open_help!)
 bind!(:global, "!", "panic (coupe tout)"; group = :audio, action = _panic!)
 bind!(:global, ",", "hush (laisse finir les queues)"; group = :audio,
       when = _km_normal, action = _hush!)

@@ -27,7 +27,6 @@ function _modal_click!(m::RessacApp, x::Int, y::Int)
 end
 
 _modal_lines(m::RessacApp) =
-    m.modal === :guide       ? _GUIDE_LINES :
     m.modal === :synth_guide ? _SYNTH_GUIDE_LINES :
     m.modal === :dsl_guide   ? _DSL_GUIDE_LINES :
     m.modal === :tutorial    ? _TUTORIAL_LINES :
@@ -219,8 +218,8 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
         _handle_sculpt_key!(m, evt)
         return
     end
-    # Modaux texte (guide, tutoriel, explain…) : registre :modal_text.
-    dispatch!(((:modal_text, m),), evt)
+    # Aide générée / modaux texte (tutoriel, explain…) : registre.
+    dispatch!(((modal_scope(m), m),), evt)
     return
 end
 
@@ -228,7 +227,7 @@ end
 const _MODAL_SCOPES = Dict{Symbol,Symbol}(
     :browse => :modal_browse, :synth_library => :modal_lib, :sccode => :modal_sccode,
     :snippets => :modal_snippets, :wiki => :modal_wiki, :mixer => :modal_mixer,
-    :sculpt => :modal_sculpt,
+    :sculpt => :modal_sculpt, :help => :modal_help,
 )
 """
     modal_scope(m) -> Symbol
@@ -244,6 +243,7 @@ modal_scope(m::RessacApp) = m.modal === :none ? :none : get(_MODAL_SCOPES, m.mod
 function _bind_modal_common!(scope::Symbol; nav::Bool = true)
     nav && bind!(scope, ["j", "k", "↓", "↑"], "naviguer"; group = :nav, hint = false)
     bind!(scope, ["Esc", "q"], "fermer"; group = :nav, hint = false)
+    bind!(scope, "?", "aide"; group = :help, action = _open_help!)
 end
 
 scope!(:modal_text, "Texte (guide, tutoriel, explication)")
@@ -268,8 +268,7 @@ to box width.
 function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     lines = _modal_lines(m)
     isempty(lines) && return
-    title = m.modal === :guide       ? "GUIDE" :
-            m.modal === :synth_guide ? "SYNTH GUIDE" :
+    title = m.modal === :synth_guide ? "SYNTH GUIDE" :
             m.modal === :dsl_guide   ? "DSL GUIDE" :
             m.modal === :tutorial    ? "TUTORIAL · 5-minute tour" :
             m.modal === :explain     ? "EXPLAIN" : "INFO"
@@ -421,3 +420,145 @@ function _modal_close_key!(m::RessacApp, evt::TK.KeyEvent)
     end
     return false
 end
+
+# ── Aide `?` — générée depuis le registre ─────────────────────────
+# `?` ouvre l'aide du CONTEXTE : la pane focalisée d'abord (ou le modal
+# ouvert), puis le global, puis l'éditeur. Tab montre toutes les
+# sections. L'aide s'ouvre par-dessus un modal et le restaure à la
+# fermeture. `?` / Esc / q ferment.
+
+# Ordre canonique des sections en mode « tout ».
+const _HELP_ALL_SCOPES = Symbol[
+    :global, :editor, :patterns, :leader, :synth, :visual, :insert, :pane_mode,
+    :explorer, :waveform, :sculpt, :log, :doc, :tuning, :tap, :piano,
+    :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets,
+    :modal_wiki, :modal_mixer, :modal_sccode, :modal_sculpt,
+]
+
+"""
+    _help_scopes(m) -> Vector{Symbol}
+
+Sections de l'aide pour le contexte courant (ou toutes si `help_expanded`).
+"""
+function _help_scopes(m::RessacApp)
+    m.help_expanded && return Symbol[s for s in _HELP_ALL_SCOPES if !isempty(bindings(s))]
+    if m.help_return !== :none                       # aide ouverte depuis un modal
+        return Symbol[get(_MODAL_SCOPES, m.help_return, :modal_text), :modal_help]
+    end
+    pane = _focused_pane_impl(m)
+    ps = pane === nothing ? :none : pane_scope(pane)
+    ps !== :none && return Symbol[ps, :global, :pane_mode, :modal_help]
+    role = _focused_role(m)
+    role === :synth && return Symbol[:synth, :editor, :global, :visual, :insert, :pane_mode, :modal_help]
+    return Symbol[:patterns, :leader, :editor, :global, :visual, :insert, :pane_mode, :modal_help]
+end
+
+# Scopes dont la cible des prédicats est une PANE (pas l'app).
+const _PANE_SCOPES = (:explorer, :waveform, :sculpt, :log, :doc, :tuning)
+
+# Cible des prédicats `when` d'un scope : la pane focalisée pour son
+# propre scope, l'app pour les scopes app ; un scope de pane non
+# focalisée n'a pas de cible (ses entrées ne sont pas grisées).
+function _help_targets(m::RessacApp)
+    t = Dict{Symbol,Any}()
+    pane = _focused_pane_impl(m)
+    if pane !== nothing && pane_scope(pane) !== :none
+        t[pane_scope(pane)] = pane
+    end
+    for s in _HELP_ALL_SCOPES
+        (haskey(t, s) || s in _PANE_SCOPES) || (t[s] = m)
+    end
+    return t
+end
+
+function _open_help!(m::RessacApp)
+    m.modal === :help && return
+    m.help_return = m.modal
+    m.help_expanded = false
+    m.help_scopes = _help_scopes(m)
+    m.modal = :help
+    m.modal_scroll = 0
+    return
+end
+
+function _close_help!(m::RessacApp)
+    m.modal = m.help_return
+    m.help_return = :none
+    m.modal_scroll = 0
+    return
+end
+
+_toggle_help!(m::RessacApp) = m.modal === :help ? _close_help!(m) : _open_help!(m)
+
+"""
+    _help_lines(m) -> Vector{Tuple{String,Symbol}}
+
+Lignes (texte, style) de l'aide : sections du registre puis la
+référence statique (_GUIDE_REFERENCE_LINES). Styles : :title, :group,
+:row, :dim, :note, :ref.
+"""
+function _help_lines(m::RessacApp)
+    out = Tuple{String,Symbol}[]
+    secs = help_sections(m.help_scopes; targets = _help_targets(m))
+    for sec in secs
+        push!(out, ("▸ " * sec.title, :title))
+        kw = 0
+        for g in sec.groups, r in g.rows
+            kw = max(kw, textwidth(r.keys))
+        end
+        kw = min(kw, 22)
+        for g in sec.groups
+            push!(out, ("  " * g.title, :group))
+            for r in g.rows
+                push!(out, ("    " * rpad(r.keys, kw) * "  " * r.label, r.dim ? :dim : :row))
+            end
+        end
+        for n in sec.notes
+            push!(out, ("  " * n, :note))
+        end
+        push!(out, ("", :row))
+    end
+    push!(out, (m.help_expanded ? "▸ Référence" : "▸ Référence   (Tab : toutes les sections de touches)", :title))
+    for l in _GUIDE_REFERENCE_LINES
+        push!(out, (l, startswith(l, "▓") ? :group : :ref))
+    end
+    return out
+end
+
+function _render_help_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    lines = _help_lines(m)
+    inner = _render_modal_block!(buf, area;
+        title = "AIDE",
+        title_right = "j/k défiler · Tab tout · ? Esc q fermer",
+        w_max = 100,
+        h_target = min(length(lines) + 2, area.height - 4))
+    start = clamp(m.modal_scroll + 1, 1, max(1, length(lines)))
+    for i in 0:(inner.height - 1)
+        idx = start + i
+        idx > length(lines) && break
+        txt, kind = lines[idx]
+        sty = kind === :title ? TK.tstyle(:accent, bold = true) :
+              kind === :group ? TK.tstyle(:title, bold = true) :
+              kind === :dim   ? TK.tstyle(:text_dim) :
+              kind === :note  ? TK.tstyle(:text_dim) :
+                                TK.tstyle(:text)
+        TK.set_string!(buf, inner.x, inner.y + i, first(txt, inner.width), sty)
+    end
+    return
+end
+
+_help_last(m::RessacApp) = max(0, length(_help_lines(m)) - 1)
+scope!(:modal_help, "Aide")
+bind!(:modal_help, ["j", "↓"], "défiler"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = min(m.modal_scroll + 1, _help_last(m))))
+bind!(:modal_help, ["k", "↑"], "remonter"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 1)))
+bind!(:modal_help, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = min(m.modal_scroll + 20, _help_last(m))))
+bind!(:modal_help, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 20)))
+bind!(:modal_help, ["g", "G"], "début / fin"; group = :nav, hint = false,
+      action = (m, evt) -> (m.modal_scroll = evt.char == 'g' ? 0 : _help_last(m)))
+bind!(:modal_help, "Tab", "toutes les sections ⟷ contexte"; group = :help,
+      action = m -> (m.help_expanded = !m.help_expanded; m.help_scopes = _help_scopes(m); m.modal_scroll = 0))
+bind!(:modal_help, ["?", "Esc", "q"], "fermer l'aide"; group = :help, action = _close_help!)

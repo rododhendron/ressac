@@ -52,6 +52,11 @@ non-empty), and the focus toggle for keystroke routing.
     # `:synth_library`.
     modal::Symbol                = :none
     modal_scroll::Int            = 0
+    # Aide `?` (modal :help) : sections affichées, modal à restaurer à la
+    # fermeture (l'aide s'ouvre PAR-DESSUS un modal), et « tout montrer ».
+    help_scopes::Vector{Symbol}  = Symbol[]
+    help_return::Symbol          = :none
+    help_expanded::Bool          = false
     # Lines shown by the generic :explain modal (`:explain <name>`).
     explain_lines::Vector{String} = String[]
     # Sculpt studio modal (`:sculpt` / explorer `M`) : une WaveformPane en
@@ -433,4 +438,19 @@ function _ensure_default_workspace!(m::RessacApp)
         push!(leaf.tabs, ep)
         leaf.current_tab = 1
     end
+end
+
+"""
+    _focused_pane_impl(m) -> Union{Nothing,PaneImpl}
+
+La PaneImpl du leaf focalisé du workspace courant (onglet courant), ou
+`nothing`. Sert au registre (scope de la pane) et à l'aide.
+"""
+function _focused_pane_impl(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return nothing
+    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
+    (leaf === nothing || isempty(leaf.tabs)) && return nothing
+    1 <= leaf.current_tab <= length(leaf.tabs) || return nothing
+    return leaf.tabs[leaf.current_tab]
 end

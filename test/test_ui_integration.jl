@@ -296,7 +296,7 @@ end
 @testset "Esc closes any open modal back to :none" begin
     app, _ = _new_app()
     Ressac._active_editor(app).mode = :normal
-    for kind in (:guide, :browse, :synth_library, :snippets, :wiki, :mixer)
+    for kind in (:help, :browse, :synth_library, :snippets, :wiki, :mixer)
         app.modal = kind
         Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
         @test app.modal === :none
@@ -749,10 +749,10 @@ end
     @test app.modal === :wiki || app.modal === :none
 end
 
-@testset ":guide + :tutorial set modal to guide/tutorial" begin
+@testset ":guide + :tutorial set modal to help/tutorial" begin
     app, _ = _new_app()
     _exec_ex_command!(app, "guide")
-    @test app.modal === :guide
+    @test app.modal === :help
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
     _exec_ex_command!(app, "tutorial")
     @test app.modal === :tutorial

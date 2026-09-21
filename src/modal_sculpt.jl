@@ -226,6 +226,7 @@ _sculpt_not_editing(m::RessacApp) = (p = m.sculpt_pane; p === nothing || !(p.scu
 scope!(:modal_sculpt, "Studio sculpt")
 bind!(:modal_sculpt, ["Esc", "q"], "fermer le studio"; group = :nav,
       when = _sculpt_not_editing, action = _close_sculpt_modal!)
+bind!(:modal_sculpt, "?", "aide"; group = :help, when = _sculpt_not_editing, action = _open_help!)
 bind!(:modal_sculpt, [">", "<"], "défiler l'explication"; group = :view,
       when = _sculpt_not_editing,
       action = (m, evt) -> (m.modal_scroll = evt.char == '>' ?

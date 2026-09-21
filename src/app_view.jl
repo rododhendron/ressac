@@ -420,6 +420,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
             _render_mixer_modal!(m, marea, buf)
         elseif m.modal === :sculpt
             _render_sculpt_modal!(m, marea, buf)
+        elseif m.modal === :help
+            _render_help_modal!(m, marea, buf)
         else
             _render_modal!(m, marea, buf)
         end

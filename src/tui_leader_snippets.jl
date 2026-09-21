@@ -58,7 +58,7 @@ priority on the same char.
 const _LEADER_ACTIONS = Dict{Char,Function}(
     'b' => m -> _open_browser!(m),       # all sounds (samples + insts + synths)
     'L' => m -> _open_synth_library!(m), # synth library
-    '?' => m -> (m.modal = :guide;  m.modal_scroll = 0),
+    '?' => m -> _open_help!(m),
     'w' => m -> _open_wiki!(m),
     'I' => m -> _open_snippets!(m),      # I for "insert snippet" picker
 )

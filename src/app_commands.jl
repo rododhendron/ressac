@@ -378,7 +378,7 @@ _register_regex!(r"^scope\s+reservoir\s+([\w-]+)$",
     (m, mt) -> _scope_reservoir!(m, Symbol(mt.captures[1])))
 
 # ── Modals (browse / lib / sccode / snip / guides) ───────────────────
-_register_literal!(m -> (m.modal = :guide; m.modal_scroll = 0),
+_register_literal!(m -> _open_help!(m),
                    "guide", "help", "?")
 _register_literal!(m -> (m.modal = :tutorial; m.modal_scroll = 0),
                    "tutorial", "tour", "start")
