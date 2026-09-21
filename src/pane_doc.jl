@@ -41,16 +41,12 @@ function render!(p::DocPane, area, buf)
     return nothing
 end
 
-function handle_key!(p::DocPane, evt)
-    if evt isa TK.KeyEvent && evt.key === :char
-        if evt.char == 'j'
-            p.scroll += 1; return true
-        elseif evt.char == 'k' && p.scroll > 0
-            p.scroll -= 1; return true
-        end
-    end
-    return false
-end
+handle_key!(p::DocPane, evt) = evt isa TK.KeyEvent && dispatch!(((:doc, p),), evt)
+pane_scope(::DocPane) = :doc
+scope!(:doc, "Documentation")
+bind!(:doc, ["j", "↓"], "descendre"; group = :nav, action = p -> (p.scroll += 1))
+bind!(:doc, ["k", "↑"], "remonter"; group = :nav, when = p -> p.scroll > 0,
+      action = p -> (p.scroll -= 1))
 
 title(p::DocPane) = isempty(p.name) ? "doc" : "doc:$(p.name)"
 

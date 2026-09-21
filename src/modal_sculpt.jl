@@ -111,15 +111,9 @@ end
 function _handle_sculpt_key!(m::RessacApp, evt::TK.KeyEvent)
     p = m.sculpt_pane
     p === nothing && (m.modal = :none; return)
-    editing = p.sculpt && p.value_edit
-    if (evt.key === :escape || evt.char == 'q') && !editing
-        _close_sculpt_modal!(m); return
-    end
-    if !editing && evt.char == '>'
-        m.modal_scroll = min(m.modal_scroll + 1, max(0, length(m.explain_lines) - 1)); return
-    elseif !editing && evt.char == '<'
-        m.modal_scroll = max(0, m.modal_scroll - 1); return
-    end
+    # Touches du studio (fermer, défiler l'explication) puis celles de
+    # la pane sculpt elle-même (scope :sculpt).
+    dispatch!(((:modal_sculpt, m),), evt) && return
     handle_key!(p, evt)
     # Édit structurel (swap/insert d'UGen…) → la structure a changé : on
     # rafraîchit la prose de l'explainer à droite (et on remonte le scroll).
@@ -226,3 +220,14 @@ function _render_sculpt_explain!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         TK.set_string!(buf, area.x, area.y + i, first(lines[idx], area.width), TK.tstyle(:text))
     end
 end
+
+# ── Registre : touches propres au studio (la pane a le scope :sculpt) ──
+_sculpt_not_editing(m::RessacApp) = (p = m.sculpt_pane; p === nothing || !(p.sculpt && p.value_edit))
+scope!(:modal_sculpt, "Studio sculpt")
+bind!(:modal_sculpt, ["Esc", "q"], "fermer le studio"; group = :nav,
+      when = _sculpt_not_editing, action = _close_sculpt_modal!)
+bind!(:modal_sculpt, [">", "<"], "défiler l'explication"; group = :view,
+      when = _sculpt_not_editing,
+      action = (m, evt) -> (m.modal_scroll = evt.char == '>' ?
+          min(m.modal_scroll + 1, max(0, length(m.explain_lines) - 1)) :
+          max(0, m.modal_scroll - 1)))

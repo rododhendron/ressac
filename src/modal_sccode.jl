@@ -141,17 +141,8 @@ function _handle_sccode_key!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     _modal_cursor_nav!(m, evt, :sccode_cursor, n) && return
-    if evt.char == '/'
-        m.sccode_search_mode = true
-    elseif evt.char == 'n'
-        _sccode_paginate!(m, +1)
-    elseif evt.char == 'p'
-        _sccode_paginate!(m, -1)
-    elseif evt.char == ' '
-        _preview_sccode_filtered!(m)
-    elseif evt.key === :enter || evt.char == '\r'
-        _load_sccode_filtered!(m)
-    end
+    dispatch!(((:modal_sccode, m),), evt)
+    return
 end
 
 # Wrappers that route through the filtered list so cursor indexing
@@ -297,3 +288,13 @@ function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                    first(rpad(pageinfo, inner.width), inner.width),
                    TK.tstyle(:text_dim))
 end
+
+# ── Registre de touches (déclaré en fin de fichier : les actions nommées
+#    doivent exister au moment du bind!) ──
+scope!(:modal_sccode, "sccode.org")
+bind!(:modal_sccode, "Enter", "charger dans une pane synth"; group = :file, action = _load_sccode_filtered!)
+bind!(:modal_sccode, "Space", "aperçu"; group = :view, action = _preview_sccode_filtered!)
+bind!(:modal_sccode, ["n", "p"], "page suivante / précédente"; group = :nav,
+      action = (m, evt) -> _sccode_paginate!(m, evt.char == 'n' ? +1 : -1))
+bind!(:modal_sccode, "/", "rechercher"; group = :edit, action = m -> (m.sccode_search_mode = true))
+_bind_modal_common!(:modal_sccode)

@@ -219,20 +219,44 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
         _handle_sculpt_key!(m, evt)
         return
     end
-    lines = _modal_lines(m)
-    n = length(lines)
-    if evt.key === :escape || evt.char == 'q'
-        m.modal = :none; m.modal_scroll = 0
-    elseif evt.char == 'j' || evt.key === :down
-        m.modal_scroll = min(m.modal_scroll + 1, max(0, n - 1))
-    elseif evt.char == 'k' || evt.key === :up
-        m.modal_scroll = max(0, m.modal_scroll - 1)
-    elseif evt.char == 'G'
-        m.modal_scroll = max(0, n - 1)
-    elseif evt.char == 'g'
-        m.modal_scroll = 0
-    end
+    # Modaux texte (guide, tutoriel, explain…) : registre :modal_text.
+    dispatch!(((:modal_text, m),), evt)
+    return
 end
+
+# ── Scopes des modaux ─────────────────────────────────────────────
+const _MODAL_SCOPES = Dict{Symbol,Symbol}(
+    :browse => :modal_browse, :synth_library => :modal_lib, :sccode => :modal_sccode,
+    :snippets => :modal_snippets, :wiki => :modal_wiki, :mixer => :modal_mixer,
+    :sculpt => :modal_sculpt,
+)
+"""
+    modal_scope(m) -> Symbol
+
+Scope du registre pour le modal ouvert (`:modal_text` pour les modaux à
+défilement : guide, tutoriel, explain…). `:none` si aucun modal.
+"""
+modal_scope(m::RessacApp) = m.modal === :none ? :none : get(_MODAL_SCOPES, m.modal, :modal_text)
+
+# Entrées communes à tous les modaux (documentaires : la navigation j/k
+# et la fermeture Esc/q sont gérées par _modal_cursor_nav! /
+# _modal_close_key! ou leur variante « query-aware » dans chaque handler).
+function _bind_modal_common!(scope::Symbol; nav::Bool = true)
+    nav && bind!(scope, ["j", "k", "↓", "↑"], "naviguer"; group = :nav, hint = false)
+    bind!(scope, ["Esc", "q"], "fermer"; group = :nav, hint = false)
+end
+
+scope!(:modal_text, "Texte (guide, tutoriel, explication)")
+bind!(:modal_text, ["j", "↓"], "défiler"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = min(m.modal_scroll + 1, max(0, length(_modal_lines(m)) - 1))))
+bind!(:modal_text, ["k", "↑"], "remonter"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 1)))
+bind!(:modal_text, "G", "fin"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = max(0, length(_modal_lines(m)) - 1)))
+bind!(:modal_text, "g", "début"; group = :nav, hint = false,
+      action = m -> (m.modal_scroll = 0))
+bind!(:modal_text, ["Esc", "q"], "fermer"; group = :nav,
+      action = m -> (m.modal = :none; m.modal_scroll = 0))
 
 """
     _render_modal!(m, area, buf)

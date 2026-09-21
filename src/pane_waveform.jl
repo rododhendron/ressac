@@ -410,6 +410,7 @@ function handle_key!(p::WaveformPane, evt)
     evt isa TK.KeyEvent || return false
     ch = evt.char; k = evt.key
     # ── saisie directe d'une valeur (prioritaire sur tout le reste) ──
+    # Le reste des touches passe par le registre (scopes :sculpt / :waveform).
     if p.sculpt && p.value_edit
         if k === :enter || ch == '\r'
             _sculpt_commit_value!(p); return true
@@ -423,39 +424,7 @@ function handle_key!(p::WaveformPane, evt)
         end
         return true   # on consomme tout pendant la saisie
     end
-    ch == 's' && (p.sculpt ? (p.sculpt = false) : _sculpt_init!(p); return true)
-    if p.sculpt && !isempty(p.knobs)
-        (ch == 'j' || k === :down) && (p.focus = clamp(p.focus + 1, 1, length(p.knobs)); return true)
-        (ch == 'k' || k === :up)   && (p.focus = clamp(p.focus - 1, 1, length(p.knobs)); return true)
-        (k === :tab)               && (_sculpt_focus_neighbour!(p, +1); return true)
-        (k === :backtab)           && (_sculpt_focus_neighbour!(p, -1); return true)
-        (ch == 'l' || k === :right) && (_sculpt_tug!(p, +1); return true)
-        (ch == 'h' || k === :left)  && (_sculpt_tug!(p, -1); return true)
-        ch == '=' && (_sculpt_begin_value!(p); return true)          # saisie exacte
-        ch == 'o' && (_sculpt_swap_focus_ugen!(p, +1); return true)  # swap UGen (suivant)
-        ch == 'O' && (_sculpt_swap_focus_ugen!(p, -1); return true)  # swap UGen (précédent)
-        ch == 'n' && (_sculpt_insert_focus!(p); return true)         # insère un filtre après le nœud
-        ch == 'd' && (_sculpt_structural!(p, :delete); return true)  # supprime le nœud (bypass)
-        ch == 'i' && (_sculpt_structural!(p, :rewire; dir = +1); return true)  # recâble l'entrée
-        ch == 'I' && (_sculpt_structural!(p, :rewire; dir = -1); return true)
-        ch == 'r' && (_sculpt_structural!(p, :rate; dir = +1); return true)    # cycle le taux ar/kr
-        ch == 'R' && (_sculpt_structural!(p, :rate; dir = -1); return true)
-        ch == 'x' && (_sculpt_structural!(p, :duplicate); return true)         # clone en parallèle
-        ch == 'm' && (_sculpt_graft_focus!(p); return true)                    # greffe un LFO sur le slot
-        ch == 'L' && (_wave_pan!(p, p.view_len ÷ 8); return true)   # pan reste accessible
-        ch == 'H' && (_wave_pan!(p, -(p.view_len ÷ 8)); return true)
-        (ch == ' ' || ch == '\r' || k === :enter) && return _wave_play!(p)   # Espace OU ⏎ = jouer
-        ch == 'e' && return _wave_export!(p)
-        ch == '0' && (p.view_start = 1; p.view_len = max(length(p.samples), 1); return true)
-        return false
-    end
-    n = length(p.samples); n == 0 && return false
-    (ch == 'l' || k === :right) && (_wave_pan!(p, p.view_len ÷ 8); return true)
-    (ch == 'h' || k === :left)  && (_wave_pan!(p, -(p.view_len ÷ 8)); return true)
-    (ch == '+' || ch == 'i')    && (_wave_zoom!(p, 0.5, 0.8); return true)
-    (ch == '-' || ch == 'o')    && (_wave_zoom!(p, 0.5, 1.25); return true)
-    ch == '0' && (p.view_start = 1; p.view_len = n; return true)
-    return false
+    return dispatch!(((pane_scope(p), p),), evt)
 end
 
 # Molette = zoom VERS LE POINTEUR (l'échantillon sous le curseur reste fixe).
@@ -490,3 +459,71 @@ end
 _kind_for(::WaveformPane) = "waveform"
 
 register_pane_kind!(:waveform, _waveform_pane_ctor)
+
+# ── Registre de touches : :waveform (vue) et :sculpt ─────────────
+# La saisie de valeur (`=`) est un sous-mode géré dans handle_key!.
+pane_scope(p::WaveformPane) = p.sculpt ? :sculpt : :waveform
+_wv_has(p::WaveformPane) = !isempty(p.samples)
+_sc_has(p::WaveformPane) = !isempty(p.knobs)
+
+scope!(:waveform, "Vue d'onde")
+bind!(:waveform, "s", "sculpter"; group = :structure, action = p -> _sculpt_init!(p))
+bind!(:waveform, ["l", "→"], "défiler →"; group = :nav, when = _wv_has,
+      action = p -> _wave_pan!(p, p.view_len ÷ 8))
+bind!(:waveform, ["h", "←"], "défiler ←"; group = :nav, when = _wv_has,
+      action = p -> _wave_pan!(p, -(p.view_len ÷ 8)))
+bind!(:waveform, ["+", "i"], "zoom +"; group = :view, when = _wv_has,
+      action = p -> _wave_zoom!(p, 0.5, 0.8))
+bind!(:waveform, ["-", "o"], "zoom −"; group = :view, when = _wv_has,
+      action = p -> _wave_zoom!(p, 0.5, 1.25))
+bind!(:waveform, "0", "toute l'onde"; group = :view, when = _wv_has,
+      action = p -> (p.view_start = 1; p.view_len = length(p.samples)))
+
+scope!(:sculpt, "Sculpt (l'onde et ses knobs)")
+bind!(:sculpt, ["j", "↓"], "knob suivant"; group = :nav, when = _sc_has,
+      action = p -> (p.focus = clamp(p.focus + 1, 1, length(p.knobs))))
+bind!(:sculpt, ["k", "↑"], "knob précédent"; group = :nav, when = _sc_has,
+      action = p -> (p.focus = clamp(p.focus - 1, 1, length(p.knobs))))
+bind!(:sculpt, "Tab", "nœud suivant"; group = :nav, when = _sc_has,
+      action = p -> _sculpt_focus_neighbour!(p, +1))
+bind!(:sculpt, "S-Tab", "nœud précédent"; group = :nav, hint = false, when = _sc_has,
+      action = p -> _sculpt_focus_neighbour!(p, -1))
+bind!(:sculpt, ["l", "→"], "tirer +"; group = :edit, when = _sc_has,
+      action = p -> _sculpt_tug!(p, +1))
+bind!(:sculpt, ["h", "←"], "tirer −"; group = :edit, when = _sc_has,
+      action = p -> _sculpt_tug!(p, -1))
+bind!(:sculpt, "=", "saisir une valeur"; group = :edit, when = _sc_has,
+      action = p -> _sculpt_begin_value!(p))
+bind!(:sculpt, ["Space", "Enter"], "jouer"; group = :audio, when = _sc_has,
+      action = p -> _wave_play!(p))
+bind!(:sculpt, "o", "UGen suivant (même rôle)"; group = :structure, when = _sc_has,
+      action = p -> _sculpt_swap_focus_ugen!(p, +1))
+bind!(:sculpt, "O", "UGen précédent"; group = :structure, hint = false, when = _sc_has,
+      action = p -> _sculpt_swap_focus_ugen!(p, -1))
+bind!(:sculpt, "n", "insérer un filtre après"; group = :structure, when = _sc_has,
+      action = p -> _sculpt_insert_focus!(p))
+bind!(:sculpt, "d", "supprimer le nœud (bypass)"; group = :structure, when = _sc_has,
+      action = p -> _sculpt_structural!(p, :delete))
+bind!(:sculpt, "i", "recâbler l'entrée →"; group = :structure, when = _sc_has,
+      action = p -> _sculpt_structural!(p, :rewire; dir = +1))
+bind!(:sculpt, "I", "recâbler l'entrée ←"; group = :structure, hint = false, when = _sc_has,
+      action = p -> _sculpt_structural!(p, :rewire; dir = -1))
+bind!(:sculpt, "r", "taux ar/kr suivant"; group = :structure, when = _sc_has,
+      action = p -> _sculpt_structural!(p, :rate; dir = +1))
+bind!(:sculpt, "R", "taux précédent"; group = :structure, hint = false, when = _sc_has,
+      action = p -> _sculpt_structural!(p, :rate; dir = -1))
+bind!(:sculpt, "x", "dupliquer en parallèle"; group = :structure, when = _sc_has,
+      action = p -> _sculpt_structural!(p, :duplicate))
+bind!(:sculpt, "m", "greffer un LFO sur le slot"; group = :structure, when = _sc_has,
+      action = p -> _sculpt_graft_focus!(p))
+bind!(:sculpt, "e", "exporter dans l'éditeur"; group = :file, when = _sc_has,
+      action = p -> _wave_export!(p))
+bind!(:sculpt, "L", "défiler l'onde →"; group = :view, hint = false, when = _sc_has,
+      action = p -> _wave_pan!(p, p.view_len ÷ 8))
+bind!(:sculpt, "H", "défiler l'onde ←"; group = :view, hint = false, when = _sc_has,
+      action = p -> _wave_pan!(p, -(p.view_len ÷ 8)))
+bind!(:sculpt, "0", "toute l'onde"; group = :view, hint = false, when = _sc_has,
+      action = p -> (p.view_start = 1; p.view_len = max(length(p.samples), 1)))
+bind!(:sculpt, "s", "revenir à la vue d'onde"; group = :view, action = p -> (p.sculpt = false))
+bind!(:sculpt, ["Enter", "Esc", "Bksp"], "saisie de valeur : valider / annuler / effacer";
+      group = :submode, hint = false)

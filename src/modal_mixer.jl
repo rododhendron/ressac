@@ -27,24 +27,8 @@ function _handle_mixer_key!(m::RessacApp, evt::TK.KeyEvent)
     n = length(slots)
     _modal_close_key!(m, evt) && return
     _modal_cursor_nav!(m, evt, :mixer_cursor, n) && return
-    if evt.char == 'm' && 1 <= m.mixer_cursor <= n
-        slot = slots[m.mixer_cursor]
-        if haskey(_APP_MUTED_PATTERNS, slot)
-            _unmute_pattern_slot!(m, slot)
-        else
-            _mute_pattern_slot!(m, slot)
-        end
-    elseif evt.char == 's' && 1 <= m.mixer_cursor <= n
-        _solo_pattern_slot!(m, slots[m.mixer_cursor])
-    elseif evt.char == 'u'
-        _unmute_all_patterns!(m)
-    elseif evt.char == '!' || evt.char == '.'
-        _panic!(m)
-    elseif (evt.char == '+' || evt.char == '-') && 1 <= m.mixer_cursor <= n
-        _mixer_nudge_gain!(m, slots[m.mixer_cursor], evt.char == '+' ? 0.1 : -0.1)
-    elseif (evt.char == '*' || evt.char == '/') && 1 <= m.mixer_cursor <= n
-        _mixer_nudge_gain!(m, slots[m.mixer_cursor], evt.char == '*' ? 0.5 : -0.5)
-    end
+    dispatch!(((:modal_mixer, m),), evt)
+    return
 end
 
 """
@@ -249,3 +233,22 @@ function _render_vu_bar!(buf, x::Int, y::Int, w::Int,
         TK.set_string!(buf, x + peak_pos - 1, y, "▏", peak_sty)
     end
 end
+
+# ── Registre de touches (déclaré en fin de fichier : les actions nommées
+#    doivent exister au moment du bind!) ──
+_mixer_cur(m::RessacApp) = (s = _mixer_slots(m); 1 <= m.mixer_cursor <= length(s) ? s[m.mixer_cursor] : nothing)
+_mixer_has_cur(m::RessacApp) = _mixer_cur(m) !== nothing
+scope!(:modal_mixer, "Mixer")
+bind!(:modal_mixer, "m", "mute / unmute"; group = :audio, when = _mixer_has_cur,
+      action = m -> (slot = _mixer_cur(m);
+                     haskey(_APP_MUTED_PATTERNS, slot) ? _unmute_pattern_slot!(m, slot) :
+                                                          _mute_pattern_slot!(m, slot)))
+bind!(:modal_mixer, "s", "solo"; group = :audio, when = _mixer_has_cur,
+      action = m -> _solo_pattern_slot!(m, _mixer_cur(m)))
+bind!(:modal_mixer, "u", "tout démuter"; group = :audio, action = _unmute_all_patterns!)
+bind!(:modal_mixer, ["+", "-"], "gain ±0.1"; group = :edit, when = _mixer_has_cur,
+      action = (m, evt) -> _mixer_nudge_gain!(m, _mixer_cur(m), evt.char == '+' ? 0.1 : -0.1))
+bind!(:modal_mixer, ["*", "/"], "gain ±0.5"; group = :edit, hint = false, when = _mixer_has_cur,
+      action = (m, evt) -> _mixer_nudge_gain!(m, _mixer_cur(m), evt.char == '*' ? 0.5 : -0.5))
+bind!(:modal_mixer, ["!", "."], "panic"; group = :audio, hint = false, action = _panic!)
+_bind_modal_common!(:modal_mixer)

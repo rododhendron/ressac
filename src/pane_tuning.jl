@@ -171,13 +171,11 @@ end
 
 # ── Key handling ────────────────────────────────────────────────────
 
-function handle_key!(p::TuningPane, evt)
-    if evt isa TK.KeyEvent && evt.key === :char && evt.char == 'r'
-        p.label_mode = p.label_mode === :cents ? :ratio : :cents
-        return true
-    end
-    return false
-end
+handle_key!(p::TuningPane, evt) = evt isa TK.KeyEvent && dispatch!(((:tuning, p),), evt)
+pane_scope(::TuningPane) = :tuning
+scope!(:tuning, "Gamme (tuning)")
+bind!(:tuning, "r", "étiquettes : cents ⟷ ratios"; group = :view,
+      action = p -> (p.label_mode = p.label_mode === :cents ? :ratio : :cents))
 
 # ── Contract ────────────────────────────────────────────────────────
 

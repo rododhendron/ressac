@@ -98,26 +98,9 @@ function _handle_browser_key!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     _modal_cursor_nav!(m, evt, :browser_cursor, n) && return
-    if evt.key === :enter
-        if 1 <= m.browser_cursor <= n
-            _browser_insert!(m, entries[m.browser_cursor])
-        end
-        m.modal = :none
-    elseif evt.char == 'K' || evt.char == ' '
-        if 1 <= m.browser_cursor <= n
-            _browser_preview!(m, entries[m.browser_cursor])
-        end
-    elseif evt.key === :tab
-        filters = (:all, :instruments, :samples, :synths)
-        i = findfirst(==(m.browser_filter), filters)
-        m.browser_filter = filters[(i % length(filters)) + 1]
-        m.browser_cursor = 1
-    elseif evt.key === :backspace
-        if !isempty(m.browser_query)
-            m.browser_query = m.browser_query[1:prevind(m.browser_query, end)]
-            m.browser_cursor = 1
-        end
-    elseif evt.char != '\0' && _is_typable_ascii(evt.char)
+    dispatch!(((:modal_browse, m),), evt) && return
+    # Tout autre caractère imprimable filtre la liste.
+    if evt.key === :char && evt.char != '\0' && _is_typable_ascii(evt.char)
         m.browser_query *= string(evt.char)
         m.browser_cursor = 1
     end
@@ -225,3 +208,23 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                        first(rpad(line, inner.width), inner.width), style)
     end
 end
+
+# ── Registre de touches (déclaré en fin de fichier : les actions nommées
+#    doivent exister au moment du bind!) ──
+_browser_cur(m::RessacApp) = (e = _browser_entries(m); 1 <= m.browser_cursor <= length(e) ? e[m.browser_cursor] : nothing)
+scope!(:modal_browse, "Sons (samples, instruments, synths)")
+bind!(:modal_browse, "Enter", "insérer dans le pattern"; group = :edit,
+      action = m -> (e = _browser_cur(m); e === nothing || _browser_insert!(m, e); m.modal = :none))
+bind!(:modal_browse, ["K", "Space"], "écouter"; group = :audio,
+      action = m -> (e = _browser_cur(m); e === nothing || _browser_preview!(m, e)))
+bind!(:modal_browse, "Tab", "catégorie suivante"; group = :nav,
+      action = m -> (filters = (:all, :instruments, :samples, :synths);
+                     i = findfirst(==(m.browser_filter), filters);
+                     m.browser_filter = filters[(i % length(filters)) + 1];
+                     m.browser_cursor = 1))
+bind!(:modal_browse, "Bksp", "effacer le filtre"; group = :edit, hint = false,
+      when = m -> !isempty(m.browser_query),
+      action = m -> (m.browser_query = m.browser_query[1:prevind(m.browser_query, end)];
+                     m.browser_cursor = 1))
+bind!(:modal_browse, "a-z", "filtrer en tapant"; group = :edit, hint = false)
+_bind_modal_common!(:modal_browse)

@@ -40,11 +40,13 @@ end
 
 const _KEYMAP = Dict{Symbol,Vector{Binding}}()
 const _SCOPE_TITLES = Dict{Symbol,String}()
+const _SCOPE_NOTES = Dict{Symbol,Vector{String}}()   # texte libre en fin de section d'aide
 const _GROUP_TITLES = Dict{Symbol,String}(
     :nav => "Naviguer", :edit => "Éditer", :audio => "Jouer / écouter",
     :eval => "Évaluer", :view => "Vues", :layout => "Panes & workspaces",
     :help => "Aide", :file => "Fichiers", :misc => "Divers",
     :structure => "Structure", :select => "Sélection",
+    :submode => "Sous-modes (touches une fois dedans)",
 )
 
 _always(_) = true
@@ -56,6 +58,17 @@ Déclare (ou renomme) un scope avec son titre affiché dans l'aide.
 """
 scope!(scope::Symbol, title::AbstractString) = (_SCOPE_TITLES[scope] = String(title); scope)
 scope_title(scope::Symbol) = get(_SCOPE_TITLES, scope, String(scope))
+scope_notes!(scope::Symbol, lines) = (_SCOPE_NOTES[scope] = String[String(l) for l in lines]; scope)
+scope_notes(scope::Symbol) = get(_SCOPE_NOTES, scope, String[])
+
+"""
+    pane_scope(pane) -> Symbol
+
+Scope du registre d'une pane (`:explorer`, `:sculpt`…) ; `:none` par
+défaut. Chaque PaneImpl surcharge. Sert au dispatch de ses touches, à
+la barre de touches et à l'aide `?`.
+"""
+pane_scope(::Any) = :none
 
 """
     bind!(scope, keys, label; action=nothing, when=_always, group=:misc,
@@ -216,7 +229,8 @@ function help_sections(scopes; targets = Dict{Symbol,Any}())
             end
             push!(groups, (title = get(_GROUP_TITLES, g, String(g)), rows = rows))
         end
-        push!(out, (scope = s, title = scope_title(s), groups = groups))
+        push!(out, (scope = s, title = scope_title(s), groups = groups,
+                    notes = scope_notes(s)))
     end
     return out
 end

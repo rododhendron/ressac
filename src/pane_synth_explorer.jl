@@ -143,7 +143,6 @@ mutable struct SynthExplorerPane <: PaneImpl
     ga_panel::Bool                 # `g` GA-settings sub-mode
     ga_cursor::Int                 # selected row in the GA panel
     show_lineage::Bool             # `L` lineage overlay
-    show_help::Bool                # `?` help overlay
     sustain::Float64               # default sustain used when auditioning
     param_edit::Bool               # `p` per-candidate param editor
     param_cursor::Int              # selected control row in the editor
@@ -159,7 +158,7 @@ function SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                            naming, name_buf, seed_dir, synth_dir)
     return SynthExplorerPane(pop, aud, focus, radius, rng, kbd, seed, inspect,
                              naming, name_buf, seed_dir, synth_dir,
-                             Tuple{Int,NTuple{4,Int}}[], false, 1, false, false,
+                             Tuple{Int,NTuple{4,Int}}[], false, 1, false,
                              0.6, false, 1, :none, :brew, false, 1)
 end
 
@@ -352,7 +351,6 @@ function render!(p::SynthExplorerPane, area, buf)
     p.inspect && _render_inspect_overlay!(p, inner, buf)
     p.ga_panel && _render_ga_panel!(p, inner, buf)
     p.show_lineage && _render_lineage_overlay!(p, inner, buf)
-    p.show_help && _render_help_overlay!(p, inner, buf)
     p.show_explain && _render_explain_overlay!(p, inner, buf)
     p.param_edit && _render_param_editor!(p, inner, buf)
     return nothing
@@ -569,55 +567,6 @@ function _render_lineage_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.
     return nothing
 end
 
-const _EXPLORER_HELP_LINES = [
-    "SYNTH EXPLORER — aide",
-    "",
-    "Navigation   hjkl / flèches · 1-9 saut · clic souris",
-    "Écoute       Espace jouer · t drone · m mini-clavier (z x c v…)",
-    "Sélection    f favoriser · d dévaluer · scroll souris",
-    "Génération   n suivante · clic-droit suivant",
-    "             T bascule TUNE (réglage fin, structure gelée)",
-    "               ↔ BREW (rebrassage structurel, stratégies GA)",
-    "             R re-diverge (repêche de vieux parents + bruit)",
-    "Stratégie    Tab change à la volée · g réglages détaillés",
-    "Diversité    C cible d'énergie errante (chaos) : anti-figement",
-    "Usage        u cycle le rôle (basse/kick/lead/nappe/voix ↔ familles)",
-    "             H récolte NRT silencieuse → top-k (mode A) / familles (B)",
-    "             + / − tague le candidat (bon/mauvais exemple du rôle, mode C)",
-    "             ♪NN sur la carte = adéquation mesurée au rôle (%)",
-    "Guidance     G greffe un bon coup (filtre/satu/reverb/détune…)",
-    "             < > pousse vers une notion (grave/aigu/sombre/saturé…)",
-    "Reset        0 nouvelle population depuis la graine",
-    "Audibilité   ⚠ MUET = mesuré silencieux · S régénère les muets",
-    "Divergence   [ / ] · g réglages GA (taille/croisement/élitisme)",
-    "Infos        i détails (DSL) · x expliquer · L lignée · y copier · V onde",
-    "Édition      p params du candidat (freq/sustain/release) · r reset",
-    "Garder       s graine · w synth · e éditeur",
-    "Couleurs     cadre/pastille = cluster de proximité génétique",
-    "",
-    "Lecture d'une carte :",
-    "  ●A          cluster (sons génétiquement proches = même lettre)",
-    "  Saw→RLPF→…  schéma : chaîne de signal source→…→sortie",
-    "  freq 220 …  paramètres clés (constantes du génome)",
-    "  5 nœuds…    taille du DAG + origine (graine/muté/croisé)",
-    "",
-    "Esc / ? / q : fermer",
-]
-
-function _render_help_overlay!(p::SynthExplorerPane, inner::TK.Rect, buf::TK.Buffer)
-    blank = " "^inner.width
-    for y in inner.y:(inner.y + inner.height - 1)
-        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
-    end
-    for (i, line) in enumerate(_EXPLORER_HELP_LINES)
-        y = inner.y + i - 1
-        y > inner.y + inner.height - 1 && break
-        TK.set_string!(buf, inner.x, y, first(line, inner.width),
-                       i == 1 ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
-    end
-    return nothing
-end
-
 _explorer_osc() = (s = _LIVE_SCHEDULER[]; s === nothing ? nothing : s.osc)
 
 function _move_focus!(p::SynthExplorerPane, d::Int)
@@ -704,11 +653,6 @@ function handle_key!(p::SynthExplorerPane, evt)
             (p.show_lineage = false)
         return true
     end
-    if p.show_help
-        (evt.key === :escape || evt.char == '?' || evt.char == 'q') &&
-            (p.show_help = false)
-        return true
-    end
     if p.show_explain
         return _explorer_explain_key!(p, evt)
     end
@@ -721,65 +665,8 @@ function handle_key!(p::SynthExplorerPane, evt)
     if p.keyboard_mode
         return _explorer_keyboard_key!(p, evt)    # Task 11
     end
-    ch = evt.char
-    k  = evt.key
-    # navigation
-    (ch == 'l' || k === :right) && return _move_focus!(p, 1)
-    (ch == 'h' || k === :left)  && return _move_focus!(p, -1)
-    (ch == 'j' || k === :down)  && return _move_focus!(p, _GA_GRID_COLS)
-    (ch == 'k' || k === :up)    && return _move_focus!(p, -_GA_GRID_COLS)
-    if ch isa Char && '1' <= ch <= '9'
-        idx = Int(ch - '0')
-        idx <= length(p.pop.candidates) && (p.focus = idx)
-        return true
-    end
-    # notation
-    ch == 'f' && (favor!(p.pop, p.focus);   return true)
-    ch == 'd' && (devalue!(p.pop, p.focus); return true)
-    # génération
-    ch == 'n' && return _explorer_next_gen!(p)
-    # T = bascule réglage-fin (tune, structure gelée) ↔ rebrassage (brew).
-    ch == 'T' && (p.mode = p.mode === :tune ? :brew : :tune; return true)
-    # C = bascule la diversité chaotique (cible d'énergie errante).
-    ch == 'C' && (p.pop.state[:chaos_on] = !_chaos_on(p.pop); return true)
-    # Ciblage par usage : u cycle le rôle · H récolte NRT (top-k) · +/− tags (mode C)
-    ch == 'u' && return _explorer_cycle_role!(p)
-    ch == 'V' && return _explorer_open_waveform!(p)
-    ch == 'M' && return _explorer_sculpt_focus!(p)
-    ch == 'H' && return _explorer_harvest!(p)
-    ch == '+' && return _explorer_tag!(p, true)
-    ch == '-' && return _explorer_tag!(p, false)
-    # R = skip + re-diverge (repêche de vieux parents, divergence boostée).
-    ch == 'R' && return _explorer_diverge!(p)
-    # Tab = cycle de stratégie à la volée (sans ouvrir le panneau g).
-    k === :tab && (i = something(findfirst(==(p.pop.strategy), GA_STRATEGIES), 1);
-                   p.pop.strategy = GA_STRATEGIES[mod1(i + 1, length(GA_STRATEGIES))];
-                   return true)
-    # divergence
-    ch == ']' && (p.radius = clamp(p.radius + 0.1, 0.0, 1.0); return true)
-    ch == '[' && (p.radius = clamp(p.radius - 0.1, 0.0, 1.0); return true)
-    # audition
-    ch == ' ' && return _explorer_play_focus!(p)
-    ch == 'm' && (p.keyboard_mode = true; return true)
-    ch == 't' && return _explorer_toggle_drone!(p)
-    ch == 'i' && (p.inspect = true; return true)
-    ch == 'x' && (p.show_explain = true; return true)   # explainer overlay
-    ch == 's' && (p.naming = :seed;   p.name_buf = ""; return true)
-    ch == 'w' && (p.naming = :synth;  p.name_buf = ""; return true)
-    ch == 'e' && (p.naming = :export; p.name_buf = ""; return true)
-    # overlays / panels
-    ch == 'L' && (p.show_lineage = true; return true)
-    ch == '?' && (p.show_help = true;    return true)
-    ch == 'g' && (p.ga_panel = true; p.ga_cursor = 1; return true)
-    ch == 'p' && (p.param_edit = true; p.param_cursor = 1; return true)
-    ch == 'y' && return _explorer_yank!(p)   # copie le DSL du candidat focalisé
-    ch == 'S' && return _explorer_regen_silent!(p)
-    ch == '0' && return _explorer_reset!(p)  # repart d'une population fraîche
-    # guidance : G = greffe un bon coup · < / > = direction perceptive
-    ch == 'G' && return _explorer_good_move!(p)
-    ch == '>' && (p.guidance_dir = _cycle_guidance(p.guidance_dir, 1);  return true)
-    ch == '<' && (p.guidance_dir = _cycle_guidance(p.guidance_dir, -1); return true)
-    return false
+    # Mode principal : tout passe par le registre (scope :explorer).
+    return dispatch!(((:explorer, p),), evt)
 end
 
 _cycle_guidance(cur::Symbol, d::Int) =
@@ -1138,3 +1025,92 @@ end
 _kind_for(::SynthExplorerPane) = "explorer"
 
 register_pane_kind!(:explorer, _synth_explorer_pane_ctor)
+
+# ── Registre de touches (scope :explorer) ─────────────────────────
+# Mode principal de la pane. Les sous-modes (nommage, détails, lignée,
+# explication, réglages GA, params, mini-clavier) gardent leurs handlers
+# et sont documentés ici en entrées sans action.
+pane_scope(::SynthExplorerPane) = :explorer
+scope!(:explorer, "Explorateur de synths (GA)")
+bind!(:explorer, "Space", "jouer le candidat"; group = :audio, action = _explorer_play_focus!)
+bind!(:explorer, "n", "génération suivante"; group = :structure, action = _explorer_next_gen!)
+bind!(:explorer, "f", "favoriser"; group = :select, action = p -> favor!(p.pop, p.focus))
+bind!(:explorer, "d", "dévaluer"; group = :select, action = p -> devalue!(p.pop, p.focus))
+bind!(:explorer, "u", "rôle d'usage suivant"; group = :select, action = _explorer_cycle_role!)
+bind!(:explorer, "H", "récolte NRT (top-k du rôle)"; group = :select, action = _explorer_harvest!)
+bind!(:explorer, "T", "tune (réglage fin) ⟷ brew (rebrassage)"; group = :structure,
+      action = p -> (p.mode = p.mode === :tune ? :brew : :tune))
+bind!(:explorer, "M", "sculpter le candidat"; group = :file, action = _explorer_sculpt_focus!)
+bind!(:explorer, "e", "exporter dans l'éditeur…"; group = :file,
+      action = p -> (p.naming = :export; p.name_buf = ""))
+bind!(:explorer, "w", "sauver comme synth…"; group = :file,
+      action = p -> (p.naming = :synth; p.name_buf = ""))
+bind!(:explorer, "s", "sauver comme graine…"; group = :file,
+      action = p -> (p.naming = :seed; p.name_buf = ""))
+bind!(:explorer, "x", "expliquer le son"; group = :view,
+      action = p -> (p.show_explain = true))
+bind!(:explorer, "i", "détails (DSL)"; group = :view, action = p -> (p.inspect = true))
+bind!(:explorer, "V", "vue d'onde"; group = :view, action = _explorer_open_waveform!)
+bind!(:explorer, "L", "lignée"; group = :view, action = p -> (p.show_lineage = true))
+bind!(:explorer, "p", "params du candidat"; group = :edit,
+      action = p -> (p.param_edit = true; p.param_cursor = 1))
+bind!(:explorer, "g", "réglages GA"; group = :structure,
+      action = p -> (p.ga_panel = true; p.ga_cursor = 1))
+bind!(:explorer, "t", "drone on/off"; group = :audio, action = _explorer_toggle_drone!)
+bind!(:explorer, "m", "mini-clavier (z x c v…)"; group = :audio,
+      action = p -> (p.keyboard_mode = true))
+bind!(:explorer, "y", "copier le DSL"; group = :file, hint = false, action = _explorer_yank!)
+bind!(:explorer, "R", "re-diverger (vieux parents + bruit)"; group = :structure, hint = false,
+      action = _explorer_diverge!)
+bind!(:explorer, "C", "diversité chaotique on/off"; group = :structure, hint = false,
+      action = p -> (p.pop.state[:chaos_on] = !_chaos_on(p.pop)))
+bind!(:explorer, "G", "greffer un bon coup (filtre/satu/reverb…)"; group = :structure, hint = false,
+      action = _explorer_good_move!)
+bind!(:explorer, ">", "guidance perceptive suivante"; group = :structure, hint = false,
+      action = p -> (p.guidance_dir = _cycle_guidance(p.guidance_dir, 1)))
+bind!(:explorer, "<", "guidance précédente"; group = :structure, hint = false,
+      action = p -> (p.guidance_dir = _cycle_guidance(p.guidance_dir, -1)))
+bind!(:explorer, "Tab", "stratégie GA suivante"; group = :structure, hint = false,
+      action = p -> (i = something(findfirst(==(p.pop.strategy), GA_STRATEGIES), 1);
+                     p.pop.strategy = GA_STRATEGIES[mod1(i + 1, length(GA_STRATEGIES))]))
+bind!(:explorer, "S", "régénérer les candidats muets"; group = :structure, hint = false,
+      action = _explorer_regen_silent!)
+bind!(:explorer, "0", "population fraîche depuis la graine"; group = :structure, hint = false,
+      action = _explorer_reset!)
+bind!(:explorer, "]", "rayon de divergence +"; group = :structure, hint = false,
+      action = p -> (p.radius = clamp(p.radius + 0.1, 0.0, 1.0)))
+bind!(:explorer, "[", "rayon de divergence −"; group = :structure, hint = false,
+      action = p -> (p.radius = clamp(p.radius - 0.1, 0.0, 1.0)))
+bind!(:explorer, "+", "tag : bon exemple du rôle"; group = :select, hint = false,
+      action = p -> _explorer_tag!(p, true))
+bind!(:explorer, "-", "tag : mauvais exemple du rôle"; group = :select, hint = false,
+      action = p -> _explorer_tag!(p, false))
+bind!(:explorer, ["h", "j", "k", "l"], "candidat ← ↓ ↑ → (ou flèches, ou clic)"; group = :nav, hint = false,
+      action = (p, evt) -> _move_focus!(p,
+          evt.char == 'l' || evt.key === :right ? 1 :
+          evt.char == 'h' || evt.key === :left ? -1 :
+          evt.char == 'j' || evt.key === :down ? _GA_GRID_COLS : -_GA_GRID_COLS))
+bind!(:explorer, ["→", "←", "↓", "↑"], "candidat voisin"; group = :nav, hint = false,
+      action = (p, evt) -> _move_focus!(p,
+          evt.key === :right ? 1 : evt.key === :left ? -1 :
+          evt.key === :down ? _GA_GRID_COLS : -_GA_GRID_COLS))
+bind!(:explorer, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "sauter au candidat N";
+      group = :nav, hint = false,
+      action = (p, evt) -> (idx = Int(evt.char - '0');
+                            idx <= length(p.pop.candidates) && (p.focus = idx)))
+# Sous-modes (documentaire).
+bind!(:explorer, "Enter / Esc", "nommage (s, w, e) : valider / annuler"; group = :submode, hint = false)
+bind!(:explorer, "y · Esc", "détails (i) : copier · fermer"; group = :submode, hint = false)
+bind!(:explorer, "j/k · Space · V · Esc", "explication (x) : composante · solo · onde · fermer"; group = :submode, hint = false)
+bind!(:explorer, "j/k · h/l · Esc", "réglages GA (g) : ligne · valeur · fermer"; group = :submode, hint = false)
+bind!(:explorer, "j/k · h/l · r · Esc", "params (p) : ligne · valeur · reset · fermer"; group = :submode, hint = false)
+bind!(:explorer, "z x c v… · Esc", "mini-clavier (m) : notes · quitter"; group = :submode, hint = false)
+bind!(:explorer, "Esc", "lignée (L) : fermer"; group = :submode, hint = false)
+scope_notes!(:explorer, [
+    "Lecture d'une carte :",
+    "  ●A          cluster (sons génétiquement proches = même lettre)",
+    "  Saw→RLPF→…  chaîne de signal source→…→sortie",
+    "  freq 220 …  paramètres clés (constantes du génome)",
+    "  5 nœuds…    taille du DAG + origine (graine/muté/croisé)",
+    "  ♪NN         adéquation mesurée au rôle (%) · ⚠ MUET = mesuré silencieux",
+])

@@ -122,17 +122,8 @@ function _handle_snippets_key!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     _modal_cursor_nav!(m, evt, :snip_cursor, n) && return
-    if evt.char == '/'
-        m.snip_search_mode = true
-    elseif evt.key === :tab || evt.char == 'l' || evt.key === :right
-        _snip_cycle_category!(m, +1)
-    elseif evt.char == 'h' || evt.key === :left
-        _snip_cycle_category!(m, -1)
-    elseif evt.char == ' '
-        _preview_snippet!(m)
-    elseif evt.key === :enter || evt.char == '\r'
-        _insert_snippet!(m)
-    end
+    dispatch!(((:modal_snippets, m),), evt)
+    return
 end
 
 """
@@ -256,3 +247,16 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                    first(rpad(foot, inner.width), inner.width),
                    TK.tstyle(:text_dim))
 end
+
+# ── Registre de touches (déclaré en fin de fichier : les actions nommées
+#    doivent exister au moment du bind!) ──
+scope!(:modal_snippets, "Snippets")
+bind!(:modal_snippets, "Enter", "insérer"; group = :edit, action = _insert_snippet!)
+bind!(:modal_snippets, "Space", "aperçu"; group = :view, action = _preview_snippet!)
+bind!(:modal_snippets, ["Tab", "l", "→"], "catégorie suivante"; group = :nav,
+      action = m -> _snip_cycle_category!(m, +1))
+bind!(:modal_snippets, ["h", "←"], "catégorie précédente"; group = :nav, hint = false,
+      action = m -> _snip_cycle_category!(m, -1))
+bind!(:modal_snippets, "/", "rechercher"; group = :edit, action = m -> (m.snip_search_mode = true))
+bind!(:modal_snippets, "Esc / q", "effacer la recherche → la catégorie → fermer"; group = :nav, hint = false)
+_bind_modal_common!(:modal_snippets)

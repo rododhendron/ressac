@@ -25,34 +25,8 @@ end
 
 function _handle_wiki_key!(m::RessacApp, evt::TK.KeyEvent)
     isempty(m.wiki_pages) && (m.modal = :none; return)
-    page = m.wiki_pages[m.wiki_idx]
-    if evt.key === :escape || evt.char == 'q'
-        m.modal = :none
-    elseif evt.char == 'j' || evt.key === :down
-        m.wiki_scroll = min(m.wiki_scroll + 1,
-                            max(0, length(page.lines) - 1))
-    elseif evt.char == 'k' || evt.key === :up
-        m.wiki_scroll = max(0, m.wiki_scroll - 1)
-    elseif evt.char == 'd'  # page down
-        m.wiki_scroll = min(m.wiki_scroll + 10,
-                            max(0, length(page.lines) - 1))
-    elseif evt.char == 'u'  # page up
-        m.wiki_scroll = max(0, m.wiki_scroll - 10)
-    elseif evt.char == 'g'
-        m.wiki_scroll = 0
-    elseif evt.char == 'G'
-        m.wiki_scroll = max(0, length(page.lines) - 1)
-    elseif evt.char == 'n' || evt.char == ']' || evt.key === :right
-        m.wiki_idx = mod1(m.wiki_idx + 1, length(m.wiki_pages))
-        m.wiki_scroll = 0
-    elseif evt.char == 'p' || evt.char == '[' || evt.key === :left
-        m.wiki_idx = mod1(m.wiki_idx - 1, length(m.wiki_pages))
-        m.wiki_scroll = 0
-    elseif evt.key === :char && isdigit(evt.char)
-        # Number key jumps to that page index (1-based)
-        n = parse(Int, string(evt.char))
-        1 <= n <= length(m.wiki_pages) && (m.wiki_idx = n; m.wiki_scroll = 0)
-    end
+    dispatch!(((:modal_wiki, m),), evt)
+    return
 end
 
 """
@@ -106,3 +80,26 @@ function _render_wiki_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                                content_w; in_code = in_code)
     end
 end
+
+# ── Registre de touches (déclaré en fin de fichier : les actions nommées
+#    doivent exister au moment du bind!) ──
+_wiki_last(m::RessacApp) = max(0, length(m.wiki_pages[m.wiki_idx].lines) - 1)
+scope!(:modal_wiki, "Wiki")
+bind!(:modal_wiki, ["j", "↓"], "défiler"; group = :nav, hint = false,
+      action = m -> (m.wiki_scroll = min(m.wiki_scroll + 1, _wiki_last(m))))
+bind!(:modal_wiki, ["k", "↑"], "remonter"; group = :nav, hint = false,
+      action = m -> (m.wiki_scroll = max(0, m.wiki_scroll - 1)))
+bind!(:modal_wiki, ["n", "]", "→"], "page suivante"; group = :nav,
+      action = m -> (m.wiki_idx = mod1(m.wiki_idx + 1, length(m.wiki_pages)); m.wiki_scroll = 0))
+bind!(:modal_wiki, ["p", "[", "←"], "page précédente"; group = :nav,
+      action = m -> (m.wiki_idx = mod1(m.wiki_idx - 1, length(m.wiki_pages)); m.wiki_scroll = 0))
+bind!(:modal_wiki, "d", "10 lignes plus bas"; group = :nav, hint = false,
+      action = m -> (m.wiki_scroll = min(m.wiki_scroll + 10, _wiki_last(m))))
+bind!(:modal_wiki, "u", "10 lignes plus haut"; group = :nav, hint = false,
+      action = m -> (m.wiki_scroll = max(0, m.wiki_scroll - 10)))
+bind!(:modal_wiki, ["g", "G"], "début / fin de page"; group = :nav, hint = false,
+      action = (m, evt) -> (m.wiki_scroll = evt.char == 'g' ? 0 : _wiki_last(m)))
+bind!(:modal_wiki, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "aller à la page N"; group = :nav, hint = false,
+      action = (m, evt) -> (n = Int(evt.char - '0');
+                            1 <= n <= length(m.wiki_pages) && (m.wiki_idx = n; m.wiki_scroll = 0)))
+bind!(:modal_wiki, ["Esc", "q"], "fermer"; group = :nav, action = m -> (m.modal = :none))

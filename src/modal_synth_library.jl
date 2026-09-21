@@ -55,11 +55,8 @@ function _handle_synthlib_key!(m::RessacApp, evt::TK.KeyEvent)
     n = length(_synthlib_all_entries())
     _modal_close_key!(m, evt)        && return
     _modal_cursor_nav!(m, evt, :synthlib_cursor, n) && return
-    if evt.char == ' '
-        _preview_synth_from_library!(m)
-    elseif evt.key === :enter || evt.char == '\r'
-        _instantiate_synth_from_library!(m)
-    end
+    dispatch!(((:modal_lib, m),), evt)
+    return
 end
 
 """
@@ -168,3 +165,11 @@ function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffe
         push!(m.modal_rows, (screen_y, i))
     end
 end
+
+# ── Registre de touches (déclaré en fin de fichier : les actions nommées
+#    doivent exister au moment du bind!) ──
+scope!(:modal_lib, "Librairie de synths")
+bind!(:modal_lib, "Space", "écouter"; group = :audio, action = _preview_synth_from_library!)
+bind!(:modal_lib, "Enter", "ouvrir dans une pane synth"; group = :file,
+      action = _instantiate_synth_from_library!)
+_bind_modal_common!(:modal_lib)

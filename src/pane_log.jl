@@ -33,16 +33,12 @@ function render!(p::LogPane, area, buf)
     return nothing
 end
 
-function handle_key!(p::LogPane, evt)
-    if evt isa TK.KeyEvent && evt.key === :char
-        if evt.char == 'k'
-            p.scroll += 1; return true
-        elseif evt.char == 'j' && p.scroll > 0
-            p.scroll -= 1; return true
-        end
-    end
-    return false
-end
+handle_key!(p::LogPane, evt) = evt isa TK.KeyEvent && dispatch!(((:log, p),), evt)
+pane_scope(::LogPane) = :log
+scope!(:log, "Journal")
+bind!(:log, ["k", "↑"], "remonter"; group = :nav, action = p -> (p.scroll += 1))
+bind!(:log, ["j", "↓"], "descendre"; group = :nav, when = p -> p.scroll > 0,
+      action = p -> (p.scroll -= 1))
 
 title(::LogPane) = "log"
 

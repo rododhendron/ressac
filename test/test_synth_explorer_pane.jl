@@ -462,17 +462,20 @@ end
         @test p.show_lineage == false
     end
 
-    @testset "? opens help overlay, Esc closes" begin
+    @testset "? n'est pas consommée par la pane (aide globale) ; ses touches sont au registre" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('?'))
-        @test p.show_help == true
-        tb = Tachikoma.TestBackend(100, 30)
-        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
-        whole = join((Tachikoma.row_text(tb, r) for r in 1:30))
-        @test occursin("aide", whole)
-        @test occursin("mini-clavier", whole)
-        Ressac.handle_key!(p, Tachikoma.KeyEvent(:escape))
-        @test p.show_help == false
+        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('?')) == false
+        @test Ressac.pane_scope(p) === :explorer
+        ks = Set(k for b in Ressac.bindings(:explorer) for k in b.keys)
+        for k in ("Space", "n", "f", "d", "u", "H", "T", "M", "e", "w", "s", "x", "i",
+                  "V", "L", "p", "g", "t", "m", "y", "R", "C", "G", ">", "<", "Tab",
+                  "S", "0", "]", "[", "+", "-", "h", "j", "k", "l", "1", "9")
+            @test k in ks
+        end
+        secs = Ressac.help_sections([:explorer]; targets = Dict(:explorer => p))
+        @test occursin("mini-clavier", join(r.label for g in secs[1].groups for r in g.rows))
+        @test any(occursin("Lecture d'une carte", n) for n in secs[1].notes)
+        @test isempty(filter(c -> occursin("explorer", c), Ressac.keymap_conflicts()))
     end
 end
 
