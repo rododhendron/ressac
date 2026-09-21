@@ -108,7 +108,7 @@ set(key::Symbol, s::AbstractString) = set(key, _string_control_value(String(s)))
 # Tout ce qui varie (`"<a b>"`, `"a?"`, plusieurs pas) reste un pattern.
 function _string_control_value(str::String)
     pat = parse_minino(str)
-    (occursin('<', str) || occursin('?', str)) && return pat
+    occursin(r"^\s*[A-Za-z0-9_.#:-]+\s*$", str) || return pat   # tout opérateur → pattern
     evs = pat(0 // 1, 1 // 1)
     if length(evs) == 1 && evs[1].start == 0 && evs[1].stop == 1
         return evs[1].value

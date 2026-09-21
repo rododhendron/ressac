@@ -123,9 +123,10 @@ function _user_synth_params(name::Symbol)
     p isa AbstractDict ? Dict{String,Any}(String(k) => v for (k, v) in p) : Dict{String,Any}()
 end
 
-# Quand un synth utilisateur passe par SuperDirt, on lui injecte ses
-# propres défauts pour freq / sustain — sauf si l'événement pilote déjà
-# la hauteur (n / note / freq / degree) ou la durée (sustain / legato).
+# Quand un synth utilisateur passe par SuperDirt, on lui injecte son
+# propre défaut de freq — sauf si l'événement pilote déjà la hauteur
+# (n / note / freq / degree). La durée suit l'événement (`delta`), comme
+# pour tout son Tidal : `sustain(x)` ou `legato(x)` pour la fixer.
 function _inject_user_synth_defaults!(final::AbstractDict, name::Symbol)
     params = _user_synth_params(name)
     isempty(params) && return final
@@ -133,13 +134,42 @@ function _inject_user_synth_defaults!(final::AbstractDict, name::Symbol)
     if haskey(params, "freq") && !any(k -> haskey(final, k), pitch_keys)
         final[:freq] = params["freq"]
     end
-    if haskey(params, "sustain") && !haskey(final, :sustain) && !haskey(final, :legato)
-        final[:sustain] = params["sustain"]
-    end
     return final
 end
 
-function event_to_osc(ev::Event{Symbol})
+"""
+    _timing_args!(args, ev, cps)
+
+Ajoute `cps`, `cycle` et `delta` (durée de l'événement en secondes) au
+message, comme Tidal. SuperDirt en déduit `sustain = delta × legato` :
+c'est ce qui fait qu'un `n("[0 3] 7")` joue des notes courtes sur `[0 3]`.
+Sans `cps` connu (appel hors ordonnanceur) rien n'est ajouté.
+"""
+function _timing_args!(args::Vector{Any}, ev::Event, cps)
+    cps === nothing && return args
+    push!(args, "cps"); push!(args, Float32(cps))
+    push!(args, "cycle"); push!(args, Float32(ev.start))
+    push!(args, "delta"); push!(args, Float32(_event_delta(ev, cps)))
+    return args
+end
+_event_delta(ev::Event, cps) = Float64(ev.stop - ev.start) / Float64(cps)
+
+# Synth utilisateur joué en direct (/ressac/play) : la durée suit
+# l'événement si le SynthDef a un paramètre `sustain` et que l'événement
+# ne fixe pas `sustain` lui-même. `legato(x)` multiplie la durée.
+function _direct_sustain!(final::AbstractDict, ev::Event, cps, sc_target::Symbol)
+    cps === nothing && return final
+    haskey(final, :sustain) && return final
+    params = _user_synth_params(sc_target)
+    haskey(params, "sustain") || return final
+    legato = get(final, :legato, 1.0)
+    lg = _resolve_value(legato)
+    final[:sustain] = _event_delta(ev, cps) * (lg isa Real ? Float64(lg) : 1.0)
+    delete!(final, :legato)
+    return final
+end
+
+function event_to_osc(ev::Event{Symbol}; cps = nothing)
     base, idx = _split_variant(ev.value)
     instr = instrument_info(base)
     if instr !== nothing
@@ -150,7 +180,7 @@ function event_to_osc(ev::Event{Symbol})
             push!(args, k)
             push!(args, converted)
         end
-        return OSCMessage("/dirt/play", args)
+        return OSCMessage("/dirt/play", _timing_args!(args, ev, cps))
     end
     # Synth alias → SC name. `p"wob"` where `wob` is the alias for
     # SynthDef \wob1: ship the SC name and route through /ressac/play
@@ -158,11 +188,14 @@ function event_to_osc(ev::Event{Symbol})
     # of user synths and would reject the bare name).
     sc_name = resolve_synth_name(base)
     if _is_user_synth(sc_name)
-        return OSCMessage("/ressac/play", Any[String(sc_name)])
+        final = _direct_sustain!(ControlMap(), ev, cps, sc_name)
+        args = Any[String(sc_name)]
+        _push_kv_args!(args, final)
+        return OSCMessage("/ressac/play", args)
     end
     args = Any["s", String(base)]
     idx === nothing || (push!(args, "n"); push!(args, idx))
-    return OSCMessage("/dirt/play", args)
+    return OSCMessage("/dirt/play", _timing_args!(args, ev, cps))
 end
 
 """
@@ -181,7 +214,7 @@ tests and logs predictable).
 Values that `_osc_value` cannot serialize log a warning and are
 dropped from the message.
 """
-function event_to_osc(ev::Event{ControlMap})
+function event_to_osc(ev::Event{ControlMap}; cps = nothing)
     cm = ev.value
     routing = get(cm, :s, nothing)
     final = ControlMap()
@@ -227,6 +260,7 @@ function event_to_osc(ev::Event{ControlMap})
         else
             args = Any[String(sc_target)]
             delete!(final, :s)
+            _direct_sustain!(final, ev, cps, sc_target)
             _push_kv_args!(args, final)
             return OSCMessage("/ressac/play", args)
         end
@@ -239,7 +273,7 @@ function event_to_osc(ev::Event{ControlMap})
         delete!(final, :s)
     end
     _push_kv_args!(args, final)
-    return OSCMessage("/dirt/play", args)
+    return OSCMessage("/dirt/play", _timing_args!(args, ev, cps))
 end
 
 """
@@ -401,7 +435,7 @@ function _step!(s::Scheduler, now::Float64)
                 ev_start = Float64(ev.start)
                 if start_cycles <= ev_start < end_cycles
                     fire_time = t_start + ev_start / cps
-                    msg = _inject_orbit!(event_to_osc(ev), slot)
+                    msg = _inject_orbit!(event_to_osc(ev; cps = cps), slot)
                     bundle = OSCBundle(fire_time, [msg])
                     send_osc(s.osc, encode(bundle))
                     Threads.atomic_add!(s.events_shipped, 1)

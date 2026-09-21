@@ -66,6 +66,23 @@ end
         @test length(mock.sent) == 1
     end
 
+    @testset "_step! : chaque message porte cps, cycle et delta (durée réelle)" begin
+        mock = MockOSCClient()
+        s = Scheduler(mock; cps=0.5, lookahead=0.05)
+        set_pattern!(s, :d1, pure(:superpiano) |> n("[0 3] 7"))
+        s.t_start = 0.0
+        Ressac._step!(s, 0.0)          # fenêtre [0, 0.025) cycles : seul l'événement à 0
+        @test length(mock.sent) == 1
+        bytes = mock.sent[1]
+        @test String(bytes[1:7]) == "#bundle"
+        size = ntoh(reinterpret(Int32, bytes[17:20])[1])
+        msg = Ressac.decode_message(bytes[21:20 + size])
+        @test msg.address == "/dirt/play"
+        d = Dict(msg.args[i] => msg.args[i + 1] for i in 1:2:length(msg.args) - 1)
+        @test d["n"] == 0 && d["cps"] == 0.5f0 && d["cycle"] == 0.0f0
+        @test d["delta"] == 0.5f0     # 1/4 de cycle à 0,5 cps
+    end
+
     @testset "REGRESSION: small steps don't re-fire the same long event" begin
         # The old scheduler queried each `(last_end, end)` window directly,
         # and combinators clipped the event to that sub-window — so a single

@@ -33,7 +33,7 @@ end
     s = findfirst(==("s"), m1.args); @test m1.args[s + 1] == "monson"
     @test "lpf" in m1.args
     @test !("freq" in m1.args)                             # n pilote la hauteur : pas de freq injectée
-    @test ("sustain" in m1.args)                           # durée : le défaut du synth
+    @test !("sustain" in m1.args)                          # durée : SuperDirt la déduit de delta
     fx2 = (pure(:monson) |> room(0.3))(0//1, 1//1)[1]
     m2 = Ressac.event_to_osc(fx2)
     f = findfirst(==("freq"), m2.args); @test m2.args[f + 1] == 220   # sans n : freq du synth
@@ -44,4 +44,40 @@ end
     @test Ressac._dsl_params_from_text("@synth :x (freq=110, sustain=2.5, cutoff=800) saw(:freq)") ==
           Dict{String,Any}("freq" => 110, "sustain" => 2.5, "cutoff" => 800)
     @test Ressac._dsl_params_from_text("SynthDef(\\x, { })") == Dict{String,Any}()
+end
+
+@testset "routage — cps / cycle / delta envoyés comme Tidal, sustain des synths directs" begin
+    evs = (pure(:superpiano) |> n("[0 3] 7"))(0//1, 1//1)
+    m = Ressac.event_to_osc(evs[2]; cps = 0.5)
+    @test m.args[end-5:end] == ["cps", 0.5f0, "cycle", 0.25f0, "delta", 0.5f0]   # 1/4 cycle à 0,5 cps = 0,5 s
+    @test Ressac.event_to_osc(evs[3]; cps = 0.5).args[end] == 1.0f0
+    @test !("delta" in Ressac.event_to_osc(evs[2]).args)                      # sans cps : rien d'ajouté
+    sym = Ressac.event_to_osc(Ressac.Event(0//1, 1//4, Symbol("sn:3")); cps = 1.0)
+    @test sym.args == ["s", "sn", "n", 3, "cps", 1.0f0, "cycle", 0.0f0, "delta", 0.25f0]
+
+    Ressac.register_synth!(Ressac.SynthEntry(:monson, "user-dsl",
+        Dict{String,Any}("params" => Dict{String,Any}("freq" => 220, "sustain" => 0.5))))
+    direct = Ressac.event_to_osc((pure(:monson) |> n("[0 3] 7"))(0//1, 1//1)[1]; cps = 0.5)
+    @test direct.address == "/ressac/play" && direct.args == ["monson", "n", 0, "sustain", 0.5f0]
+    fixed = Ressac.event_to_osc((pure(:monson) |> sustain(3))(0//1, 1//1)[1]; cps = 0.5)
+    @test fixed.args == ["monson", "sustain", 3]                              # sustain explicite : intact
+    bare = Ressac.event_to_osc(Ressac.Event(0//1, 1//4, :monson); cps = 0.5)
+    @test bare.args == ["monson", "sustain", 0.5f0]
+    @test Ressac.event_to_osc(Ressac.Event(0//1, 1//4, :monson)).args == ["monson"]   # sans cps : défauts
+    delete!(Ressac._SYNTH_REGISTRY, :monson)
+    Ressac.register_synth!(Ressac.SynthEntry(:nosus, "user-dsl",
+        Dict{String,Any}("params" => Dict{String,Any}("freq" => 220))))
+    @test Ressac.event_to_osc(Ressac.Event(0//1, 1//4, :nosus); cps = 0.5).args == ["nosus"]  # pas de param sustain
+    delete!(Ressac._SYNTH_REGISTRY, :nosus)
+end
+
+@testset "routage — une chaîne de contrôle à un seul jeton vaut un scalaire" begin
+    @test Ressac._string_control_value("c") === :c
+    @test Ressac._string_control_value("bd:3") === Symbol("bd:3")
+    @test Ressac._string_control_value("0.5") === Symbol("0.5")
+    @test Ressac._string_control_value("[0 3]") isa Pattern
+    @test Ressac._string_control_value("<0 3>") isa Pattern
+    @test Ressac._string_control_value("0 _") isa Pattern
+    # un événement de deux cycles n'est plus découpé par unit("c")
+    @test length((slow(2, pure(:bd)) |> unit("c"))(0//1, 2//1)) == 1
 end

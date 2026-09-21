@@ -64,6 +64,15 @@ Règles de composition :
   deux côtés), pas son `#` (structure de gauche seule). C'est ce qui rend
   `:bd |> n("0 1 2 3")` musical : quatre coups. Idem pour `+ - * /`.
 
+### Durée des notes : `delta` comme Tidal
+
+Chaque événement part avec `cps`, `cycle` et `delta` (sa durée en
+secondes), exactement comme Tidal. SuperDirt en déduit
+`sustain = delta × legato` : `n("[0 3] 7")` joue deux notes courtes puis
+une longue. `legato(2)` allonge, `sustain(0.2)` fixe en secondes. Un
+synth utilisateur joué en direct suit la même règle dès que son SynthDef
+a un paramètre `sustain` ; `T` (audition) garde les défauts du SynthDef.
+
 ### `set` pour n'importe quel paramètre
 
 Si un paramètre SuperDirt n'a pas de helper, `set(:clé, valeur)` le
