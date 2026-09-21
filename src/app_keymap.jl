@@ -56,13 +56,13 @@ bind!(:global, "<", "scope : zoom X −"; group = :view, hint = false, when = _k
                      _push_app_log!(m, "[INFO] scope X-zoom ×$(round(m.scope_zoom_x; digits=2))")))
 bind!(:global, "=", "scope : zoom reset"; group = :view, hint = false, when = _km_wave,
       action = m -> (m.scope_zoom = 1.0; m.scope_zoom_x = 1.0;
-                     _push_app_log!(m, "[INFO] scope zoom reset (X & Y)")))
+                     _push_app_log!(m, "[INFO] zoom du scope remis à 1 (X et Y)")))
 bind!(:global, "+", "réservoir : plus rapide"; group = :view, hint = false, when = _km_reservoir,
       action = m -> (_APP_SCOPE_RESERVOIR_SPAN[] = clamp(_APP_SCOPE_RESERVOIR_SPAN[] / 1.5, 0.1, 60.0);
-                     _push_app_log!(m, "[INFO] reservoir scope span = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (faster)")))
+                     _push_app_log!(m, "[INFO] fenêtre du scope réservoir = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (plus rapide)")))
 bind!(:global, "-", "réservoir : plus lent"; group = :view, hint = false, when = _km_reservoir,
       action = m -> (_APP_SCOPE_RESERVOIR_SPAN[] = clamp(_APP_SCOPE_RESERVOIR_SPAN[] * 1.5, 0.1, 60.0);
-                     _push_app_log!(m, "[INFO] reservoir scope span = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (slower)")))
+                     _push_app_log!(m, "[INFO] fenêtre du scope réservoir = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (plus lente)")))
 
 # ── :editor — commun aux panes patterns et synth (mode normal) ─────
 scope!(:editor, "Éditeur (patterns et synth)")
@@ -216,9 +216,9 @@ function _visual_enter!(m::RessacApp, kind::Symbol)
     m.visual_anchor_row = ed.cursor_row
     m.visual_anchor_col = ed.cursor_col
     if kind === :line
-        _push_app_log!(m, "[INFO] V — visual line · j/k extend · d/y/c act · Esc cancel")
+        _push_app_log!(m, "[INFO] V — sélection de lignes · j/k étend · d/y/c agit · Esc annule")
     else
-        _push_app_log!(m, "[INFO] v — visual char · hjkl extend · d/y/c act · Esc cancel")
+        _push_app_log!(m, "[INFO] v — sélection de caractères · hjkl étend · d/y/c agit · Esc annule")
     end
     return
 end

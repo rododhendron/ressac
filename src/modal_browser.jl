@@ -146,14 +146,14 @@ function _browser_insert!(m::RessacApp, entry::_BrowserEntry)
     lines[row] = prefix * name * suffix
     TK.set_text!(ed, join(lines, '\n'))
     ed.cursor_col = lastindex(prefix) + lastindex(name)
-    _push_app_log!(m, "[INFO] inserted $(entry.kind) $name")
+    _push_app_log!(m, "[INFO] $(entry.kind) $name inséré")
 end
 
 function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     entries = _browser_entries(m)
     n = length(entries)
     inner = _render_modal_block!(buf, area;
-        title = "BROWSE SOUNDS",
+        title = "SONS",
         title_right = _modal_hint_text(m, :modal_browse),
         w_max = 120,
         h_target = max(14, min(area.height - 4, n + 8)))

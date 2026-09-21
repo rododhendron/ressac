@@ -488,7 +488,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         elseif evt.key === :escape
             m.tap_recording = false
             empty!(m.tap_events)
-            _push_app_log!(m, "[INFO] tap cancelled"); return
+            _push_app_log!(m, "[INFO] tap annulé"); return
         elseif evt.char == ' '
             _tap_hit!(m); return
         end
@@ -499,7 +499,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.paused
         if evt.action === TK.key_press
             m.paused = false
-            _push_app_log!(m, "[INFO] resumed")
+            _push_app_log!(m, "[INFO] reprise")
         end
         return
     end

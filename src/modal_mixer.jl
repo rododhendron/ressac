@@ -63,12 +63,12 @@ applies it, and re-evals so audio reflects the change.
 """
 function _mixer_nudge_gain!(m::RessacApp, slot::Symbol, delta::Real)
     ed = _active_editor(m)
-    ed === nothing && return _push_app_log!(m, "[WARN] mixer +/-: no editor open")
+    ed === nothing && return _push_app_log!(m, "[WARN] mixer +/- : aucun éditeur ouvert")
     txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty = true))
     slot_id = String(slot)
     row = findfirst(line -> occursin(Regex("^\\s*@$(slot_id)\\b"), String(line)), lines)
-    row === nothing && return _push_app_log!(m, "[WARN] mixer +/-: no @$(slot_id) line in buffer")
+    row === nothing && return _push_app_log!(m, "[WARN] mixer +/- : pas de ligne @$(slot_id) dans le buffer")
     lines[row] = _apply_gain_delta_to_line(String(lines[row]), delta)
     TK.set_text!(ed, join(lines, '\n'))
     _eval_pattern_blocks!(m, [slot])
@@ -84,7 +84,7 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     inner.width < 20 && return
     if isempty(slots)
         TK.set_string!(buf, inner.x + 1, inner.y,
-            "(no active patterns — eval some @dN blocks first)",
+            "(aucun pattern actif — évalue d'abord des blocs @dN)",
             TK.tstyle(:text_dim))
         return
     end

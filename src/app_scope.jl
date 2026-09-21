@@ -76,23 +76,23 @@ end
 
 function _audio_in_start!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
-    sched === nothing && (_push_app_log!(m, "[ERROR] :audio-in start — no live session"); return)
+    sched === nothing && (_push_app_log!(m, "[ERROR] :audio-in start — pas de session live"); return)
     _ensure_app_scope_listener!()
     code = "if(~ressacAudioInNode.notNil) { ~ressacAudioInNode.free }; " *
            "~ressacAudioInNode = Synth(\\ressac_audio_in);"
     send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[code])))
-    _push_app_log!(m, "[INFO] :audio-in started — speak / play into the input")
+    _push_app_log!(m, "[INFO] :audio-in démarré — parle / joue dans l'entrée")
     return
 end
 
 function _audio_in_stop!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
-    sched === nothing && (_push_app_log!(m, "[ERROR] :audio-in stop — no live session"); return)
+    sched === nothing && (_push_app_log!(m, "[ERROR] :audio-in stop — pas de session live"); return)
     code = "if(~ressacAudioInNode.notNil) { ~ressacAudioInNode.free; ~ressacAudioInNode = nil };"
     send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[code])))
     _AUDIO_IN_VALUE[] = 0.0
     empty!(_AUDIO_IN_BANDS[])
-    _push_app_log!(m, "[INFO] :audio-in stopped")
+    _push_app_log!(m, "[INFO] :audio-in arrêté")
     return
 end
 
@@ -110,7 +110,7 @@ function _scope_command!(m::RessacApp, type::Symbol)
             end
         end
     else
-        _push_app_log!(m, "[ERROR] :scope — unknown type or no live session")
+        _push_app_log!(m, "[ERROR] :scope — type inconnu ou pas de session live")
     end
 end
 
@@ -124,7 +124,7 @@ non-reservoir or with `:off`.
 """
 function _scope_reservoir!(m::RessacApp, varname::Symbol)
     if !isdefined(Main, varname)
-        _push_app_log!(m, "[ERROR] :scope reservoir — '$varname' not defined in Main")
+        _push_app_log!(m, "[ERROR] :scope reservoir — « $varname » n'est pas défini dans Main")
         return
     end
     obj = getfield(Main, varname)
@@ -237,7 +237,7 @@ function _app_render_reservoir(area::TK.Rect, buf::TK.Buffer,
     r = _APP_SCOPE_RESERVOIR[]
     if r === nothing
         TK.set_string!(buf, area.x, area.y,
-                       "  (no reservoir attached — use :scope reservoir <var>)",
+                       "  (aucun réservoir attaché — :scope reservoir <var>)",
                        TK.tstyle(:text_dim))
         return
     end
@@ -357,7 +357,7 @@ function _app_render_reservoir_graph(area::TK.Rect, buf::TK.Buffer,
     r = _APP_SCOPE_RESERVOIR[]
     if r === nothing
         TK.set_string!(buf, area.x, area.y,
-                       "  (no reservoir attached — use :scope reservoir <var>)",
+                       "  (aucun réservoir attaché — :scope reservoir <var>)",
                        TK.tstyle(:text_dim))
         return
     end

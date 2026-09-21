@@ -357,7 +357,7 @@ ones. Lossy if the dropped slots had hits — warns in the log.
 """
 function _pat_zoom!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
     info = _pat_at_cursor(ed)
-    info === nothing && return _push_app_log!(m, "[WARN] zoom: cursor isn't in a p\"…\"")
+    info === nothing && return _push_app_log!(m, "[WARN] zoom : le curseur n'est pas dans un p\"…\"")
     body = info.body
     tokens = info.tokens
     strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
@@ -369,7 +369,7 @@ function _pat_zoom!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
         end
         new_body = join(new_tokens, " ")
         _pat_replace_body!(m, ed, info, new_body)
-        _push_app_log!(m, "[INFO] pattern zoom ×2 → $(length(new_tokens)) steps")
+        _push_app_log!(m, "[INFO] pattern zoom ×2 → $(length(new_tokens)) pas")
     else
         # Keep odd-indexed (1, 3, 5, …) tokens; warn if any dropped
         # token wasn't a silence.
@@ -390,7 +390,7 @@ function _pat_zoom!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
                 "[WARN] pattern zoom ÷2 → $(length(kept)) steps · " *
                 "dropped $(dropped_hits) hit$(dropped_hits == 1 ? "" : "s")")
         else
-            _push_app_log!(m, "[INFO] pattern zoom ÷2 → $(length(kept)) steps")
+            _push_app_log!(m, "[INFO] pattern zoom ÷2 → $(length(kept)) pas")
         end
     end
 end
@@ -404,11 +404,11 @@ presses keep moving the same note.
 """
 function _pat_shift!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
     info = _pat_at_cursor(ed)
-    info === nothing && return _push_app_log!(m, "[WARN] shift: cursor isn't in a p\"…\"")
+    info === nothing && return _push_app_log!(m, "[WARN] décalage : le curseur n'est pas dans un p\"…\"")
     tokens = info.tokens
     i = info.tok_idx
     j = i + dir
-    (1 <= j <= length(tokens)) || return _push_app_log!(m, "[INFO] shift: at edge of pattern")
+    (1 <= j <= length(tokens)) || return _push_app_log!(m, "[INFO] décalage : au bord du pattern")
     body = info.body
     strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
     strs[i], strs[j] = strs[j], strs[i]
@@ -429,7 +429,7 @@ but operates at token granularity inside a pattern.
 """
 function _pat_silence!(m::RessacApp, ed::TK.CodeEditor)
     info = _pat_at_cursor(ed)
-    info === nothing && return _push_app_log!(m, "[WARN] silence: cursor isn't in a p\"…\"")
+    info === nothing && return _push_app_log!(m, "[WARN] silence : le curseur n'est pas dans un p\"…\"")
     body = info.body
     tokens = info.tokens
     strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
@@ -455,7 +455,7 @@ If the token already ends in `*K`, the K is replaced by N.
 """
 function _pat_subdivide!(m::RessacApp, ed::TK.CodeEditor, n::Int)
     info = _pat_at_cursor(ed)
-    info === nothing && return _push_app_log!(m, "[WARN] subdivide: cursor isn't in a p\"…\"")
+    info === nothing && return _push_app_log!(m, "[WARN] subdivision : le curseur n'est pas dans un p\"…\"")
     body = info.body
     tokens = info.tokens
     strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
@@ -472,5 +472,5 @@ function _pat_subdivide!(m::RessacApp, ed::TK.CodeEditor, n::Int)
            n == 4 ? "double croche" :
            n == 6 ? "sextolet" :
            n == 8 ? "triple croche" : "×$n"
-    _push_app_log!(m, "[INFO] subdivide: $tok → $new_tok ($name)")
+    _push_app_log!(m, "[INFO] subdivision : $tok → $new_tok ($name)")
 end

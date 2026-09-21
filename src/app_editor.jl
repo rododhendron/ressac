@@ -388,7 +388,7 @@ function _op_with_motion!(m::RessacApp, ed::TK.CodeEditor,
         ed.cursor_row = src_row
         ed.cursor_col = src_col
         ed.scroll_offset = saved_scroll
-        _push_app_log!(m, "[INFO] $op$motion — yanked $(length(yanked_str)) char(s)")
+        _push_app_log!(m, "[INFO] $op$motion — $(length(yanked_str)) caractère(s) copié(s)")
         return
     end
 
@@ -413,7 +413,7 @@ function _op_with_motion!(m::RessacApp, ed::TK.CodeEditor,
     if op == 'c'
         ed.mode = :insert
     end
-    _push_app_log!(m, "[INFO] $op$motion done")
+    _push_app_log!(m, "[INFO] $op$motion fait")
     return
 end
 
@@ -514,7 +514,7 @@ function _apply_pattern_shortcut!(m::RessacApp, nl_before::Bool,
         ed.cursor_col = length(next_indent)
     end
     TK.set_text!(ed, join(lines, '\n'))
-    _push_app_log!(m, "[INFO] shortcut → $(strip(snippet))")
+    _push_app_log!(m, "[INFO] raccourci → $(strip(snippet))")
 end
 
 

@@ -198,7 +198,7 @@ end
     # Footer (hint widget) is one row above the log tail.
     log_top_y = 0
     for y in 1:_VIS_H
-        occursin("LOG", Tachikoma.row_text(tb, y)) && (log_top_y = y; break)
+        occursin("JOURNAL", Tachikoma.row_text(tb, y)) && (log_top_y = y; break)
     end
     @test log_top_y > 0
     footer_y = log_top_y - 1
@@ -311,12 +311,14 @@ end
 @testset "global log tail collapses when a LogPane is in the tree" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
-    @test _find_row(tb, "LOG") > 0
+    @test _find_row(tb, "JOURNAL") > 0
     Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
     Tachikoma.view(app, frame)
     # Default chrome height is 10 when no LogPane is in the tree; the
     # workspace area expands by ~10 rows when one is present. We
     # assert the COLLAPSE side: the chrome LOG title is gone.
-    found = _find_row(tb, " LOG ")
-    @test found == 0 || found > _VIS_H - 5   # tolerate spurious "LOG" in pane title
+    # La pane JOURNAL porte le même titre : on vérifie plutôt que la boîte
+    # du bas a disparu — la barre de touches occupe la dernière ligne.
+    @test Ressac._global_log_tail_height(app) == 0
+    @test occursin("? aide", Tachikoma.row_text(tb, _VIS_H))
 end

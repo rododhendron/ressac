@@ -586,7 +586,7 @@ end
     _exec_ex_command!(app, "layout load nonexistent-layout-zzz")
     # Warn-only — workspace state unchanged.
     @test length(app.workspaces.workspaces) == pre_workspaces
-    @test any(l -> occursin("no such layout", l), app.logs)
+    @test any(l -> occursin("introuvable", l), app.logs)
 end
 
 # ── Edge cases ─────────────────────────────────────────────────────
@@ -983,7 +983,7 @@ end
         Ressac._starter_command!(app, "ui-it-amb")
         # Editor content unchanged because the prefix was ambiguous.
         @test Ressac.TK.text(Ressac._active_editor(app)) == "untouched"
-        @test any(l -> occursin("ambiguous", l), app.logs)
+        @test any(l -> occursin("ambigu", l), app.logs)
     finally
         delete!(Ressac._SNIPPETS, name_a)
         delete!(Ressac._SNIPPETS, name_b)

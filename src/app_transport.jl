@@ -11,9 +11,9 @@ timestamped filename so successive recordings don't clobber.
 """
 function _start_recording!(m::RessacApp, name=nothing)
     sched = _LIVE_SCHEDULER[]
-    sched === nothing && (_push_app_log!(m, "[ERROR] rec: no live session"); return)
+    sched === nothing && (_push_app_log!(m, "[ERROR] rec : pas de session live"); return)
     if m.recording
-        _push_app_log!(m, "[WARN] rec: already recording → $(m.recording_path)")
+        _push_app_log!(m, "[WARN] rec : déjà en enregistrement → $(m.recording_path)")
         return
     end
     dir = joinpath(pwd(), "recordings")
@@ -42,7 +42,7 @@ function _stop_recording!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     if !m.recording
-        _push_app_log!(m, "[WARN] rec stop: not recording")
+        _push_app_log!(m, "[WARN] rec stop : pas d'enregistrement en cours")
         return
     end
     send_osc(sched.osc, encode(OSCMessage("/ressac/recStop", Any[])))
@@ -72,12 +72,12 @@ Runs the timing on an `@async` Task so the UI stays interactive.
 """
 function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
     _synth_pane_open(m) ||
-        (_push_app_log!(m, "[ERROR] export: open a synth first (:synth <name>)"); return)
+        (_push_app_log!(m, "[ERROR] export : ouvre d'abord un synth (:synth <nom>)"); return)
     sched = _LIVE_SCHEDULER[]
     sched === nothing &&
-        (_push_app_log!(m, "[ERROR] export: no live session"); return)
+        (_push_app_log!(m, "[ERROR] export : pas de session live"); return)
     m.recording &&
-        (_push_app_log!(m, "[WARN] export: stop the current :rec first"); return)
+        (_push_app_log!(m, "[WARN] export : arrête d'abord le :rec en cours"); return)
     tab = _current_synth_tab(m)
     src = TK.text(tab.code_editor)
     dir = joinpath(pwd(), "recordings")
@@ -112,7 +112,7 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
             m.recording_path = ""
             _push_app_log!(m, "[INFO] export ■ → $(path)")
         catch err
-            _push_app_log!(m, "[ERROR] export: $(sprint(showerror, err))")
+            _push_app_log!(m, "[ERROR] export : $(sprint(showerror, err))")
             m.recording = false
         end
     end
@@ -132,7 +132,7 @@ function _panic!(m::RessacApp)
     if sched !== nothing
         send_osc(sched.osc, encode(OSCMessage("/ressac/panic", Any[])))
     end
-    _push_app_log!(m, "[INFO] PANIC — all sound killed")
+    _push_app_log!(m, "[INFO] PANIC — tout le son est coupé")
 end
 
 """
@@ -149,5 +149,5 @@ function _hush!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     hush!(sched)
-    _push_app_log!(m, "[INFO] hush — patterns stopped, tails ringing out")
+    _push_app_log!(m, "[INFO] hush — patterns arrêtés, les queues finissent")
 end

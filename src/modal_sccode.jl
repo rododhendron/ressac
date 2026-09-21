@@ -32,15 +32,15 @@ function _open_sccode!(m::RessacApp; tag::AbstractString = "")
     m.sccode_search_mode = false
     m.sccode_tag = String(tag)
     banner = isempty(tag) ? "page 1" : "tag=$(tag), page 1"
-    _push_app_log!(m, "[INFO] sccode: fetching $(banner)…")
+    _push_app_log!(m, "[INFO] sccode : chargement $(banner)…")
     try
         m.sccode_entries = _sccode_fetch_list(1; tag = m.sccode_tag)
         m.sccode_loading = false
-        _push_app_log!(m, "[INFO] sccode: $(length(m.sccode_entries)) entries loaded")
+        _push_app_log!(m, "[INFO] sccode : $(length(m.sccode_entries)) entrées chargées")
     catch err
         m.sccode_loading = false
         m.sccode_entries = _SccodeEntry[]
-        _push_app_log!(m, "[ERROR] sccode list: $(sprint(showerror, err))")
+        _push_app_log!(m, "[ERROR] sccode liste : $(sprint(showerror, err))")
     end
 end
 
@@ -167,12 +167,12 @@ function _preview_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
     end
     name = _sccode_extract_synthdef_name(src)
     if name === nothing
-        _push_app_log!(m, "[WARN] sccode $(entry.id): no SynthDef, raw eval")
+        _push_app_log!(m, "[WARN] sccode $(entry.id) : pas de SynthDef, éval brute")
         send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[entry.id, src])))
         return
     end
     send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[name, src])))
-    _push_app_log!(m, "[INFO] preview sccode/$(entry.id) → $(name)")
+    _push_app_log!(m, "[INFO] écoute sccode/$(entry.id) → $(name)")
 end
 
 function _load_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
@@ -188,7 +188,7 @@ function _sccode_paginate!(m::RessacApp, delta::Int)
         m.sccode_entries = _sccode_fetch_list(new_page; tag = m.sccode_tag)
         m.sccode_page = new_page
         m.sccode_cursor = 1
-        _push_app_log!(m, "[INFO] sccode page $new_page — $(length(m.sccode_entries)) entries")
+        _push_app_log!(m, "[INFO] sccode page $new_page — $(length(m.sccode_entries)) entrées")
     catch err
         _push_app_log!(m, "[ERROR] sccode page $new_page: $(sprint(showerror, err))")
     finally
@@ -217,12 +217,12 @@ function _preview_sccode!(m::RessacApp)
     end
     name = _sccode_extract_synthdef_name(src)
     if name === nothing
-        _push_app_log!(m, "[WARN] sccode $(entry.id): no SynthDef found, sending raw eval anyway")
+        _push_app_log!(m, "[WARN] sccode $(entry.id) : pas de SynthDef trouvé, éval brute quand même")
         send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[entry.id, src])))
         return
     end
     send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[name, src])))
-    _push_app_log!(m, "[INFO] preview sccode/$(entry.id) → $(name)")
+    _push_app_log!(m, "[INFO] écoute sccode/$(entry.id) → $(name)")
 end
 
 """
@@ -261,8 +261,8 @@ function _render_sccode_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     n = length(filtered)
     if n == 0
         msg = isempty(m.sccode_query) ?
-            "(no entries — try `n` for next page)" :
-            "(no match for \"$(m.sccode_query)\")"
+            "(aucune entrée — n pour la page suivante)" :
+            "(rien pour « $(m.sccode_query) »)"
         TK.set_string!(buf, inner.x + 1, inner.y + 1, msg, TK.tstyle(:text_dim))
     else
         start_i = max(1, m.sccode_cursor - body_h ÷ 2)

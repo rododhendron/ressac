@@ -116,10 +116,10 @@ workspace area. Behavior-preserving extraction — no visible change.
 """
 function _render_global_log_tail!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     if _completion_picker_active(m)
-        title       = "COMPLETIONS"
-        title_right = "$(m.completion_idx)/$(length(m.completion_candidates)) · Tab next · any other key cancels"
+        title       = "COMPLÉTIONS"
+        title_right = "$(m.completion_idx)/$(length(m.completion_candidates)) · Tab suivant · autre touche annule"
     else
-        title       = "LOG"
+        title       = "JOURNAL"
         title_right = "$(length(m.logs))" *
                       (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
     end
@@ -800,13 +800,13 @@ function _copy_logs_to_clipboard!(m::RessacApp)
             open(pipeline(argv; stderr=devnull), "w") do io
                 write(io, text)
             end
-            _push_app_log!(m, "[INFO] $(length(m.logs)) log lines → $name clipboard")
+            _push_app_log!(m, "[INFO] $(length(m.logs)) lignes de journal → presse-papier ($name)")
             return
         catch err
-            _push_app_log!(m, "[WARN] $name failed: $(sprint(showerror, err))")
+            _push_app_log!(m, "[WARN] $name a échoué : $(sprint(showerror, err))")
         end
     end
-    _push_app_log!(m, "[ERROR] :copylogs — no clipboard tool found (install wl-copy, xclip, or xsel)")
+    _push_app_log!(m, "[ERROR] :copylogs — aucun outil de presse-papier (installe wl-copy, xclip ou xsel)")
 end
 
 # ── Which-key ──────────────────────────────────────────────────────

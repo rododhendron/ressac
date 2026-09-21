@@ -58,14 +58,14 @@ function _piano_start!(m::RessacApp;
     _push_app_log!(m, "[INFO] piano $mode_label — synth=$(m.piano_synth) · " *
                    "[/] octave · Enter " *
                    (record ? "commit" : "exit") * " · Esc exit")
-    _push_app_log!(m, "         keys: z=C s=C# x=D d=D# c=E v=F g=F# b=G h=G# n=A j=A# ,=B")
+    _push_app_log!(m, "         touches : z=C s=C# x=D d=D# c=E v=F g=F# b=G h=G# n=A j=A# ,=B")
 end
 
 function _piano_stop!(m::RessacApp)
     m.piano_active = false
     m.piano_rec = false
     empty!(m.piano_events)
-    _push_app_log!(m, "[INFO] piano off")
+    _push_app_log!(m, "[INFO] piano arrêté")
 end
 
 """
@@ -100,7 +100,7 @@ function _piano_commit!(m::RessacApp)
     m.piano_active = false
     n = length(m.piano_events)
     if n < 2
-        _push_app_log!(m, "[WARN] piano: need at least 2 notes")
+        _push_app_log!(m, "[WARN] piano : il faut au moins 2 notes")
         empty!(m.piano_events)
         return
     end
@@ -120,7 +120,7 @@ function _piano_commit!(m::RessacApp)
     _insert_line_after_cursor!(ed, line)
     empty!(m.piano_events)
     m.piano_rec = false
-    _push_app_log!(m, "[INFO] piano committed → $(line)")
+    _push_app_log!(m, "[INFO] piano validé → $(line)")
 end
 
 # ---------------------------------------------------------------------
@@ -147,16 +147,16 @@ function _tap_start!(m::RessacApp; sample::AbstractString = "bd",
     m.tap_mode   = mode
     if mode === :tempo
         _push_app_log!(m,
-            "[INFO] tap-tempo — Space on each beat (≥2 taps), Enter to apply cps, Esc cancel · 4 taps = 1 bar")
+            "[INFO] tap-tempo — Space sur chaque temps (≥2), Enter applique le cps, Esc annule · 4 taps = 1 mesure")
     elseif mode === :loop
         _push_app_log!(m,
-            "[INFO] tap-loop — repeat the rhythm a few times · Space on hits, Enter commit, Esc cancel · sample=$(sample)")
+            "[INFO] tap-loop — répète le rythme plusieurs fois · Space sur les coups, Enter valide, Esc annule · sample=$(sample)")
     elseif bars > 1
         _push_app_log!(m,
-            "[INFO] tap — play the same pattern $(bars)× · Space on hits, Enter commit, Esc cancel · steps=$(steps)")
+            "[INFO] tap — joue le même pattern $(bars)× · Space sur les coups, Enter valide, Esc annule · pas=$(steps)")
     else
         _push_app_log!(m,
-            "[INFO] tap — Space ONLY on hits (no extra downbeat at end), Enter commit, Esc cancel · sample=$(sample), steps=$(steps)")
+            "[INFO] tap — Space SEULEMENT sur les coups (pas de temps fort final), Enter valide, Esc annule · sample=$(sample), pas=$(steps)")
     end
 end
 
@@ -166,7 +166,7 @@ function _tap_hit!(m::RessacApp)
     # (and always the very first) to keep the log panel readable.
     n = length(m.tap_events)
     if n == 1 || n % 4 == 0
-        _push_app_log!(m, "[INFO] tap #$(n)")
+        _push_app_log!(m, "[INFO] tap n°$(n)")
     end
 end
 
@@ -183,7 +183,7 @@ function _tap_commit!(m::RessacApp)
     m.tap_recording = false
     n = length(m.tap_events)
     if n < 2
-        _push_app_log!(m, "[WARN] tap: need at least 2 hits")
+        _push_app_log!(m, "[WARN] tap : il faut au moins 2 coups")
         empty!(m.tap_events)
         return
     end
@@ -412,8 +412,8 @@ function _tap_commit_auto!(m::RessacApp)
         density = analysis.n_hits / analysis.steps
         if density > 0.85
             _push_app_log!(m,
-                "[WARN] tap result is $(round(Int, density*100))% filled — " *
-                "looks like a steady stream. Tap only the accents, or use :tap-strict for raw quantization.")
+                "[WARN] le tap est rempli à $(round(Int, density*100))% — " *
+                "on dirait un flux continu. Tape seulement les accents, ou :tap-strict pour une quantification brute.")
         end
         (analysis.period, cs, suf)
     end
@@ -450,14 +450,14 @@ single inter-tap interval.
 function _tap_apply_tempo!(m::RessacApp)
     n = length(m.tap_events)
     if n < 2
-        _push_app_log!(m, "[WARN] tap-tempo: need at least 2 taps")
+        _push_app_log!(m, "[WARN] tap-tempo : il faut au moins 2 taps")
         empty!(m.tap_events)
         return
     end
     avg_interval = (m.tap_events[end] - m.tap_events[1]) / (n - 1)
     cps = 1.0 / (4.0 * avg_interval)   # 4 taps per cycle convention
     sched = _LIVE_SCHEDULER[]
-    sched === nothing && (_push_app_log!(m, "[WARN] tap-tempo: no live session"); return)
+    sched === nothing && (_push_app_log!(m, "[WARN] tap-tempo : pas de session live"); return)
     set_cps!(sched, cps)
     bpm = cps * 4 * 60
     _push_app_log!(m, "[INFO] tap-tempo → cps=$(round(cps; digits=3))  (~$(round(Int, bpm)) BPM, $(n) taps)")

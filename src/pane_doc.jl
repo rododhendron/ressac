@@ -18,7 +18,7 @@ function render!(p::DocPane, area, buf)
     inner.height < 1 && return
     entry = lookup_doc(p.name)
     lines = if entry === nothing
-        ["(no entry for '$(p.name)')"]
+        ["(aucune entrée pour « $(p.name) »)"]
     else
         out = String[entry.name, "", entry.short, ""]
         isempty(entry.kwargs) || push!(out, "kwargs: " * join(entry.kwargs, ", "))

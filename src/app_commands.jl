@@ -138,7 +138,7 @@ Forward search for `query` in the currently active editor's buffer.
 Placeholder for sub-projet 11 — for now just logs the request.
 """
 function _ex_search!(m::RessacApp, query::AbstractString)
-    _push_app_log!(m, "[INFO] /$(query)  (search wiring TODO)")
+    _push_app_log!(m, "[INFO] /$(query)  (recherche : à câbler)")
 end
 
 # ── Lifecycle ────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ function _quit!(m::RessacApp)
     try
         save_layout(m.workspaces, _default_layout_path())
     catch err
-        _push_app_log!(m, "[WARN] save layout failed: $(sprint(showerror, err))")
+        _push_app_log!(m, "[WARN] sauvegarde du layout échouée : $(sprint(showerror, err))")
     end
     m.quit = true
 end
@@ -232,10 +232,10 @@ _register_literal!(m -> _layout_load!(m, "last"), "layout load")
 function _layout_save!(m::RessacApp, name::AbstractString)
     try
         save_layout(m.workspaces, _named_layout_path(name))
-        _push_app_log!(m, "[INFO] :layout save $name — saved")
+        _push_app_log!(m, "[INFO] :layout save $name — sauvé")
     catch err
         _push_app_log!(m,
-            "[ERROR] :layout save $name: $(sprint(showerror, err))")
+            "[ERROR] :layout save $name : $(sprint(showerror, err))")
     end
 end
 
@@ -243,7 +243,7 @@ function _layout_load!(m::RessacApp, name::AbstractString)
     path = _named_layout_path(name)
     if !isfile(path)
         _push_app_log!(m,
-            "[WARN] :layout load $name — no such layout at $path")
+            "[WARN] :layout load $name — layout introuvable : $path")
         return
     end
     empty!(m.workspaces.workspaces)
@@ -251,10 +251,10 @@ function _layout_load!(m::RessacApp, name::AbstractString)
     try
         load_layout!(m.workspaces, path)
         _ensure_default_workspace!(m)
-        _push_app_log!(m, "[INFO] :layout load $name — loaded")
+        _push_app_log!(m, "[INFO] :layout load $name — chargé")
     catch err
         _push_app_log!(m,
-            "[ERROR] :layout load $name: $(sprint(showerror, err))")
+            "[ERROR] :layout load $name : $(sprint(showerror, err))")
         _ensure_default_workspace!(m)
     end
 end
@@ -268,7 +268,7 @@ function _tuning_edo!(m::RessacApp, n_str::AbstractString)
         n = parse(Int, n_str)
         name = Symbol("edo_$n")
         register_scale!(edo(name, n))
-        _push_app_log!(m, "[INFO] :tuning edo $n — registered :$name (use scale(:$name))")
+        _push_app_log!(m, "[INFO] :tuning edo $n — :$name enregistrée (scale(:$name))")
     catch err
         _push_app_log!(m, "[ERROR] :tuning edo: $(sprint(showerror, err))")
     end
@@ -281,7 +281,7 @@ function _tuning_ratios!(m::RessacApp, body::AbstractString)
         name = Symbol("ratios_" * join(tokens, "_") |>
                        s -> replace(s, "/" => "o"))   # `_` and `o` only, valid Symbol
         register_scale!(from_ratios(name, ratios))
-        _push_app_log!(m, "[INFO] :tuning ratios — registered :$name (use scale(:$name))")
+        _push_app_log!(m, "[INFO] :tuning ratios — :$name enregistrée (scale(:$name))")
     catch err
         _push_app_log!(m, "[ERROR] :tuning ratios: $(sprint(showerror, err))")
     end
@@ -304,7 +304,7 @@ function _tuning_bp!(m::RessacApp, variant_str::AbstractString)
         variant = Symbol(variant_str)
         name = Symbol("bp_$variant")
         register_scale!(bohlen_pierce(name; variant = variant))
-        _push_app_log!(m, "[INFO] :tuning bp $variant — registered :$name")
+        _push_app_log!(m, "[INFO] :tuning bp $variant — :$name enregistrée")
     catch err
         _push_app_log!(m, "[ERROR] :tuning bp: $(sprint(showerror, err))")
     end
@@ -314,7 +314,7 @@ function _tuning_golden!(m::RessacApp, n::Int)
     try
         name = Symbol("golden_$n")
         register_scale!(golden_meantone(name; n_steps = n))
-        _push_app_log!(m, "[INFO] :tuning golden $n — registered :$name")
+        _push_app_log!(m, "[INFO] :tuning golden $n — :$name enregistrée")
     catch err
         _push_app_log!(m, "[ERROR] :tuning golden: $(sprint(showerror, err))")
     end
@@ -325,7 +325,7 @@ function _tuning_fib!(m::RessacApp, n_str)
         n = n_str === nothing ? 7 : parse(Int, n_str)
         name = Symbol("fib_$n")
         register_scale!(fibonacci_scale(name; n_steps = n))
-        _push_app_log!(m, "[INFO] :tuning fib $n — registered :$name")
+        _push_app_log!(m, "[INFO] :tuning fib $n — :$name enregistrée")
     catch err
         _push_app_log!(m, "[ERROR] :tuning fib: $(sprint(showerror, err))")
     end
@@ -336,7 +336,7 @@ function _tuning_cf!(m::RessacApp, body::AbstractString)
         coeffs = [parse(Int, t) for t in split(strip(body), r"\s+")]
         name = Symbol("cf_" * join(coeffs, "_"))
         register_scale!(continued_fraction_scale(name, coeffs))
-        _push_app_log!(m, "[INFO] :tuning cf $(join(coeffs, ' ')) — registered :$name")
+        _push_app_log!(m, "[INFO] :tuning cf $(join(coeffs, ' ')) — :$name enregistrée")
     catch err
         _push_app_log!(m, "[ERROR] :tuning cf: $(sprint(showerror, err))")
     end
@@ -347,7 +347,7 @@ function _tuning_sb!(m::RessacApp, depth_str)
         depth = depth_str === nothing ? 5 : parse(Int, depth_str)
         name = Symbol("sb_$depth")
         register_scale!(stern_brocot(name; depth = depth))
-        _push_app_log!(m, "[INFO] :tuning sb $depth — registered :$name")
+        _push_app_log!(m, "[INFO] :tuning sb $depth — :$name enregistrée")
     catch err
         _push_app_log!(m, "[ERROR] :tuning sb: $(sprint(showerror, err))")
     end
@@ -365,8 +365,8 @@ _register_regex!(r"^audio-in\s+start$",
 _register_regex!(r"^audio-in\s+stop$",
     (m, _) -> _audio_in_stop!(m))
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] :audio-in start  → ship \\ressac_audio_in SynthDef + listen\n" *
-        "       :audio-in stop   → free the listener node"),
+        "[INFO] :audio-in start  → envoie le SynthDef \\ressac_audio_in et écoute\n" *
+        "       :audio-in stop   → libère le nœud d'écoute"),
     "audio-in")
 
 # ── Scope ───────────────────────────────────────────────────────────
@@ -453,26 +453,26 @@ _register_regex!(r"^piano-rec\s+(\w+)$",
 
 # ── Theme / config / safety ─────────────────────────────────────────
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] themes: " * join(_available_themes(), ", ")),
+        "[INFO] thèmes : " * join(_available_themes(), ", ")),
     "theme")
 _register_regex!(r"^theme\s+(\w+)$",
     (m, mt) -> _theme_switch(m, mt))
 _register_literal!(m -> _reload_config_action(m),    "reload-config", "reload-cfg")
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] :safety on|off — toggle master limiter + DC block + 10Hz HPF (default ON)"),
+        "[INFO] :safety on|off — limiteur master + DC block + HPF 10 Hz (ON par défaut)"),
     "safety")
 _register_regex!(r"^safety\s+(on|off)$",
     (m, mt) -> _safety_toggle(m, mt))
 
 # ── Misc / utilities ────────────────────────────────────────────────
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] :doc <name> — try gain/release/cutoff/cps/gate/…"),
+        "[INFO] :doc <nom> — essaie gain/release/cutoff/cps/gate/…"),
     "doc")
 _register_regex!(r"^doc\s+(\w+)$",
     (m, mt) -> _doc_command!(m, mt.captures[1]))
 _register_literal!(m -> _keydebug_toggle(m),         "keydebug")
 _register_literal!(m -> (m.paused = true;
-        _push_app_log!(m, "[INFO] paused — shift-drag to select & copy, any key resumes")),
+        _push_app_log!(m, "[INFO] en pause — shift-glisser pour sélectionner et copier, une touche reprend")),
     "pause", "freeze")
 _register_literal!(m -> _copy_logs_to_clipboard!(m), "copylogs", "yanklogs")
 _register_literal!(m -> _cycle_log_tail!(m), "log")
@@ -532,21 +532,21 @@ function _sc_rediscover_command!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
     if sched === nothing
         _push_app_log!(m,
-            "[ERROR] :sc-rediscover requires an active SC session — start the live first")
+            "[ERROR] :sc-rediscover demande une session SC active — lance d'abord le live")
         return
     end
     cache_dir = Main._sc_cache_dir()
     meta_path = joinpath(cache_dir, "cache_meta.toml")
     if isfile(meta_path)
         rm(meta_path)
-        _push_app_log!(m, "[INFO] :sc-rediscover — cleared cache meta, re-running discovery")
+        _push_app_log!(m, "[INFO] :sc-rediscover — cache vidé, redécouverte en cours")
     end
     plugin_dir = joinpath(pwd(), "plugins", "sc-discoverer")
     try
         Main._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
-        _push_app_log!(m, "[INFO] :sc-rediscover — done. Restart the live to reload _DOCS.")
+        _push_app_log!(m, "[INFO] :sc-rediscover — terminé. Relance le live pour recharger les docs.")
     catch err
-        _push_app_log!(m, "[ERROR] :sc-rediscover failed: $(sprint(showerror, err))")
+        _push_app_log!(m, "[ERROR] :sc-rediscover a échoué : $(sprint(showerror, err))")
     end
 end
 
@@ -558,10 +558,10 @@ Useful for debugging stale caches or verifying SC version matches.
 """
 function _sc_cache_info_command!(m::RessacApp)
     cache_dir = Main._sc_cache_dir()
-    _push_app_log!(m, "[INFO] :sc-cache-info — cache dir: $cache_dir")
+    _push_app_log!(m, "[INFO] :sc-cache-info — répertoire du cache : $cache_dir")
     meta_path = joinpath(cache_dir, "cache_meta.toml")
     if !isfile(meta_path)
-        _push_app_log!(m, "[INFO] :sc-cache-info — no cache_meta.toml yet (never discovered)")
+        _push_app_log!(m, "[INFO] :sc-cache-info — pas encore de cache_meta.toml (jamais découvert)")
         return
     end
     for line in eachline(meta_path)
@@ -570,7 +570,7 @@ function _sc_cache_info_command!(m::RessacApp)
     docs_dir = joinpath(cache_dir, "docs")
     if isdir(docs_dir)
         n = count(f -> endswith(f, ".md"), readdir(docs_dir))
-        _push_app_log!(m, "[INFO] :sc-cache-info — $n MD files in cache")
+        _push_app_log!(m, "[INFO] :sc-cache-info — $n fichiers MD en cache")
     end
 end
 
@@ -582,10 +582,10 @@ _register_regex!(r"^import\s+(\S+?)\s+as\s+(\w+)$",
 _register_regex!(r"^import\s+(\S+)$",
     (m, mt) -> _import_wav!(m, mt.captures[1], nothing))
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] $(length(list_scales())) scale(s) registered — use `:scale list` for full list"),
+        "[INFO] $(length(list_scales())) gamme(s) enregistrée(s) — `:scale list` pour la liste"),
     "scale")
 _register_literal!(m -> _push_app_log!(m,
-        "[INFO] scales: " * join(list_scales(), ", ")),
+        "[INFO] gammes : " * join(list_scales(), ", ")),
     "scale list")
 
 # ── :tuning <variant> — build + register a new Scale ────────────────
@@ -669,16 +669,16 @@ end
 function _theme_switch(m::RessacApp, mt::RegexMatch)
     name = Symbol(mt.captures[1])
     if _apply_theme!(name)
-        _push_app_log!(m, "[INFO] theme → $name")
+        _push_app_log!(m, "[INFO] thème → $name")
     else
-        _push_app_log!(m, "[ERROR] theme '$name' not found — try: " *
+        _push_app_log!(m, "[ERROR] thème « $name » introuvable — essaie : " *
                        join(_available_themes()[1:min(end,8)], ", ") * ", …")
     end
 end
 function _reload_config_action(m::RessacApp)
     cfg = _load_ressac_config!()
     _apply_theme!(cfg.theme)
-    _push_app_log!(m, "[INFO] config reloaded — theme=$(cfg.theme), t_init=$(cfg.t_hold_initial_ms)ms accel=$(cfg.t_hold_accel)")
+    _push_app_log!(m, "[INFO] config rechargée — thème=$(cfg.theme), t_init=$(cfg.t_hold_initial_ms)ms accel=$(cfg.t_hold_accel)")
 end
 function _safety_toggle(m::RessacApp, mt::RegexMatch)
     on = mt.captures[1] == "on"
@@ -686,65 +686,65 @@ function _safety_toggle(m::RessacApp, mt::RegexMatch)
     if sched !== nothing
         send_osc(sched.osc, encode(OSCMessage("/ressac/safety", Any[Int32(on ? 1 : 0)])))
     end
-    _push_app_log!(m, "[INFO] safety $(on ? "ON" : "OFF") — master limiter + DC block + 10Hz HPF")
+    _push_app_log!(m, "[INFO] safety $(on ? "ON" : "OFF") — limiteur master + DC block + HPF 10 Hz")
 end
 function _keydebug_toggle(m::RessacApp)
     m.keydebug = !m.keydebug
-    _push_app_log!(m, "[INFO] keydebug $(m.keydebug ? "ON" : "OFF") — every keypress will be logged")
+    _push_app_log!(m, "[INFO] keydebug $(m.keydebug ? "ON" : "OFF") — chaque touche sera journalisée")
 end
 function _cps_set(m::RessacApp, mt::RegexMatch)
     try
         set_cps!(m.scheduler, parse(Float64, mt.captures[1]))
         _push_app_log!(m, "[INFO] cps = $(mt.captures[1])")
     catch err
-        _push_app_log!(m, "[ERROR] cps: $(sprint(showerror, err))")
+        _push_app_log!(m, "[ERROR] cps : $(sprint(showerror, err))")
     end
 end
 
 # ── Alias commands ────────────────────────────────────────────────
 function _alias_list!(m::RessacApp)
     if isempty(_SYNTH_ALIASES)
-        _push_app_log!(m, "[INFO] no aliases registered — `:alias <alias> <sc_name>` to add one")
+        _push_app_log!(m, "[INFO] aucun alias — `:alias <alias> <nom_sc>` pour en ajouter")
         return
     end
     pairs_sorted = sort!(collect(_SYNTH_ALIASES); by = p -> String(p[1]))
     lines = ["$(alias) → $(sc_name)" for (alias, sc_name) in pairs_sorted]
-    _push_app_log!(m, "[INFO] aliases: " * join(lines, ", "))
+    _push_app_log!(m, "[INFO] alias : " * join(lines, ", "))
 end
 
 function _alias_remove!(m::RessacApp, alias::Symbol)
     if unregister_synth_alias!(alias)
-        _push_app_log!(m, "[INFO] removed alias :$alias")
+        _push_app_log!(m, "[INFO] alias :$alias retiré")
     else
-        _push_app_log!(m, "[WARN] :alias-rm — no alias '$alias'")
+        _push_app_log!(m, "[WARN] :alias-rm — pas d'alias « $alias »")
     end
 end
 
 function _alias_rename!(m::RessacApp, old::Symbol, new::Symbol)
     target = get(_SYNTH_ALIASES, old, nothing)
     if target === nothing
-        _push_app_log!(m, "[WARN] :alias-rename — no alias '$old'")
+        _push_app_log!(m, "[WARN] :alias-rename — pas d'alias « $old »")
         return
     end
     if haskey(_SYNTH_ALIASES, new) && _SYNTH_ALIASES[new] !== target
-        _push_app_log!(m, "[ERROR] :alias-rename — '$new' already points to '$(_SYNTH_ALIASES[new])'. :alias-rm $new first.")
+        _push_app_log!(m, "[ERROR] :alias-rename — « $new » pointe déjà vers « $(_SYNTH_ALIASES[new]) ». :alias-rm $new d'abord.")
         return
     end
     unregister_synth_alias!(old)
     register_synth_alias!(new, target)
-    _push_app_log!(m, "[INFO] alias :$old → :$new (both point to $target)")
+    _push_app_log!(m, "[INFO] alias :$old → :$new (tous deux vers $target)")
 end
 
 function _alias_set!(m::RessacApp, alias::Symbol, sc_name::Symbol)
     if register_synth_alias!(alias, sc_name)
         if alias === sc_name
-            _push_app_log!(m, "[INFO] alias :$alias is identity (no aliasing needed)")
+            _push_app_log!(m, "[INFO] alias :$alias est l'identité (inutile)")
         else
             _push_app_log!(m, "[INFO] alias :$alias → $sc_name")
         end
     else
         existing = get(_SYNTH_ALIASES, alias, nothing)
-        _push_app_log!(m, "[ERROR] :alias — '$alias' already points to '$existing'. :alias-rm $alias first.")
+        _push_app_log!(m, "[ERROR] :alias — « $alias » pointe déjà vers « $existing ». :alias-rm $alias d'abord.")
     end
 end
 
@@ -780,7 +780,7 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     for (pred, fn) in _SPECIAL_DISPATCH
         pred(s) && (fn(m, s); return)
     end
-    _push_app_log!(m, "[WARN] unknown command: :$s")
+    _push_app_log!(m, "[WARN] commande inconnue : :$s (? aide · Tab complète)")
 end
 
 # Ring of recent ex-commands ; `m.ex_history_idx` tracks where the
@@ -871,12 +871,12 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
             snip = lookup_snippet(key)
         elseif length(matches) > 1
             _push_app_log!(m,
-                "[WARN] :starter — '$genre' is ambiguous: " *
+                "[WARN] :starter — « $genre » est ambigu : " *
                 join(sort!(matches), ", "))
             return
         else
             _push_app_log!(m,
-                "[WARN] :starter — no pack '$genre' — try: " *
+                "[WARN] :starter — pas de pack « $genre » — essaie : " *
                 join(sort!(all_keys), ", "))
             return
         end
@@ -892,7 +892,7 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
                                  snippet_name = snip.name)
         catch err
             _push_app_log!(m,
-                "[ERROR] :starter — apply panes failed: $(sprint(showerror, err))")
+                "[ERROR] :starter — application des panes échouée : $(sprint(showerror, err))")
         end
     end
     # Target a pane explicitly. A starter with its own panes=[...] spec
@@ -906,7 +906,7 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
     TK.set_text!(ed, snip.resolved_content)
     ed.cursor_row = 1
     ed.cursor_col = 0
-    _push_app_log!(m, "[INFO] loaded :starter $key — eval each @dN with e")
+    _push_app_log!(m, "[INFO] :starter $key chargé — e évalue chaque @dN, E tout")
 end
 
 """
@@ -928,13 +928,13 @@ function _import_wav!(m::RessacApp, src_path::AbstractString,
                      name_or_nothing::Union{Nothing,AbstractString})
     src_path = String(src_path)
     if !isfile(src_path)
-        _push_app_log!(m, "[ERROR] :import — no file at $src_path")
+        _push_app_log!(m, "[ERROR] :import — aucun fichier : $src_path")
         return
     end
     name = name_or_nothing === nothing ?
         splitext(basename(src_path))[1] : String(name_or_nothing)
     name = replace(name, r"[^A-Za-z0-9_]" => "_")
-    isempty(name) && (_push_app_log!(m, "[ERROR] :import — empty name"); return)
+    isempty(name) && (_push_app_log!(m, "[ERROR] :import — nom vide"); return)
     dest_dir = joinpath(pwd(), "plugins", "user-samples", name)
     isdir(dest_dir) || mkpath(dest_dir)
     # Find the next variant index — preserves existing samples in the
@@ -961,8 +961,8 @@ function _import_wav!(m::RessacApp, src_path::AbstractString,
     sched !== nothing && send_osc(sched.osc,
         encode(OSCMessage("/dirt/loadSampleFolder", Any[dest_dir])))
     _push_app_log!(m,
-        "[INFO] :import → $(name) ($(length(variants)) variant$(length(variants) == 1 ? "" : "s")) " *
-        "— use it in patterns: p\"$(name)\"")
+        "[INFO] :import → $(name) ($(length(variants)) variante$(length(variants) == 1 ? "" : "s")) " *
+        "— dans un pattern : p\"$(name)\"")
 end
 
 # ---------------------------------------------------------------------
@@ -975,20 +975,20 @@ function _save_session_app!(m::RessacApp, name::AbstractString)
     path = joinpath(dir, String(name) * ".txt")
     ed = _active_editor(m)
     if ed === nothing
-        _push_app_log!(m, "[ERROR] save-session: no editor pane to save"); return
+        _push_app_log!(m, "[ERROR] :save — aucune pane éditeur à sauver"); return
     end
     try
         write(path, TK.text(ed))
-        _push_app_log!(m, "[INFO] saved session → $path")
+        _push_app_log!(m, "[INFO] session sauvée → $path")
     catch err
-        _push_app_log!(m, "[ERROR] save-session: $(sprint(showerror, err))")
+        _push_app_log!(m, "[ERROR] :save : $(sprint(showerror, err))")
     end
 end
 
 function _load_session_app!(m::RessacApp, name::AbstractString)
     path = joinpath(pwd(), "sessions", String(name) * ".txt")
     if !isfile(path)
-        _push_app_log!(m, "[ERROR] load: no file at $path — try :sessions to list")
+        _push_app_log!(m, "[ERROR] :load — aucun fichier : $path — :sessions pour la liste")
         return
     end
     try
@@ -996,25 +996,25 @@ function _load_session_app!(m::RessacApp, name::AbstractString)
         ed === nothing && return
         TK.set_text!(ed, read(path, String))
         ed.cursor_row = 1; ed.cursor_col = 0
-        _push_app_log!(m, "[INFO] loaded session '$name' — press E to eval all blocks")
+        _push_app_log!(m, "[INFO] session « $name » chargée — E évalue tous les blocs")
     catch err
-        _push_app_log!(m, "[ERROR] load-session: $(sprint(showerror, err))")
+        _push_app_log!(m, "[ERROR] :load : $(sprint(showerror, err))")
     end
 end
 
 function _list_sessions_app!(m::RessacApp)
     dir = joinpath(pwd(), "sessions")
     if !isdir(dir)
-        _push_app_log!(m, "[INFO] no sessions dir yet — :save <name> creates it")
+        _push_app_log!(m, "[INFO] pas encore de répertoire sessions — :save <nom> le crée")
         return
     end
     files = sort!([f for f in readdir(dir) if endswith(f, ".txt")])
     if isempty(files)
-        _push_app_log!(m, "[INFO] (no saved sessions)")
+        _push_app_log!(m, "[INFO] (aucune session sauvée)")
         return
     end
     names = join((splitext(f)[1] for f in files), ", ")
-    _push_app_log!(m, "[INFO] sessions: $names  (use :load <name>)")
+    _push_app_log!(m, "[INFO] sessions : $names  (:load <nom>)")
 end
 
 function _doc_command!(m::RessacApp, name::AbstractString)
@@ -1024,7 +1024,7 @@ function _doc_command!(m::RessacApp, name::AbstractString)
         # for SC UGens that aren't in the plugin doc tree).
         desc = _lookup_livedoc(name)
         if desc === nothing
-            _push_app_log!(m, "[WARN] :doc — no entry for '$name'")
+            _push_app_log!(m, "[WARN] :doc — aucune entrée pour « $name »")
             return
         end
         _push_app_log!(m, "[doc] $name — $desc")
@@ -1032,7 +1032,7 @@ function _doc_command!(m::RessacApp, name::AbstractString)
     end
     _push_app_log!(m, "[doc] $name — $(entry.short)")
     isempty(entry.examples) && return
-    _push_app_log!(m, "[doc]   examples:")
+    _push_app_log!(m, "[doc]   exemples :")
     for ex in entry.examples
         _push_app_log!(m, "[doc]     $ex")
     end

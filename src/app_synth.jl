@@ -37,7 +37,7 @@ end
 Default body for a fresh sandbox / unnamed synth tab in DSL mode.
 """
 _STARTER_DSL(name) = """
-# T = test  ·  :w <name> = save as  ·  :dsl = DSL guide  ·  :snip = snippets
+# T = tester  ·  :w <nom> = sauver sous  ·  U = utiliser dans un pattern  ·  :dsl = guide du DSL
 
 @synth :$(name) (freq=220, sustain=0.5) sin_osc(:freq)
 """
@@ -58,7 +58,7 @@ function _open_sandbox_synth!(m::RessacApp)
     id = String([chars[rand(1:length(chars))] for _ in 1:3])
     name = "sketch_$(id)"
     _open_synth_tab!(m, name)
-    _push_app_log!(m, "[INFO] sandbox synth '$name' — :w <realname> to save under a chosen name")
+    _push_app_log!(m, "[INFO] synth bac à sable « $name » — :w <nom> pour le sauver sous un vrai nom")
 end
 
 """
@@ -78,7 +78,7 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
         for (leaf, buf) in _all_synth_buffers(m)
             if buf.name == name
                 ws.focused_pane = leaf.id
-                _push_app_log!(m, "[INFO] switched to synth '$name'")
+                _push_app_log!(m, "[INFO] synth « $name » focalisé")
                 return
             end
         end
@@ -109,7 +109,7 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     TK.set_text!(eb.code_editor, src)
     eb.code_editor.mode = :normal
     eb.code_editor.focused = true
-    _push_app_log!(m, "[INFO] opened synth '$name' [$mode] — T test, :w save")
+    _push_app_log!(m, "[INFO] synth « $name » ouvert [$mode] — T teste, :w sauve, U l'utilise dans un pattern")
 end
 
 """
@@ -131,7 +131,7 @@ function _close_synth_pane!(m::RessacApp)
         closed += 1
         closed > 64 && break   # safety against a stuck close
     end
-    closed == 0 || _push_app_log!(m, "[INFO] closed $closed synth pane(s)")
+    closed == 0 || _push_app_log!(m, "[INFO] $closed pane(s) synth fermée(s)")
 end
 
 """
@@ -155,7 +155,7 @@ function _close_active_synth_tab!(m::RessacApp)
     name = (b = _leaf_synth_name(m, leaf_id)) === nothing ? "?" : b
     ws.focused_pane = leaf_id
     cmd_close!(m.workspaces)
-    _push_app_log!(m, "[INFO] closed synth '$name'")
+    _push_app_log!(m, "[INFO] synth « $name » fermé")
 end
 
 _leaf_synth_name(m::RessacApp, leaf_id::Int) = begin
@@ -188,7 +188,7 @@ end
 function _list_synth_tabs!(m::RessacApp)
     syn = _all_synth_buffers(m)
     if isempty(syn)
-        _push_app_log!(m, "[INFO] no synth panes open")
+        _push_app_log!(m, "[INFO] aucune pane synth ouverte")
         return
     end
     ws = current_workspace(m.workspaces)
@@ -206,7 +206,7 @@ Persist the synth source to `plugins/user-synths/<name>.scd`. If
 the new identity (rewriting the `SynthDef(\\old, ...)` declaration).
 """
 function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractString}=nothing)
-    _synth_pane_open(m) || (_push_app_log!(m, "[ERROR] :w — no synth open"); return)
+    _synth_pane_open(m) || (_push_app_log!(m, "[ERROR] :w — aucun synth ouvert"); return)
     tab = _current_synth_tab(m)
     old_name = tab.name
     text = TK.text(tab.code_editor)
@@ -222,7 +222,7 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
         register_synth!(SynthEntry(Symbol(old_name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
                              "tags" => ["user", String(tab.synth_mode)])))
-        _push_app_log!(m, "[INFO] saved synth → $(_app_synth_path(old_name; mode = tab.synth_mode))")
+        _push_app_log!(m, "[INFO] synth sauvé → $(_app_synth_path(old_name; mode = tab.synth_mode))")
     else
         # :w newname — Save-As. Same mode as the originating tab; the
         # name token in the source gets rewritten to match.
@@ -232,7 +232,7 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
         register_synth!(SynthEntry(Symbol(name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
                              "tags" => ["user", String(tab.synth_mode)])))
-        _push_app_log!(m, "[INFO] saved synth as → $(_app_synth_path(name; mode = tab.synth_mode))")
+        _push_app_log!(m, "[INFO] synth sauvé sous → $(_app_synth_path(name; mode = tab.synth_mode))")
         _open_synth_tab!(m, name)
     end
 end
@@ -292,16 +292,16 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
             # signal variants of the colliding names (saw, tri, square).
             # _dsl_preprocess joins leading-`|>` continuation lines.
             Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(src)))
-            _push_app_log!(m, "[INFO] T — test $(tab.name) (DSL → compiled SC)")
+            _push_app_log!(m, "[INFO] T — test de $(tab.name) (DSL → SC compilé)")
         catch err
-            _push_app_log!(m, "[ERROR] DSL eval: $(sprint(showerror, err))")
+            _push_app_log!(m, "[ERROR] éval DSL : $(sprint(showerror, err))")
         end
     else
         # SC raw mode (legacy): ship the buffer verbatim.
         src = _align_synthdef_name(src, tab.name)
         send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay",
                                               Any[tab.name, src])))
-        _push_app_log!(m, "[INFO] T — test $(tab.name) (raw SC)")
+        _push_app_log!(m, "[INFO] T — test de $(tab.name) (SC brut)")
     end
 end
 

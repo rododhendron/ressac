@@ -43,7 +43,7 @@ function _toggle_mute_current_line!(m::RessacApp)
         # Best-effort voice kill: free any drones on the SC side that
         # would otherwise hang now that the pattern stopped scheduling.
         _kill_voices_for_line!(m, join(lines[root_row:end_row], "\n"))
-        _push_app_log!(m, "[INFO] muted $slot")
+        _push_app_log!(m, "[INFO] $slot mute")
     elseif match(_COMMENTED_SLOT_RX_APP, root_line) !== nothing
         # Strip EXACTLY the "# " (or bare "#") we added at mute time.
         # The previous greedy `^\s*#+\s*` regex ate the line's natural
@@ -64,7 +64,7 @@ function _toggle_mute_current_line!(m::RessacApp)
         # correctly from any cursor row inside them.
         _eval_current_line!(m)
     else
-        _push_app_log!(m, "[WARN] m: cursor block isn't a slot def, no-op")
+        _push_app_log!(m, "[WARN] m : le bloc sous le curseur n'est pas un slot @dN")
     end
 end
 
@@ -134,7 +134,7 @@ function _preview_word_under_cursor!(m::RessacApp)
     end_col < start_col && return
     word = String(line_chars[start_col:end_col])
     mt = match(r"^([A-Za-z_]\w*)(?::(\d+))?$", word)
-    mt === nothing && (_push_app_log!(m, "[WARN] K — no name at cursor"); return)
+    mt === nothing && (_push_app_log!(m, "[WARN] K — aucun nom sous le curseur"); return)
     name = Symbol(mt.captures[1])
     variant = mt.captures[2] === nothing ? 0 : parse(Int, mt.captures[2])
 
@@ -163,12 +163,12 @@ function _preview_word_under_cursor!(m::RessacApp)
         kind = "synth"
         push!(args, "s"); push!(args, String(name))
     else
-        _push_app_log!(m, "[WARN] K — no instrument/sample/synth '$(mt.captures[1])'")
+        _push_app_log!(m, "[WARN] K — aucun instrument/sample/synth « $(mt.captures[1]) »")
         return
     end
     push!(args, "cut"); push!(args, Int32(_PREVIEW_CUT_GROUP))
     send_osc(sched.osc, encode(OSCMessage("/dirt/play", args)))
-    _push_app_log!(m, "[INFO] K — preview $kind $(mt.captures[1])")
+    _push_app_log!(m, "[INFO] K — écoute $kind $(mt.captures[1])")
 end
 
 const _APP_MUTED_PATTERNS = Dict{Symbol, Pattern}()
@@ -176,23 +176,23 @@ const _APP_MUTED_PATTERNS = Dict{Symbol, Pattern}()
 function _mute_pattern_slot!(m::RessacApp, slot::Symbol)
     pat = pattern_get(m.scheduler, slot)
     if pat === nothing
-        _push_app_log!(m, "[WARN] :mute — slot $slot has no live pattern")
+        _push_app_log!(m, "[WARN] :mute — le slot $slot n'a pas de pattern actif")
         return
     end
     _APP_MUTED_PATTERNS[slot] = pat
     unset_pattern!(m.scheduler, slot)
-    _push_app_log!(m, "[INFO] muted $slot")
+    _push_app_log!(m, "[INFO] $slot mute")
 end
 
 function _unmute_pattern_slot!(m::RessacApp, slot::Symbol)
     pat = get(_APP_MUTED_PATTERNS, slot, nothing)
     if pat === nothing
-        _push_app_log!(m, "[WARN] :unmute — $slot wasn't muted")
+        _push_app_log!(m, "[WARN] :unmute — $slot n'était pas mute")
         return
     end
     set_pattern!(m.scheduler, slot, pat)
     delete!(_APP_MUTED_PATTERNS, slot)
-    _push_app_log!(m, "[INFO] unmuted $slot")
+    _push_app_log!(m, "[INFO] $slot démute")
 end
 
 function _unmute_all_patterns!(m::RessacApp)
@@ -201,7 +201,7 @@ function _unmute_all_patterns!(m::RessacApp)
         set_pattern!(m.scheduler, slot, pat)
     end
     empty!(_APP_MUTED_PATTERNS)
-    _push_app_log!(m, "[INFO] unmuted $n slot(s)")
+    _push_app_log!(m, "[INFO] $n slot(s) démuté(s)")
 end
 
 function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
@@ -212,7 +212,7 @@ function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
         unset_pattern!(m.scheduler, other_slot)
         muted += 1
     end
-    _push_app_log!(m, "[INFO] solo $solo_slot (silenced $muted others)")
+    _push_app_log!(m, "[INFO] solo $solo_slot ($muted autres mutés)")
 end
 
 function _next_free_d_slot(ed::TK.CodeEditor)
@@ -339,7 +339,7 @@ function _eval_pattern_blocks!(m::RessacApp, target)
             # in :keydebug logs if the user needs it; the modal log
             # should be actionable, not technical.
             hint = _humanize_eval_error(e, src)
-            _push_app_log!(m, "[ERROR] eval $slot: $hint")
+            _push_app_log!(m, "[ERROR] éval $slot : $hint")
         end
     end
     # Record the rows we just successfully evaluated so the view can
@@ -355,7 +355,7 @@ function _eval_pattern_blocks!(m::RessacApp, target)
     m.eval_flash_rows = flash
     m.eval_flash_ts   = time()
     suffix = err > 0 ? " ($err failed)" : ""
-    _push_app_log!(m, "[INFO] :e — ran $ok block$(ok == 1 ? "" : "s")$suffix")
+    _push_app_log!(m, "[INFO] :e — $ok bloc$(ok == 1 ? "" : "s") évalué$(ok == 1 ? "" : "s")$suffix")
 end
 
 """
@@ -473,7 +473,7 @@ function _guard_patterns_only!(m::RessacApp, action::AbstractString)
         end
     end
     _push_app_log!(m,
-        "[WARN] $action only runs on a patterns pane — focus one with C-w h/j/k/l first")
+        "[WARN] $action ne marche que dans une pane patterns — Ctrl-w h/j/k/l pour la focaliser")
     return false
 end
 
@@ -491,7 +491,7 @@ function _eval_current_line!(m::RessacApp)
         ex = Meta.parse(block)
         result = Core.eval(Main, ex)
         rstr = sprint(io -> show(IOContext(io, :limit=>true, :displaysize=>(1, 60)), result))
-        _push_app_log!(m, "[INFO] eval ⇒ $rstr")
+        _push_app_log!(m, "[INFO] éval ⇒ $rstr")
         # Cascade: if this eval rebound any top-level names, sweep the
         # buffer for `@dN` blocks that reference them and re-eval, so the
         # slots pick up the new value. Single-level (no recursive cascade).
@@ -594,12 +594,12 @@ function _cascade_dN_reeval!(m::RessacApp, lines::Vector,
             end
         catch err
             _push_app_log!(m,
-                "[WARN] cascade row $i: $(sprint(showerror, err))")
+                "[WARN] cascade ligne $i : $(sprint(showerror, err))")
         end
         i = end_row + 1
     end
     n_cascade > 0 &&
-        _push_app_log!(m, "[INFO] cascade re-evaled $n_cascade slot$(n_cascade == 1 ? "" : "s")")
+        _push_app_log!(m, "[INFO] cascade : $n_cascade slot$(n_cascade == 1 ? "" : "s") ré-évalué$(n_cascade == 1 ? "" : "s")")
     return
 end
 

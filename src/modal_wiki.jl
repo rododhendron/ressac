@@ -15,7 +15,7 @@ edits since the last open take effect immediately.
 function _open_wiki!(m::RessacApp)
     m.wiki_pages = _load_wiki_pages()
     if isempty(m.wiki_pages)
-        _push_app_log!(m, "[WARN] :wiki — no pages found in docs/wiki/")
+        _push_app_log!(m, "[WARN] :wiki — aucune page dans docs/wiki/")
         return
     end
     m.modal = :wiki

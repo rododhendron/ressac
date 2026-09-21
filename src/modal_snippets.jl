@@ -136,7 +136,7 @@ function _preview_snippet!(m::RessacApp)
     snips = _snippets_visible(m)
     1 <= m.snip_cursor <= length(snips) || return
     s = snips[m.snip_cursor]
-    _push_app_log!(m, "[INFO] snippet preview: $(s.name) — $(s.description)")
+    _push_app_log!(m, "[INFO] aperçu du snippet $(s.name) — $(s.description)")
     for line in split(strip(s.resolved_content), '\n')
         _push_app_log!(m, "        $line")
     end
@@ -176,7 +176,7 @@ function _insert_snippet!(m::RessacApp)
     ed.cursor_row = row + 1
     ed.cursor_col = 0
     m.modal = :none
-    _push_app_log!(m, "[INFO] inserted snippet $(s.name) ($(length(inserted)) lines)")
+    _push_app_log!(m, "[INFO] snippet $(s.name) inséré ($(length(inserted)) lignes)")
 end
 
 function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
@@ -220,8 +220,8 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     n = length(snips)
     if n == 0
         msg = isempty(m.snip_query) ?
-            "(no snippets in category '$(m.snip_category)')" :
-            "(no match for \"$(m.snip_query)\")"
+            "(aucun snippet dans la catégorie « $(m.snip_category) »)" :
+            "(rien pour « $(m.snip_query) »)"
         TK.set_string!(buf, inner.x + 1, body_y0, msg, TK.tstyle(:text_dim))
     else
         start_i = max(1, m.snip_cursor - body_h ÷ 2)

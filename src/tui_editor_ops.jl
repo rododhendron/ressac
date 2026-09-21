@@ -143,7 +143,7 @@ key we don't know about — Tachikoma will own it).
 function _visual_handle!(m::RessacApp, ed::TK.CodeEditor, evt::TK.KeyEvent)
     if evt.key === :escape
         m.visual_active = false
-        _push_app_log!(m, "[INFO] visual cancelled")
+        _push_app_log!(m, "[INFO] sélection annulée")
         return true
     end
     # Both kinds share vertical motion (j/k); :char additionally tracks
@@ -211,7 +211,7 @@ function _visual_apply_line!(m::RessacApp, ed::TK.CodeEditor, op::Char)
     if op == 'y'
         ed.yank_buffer = [collect(line) for line in selected]
         ed.yank_is_linewise = true
-        _push_app_log!(m, "[INFO] V — yanked $(length(selected)) line(s)")
+        _push_app_log!(m, "[INFO] V — $(length(selected)) ligne(s) copiée(s)")
     elseif op == 'd' || op == 'c'
         ed.yank_buffer = [collect(line) for line in selected]
         ed.yank_is_linewise = true
@@ -226,7 +226,7 @@ function _visual_apply_line!(m::RessacApp, ed::TK.CodeEditor, op::Char)
             ed.cursor_col = 0
             ed.mode = :insert
         end
-        _push_app_log!(m, "[INFO] V — $(op == 'c' ? "changed" : "deleted") $(length(selected)) line(s)")
+        _push_app_log!(m, "[INFO] V — $(length(selected)) ligne(s) $(op == 'c' ? "changée(s)" : "supprimée(s)")")
         ed === _active_editor(m) && _unschedule_removed_slots!(m, txt, new_txt)
     end
 end
@@ -266,7 +266,7 @@ function _visual_apply_char!(m::RessacApp, ed::TK.CodeEditor, op::Char)
     ed.yank_buffer = [collect(line) for line in split(yanked, '\n')]
     ed.yank_is_linewise = false
     if op == 'y'
-        _push_app_log!(m, "[INFO] v — yanked $(length(yanked)) char(s)")
+        _push_app_log!(m, "[INFO] v — $(length(yanked)) caractère(s) copié(s)")
         return
     end
     # Delete the range. Rebuild affected lines, then collapse.
@@ -284,7 +284,7 @@ function _visual_apply_char!(m::RessacApp, ed::TK.CodeEditor, op::Char)
     if op == 'c'
         ed.mode = :insert
     end
-    _push_app_log!(m, "[INFO] v — $(op == 'c' ? "changed" : "deleted") $(length(yanked)) char(s)")
+    _push_app_log!(m, "[INFO] v — $(length(yanked)) caractère(s) $(op == 'c' ? "changé(s)" : "supprimé(s)")")
     ed === _active_editor(m) && _unschedule_removed_slots!(m, txt, new_txt)
 end
 
@@ -367,7 +367,7 @@ function _unschedule_removed_slots!(m::RessacApp,
     end
     isempty(actually) && return
     names = join(("@" * String(s) for s in sort!(actually; by = String)), " ")
-    _push_app_log!(m, "[INFO] unscheduled $(names) (line deleted)")
+    _push_app_log!(m, "[INFO] $(names) déprogrammé(s) (ligne supprimée)")
 end
 
 """
@@ -428,13 +428,13 @@ function _vim_replay!(m::RessacApp, ed::TK.CodeEditor)
             TK.handle_key!(ed, k)
         end
         seq = join(string(k.char) for k in m.vim_last_normal)
-        _push_app_log!(m, "[INFO] . — repeated `$(seq)`")
+        _push_app_log!(m, "[INFO] . — `$(seq)` répété")
         return
     end
     if m.vim_last_kind === :insert
         text = m.vim_last_insert
         isempty(text) &&
-            (_push_app_log!(m, "[INFO] . — nothing to repeat"); return)
+            (_push_app_log!(m, "[INFO] . — rien à répéter"); return)
         TK.handle_key!(ed, TK.KeyEvent(:char, 'i', TK.key_press))
         for c in text
             if c == '\n'
@@ -444,8 +444,8 @@ function _vim_replay!(m::RessacApp, ed::TK.CodeEditor)
             end
         end
         TK.handle_key!(ed, TK.KeyEvent(:escape, '\0', TK.key_press))
-        _push_app_log!(m, "[INFO] . — repeated last insert ($(length(text)) chars)")
+        _push_app_log!(m, "[INFO] . — dernière insertion répétée ($(length(text)) caractères)")
         return
     end
-    _push_app_log!(m, "[INFO] . — nothing to repeat")
+    _push_app_log!(m, "[INFO] . — rien à répéter")
 end

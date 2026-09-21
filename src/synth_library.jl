@@ -69,7 +69,7 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # ═══════════════════════════════════════════════════════════════
     _SynthLibEntry(
         "raw_sine", "reference",
-        "Raw SuperCollider — a plain sine + Env.linen, no DSL.",
+        "SuperCollider brut — un simple sinus + Env.linen, sans DSL.",
         raw"""
         // raw_sine.scd  —  reference SynthDef in hand-written SC
         //
@@ -89,38 +89,38 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # Percussion
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("kick", "perc",
-        "Sub kick — sine with fast pitch drop + transient click.",
+        "Kick sub — sinus à chute de hauteur rapide + clic transitoire.",
         """sin_osc(line(120, 40, 0.05)) |> env_perc(0.001, :sustain) |>
            offset((white() |> env_perc(0, 0.005)) * 0.5)""";
         params = (sustain = 0.4,)),
 
     _dsl_entry("hihat", "perc",
-        "Hi-hat — pink noise → high-pass + tight envelope.",
+        "Charley — bruit rose → passe-haut + enveloppe serrée.",
         """pink() |> high_pass(6000) |> band_pass(8000, 0.4) |>
            env_perc(0.001, :sustain)""";
         params = (sustain = 0.08,)),
 
     _dsl_entry("snare", "perc",
-        "Snare — FM body + noise tail.",
+        "Caisse claire — corps FM + queue de bruit.",
         """(sin_osc(:freq + sin_osc(:freq * 1.5) * :freq * 4) |>
             env_perc(0, 0.06)) +
            (white() |> band_pass(4500, 0.3) |> env_perc(0.001, :sustain))""";
         params = (freq = 180, sustain = 0.2)),
 
     _dsl_entry("clap", "perc",
-        "Clap — bursts of bandpassed noise.",
+        "Clap — rafales de bruit passe-bande.",
         """white() |> band_pass(1500, 0.5) |> env_perc(0.001, :sustain)""";
         params = (sustain = 0.15,)),
 
     _dsl_entry("kickbrut", "darksynth",
-        "Heavy retro kick — Carpenter-Brut vibes, drive + click.",
+        "Kick rétro lourd — ambiance Carpenter Brut, drive + clic.",
         """sin_osc(line(220, :freq, 0.06)) |> tanh_drive(1.4) |>
            env_perc(0.001, :sustain) |>
            offset(pink() |> high_pass(2000) |> env_perc(0, 0.004) |> amp(0.6))""";
         params = (freq = 50, sustain = 0.5)),
 
     _dsl_entry("glitchhat", "perc",
-        "Stuttering noise hat — gated by Dust trigger.",
+        "Charley de bruit bégayant — gaté par un trigger Dust.",
         """white() |> high_pass(6000) |> env_perc(0.001, :sustain) |>
            amp(trig_kr(dust(80), 0.01))""";
         params = (sustain = 0.15,)),
@@ -129,44 +129,44 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # Bass
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("subdrop", "bass",
-        "Pure sub-bass with pitch drop.",
+        "Sub pur avec chute de hauteur.",
         """sin_osc(line(90, :freq, 0.4)) |> env_linen(0.005, :sustain, 0.1)""";
         params = (freq = 40, sustain = 0.9)),
 
     _dsl_entry("acid303", "bass",
-        "TB-303 acid — saw + RLPF with envelope on cutoff.",
+        "Acid TB-303 — dent-de-scie + RLPF avec enveloppe sur le cutoff.",
         """saw(:freq) + (sin_osc(:freq * 0.5) * 0.3) |>
            rlpf(:cutoff * (1 + line(4, 0, :decay)), :resonance) |>
            tanh_drive(1.2) |> env_linen(0.005, :sustain, 0.05)""";
         params = (freq = 80, sustain = 0.3, cutoff = 1500, resonance = 0.3, decay = 0.2)),
 
     _dsl_entry("rezzbass", "bass",
-        "Wide wobble bass — sin + saw layer, deep LFO sweep on filter.",
+        "Wobble large — couche sinus + dent-de-scie, balayage LFO profond sur le filtre.",
         """(saw(:freq) + saw(:freq * 0.5) * 0.6) |>
            rlpf(lfo(:rate; low=500, high=2500), 0.25) |>
            tanh_drive(1.5)""";
         params = (freq = 50, sustain = 1.0, rate = 4)),
 
     _dsl_entry("growlbass", "bass",
-        "Formant-shifted growling bass.",
+        "Basse grondante à formants décalés.",
         """saw(:freq) |> band_pass(lfo(3; low=400, high=1800), 0.18) |>
            offset(saw(:freq) |> low_pass(600) |> amp(0.4)) |>
            tanh_drive(1.4)""";
         params = (freq = 65, sustain = 0.6)),
 
     _dsl_entry("chompy", "bass",
-        "Sync-bass — hard-syncing saws + filter.",
+        "Basse sync — dents-de-scie en hard sync + filtre.",
         """saw(:freq) |> rlpf(:cutoff, :q) |>
            tanh_drive(1.5)""";
         params = (freq = 70, sustain = 0.3, cutoff = 1800, q = 0.3)),
 
     _dsl_entry("lofibass", "lofi",
-        "Round sine bass with subtle harmonic warmth.",
+        "Basse sinus ronde avec une chaleur harmonique discrète.",
         """sin_osc(:freq) + (sin_osc(:freq * 2) |> amp(0.1)) |> tanh_drive(1.05)""";
         params = (freq = 80, sustain = 0.4)),
 
     _dsl_entry("dustbass", "witch",
-        "Lo-fi bass — bit-crushed and dark.",
+        "Basse lo-fi — bit-crushée et sombre.",
         """saw(:freq) |> decimator(11025, 4) |> low_pass(1200)""";
         params = (freq = 70, sustain = 0.4)),
 
@@ -174,26 +174,26 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # Lead / arp
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("darklead", "darksynth",
-        "Gritty detuned saw lead.",
+        "Lead dent-de-scie désaccordé et granuleux.",
         """(saw(:freq) + saw(:freq + :detune) + saw(:freq - :detune * 0.7)) |>
            amp(0.3) |> rlpf(:cutoff, 0.4) |> tanh_drive(1.2)""";
         params = (freq = 220, sustain = 0.4, detune = 7, cutoff = 3000)),
 
     _dsl_entry("arpdriver", "darksynth",
-        "Fast 16th arpeggio voice — plucky filter envelope.",
+        "Voix d'arpège en doubles-croches — enveloppe de filtre pincée.",
         """pulse(:freq, 0.45) |>
            rlpf(:cutoff * (1 + line(2, 0, :sustain)), 0.3) |>
            env_perc(0.001, :sustain)""";
         params = (freq = 220, sustain = 0.12, cutoff = 2200)),
 
     _dsl_entry("fmbell", "lead",
-        "Classic 2-op FM bell with index envelope.",
+        "Cloche FM 2 opérateurs classique, enveloppe sur l'index.",
         """sin_osc(:freq + sin_osc(:freq * :mratio) *
                    line(:mindex, :mindex * 0.3, :decay) * :freq)""";
         params = (freq = 440, sustain = 1.2, mratio = 1.41, mindex = 5, decay = 0.8)),
 
     _dsl_entry("bellsynth", "lead",
-        "Additive bell — sum of sines at inharmonic partials.",
+        "Cloche additive — somme de sinus sur des partiels inharmoniques.",
         """sin_osc(:freq) |> env_perc(0, :sustain, curve=-5) |>
            offset(sin_osc(:freq * 2.76) |> env_perc(0, :sustain * 0.7) |> amp(0.5)) |>
            offset(sin_osc(:freq * 5.4) |> env_perc(0, :sustain * 0.5) |> amp(0.3)) |>
@@ -201,13 +201,13 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
         params = (freq = 440, sustain = 2.5)),
 
     _dsl_entry("plucky", "lead",
-        "Karplus-Strong pluck — comb filter feedback loop.",
+        "Pincé Karplus-Strong — boucle de feedback en filtre comb.",
         """white() |> env_perc(0, 0.005) |> comb_l(1 / :freq, :sustain, 0.05) |>
            low_pass(:freq * 4)""";
         params = (freq = 220, sustain = 0.8)),
 
     _dsl_entry("screwlead", "witch",
-        "Pitched-down detuned lead — slow vibrato.",
+        "Lead désaccordé vers le grave — vibrato lent.",
         """(saw(:freq + sin_osc(5) * 4) + saw(:freq * 1.005 + sin_osc(5) * 4)) |>
            amp(0.4) |> low_pass(1500)""";
         params = (freq = 165, sustain = 1.2)),
@@ -216,7 +216,7 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # Pads
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("softpad", "pad",
-        "Detuned saw stack + slow filter sweep — ambient pad.",
+        "Pile de dents-de-scie désaccordées + balayage lent — nappe ambiante.",
         """(saw(:freq) + saw(:freq * 1.012) + saw(:freq * 0.988) +
             saw(:freq * 1.005) + saw(:freq * 0.995)) |> amp(0.18) |>
            rlpf(:cutoff * lfo(0.1; low=0.8, high=1.2), :q) |>
@@ -225,7 +225,7 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
         auto_env = false),
 
     _dsl_entry("darkpad", "darksynth",
-        "Cinematic dark pad — wide super-saw, slow filter.",
+        "Nappe sombre cinématique — super-saw large, filtre lent.",
         """(saw(:freq) + saw(:freq * 1.012) + saw(:freq * 0.988) +
             saw(:freq * 1.025) + saw(:freq * 0.975) + saw(:freq * 1.005)) |>
            amp(0.18) |> rlpf(:cutoff * lfo(0.08; low=0.6, high=1.2), :q) |>
@@ -234,19 +234,19 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
         auto_env = false),
 
     _dsl_entry("airpad", "angel",
-        "Airy sine stack with chorus-style delays.",
+        "Pile de sinus aérienne avec delays façon chorus.",
         """(sin_osc(:freq) + sin_osc(:freq * 1.003) + sin_osc(:freq * 0.997) +
             sin_osc(:freq * 1.005)) |> amp(0.25)""";
         params = (freq = 440, sustain = 3.0)),
 
     _dsl_entry("glasspad", "angel",
-        "Glassy FM pad — high mratio, evolving index.",
+        "Nappe FM vitreuse — ratio élevé, index évolutif.",
         """sin_osc(:freq + sin_osc(:freq * 4) *
                    lfo(0.3; low=0.2, high=2) * :freq)""";
         params = (freq = 440, sustain = 3.0)),
 
     _dsl_entry("ghostpad", "witch",
-        "Tremolo-driven airy pad — amplitude pulse.",
+        "Nappe aérienne au trémolo — pulsation d'amplitude.",
         """(sin_osc(:freq) + sin_osc(:freq * 2) * 0.3) |>
            band_pass(1800, 0.6) |> amp(lfo(1.5; low=0.2, high=1))""";
         params = (freq = 220, sustain = 3.0)),
@@ -255,18 +255,18 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # Keys / lofi
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("lofikey", "lofi",
-        "Detuned-saw piano-ish key — slightly out of tune.",
+        "Clavier façon piano en dents-de-scie désaccordées — légèrement faux.",
         """(sin_osc(:freq) + (saw(:freq + 4) |> amp(0.2)) +
             (sin_osc(:freq * 2) |> amp(0.15))) |> low_pass(2200)""";
         params = (freq = 330, sustain = 0.8)),
 
     _dsl_entry("mellowfm", "lofi",
-        "Soft 2-op FM key — low modulation index.",
+        "Clavier FM 2 opérateurs doux — index de modulation bas.",
         """sin_osc(:freq + sin_osc(:freq * 2) * line(1.5, 0.1, :sustain * 0.7) * :freq)""";
         params = (freq = 330, sustain = 0.8)),
 
     _dsl_entry("chordstab", "lofi",
-        "Minor-triad lofi chord stab.",
+        "Stab d'accord mineur lo-fi.",
         """(saw(:freq) + saw(:freq * 1.189) + saw(:freq * 1.498)) |>
            amp(0.25) |> low_pass(2200)""";
         params = (freq = 220, sustain = 0.4)),
@@ -275,19 +275,19 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # Effects / one-shots
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("lazerzap", "fx",
-        "Sci-fi zap — pitch-fall sine + noise crackle.",
+        "Zap SF — sinus en chute + crépitement de bruit.",
         """sin_osc(x_line(3000, 200, :sustain)) |>
            offset(white() |> env_perc(0, 0.03) |> amp(0.5))""";
         params = (sustain = 0.2,)),
 
     _dsl_entry("darkriser", "fx",
-        "Tension riser — noise + sweeping filter UP.",
+        "Riser de tension — bruit + filtre qui MONTE.",
         """(white() + brown() * 0.4) |> rlpf(x_line(200, 8000, :sustain), 0.3)""";
         params = (sustain = 2.0,),
         auto_env = false),
 
     _dsl_entry("vinylcrackle", "lofi",
-        "Vinyl crackle texture — Dust + pink hiss.",
+        "Texture de craquement vinyle — Dust + souffle rose.",
         """((dust(8) |> amp(0.7)) + (pink() |> amp(0.04)))""";
         params = (sustain = 1.0,),
         auto_env = false,
@@ -301,52 +301,52 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # /dirt/*909*; these are synthesised versions you can tweak live.
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("k909", "tr909",
-        "909-style kick — sine pitch drop + click attack + saturation.",
+        "Kick façon 909 — chute de sinus + clic d'attaque + saturation.",
         """(sin_osc(line(180, :freq, 0.04)) |> tanh_drive(1.2) |>
             env_perc(0.001, :sustain)) +
            (white() |> high_pass(1500) |> env_perc(0, 0.003) |> amp(0.4))""";
         params = (freq = 50, sustain = 0.35)),
 
     _dsl_entry("s909", "tr909",
-        "909-style snare — tone body + noise burst + sharp transient.",
+        "Caisse claire façon 909 — corps tonal + rafale de bruit + transitoire sec.",
         """(sin_osc(:freq) |> env_perc(0, 0.03) |> amp(0.6)) +
            (white() |> band_pass(2500, 0.4) |> env_perc(0.001, :sustain) |> amp(0.9))""";
         params = (freq = 230, sustain = 0.13)),
 
     _dsl_entry("hh909", "tr909",
-        "909 closed hat — square-rich noise through tight HPF.",
+        "Charley fermé 909 — bruit riche en carrées à travers un HPF serré.",
         """((white() |> high_pass(7000)) + (pulse(8000, 0.5) |> amp(0.3))) |>
            env_perc(0.001, :sustain)""";
         params = (sustain = 0.04,)),
 
     _dsl_entry("oh909", "tr909",
-        "909 open hat — longer release with metallic sheen.",
+        "Charley ouvert 909 — release plus long, éclat métallique.",
         """((white() |> high_pass(6000)) + (pulse(8500, 0.5) |> amp(0.25))) |>
            env_perc(0.002, :sustain; curve = -3)""";
         params = (sustain = 0.35,)),
 
     _dsl_entry("cp909", "tr909",
-        "909 clap — multi-burst bandpassed noise stack.",
+        "Clap 909 — pile de rafales de bruit passe-bande.",
         """white() |> band_pass(1500, 0.45) |>
            env_pairs([0, 0.005, 0.01, 0.015, 0.05, :sustain],
                      [0,    1,   0.5,    1,    1,     0])""";
         params = (sustain = 0.18,)),
 
     _dsl_entry("rim909", "tr909",
-        "909 rimshot — bright tonal click with tiny ring.",
+        "Rimshot 909 — clic tonal brillant avec une petite résonance.",
         """(pulse(1700, 0.3) + pulse(2300, 0.3)) |> high_pass(1200) |>
            env_perc(0.001, :sustain)""";
         params = (sustain = 0.05,)),
 
     _dsl_entry("ride909", "tr909",
-        "909-flavoured ride — high pulses summed and bandpassed.",
+        "Ride façon 909 — pulses aigus sommés et filtrés passe-bande.",
         """((pulse(4000, 0.5) + pulse(5300, 0.5) + pulse(7200, 0.5)) |>
             high_pass(3500)) |>
            env_perc(0.002, :sustain; curve = -2)""";
         params = (sustain = 0.6,)),
 
     _dsl_entry("tom909", "tr909",
-        "909 tom — pitched sine with noise transient.",
+        "Tom 909 — sinus accordé avec transitoire de bruit.",
         """(sin_osc(line(:freq * 2, :freq, 0.08)) |>
             env_perc(0.001, :sustain)) +
            (white() |> band_pass(800, 0.6) |> env_perc(0, 0.004) |> amp(0.3))""";
@@ -361,19 +361,19 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # algorithms only, not copied code).
     # ═══════════════════════════════════════════════════════════════
     _dsl_entry("karplus", "classic",
-        "Karplus-Strong pluck (Karplus & Strong 1983) — exciter + comb resonator.",
+        "Pincé Karplus-Strong (Karplus & Strong 1983) — excitateur + résonateur comb.",
         """white() |> env_perc(0, 0.005) |>
            comb_n(1.0 / :freq, :sustain, 0.05)""";
         params = (freq = 220, sustain = 1.2)),
 
     _dsl_entry("fm_bell", "classic",
-        "FM bell (Chowning 1973) — modulator at ratio 1.4 = inharmonic spectrum.",
+        "Cloche FM (Chowning 1973) — modulateur au ratio 1.4 = spectre inharmonique.",
         """sin_osc(:freq + sin_osc(:freq * 1.4) * :freq * 3) |>
            env_perc(0.001, :sustain; curve = -4)""";
         params = (freq = 660, sustain = 2.0)),
 
     _dsl_entry("formant_pad", "classic",
-        "Vowel-formant pad ('ah' vowel) — saw stack through three formant BPFs.",
+        "Nappe à formants (voyelle « ah ») — pile de dents-de-scie dans trois BPF de formants.",
         """(saw(:freq) |> band_pass(700, 0.05)) |>
            offset(saw(:freq) |> band_pass(1220, 0.07)) |>
            offset(saw(:freq) |> band_pass(2600, 0.10)) |>
@@ -381,7 +381,7 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
         params = (freq = 110, attack = 0.5, sustain = 2.0)),
 
     _dsl_entry("noise_pad", "classic",
-        "Filtered noise pad — pink noise + slow LFO-swept bandpass.",
+        "Nappe de bruit filtré — bruit rose + passe-bande balayé par un LFO lent.",
         """pink() |> band_pass(lfo(0.15; low = 300, high = 1800), 0.12) |>
            env_perc(:attack, :sustain)""";
         params = (attack = 1.0, sustain = 3.0)),
@@ -389,26 +389,26 @@ const _SYNTH_LIBRARY = _SynthLibEntry[
     # ── Round B classics — also algorithmic foundations from the
     # SuperCollider help system + standard DSP textbooks.
     _dsl_entry("reese", "classic",
-        "Reese bass (Reese 1992) — two detuned saws, the classic jungle/dnb bottom.",
+        "Basse Reese (Reese 1992) — deux dents-de-scie désaccordées, le grave classique jungle/dnb.",
         """(saw(:freq) + saw(:freq * 1.007)) |> rlpf(:cutoff, 0.4) |>
            env_perc(:attack, :sustain)""";
         params = (freq = 55, cutoff = 800, attack = 0.005, sustain = 1.5)),
 
     _dsl_entry("pwm_pad", "classic",
-        "PWM pad — pulse-width modulation gives a thick, breathing texture.",
+        "Nappe PWM — la modulation de largeur d'impulsion donne une texture épaisse qui respire.",
         """var_saw(:freq, lfo(0.3; low = 0.1, high = 0.9)) |>
            rlpf(1500, 0.5) |>
            env_perc(:attack, :sustain)""";
         params = (freq = 220, attack = 0.5, sustain = 2.5)),
 
     _dsl_entry("ringmod", "classic",
-        "Ring-modulated metallic tone (Bode 1967) — carrier × non-harmonic modulator.",
+        "Timbre métallique en ring-mod (Bode 1967) — porteuse × modulateur non harmonique.",
         """(sin_osc(:freq) * sin_osc(:freq * 1.7)) |>
            env_perc(0.001, :sustain; curve = -4)""";
         params = (freq = 440, sustain = 0.5)),
 
     _dsl_entry("supersaw_lead", "classic",
-        "Detuned-supersaw lead — 7 saws spread ±1.5%, the trance idiom.",
+        "Lead supersaw désaccordé — 7 dents-de-scie étalées à ±1,5 %, l'idiome trance.",
         """(saw(:freq * 0.985) + saw(:freq * 0.99) + saw(:freq * 0.995) +
             saw(:freq) +
             saw(:freq * 1.005) + saw(:freq * 1.01) + saw(:freq * 1.015)) |>

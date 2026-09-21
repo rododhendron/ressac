@@ -79,15 +79,15 @@ function _preview_synth_from_library!(m::RessacApp)
             # sin_osc, rlpf, …) resolve. Evaluating in Main produces
             # `saw not defined in Main` for any unqualified usage.
             Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(entry.source)))
-            _push_app_log!(m, "[INFO] preview $(entry.name) (DSL)")
+            _push_app_log!(m, "[INFO] écoute de $(entry.name) (DSL)")
         catch err
-            _push_app_log!(m, "[ERROR] preview DSL: $(sprint(showerror, err))")
+            _push_app_log!(m, "[ERROR] écoute DSL : $(sprint(showerror, err))")
         end
     else
         send_osc(sched.osc,
                  encode(OSCMessage("/ressac/evalAndPlay",
                                     Any[entry.name, entry.source])))
-        _push_app_log!(m, "[INFO] preview $(entry.name) (SC)")
+        _push_app_log!(m, "[INFO] écoute de $(entry.name) (SC)")
     end
 end
 
@@ -142,14 +142,14 @@ function _instantiate_synth_entry!(m::RessacApp, entry::_SynthLibEntry)
     end
     write(target, src)
     _open_synth_tab!(m, final_name)
-    _push_app_log!(m, "[INFO] synth library: instantiated $final_name from \"$(entry.name)\" [$( entry.mode )]")
+    _push_app_log!(m, "[INFO] librairie : $final_name créé depuis « $(entry.name) » [$( entry.mode )]")
 end
 
 function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     entries = _synthlib_all_entries()
     n = length(entries)
     inner = _render_modal_block!(buf, area;
-        title = "SYNTH LIBRARY",
+        title = "LIBRAIRIE DE SYNTHS",
         title_right = "$n synths · " * _modal_hint_text(m, :modal_lib),
         w_max = 100,
         h_target = max(10, min(area.height - 4, n + 4)))

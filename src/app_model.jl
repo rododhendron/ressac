@@ -24,8 +24,8 @@ user — they cover the four keys needed to actually play this back
 `:tutorial` for the interactive guide.
 """
 const _STARTER_BUFFER = """
-# Welcome to Ressac — press Esc, then E to play these patterns.
-# Use m on a @dN line to mute · :tutorial for the 5-min tour · :q to quit.
+# Bienvenue dans Ressac — Esc puis E pour jouer ces patterns.
+# m sur une ligne @dN = mute · ? = aide · :tutorial = visite guidée · :q = quitter.
 
 cps!(0.5)
 @d1 p"bd bd bd bd"
@@ -148,7 +148,7 @@ non-empty), and the focus toggle for keystroke routing.
     browser_cursor::Int          = 1
     browser_filter::Symbol       = :all   # :all | :instruments | :samples | :synths
     browser_last_preview::Float64 = 0.0
-    logs::Vector{String}         = ["[INFO] Ressac live (Tachikoma) — :q to quit, e to eval, :synth <name> to design a sound"]
+    logs::Vector{String}         = ["[INFO] Ressac — ? aide · e évalue · :synth <nom> pour concevoir un son · :q quitte"]
     quit::Bool                   = false
     tick::Int                    = 0
     # Manual zoom for the wave scope. Two independent axes — Y for

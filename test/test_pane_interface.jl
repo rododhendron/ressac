@@ -203,7 +203,7 @@ end
         tb = Tachikoma.TestBackend(40, 5)
         Ressac.render!(dp, Tachikoma.Rect(1, 1, 40, 5), tb.buf)
         # Body starts at y=2 (just below top border)
-        @test occursin("no entry", Tachikoma.row_text(tb, 2))
+        @test occursin("aucune entrée", Tachikoma.row_text(tb, 2))
     end
 
     @testset "handle_key! j/k adjust scroll" begin
@@ -263,7 +263,7 @@ end
                 tb = Tachikoma.TestBackend(60, 6)
                 Ressac.render!(sp, Tachikoma.Rect(1, 1, 60, 6), tb.buf)
                 body = join(Tachikoma.row_text(tb, r) for r in 2:6)
-                @test occursin("no reservoir attached", body)
+                @test occursin("aucun réservoir attaché", body)
                 @test !occursin("legacy chrome", body)
             end
         finally
