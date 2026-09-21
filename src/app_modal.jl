@@ -343,7 +343,7 @@ function _render_modal_block!(buf::TK.Buffer, area::TK.Rect;
         title              = " " * String(title) * " ",
         title_right        = isempty(title_right) ? "" :
                              " " * String(title_right) * " ",
-        title_style        = TK.tstyle(:accent, bold = true),
+        title_style        = _pill_style(:accent),
         title_right_style  = TK.tstyle(:text_dim),
         border_style       = TK.tstyle(:accent),
         box                = TK.BOX_ROUNDED,

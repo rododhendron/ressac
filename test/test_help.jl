@@ -260,7 +260,7 @@ end
     @test occursin("? aide", rows[i - 1])                 # barre juste au-dessus
     @test !any(occursin("insert · visual", r) for r in rows)   # plus de mode strip
     # workspaces à droite de la status line
-    @test occursin("[1 PLAY]", rows[1])
+    @test occursin("1 PLAY", rows[1])
     # :log replie / déplie
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
     @test findfirst(r -> startswith(r, "╭ JOURNAL"), rows) == 40 - 11
@@ -300,3 +300,46 @@ end
 end
 
 cd(_HELP_OLD_PWD)   # fin du sandbox
+
+# ── Look : bandeaux, pastilles, cadres arrondis colorés par le mode ──────
+_cell(tb, x, y) = tb.buf.content[(y - 1) * tb.buf.area.width + x]
+# Colonne (en caractères) d'une sous-chaîne dans une ligne rendue — findfirst
+# renvoie des offsets en OCTETS, faux dès qu'il y a un ♪ ou un ─ avant.
+_col(row, needle) = length(row[1:prevind(row, findfirst(needle, row).start)]) + 1
+
+@testset "look — status line et barre de touches sont des bandeaux pleins avec pastilles" begin
+    app, tb, frame = _help_app()
+    _screen(app, tb, frame)
+    th = Tachikoma.theme()
+    @test _cell(tb, 60, 1).style.bg == th.border            # bandeau du haut
+    @test _cell(tb, 2, 1).style.bg == th.accent             # pastille RESSAC
+    rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
+    ky = findfirst(r -> startswith(r, "╭ JOURNAL"), rows) - 1
+    @test _cell(tb, 40, ky).style.bg == th.border           # bandeau du bas
+    x_aide = _col(rows[ky], "? aide")
+    @test _cell(tb, x_aide, ky).style.bg == th.accent       # pastille ? aide
+    # badge de mode : NORMAL en pastille de la couleur du mode (primary)
+    x_mode = _col(rows[1], "NORMAL")
+    @test _cell(tb, x_mode, 1).style.bg == th.primary
+    _hkey(app, 'i'); _screen(app, tb, frame)
+    rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
+    x_mode = _col(rows[1], "INSERTION")
+    @test _cell(tb, x_mode, 1).style.bg == th.success
+    _hkey(app, :escape)
+end
+
+@testset "look — pane focalisée : cadre arrondi couleur du mode, titre en pastille ; autres atténuées" begin
+    app, tb, frame = _help_app()
+    _screen(app, tb, frame)
+    th = Tachikoma.theme()
+    @test _cell(tb, 1, 2).char == '╭'
+    @test _cell(tb, 1, 2).style.fg == th.primary            # bordure = couleur du mode normal
+    @test _cell(tb, 4, 2).style.bg == th.primary            # titre PATTERNS en pastille
+    _hex(app, "vsplit log")                                  # focus → JOURNAL
+    _screen(app, tb, frame)
+    @test _cell(tb, 4, 2).style.bg isa Tachikoma.NoColor    # PATTERNS n'est plus focalisée
+    @test _cell(tb, 1, 2).style.fg == th.border
+    rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
+    xj = _col(rows[2], "JOURNAL")
+    @test _cell(tb, xj, 2).style.bg == th.primary           # le journal focalisé a la pastille
+end

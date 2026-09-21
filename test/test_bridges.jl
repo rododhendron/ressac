@@ -52,7 +52,7 @@ end
     @test _bws(app) == "PLAY"
     @test Ressac._focused_role(app) === :patterns
     scr = _bscreen(app, tb, frame)
-    @test occursin("[1 PLAY]", scr) && occursin("2 DESIGN", scr) && occursin("3 EXPLORE", scr)
+    @test occursin("1 PLAY", scr) && occursin("2 DESIGN", scr) && occursin("3 EXPLORE", scr)
     _bex(app, "design")
     @test _bws(app) == "DESIGN"
     @test Ressac._focused_role(app) === :synth               # sketch synth pré-rempli

@@ -122,10 +122,10 @@ end
 
 # ── Workspace strip + status bar visibility ─────────────────────────
 
-@testset "workspace strip shows [1] in the bottom chrome" begin
+@testset "la status line montre les workspaces (1 PLAY)" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
-    @test _find_row(tb, "[1") > 0
+    @test _find_row(tb, "1 PLAY") == 1
 end
 
 @testset "status bar shows 'NORMAL @ patterns' by default" begin

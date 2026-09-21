@@ -111,26 +111,36 @@ list_pane_kinds() = sort!(collect(keys(_PANE_KINDS)))
 # — no app reference. These simpler variants draw a neutral border so
 # every pane kind looks consistent inside a workspace tile.
 
+# Couleur de focus posée par le rendu de l'arbre autour du render! de la
+# pane focalisée (une pane ne connaît pas l'app). nothing = non focalisée.
+const _PANE_FOCUS_COLOR = Ref{Any}(nothing)
+
+# Pastille : texte de la couleur du fond du thème sur `color`.
+_pill_style(color) = TK.Style(fg = TK.theme().bg, bg = color, bold = true)
+_pill_style(field::Symbol) = _pill_style(getfield(TK.theme(), field))
+
 function _render_pane_block_simple!(rect::TK.Rect, title::AbstractString,
                                     buf::TK.Buffer)
     (rect.width < 2 || rect.height < 2) && return
-    style = TK.tstyle(:text_dim)
-    text_style = TK.tstyle(:text)
-    TK.set_string!(buf, rect.x, rect.y,
-                   "┌" * "─"^(rect.width - 2) * "┐", style)
-    # Titre tronqué à la largeur (jamais omis : une pane doit être nommée).
+    th = TK.theme()
+    fc = _PANE_FOCUS_COLOR[]
+    border = fc === nothing ? TK.Style(fg = th.border) : TK.Style(fg = fc, bold = true)
+    TK.set_string!(buf, rect.x, rect.y, "╭" * "─"^(rect.width - 2) * "╮", border)
+    for y in 1:(rect.height - 2)
+        TK.set_string!(buf, rect.x, rect.y + y, "│", border)
+        TK.set_string!(buf, rect.x + rect.width - 1, rect.y + y, "│", border)
+    end
+    TK.set_string!(buf, rect.x, rect.y + rect.height - 1,
+                   "╰" * "─"^(rect.width - 2) * "╯", border)
+    # Titre tronqué à la largeur (jamais omis : une pane doit être nommée) ;
+    # en pastille de la couleur du mode quand la pane est focalisée.
     maxw = rect.width - 4
     if maxw >= 3
         t = String(title)
         textwidth(t) > maxw && (t = first(t, max(1, maxw - 1)) * "…")
-        TK.set_string!(buf, rect.x + 2, rect.y, " " * t * " ", text_style)
+        sty = fc === nothing ? TK.Style(fg = th.text_dim) : _pill_style(fc)
+        TK.set_string!(buf, rect.x + 2, rect.y, " " * t * " ", sty)
     end
-    for y in 1:(rect.height - 2)
-        TK.set_string!(buf, rect.x, rect.y + y, "│", style)
-        TK.set_string!(buf, rect.x + rect.width - 1, rect.y + y, "│", style)
-    end
-    TK.set_string!(buf, rect.x, rect.y + rect.height - 1,
-                   "└" * "─"^(rect.width - 2) * "┘", style)
     return nothing
 end
 

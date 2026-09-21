@@ -179,13 +179,15 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
                         (node.id == focused_id && i == pane.current_tab)
                 end
             end
-            render!(pane, rect, buf)
-            # Focus indicator — repaint the border in the current
-            # mode's colour so the accent + the mode strip stay in
-            # sync. Overlay paths look up the focused leaf's rect on
-            # demand via _focused_editor_rect(m) — no caching needed.
-            node.id == focused_id &&
-                _repaint_border_focused!(rect, buf, _mode_style(_current_mode_symbol(m); bold = true))
+            # La pane focalisée se dessine dans la couleur du mode (cadre +
+            # titre en pastille) : on lui passe la couleur par le Ref
+            # global lu par _render_pane_block_simple!.
+            _PANE_FOCUS_COLOR[] = node.id == focused_id ? _mode_color(m) : nothing
+            try
+                render!(pane, rect, buf)
+            finally
+                _PANE_FOCUS_COLOR[] = nothing
+            end
         end
         return
     end
@@ -194,31 +196,6 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
     end
 end
 
-"""
-    _repaint_border_focused!(rect, buf)
-
-Redraw the box-drawing characters of `rect`'s outline in `:accent`
-style on top of the dim border that `_render_pane_block_simple!`
-already drew. Chars stay the same — only the style attribute
-changes — so the focus highlight survives any subsequent overlay
-that respects existing chars.
-"""
-function _repaint_border_focused!(rect::TK.Rect, buf::TK.Buffer,
-                                  style::TK.Style = TK.tstyle(:accent, bold = true))
-    (rect.width < 2 || rect.height < 2) && return
-    # Skip the top row — it carries the pane title which would be
-    # erased if we overwrote here. Sides + bottom are enough signal.
-    for y in 1:(rect.height - 2)
-        TK.set_string!(buf, rect.x, rect.y + y, "│", style)
-        TK.set_string!(buf, rect.x + rect.width - 1, rect.y + y, "│", style)
-    end
-    TK.set_string!(buf, rect.x, rect.y + rect.height - 1,
-                   "└" * "─"^(rect.width - 2) * "┘", style)
-    # Repaint corner pieces on the top to bridge sides → top border.
-    TK.set_string!(buf, rect.x, rect.y, "┌", style)
-    TK.set_string!(buf, rect.x + rect.width - 1, rect.y, "┐", style)
-    return nothing
-end
 
 function _render_floats!(floats::Vector{FloatingPane}, buf::TK.Buffer,
                          m::RessacApp)
@@ -411,8 +388,8 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # ` │ ` separators rendered in :text_dim so the eye groups them.
     sections = Vector{Vector{Tuple{String,TK.Style}}}()
 
-    # Logo section
-    push!(sections, [("▓ RESSAC", TK.tstyle(:accent, bold = true))])
+    # Logo — pastille accent.
+    push!(sections, [(" RESSAC ", _pill_style(:accent))])
 
     # Tempo / cycle / events section. BPM assumes 4 beats per cycle
     # (the SuperDirt / TidalCycles convention) so cps=0.5 → 120 BPM.
@@ -429,10 +406,9 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     ]
     push!(sections, tempo_section)
 
-    # Mode (badge coloré) + surface focalisée.
-    mode = _current_mode_symbol(m)
-    push!(sections, [(_MODE_LABELS_FR[mode], _mode_style(mode; bold = true))])
-    push!(sections, [(_surface_label(m), TK.tstyle(:title, bold = true))])
+    # Mode (pastille de sa couleur) + surface focalisée.
+    push!(sections, [(" " * _MODE_LABELS_FR[_current_mode_symbol(m)] * " ", _pill_style(_mode_color(m)))])
+    push!(sections, [(_surface_label(m), TK.Style(fg = TK.theme().text_bright, bg = TK.theme().border, bold = true))])
 
     # Synth section (only if a synth pane is open)
     syn = _all_synth_buffers(m)
@@ -489,21 +465,20 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # ── Render —— left to right ────────────────────────────────────
     # Blank the row first so we don't leak previous-frame content
     # when sections shrink (e.g. recording stops).
-    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
-                   TK.tstyle(:text))
-    # Workspaces, alignés à droite : [1 PLAY] 2 3 — le courant en accent.
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), _band_style())
+    # Workspaces, alignés à droite : le courant en pastille accent, les
+    # autres en texte atténué sur le bandeau.
     wsx = area.x + area.width
     for (i, ws) in Iterators.reverse(collect(enumerate(m.workspaces.workspaces)))
         is_cur = i == m.workspaces.current_idx
-        label = isempty(ws.name) ? "$i" : "$i $(ws.name)"
-        label = is_cur ? "[$label]" : " $label "
+        label = " " * (isempty(ws.name) ? "$i" : "$i $(ws.name)") * " "
         wsx -= textwidth(label)
         wsx <= area.x + 40 && break
         TK.set_string!(buf, wsx, area.y, label,
-                       is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text_dim))
+                       is_cur ? _pill_style(:accent) : _band_style(fg = TK.theme().text_dim))
     end
-    sep = " │ "
-    sep_style = TK.tstyle(:text_dim)
+    sep = " "
+    sep_style = _band_style()
     x = area.x
     xmax = wsx - 1                         # ne pas écraser les workspaces
     for (i, sec) in enumerate(sections)
@@ -515,7 +490,7 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         for (txt, sty) in sec
             x + textwidth(txt) > xmax && (txt = first(txt, max(0, xmax - x)))
             isempty(txt) && break
-            TK.set_string!(buf, x, area.y, txt, sty)
+            TK.set_string!(buf, x, area.y, txt, _on_band(sty))
             x += textwidth(txt)
         end
     end
@@ -600,6 +575,13 @@ function _mode_style(mode::Symbol; bold::Bool = false)
     palette = get(_MODE_COLORS, mode, :accent)
     return TK.tstyle(palette, bold = bold)
 end
+# Couleur (du thème) du mode courant — cadre de la pane focalisée, badge.
+_mode_color(m::RessacApp) = getfield(TK.theme(), get(_MODE_COLORS, _current_mode_symbol(m), :accent))
+# Bandeau de chrome (status line, barre de touches) : texte sur la couleur
+# de bordure du thème. Un style sans fond posé dessus prend le bandeau.
+_band_style(; fg = TK.theme().text, bold = false) = TK.Style(fg = fg, bg = TK.theme().border, bold = bold)
+_on_band(sty::TK.Style) = sty.bg isa TK.NoColor ?
+    TK.Style(fg = sty.fg, bg = TK.theme().border, bold = sty.bold, dim = sty.dim, italic = sty.italic) : sty
 
 
 """
@@ -635,7 +617,7 @@ coupée à la largeur. Un placeholder de snippet en cours a sa propre
 ligne (Tab / S-Tab / Esc + compteur).
 """
 function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), TK.tstyle(:text))
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), _band_style())
     pairs = if m.placeholder_active
         [("Tab", "suivant"), ("S-Tab", "précédent"), ("Esc", "sortir"),
          ("$(m.placeholder_idx)/$(length(m.placeholder_cols))", "placeholders")]
@@ -643,19 +625,19 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         layers, prefix = _keybar_layers(m)
         hints(layers; prefix = prefix)
     end
-    sep_style = TK.tstyle(:text_dim)
-    key_style = TK.tstyle(:title, bold = true)
-    txt_style = TK.tstyle(:text_dim)
+    th = TK.theme()
+    sep_style = _band_style(fg = th.text_dim)
+    key_style = _band_style(fg = th.text_bright, bold = true)
+    txt_style = _band_style()
     # « ? aide » toujours visible, épinglé à droite ; retiré de la liste.
     # Sous un modal, « : commande » l'accompagne (la barre de commande
     # reste accessible). Sinon, la livedoc du mot sous le curseur prend
     # la partie droite (au plus la moitié de la largeur).
     filter!(p -> p[1] != "?", pairs)
-    pin = "? aide"
-    right = area.x + area.width - textwidth(pin) - 1
+    pin = " ? aide "
+    right = area.x + area.width - textwidth(pin)
     if right > area.x + 8
-        TK.set_string!(buf, right, area.y, "?", key_style)
-        TK.set_string!(buf, right + 1, area.y, " aide", txt_style)
+        TK.set_string!(buf, right, area.y, pin, _pill_style(:accent))
     else
         right = area.x + area.width
     end
@@ -663,17 +645,17 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         cmd = ": commande"
         right -= textwidth(cmd) + 3
         TK.set_string!(buf, right, area.y, ":", key_style)
-        TK.set_string!(buf, right + 1, area.y, " commande · ", txt_style)
+        TK.set_string!(buf, right + 1, area.y, " commande  ", txt_style)
     elseif (ld = _livedoc_under_cursor(m)) !== nothing
         word, doc = ld
         maxw = area.width ÷ 2
         txt = first("✎ " * word * " — " * doc, maxw)
         right -= textwidth(txt) + 3
         TK.set_string!(buf, right, area.y, "✎ ", txt_style)
-        TK.set_string!(buf, right + 2, area.y, word, TK.tstyle(:accent, bold = true))
+        TK.set_string!(buf, right + 2, area.y, word, _band_style(fg = th.accent, bold = true))
         TK.set_string!(buf, right + 2 + textwidth(word), area.y,
                        first(" — " * doc, max(0, textwidth(txt) - 2 - textwidth(word))), txt_style)
-        TK.set_string!(buf, right + textwidth(txt), area.y, " · ", txt_style)
+        TK.set_string!(buf, right + textwidth(txt), area.y, "   ", txt_style)
     end
     x = area.x + 1
     for (i, (k, t)) in enumerate(pairs)
@@ -873,7 +855,7 @@ function _render_whichkey!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     for y in inner.y:(inner.y + inner.height - 1)
         TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
     end
-    TK.render(TK.Block(title = " $prefix + … ", title_style = TK.tstyle(:accent, bold = true),
+    TK.render(TK.Block(title = " $prefix + … ", title_style = _pill_style(:accent),
                        border_style = TK.tstyle(:accent), box = TK.BOX_ROUNDED,
                        title_padding = 0), rect, buf)
     for (i, (k, l)) in enumerate(entries)

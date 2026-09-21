@@ -67,9 +67,9 @@ end
     tb = Tachikoma.TestBackend(120, 5)
     Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
     row = _row_to_string(tb.buf, 1)
-    @test occursin("[1 live]", row)
+    @test occursin(" 1 live ", row)
     @test occursin(" 2 synth ", row)
-    @test findfirst("RESSAC", row).start < findfirst("[1 live]", row).start
+    @test findfirst("RESSAC", row).start < findfirst("1 live", row).start
 end
 
 @testset "TK.view dispatches through WorkspaceManager (smoke)" begin
@@ -196,7 +196,7 @@ end
     tb = Tachikoma.TestBackend(120, 5)
     Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
     row = _row_to_string(tb.buf, 1)
-    @test occursin("│ NORMAL │", row)
+    @test occursin(" NORMAL ", row)
     @test occursin("PATTERNS", row)
     @test !occursin("insert", row)               # plus de strip listant tous les modes
     Ressac._active_editor(app).mode = :insert
@@ -207,7 +207,7 @@ end
     Ressac._PANE_MODE.active = true
     tb3 = Tachikoma.TestBackend(120, 5)
     Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb3.buf)
-    @test occursin("│ PANE │", _row_to_string(tb3.buf, 1))
+    @test occursin(" PANE ", _row_to_string(tb3.buf, 1))
     Ressac._PANE_MODE.active = false
 end
 
