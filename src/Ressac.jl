@@ -27,6 +27,7 @@ include("io_scheduler.jl")       # real-time loop + locked snapshots
 
 # ─── Shared TUI helpers (used by autocomplete + modals + app) ─────
 include("tui_hints.jl")          # _fuzzy_score, _COMMAND_NAMES (complétion)
+include("keymap.jl")             # registre de bindings (pur) — barre, aide, which-key
 
 # ─── Live session lifecycle ───────────────────────────────────────
 include("live_boot.jl")          # _LIVE_SCHEDULER, start_live!, live()
