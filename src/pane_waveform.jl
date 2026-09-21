@@ -120,11 +120,15 @@ end
 
 # Ré-énumère après un édit STRUCTUREL : le set de knobs a changé → on
 # recalcule knobs/quartiers et on réapprend les signatures (indices décalés).
-# Marque l'explainer à rafraîchir (structure_dirty).
-function _sculpt_reinit_structure!(p::WaveformPane)
+# `focus_node` (≠0) → refocalise sur le 1er knob de ce nœud (utile après un
+# insert : on atterrit sur le nœud qu'on vient d'ajouter). Marque l'explainer
+# à rafraîchir (structure_dirty).
+function _sculpt_reinit_structure!(p::WaveformPane; focus_node::Int = 0)
     p.genome === nothing && return
     p.knobs = enumerate_knobs(p.genome)
-    p.focus = clamp(p.focus, 1, max(1, length(p.knobs)))
+    fi = focus_node == 0 ? nothing :
+         findfirst(k -> k.kind === :node && k.node_id == focus_node, p.knobs)
+    p.focus = fi === nothing ? clamp(p.focus, 1, max(1, length(p.knobs))) : fi
     p.dgraph = knob_graph_distances(p.genome, p.knobs)
     p.sigs = KnobSignatures()
     p.last_descr = Float64[]
@@ -135,22 +139,49 @@ function _sculpt_reinit_structure!(p::WaveformPane)
     return
 end
 
-# o/O : remplace l'UGen du nœud du knob focalisé par le suivant/précédent de
-# même rôle (cyclique). Sans effet sur un knob global (pas de nœud).
-function _sculpt_swap_focus_ugen!(p::WaveformPane, dir::Int)
+# Applique un édit structurel (dispatch `structural_edit!`) sur le nœud du
+# knob focalisé, puis ré-énumère en refocalisant sur le nœud renvoyé. Sans
+# effet sur un knob global (pas de nœud). Renvoie true si quelque chose a bougé.
+function _sculpt_structural!(p::WaveformPane, op::Symbol; kwargs...)
     (isempty(p.knobs) || p.genome === nothing) && return false
     kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
     kb.kind === :node || return false
-    swap_node_ugen!(p.genome, kb.node_id; dir = dir) === nothing && return false
-    _sculpt_reinit_structure!(p)
+    newnode = structural_edit!(p.genome, op, kb.node_id; kwargs...)
+    newnode === nothing && return false
+    _sculpt_reinit_structure!(p; focus_node = newnode)
     return true
 end
 
-# Tab/⇧Tab : avance/recule le focus en BOUCLE (cyclique) le long de l'épine.
-# Cyclique → jamais coincé au bout (contrairement à j/k qui clampent).
+# Édits structurels du nœud focalisé (bricks 1-7) :
+#   o/O swap · n insert · d delete · i/I rewire · r/R rate · x duplicate
+_sculpt_swap_focus_ugen!(p::WaveformPane, dir::Int) = _sculpt_structural!(p, :swap_ugen; dir = dir)
+_sculpt_insert_focus!(p::WaveformPane) = _sculpt_structural!(p, :insert_after)
+
+# m (graft) : cas à part — passe l'arg_index du knob focalisé au modulateur.
+function _sculpt_graft_focus!(p::WaveformPane)
+    (isempty(p.knobs) || p.genome === nothing) && return false
+    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
+    kb.kind === :node || return false
+    newnode = structural_edit!(p.genome, :graft_mod, kb.node_id; arg_index = kb.arg_index)
+    newnode === nothing && return false
+    _sculpt_reinit_structure!(p; focus_node = newnode)
+    return true
+end
+
+# Tab/⇧Tab : saut au NŒUD voisin (1er knob du groupe suivant/précédent, en
+# boucle). Les controls globaux forment un seul groupe. C'est la navigation
+# GROSSE MAILLE (voisin de graphe) ; j/k reste le pas fin knob-à-knob.
+_knob_group_key(kb::Knob) = kb.kind === :control ? (:control, 0) : (:node, kb.node_id)
+
 function _sculpt_focus_neighbour!(p::WaveformPane, dir::Int)
     n = length(p.knobs); n <= 1 && return
-    p.focus = mod1(clamp(p.focus, 1, n) + dir, n)
+    gkeys = [_knob_group_key(kb) for kb in p.knobs]
+    groups = unique(gkeys)
+    length(groups) <= 1 && (p.focus = mod1(clamp(p.focus, 1, n) + dir, n); return)
+    curkey = gkeys[clamp(p.focus, 1, n)]
+    gi = something(findfirst(==(curkey), groups), 1)
+    nextkey = groups[mod1(gi + dir, length(groups))]
+    p.focus = findfirst(==(nextkey), gkeys)   # 1er knob du groupe cible
     return
 end
 
@@ -207,16 +238,26 @@ end
 function _sculpt_pump!(p::WaveformPane)
     p.genome === nothing && return
     _sculpt_apply_pending!(p)
-    if !p.rendering && !p.closed && p.req_version > p.rendered_version
-        p.rendering = true
-        ver = p.req_version
-        gcopy = _copy_genome(p.genome)
-        if _WAVE_SYNC[]
-            _sculpt_render_into!(p, gcopy, ver)   # remplit pending (synchrone)
-            _sculpt_apply_pending!(p)             # …et applique dans le même tour
+    # Décision de lancer un rendu PRISE SOUS LE VERROU : `rendering` est aussi
+    # écrit par le worker (sous verrou), donc le lire/l'armer hors verrou depuis
+    # le thread principal serait une course (visibilité non garantie). `ver` et
+    # `req_version` ne sont écrits que par le thread principal → sûrs.
+    ver = p.req_version
+    should_spawn = lock(p.lock) do
+        if !p.rendering && !p.closed && ver > p.rendered_version
+            p.rendering = true
+            true
         else
-            Threads.@spawn _sculpt_render_into!(p, gcopy, ver)
+            false
         end
+    end
+    should_spawn || return
+    gcopy = _copy_genome(p.genome)            # copie hors verrou (peut être longue)
+    if _WAVE_SYNC[]
+        _sculpt_render_into!(p, gcopy, ver)   # remplit pending (synchrone)
+        _sculpt_apply_pending!(p)             # …et applique dans le même tour
+    else
+        Threads.@spawn _sculpt_render_into!(p, gcopy, ver)
     end
     return
 end
@@ -295,15 +336,30 @@ function _render_wave_buffer!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
     return
 end
 
-# Bande de knobs : nom + valeur du focalisé ; les autres en pastille teintée
-# par quartier, vivacité = force d'appartenance (bordure = terne).
+# Un rendu est en vol/en attente tant que la version demandée dépasse la
+# version affichée → indicateur « ↻ » (feedback : l'onde va se rafraîchir).
+_sculpt_busy(p::WaveformPane) = p.req_version > p.rendered_version
+
+# ‹RLPF 2/5› pour un knob-nœud : l'UGen porteur + sa position dans le cycle
+# de rôle. Rend VISIBLE ce que o/O/n changent. "" pour un knob global.
+function _sculpt_ugen_tag(p::WaveformPane, kb::Knob)
+    kb.kind === :node || return ""
+    (u, i, tot) = ugen_role_position(p.genome, kb.node_id)
+    u === nothing && return ""
+    return tot > 1 ? "  ‹$(u) $(i)/$(tot)›" : "  ‹$(u)›"
+end
+
+# Bande de knobs : nom + valeur du focalisé (+ UGen porteur), indicateur de
+# rendu ; les autres en pastille teintée par quartier, vivacité = force
+# d'appartenance (bordure = terne).
 function _render_knob_strip!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
     isempty(p.knobs) && return
     kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
+    busy = _sculpt_busy(p) ? "↻ " : ""
     head = if p.value_edit
-        "[$(kb.name)] = $(p.value_buf)▏  (actuel $(round(knob_value(p.genome, kb); sigdigits = 4)) · ⏎ ok · Esc)"
+        "$(busy)[$(kb.name)] = $(p.value_buf)▏  (actuel $(round(knob_value(p.genome, kb); sigdigits = 4)) · ⏎ ok · Esc)"
     else
-        "[$(kb.name)] $(round(knob_value(p.genome, kb); sigdigits = 5))   (= saisir)"
+        "$(busy)[$(kb.name)] $(round(knob_value(p.genome, kb); sigdigits = 5))$(_sculpt_ugen_tag(p, kb))   (= saisir)"
     end
     line = head * "   "
     for (i, _) in enumerate(p.knobs)
@@ -318,7 +374,7 @@ function render!(p::WaveformPane, area, buf)
     p.sculpt && _sculpt_pump!(p)              # consomme un rendu prêt
     n = length(p.samples)
     head = if p.sculpt
-        "SCULPT · $(p.label) · s vue · j/k knob · Tab voisin · h/l tire · ⏎ joue"
+        "SCULPT · $(p.label)$(_sculpt_busy(p) ? " ↻" : "") · j/k · Tab nœud · h/l tire · n/o édit · ⏎ · s vue"
     elseif n == 0
         "WAVE · $(p.label) · (pas d'audio)"
     else
@@ -378,6 +434,14 @@ function handle_key!(p::WaveformPane, evt)
         ch == '=' && (_sculpt_begin_value!(p); return true)          # saisie exacte
         ch == 'o' && (_sculpt_swap_focus_ugen!(p, +1); return true)  # swap UGen (suivant)
         ch == 'O' && (_sculpt_swap_focus_ugen!(p, -1); return true)  # swap UGen (précédent)
+        ch == 'n' && (_sculpt_insert_focus!(p); return true)         # insère un filtre après le nœud
+        ch == 'd' && (_sculpt_structural!(p, :delete); return true)  # supprime le nœud (bypass)
+        ch == 'i' && (_sculpt_structural!(p, :rewire; dir = +1); return true)  # recâble l'entrée
+        ch == 'I' && (_sculpt_structural!(p, :rewire; dir = -1); return true)
+        ch == 'r' && (_sculpt_structural!(p, :rate; dir = +1); return true)    # cycle le taux ar/kr
+        ch == 'R' && (_sculpt_structural!(p, :rate; dir = -1); return true)
+        ch == 'x' && (_sculpt_structural!(p, :duplicate); return true)         # clone en parallèle
+        ch == 'm' && (_sculpt_graft_focus!(p); return true)                    # greffe un LFO sur le slot
         ch == 'L' && (_wave_pan!(p, p.view_len ÷ 8); return true)   # pan reste accessible
         ch == 'H' && (_wave_pan!(p, -(p.view_len ÷ 8)); return true)
         (ch == ' ' || ch == '\r' || k === :enter) && return _wave_play!(p)   # Espace OU ⏎ = jouer

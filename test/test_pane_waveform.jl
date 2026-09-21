@@ -229,13 +229,18 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_waveform.jl"))
             Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
         end
 
-        @testset "Tab cycles (wraps) and never gets stuck at the end" begin
+        @testset "Tab jumps to the next NODE group (coarse nav), wraps" begin
             p = mkscu()
-            p.focus = length(p.knobs)
-            Ressac.handle_key!(p, Tachikoma.KeyEvent(:tab))   # au bout → wrap vers 1
+            ni = findfirst(k -> k.kind === :node, p.knobs)   # 1er knob du nœud RLPF
+            p.focus = 1                                       # sur un control global
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:tab))   # → 1er knob du nœud
+            @test p.focus == ni
+            @test p.knobs[p.focus].kind === :node
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:tab))   # un seul autre groupe → wrap aux controls
+            @test p.knobs[p.focus].kind === :control
             @test p.focus == 1
-            Ressac.handle_key!(p, Tachikoma.KeyEvent(:backtab))  # recule → wrap vers la fin
-            @test p.focus == length(p.knobs)
+            Ressac.handle_key!(p, Tachikoma.KeyEvent(:backtab))  # recule → retour au nœud
+            @test p.focus == ni
         end
 
         @testset "= enters an exact value (beyond nominal range)" begin
@@ -293,6 +298,172 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_waveform.jl"))
             @test p.knobs[1].kind === :control
             @test Ressac.handle_key!(p, Tachikoma.KeyEvent('o')) == true
             @test !p.structure_dirty                       # rien n'a changé
+        end
+
+        @testset "O swaps the UGen in reverse (opposite of o)" begin
+            ni = findfirst(k -> k.kind === :node, mkscu().knobs)
+            po = mkscu(); po.focus = ni; nido = po.knobs[ni].node_id
+            Ressac.handle_key!(po, Tachikoma.KeyEvent('o'))
+            after_o = po.genome.nodes[nido].ugen
+            pO = mkscu(); pO.focus = ni; nidO = pO.knobs[ni].node_id
+            @test Ressac.handle_key!(pO, Tachikoma.KeyEvent('O')) == true
+            after_O = pO.genome.nodes[nidO].ugen
+            @test after_o !== :RLPF && after_O !== :RLPF   # tous deux ont bougé
+            @test pO.structure_dirty                        # explainer à rafraîchir
+            @test after_o !== after_O                       # sens de cycle opposés
+        end
+
+        @testset "on_close! sets closed under lock + blocks pending writes" begin
+            p = mkscu()
+            Ressac.on_close!(p)
+            @test p.closed
+            # ce que fait le worker de rendu sous verrou : la garde `closed`
+            # doit supprimer l'écriture dans `pending` (anti-zombie).
+            lock(p.lock) do
+                p.closed || (p.pending = (Float32[0.0f0], 44100, zeros(5), 99))
+            end
+            @test p.pending === nothing
+            # un closed pane ne relance jamais de rendu, même en retard.
+            p.req_version += 1
+            Ressac._sculpt_pump!(p)
+            @test !p.rendering
+        end
+
+        @testset "render failure resets the rendering flag so the pump retries" begin
+            old = Ressac._WAVE_RENDER[]; oldsync = Ressac._WAVE_SYNC[]
+            Ressac._WAVE_RENDER[] = (_ -> error("boom NRT"))
+            Ressac._WAVE_SYNC[] = true
+            try
+                p = mkscu()
+                p.req_version += 1
+                Ressac._sculpt_pump!(p)
+                @test !p.rendering                          # remis à false malgré l'erreur
+                @test p.rendered_version < p.req_version     # pas marqué comme rendu
+                @test p.pending === nothing                  # rien de déposé
+            finally
+                Ressac._WAVE_RENDER[] = old; Ressac._WAVE_SYNC[] = oldsync
+            end
+        end
+
+        @testset "n inserts a filter wrapping the focused node's output" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)
+            p.focus = ni
+            src = p.knobs[ni].node_id
+            n0 = length(p.genome.nodes)
+            v0 = p.req_version
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('n')) == true
+            @test length(p.genome.nodes) == n0 + 1        # un nœud ajouté
+            @test p.structure_dirty                        # explainer à rafraîchir
+            @test p.req_version > v0                        # re-render demandé
+            # le nouveau nœud enveloppe la source (la référence en entrée)
+            wrappers = [id for (id, nd) in p.genome.nodes if id != src &&
+                        any(a -> a isa Ressac.NodeRef && a.id == src, nd.args)]
+            @test length(wrappers) == 1
+            @test Ressac.ugen_spec(p.genome.nodes[wrappers[1]].ugen).role === :filter
+        end
+
+        @testset "n on a global control knob is a no-op" begin
+            p = mkscu()
+            p.focus = 1                                    # control :freq
+            n0 = length(p.genome.nodes)
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('n')) == true
+            @test length(p.genome.nodes) == n0             # rien ajouté
+            @test !p.structure_dirty
+        end
+
+        @testset "d deletes the focused node (bypass)" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)
+            p.focus = ni
+            n0 = length(p.genome.nodes)
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('d')) == true
+            @test length(p.genome.nodes) == n0 - 1         # un nœud retiré
+            @test p.structure_dirty
+        end
+
+        @testset "x duplicates the focused node's subgraph in parallel" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)
+            p.focus = ni
+            n0 = length(p.genome.nodes)
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('x')) == true
+            @test length(p.genome.nodes) > n0              # clones + Mix
+            @test any(nd -> nd.ugen === :Mix, values(p.genome.nodes))
+            @test p.structure_dirty
+        end
+
+        @testset "r cycles the focused node's rate (or no-ops if single-rate)" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)
+            p.focus = ni
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('r')) == true   # touche consommée
+        end
+
+        @testset "m grafts an LFO onto the focused ConstArg slot (if mods exist)" begin
+            p = mkscu()
+            ni = findfirst(k -> k.kind === :node, p.knobs)   # knob-nœud = un ConstArg
+            p.focus = ni
+            n0 = length(p.genome.nodes)
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('m')) == true
+            if !isempty(Ressac.catalog_by_role(:mod))
+                @test length(p.genome.nodes) == n0 + 1       # modulateur ajouté
+                @test p.structure_dirty
+            end
+        end
+
+        @testset "structural edits are no-ops on a global control knob" begin
+            for key in ('d', 'x', 'm', 'i', 'r')
+                p = mkscu()
+                p.focus = 1                                  # control :freq
+                n0 = length(p.genome.nodes)
+                @test Ressac.handle_key!(p, Tachikoma.KeyEvent(key)) == true
+                @test length(p.genome.nodes) == n0
+                @test !p.structure_dirty
+            end
+        end
+
+        @testset "ambiguous attribution (two different knobs) learns no NEW signature" begin
+            old = Ressac._WAVE_RENDER[]; oldsync = Ressac._WAVE_SYNC[]
+            # brillance dépend de cutoff → un tug produit un delta descripteur mesurable
+            Ressac._WAVE_RENDER[] = function (g)
+                cut = 800.0
+                for nd in values(g.nodes), a in nd.args
+                    a isa Ressac.ConstArg && a.value > 50 && (cut = a.value)
+                end
+                f = cut / 44100 * 4
+                return Float32[sin(2π * f * 1000 * i / 44100) for i in 0:2000], 44100
+            end
+            Ressac._WAVE_SYNC[] = true
+            try
+                p = mkscu()
+                ni = findfirst(k -> k.kind === :node, p.knobs)
+                # 1er tug + rendu → amorce last_descr et apprend la signature de A
+                p.focus = ni; Ressac.handle_key!(p, Tachikoma.KeyEvent('l'))
+                Ressac._sculpt_pump!(p)
+                sigs0 = Ressac.n_signatures(p.sigs)
+                # puis DEUX knobs différents avant le prochain rendu → attribution ambiguë
+                p.focus = ni;     Ressac.handle_key!(p, Tachikoma.KeyEvent('l'))
+                p.focus = ni + 1; Ressac.handle_key!(p, Tachikoma.KeyEvent('l'))
+                @test p.last_tugged == -1
+                Ressac._sculpt_pump!(p)
+                @test p.rendered_version == p.req_version
+                @test Ressac.n_signatures(p.sigs) == sigs0   # aucune NOUVELLE signature
+            finally
+                Ressac._WAVE_RENDER[] = old; Ressac._WAVE_SYNC[] = oldsync
+            end
+        end
+
+        @testset "apply_pending drops a stale (older-version) render" begin
+            p = mkscu()
+            p.rendered_version = 5
+            lock(p.lock) do
+                p.pending = (Float32[0.1f0, 0.2f0], 44100, zeros(5), 3)  # ver 3 < 5
+            end
+            samples0 = copy(p.samples)
+            @test Ressac._sculpt_apply_pending!(p) == false   # périmé → rejeté
+            @test p.samples == samples0                        # onde inchangée
+            @test p.rendered_version == 5
         end
     end
 end
