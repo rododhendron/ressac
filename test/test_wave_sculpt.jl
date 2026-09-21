@@ -176,6 +176,15 @@ end
         Dg = Ressac.knob_graph_distances(g, ks)
         Dm = Ressac.mixed_distances(Dg, empty_sigs, ks)
         @test Dm == Dg
+        # après accumulation de signatures, α>0 → la matrice se mélange (≠ graphe)
+        sigs = Ressac.KnobSignatures()
+        for i in 1:length(ks)
+            delta = zeros(5); delta[mod1(i, 5)] = 1.0
+            Ressac.update_signature!(sigs, i, delta)
+        end
+        Dm2 = Ressac.mixed_distances(Dg, sigs, ks)
+        @test Dm2 != Dg
+        @test all(0.0 <= Dm2[i, j] <= 1.0 for i in 1:length(ks), j in 1:length(ks))
     end
 end
 
@@ -196,5 +205,126 @@ end
 
     @testset "swap on a missing node returns nothing" begin
         @test Ressac.swap_node_ugen!(Ressac.Genome(), 999) === nothing
+    end
+
+    @testset "structural_edit! dispatch routes to swap (returns same node)" begin
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)])
+        g.output_id = f
+        r = Ressac.structural_edit!(g, :swap_ugen, f; dir = 1)
+        @test r == f                                   # refocalise le même nœud
+        @test g.nodes[f].ugen !== :RLPF
+    end
+
+    @testset "insert_node_after! wraps the node's output in a filter" begin
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)])
+        g.output_id = f
+        n0 = length(g.nodes)
+        new_id = Ressac.structural_edit!(g, :insert_after, f)
+        @test new_id !== nothing
+        @test length(g.nodes) == n0 + 1                # un nœud ajouté
+        @test g.output_id == new_id                    # le nouveau est la sortie
+        # le nouveau nœud est un filtre qui référence l'ancien en entrée
+        @test Ressac.ugen_spec(g.nodes[new_id].ugen).role === :filter
+        @test any(a -> a isa Ressac.NodeRef && a.id == f, g.nodes[new_id].args)
+        @test occursin(".ar", Ressac.render_synthdef(g, :x))   # rendu-valide
+    end
+
+    @testset "insert on a missing node returns nothing" begin
+        @test Ressac.insert_node_after!(Ressac.Genome(), 999) === nothing
+    end
+end
+
+@testset "wave_sculpt — structural bricks 3-7" begin
+    # Saw → RLPF → FreeVerb (chaîne à 3 nœuds).
+    function _chain3()
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        r = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)])
+        v = Ressac.add_node!(g, :FreeVerb, :ar, Ressac.Arg[Ressac.NodeRef(r),
+                             Ressac.ConstArg(0.3), Ressac.ConstArg(0.5), Ressac.ConstArg(0.5)])
+        g.output_id = v
+        return g, s, r, v
+    end
+
+    @testset "delete_node! bypasses the middle node's signal" begin
+        g, s, r, v = _chain3()
+        n0 = length(g.nodes)
+        rf = Ressac.delete_node!(g, r)                 # supprime RLPF
+        @test rf !== nothing
+        @test length(g.nodes) == n0 - 1
+        @test !haskey(g.nodes, r)
+        # FreeVerb voit désormais Saw en entrée (bypass)
+        @test any(a -> a isa Ressac.NodeRef && a.id == s, g.nodes[v].args)
+        @test occursin(".ar", Ressac.render_synthdef(g, :x))
+    end
+
+    @testset "delete_node! refuses a pure source (no bypass path)" begin
+        g = Ressac.Genome()
+        s = Ressac.add_node!(g, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
+        f = Ressac.add_node!(g, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(s),
+                             Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)])
+        g.output_id = f
+        @test Ressac.delete_node!(g, s) === nothing    # Saw n'a pas d'entrée audio
+        @test haskey(g.nodes, s)
+    end
+
+    @testset "rewire_input! redirects the audio input to another node" begin
+        g, s, r, v = _chain3()
+        # l'entrée de FreeVerb est RLPF ; on la recâble ailleurs (2 candidats : s, r)
+        before = g.nodes[v].args[1]
+        rf = Ressac.rewire_input!(g, v; dir = 1)
+        @test rf == v
+        @test g.nodes[v].args[1] isa Ressac.NodeRef
+        @test occursin(".ar", Ressac.render_synthdef(g, :x))
+    end
+
+    @testset "toggle_rate! acts on multi-rate UGens, no-ops on single-rate" begin
+        g, s, r, v = _chain3()
+        # Saw = [:ar, :kr] → multi-rate : toggle agit (renvoie le node id).
+        # (le rate final peut être ré-ajusté par repair! → on teste le contrat.)
+        @test length(Ressac.ugen_spec(:Saw).rates) > 1
+        @test Ressac.toggle_rate!(g, s; dir = 1) == s
+        # RLPF = [:ar] seul → no-op.
+        @test length(Ressac.ugen_spec(:RLPF).rates) == 1
+        @test Ressac.toggle_rate!(g, r) === nothing
+    end
+
+    @testset "duplicate_subgraph_at! clones + mixes in parallel" begin
+        g, s, r, v = _chain3()
+        n0 = length(g.nodes)
+        cr = Ressac.duplicate_subgraph_at!(g, r)       # duplique le sous-graphe {RLPF,Saw}
+        @test cr !== nothing
+        @test length(g.nodes) > n0                      # clones + Mix
+        # un nœud Mix a été inséré là où RLPF était consommé (par FreeVerb)
+        @test any(n -> n.ugen === :Mix, values(g.nodes))
+        @test occursin(".ar", Ressac.render_synthdef(g, :x))
+    end
+
+    @testset "graft_mod! replaces a ConstArg slot with an LFO" begin
+        g, s, r, v = _chain3()
+        @test g.nodes[r].args[2] isa Ressac.ConstArg       # cutoff = ConstArg
+        mid = Ressac.graft_mod!(g, r; arg_index = 2)        # greffe un LFO sur cutoff
+        if isempty(Ressac.catalog_by_role(:mod))
+            @test mid === nothing                           # pas de modulateur au catalogue
+        else
+            @test mid !== nothing
+            @test g.nodes[r].args[2] isa Ressac.NodeRef     # devenu une modulation
+            @test g.nodes[r].args[2].id == mid
+            @test Ressac.ugen_spec(g.nodes[mid].ugen).role === :mod
+            @test occursin(".ar", Ressac.render_synthdef(g, :x))
+        end
+    end
+
+    @testset "graft_mod! on a non-ConstArg / bad index returns nothing" begin
+        g, s, r, v = _chain3()
+        @test Ressac.graft_mod!(g, r; arg_index = 1) === nothing   # arg 1 = NodeRef, pas ConstArg
+        @test Ressac.graft_mod!(g, r; arg_index = 0) === nothing   # index invalide
     end
 end

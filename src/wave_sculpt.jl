@@ -121,7 +121,45 @@ function knob_groups(g::Genome, knobs::Vector{Knob})
     return [(gl, buckets[gl]) for gl in order]
 end
 
-# ── Édition structurelle : swap d'UGen dirigé (cyclique) ───────────
+# ── Édition structurelle : interface de dispatch (les « bricks ») ──
+# Chaque brick = une méthode de `structural_edit!` sur un `Val{:op}`. Elle
+# mute le graphe, appelle `repair!`, et renvoie le **node_id à refocaliser**
+# (ou `nothing` si l'édit n'a rien fait). L'appelant ré-énumère les knobs
+# ensuite (le set a changé). Ajouter un brick = ajouter UNE méthode ici.
+structural_edit!(g::Genome, op::Symbol, node_id::Int; kwargs...) =
+    structural_edit!(g, Val(op), node_id; kwargs...)
+
+# brick 1 — swap : UGen suivant/précédent de même rôle (cyclique).
+function structural_edit!(g::Genome, ::Val{:swap_ugen}, node_id::Int; dir::Int = 1)
+    swap_node_ugen!(g, node_id; dir = dir) === nothing && return nothing
+    return node_id
+end
+
+# brick 2 — insert : enveloppe la sortie du nœud focalisé dans un nouvel
+# UGen (filtre par défaut). Renvoie l'id du NOUVEAU nœud (à refocaliser).
+structural_edit!(g::Genome, ::Val{:insert_after}, node_id::Int; role::Symbol = :filter) =
+    insert_node_after!(g, node_id; role = role)
+
+# brick 3 — delete : retire le nœud focalisé en bypassant son signal.
+structural_edit!(g::Genome, ::Val{:delete}, node_id::Int; dir::Int = 1) =
+    delete_node!(g, node_id)
+
+# brick 4 — rewire : recâble l'entrée audio du nœud vers un autre nœud (cyclique).
+structural_edit!(g::Genome, ::Val{:rewire}, node_id::Int; dir::Int = 1) =
+    rewire_input!(g, node_id; dir = dir)
+
+# brick 5 — rate : cycle le taux (ar/kr…) du nœud.
+structural_edit!(g::Genome, ::Val{:rate}, node_id::Int; dir::Int = 1) =
+    toggle_rate!(g, node_id; dir = dir)
+
+# brick 6 — duplicate : clone le sous-graphe du nœud, mixé en parallèle.
+structural_edit!(g::Genome, ::Val{:duplicate}, node_id::Int; dir::Int = 1) =
+    duplicate_subgraph_at!(g, node_id)
+
+# brick 7 — graft_mod : remplace le slot focalisé (ConstArg) par un LFO.
+structural_edit!(g::Genome, ::Val{:graft_mod}, node_id::Int; arg_index::Int = 0) =
+    graft_mod!(g, node_id; arg_index = arg_index)
+
 # Remplace l'UGen d'un nœud par le suivant (dir) de MÊME RÔLE, ordre stable
 # (par nom). repair! recolle l'arité ; on garde un rate valide. Renvoie le
 # nouveau symbole, ou nothing (nœud absent / pas d'alternative).
@@ -140,6 +178,156 @@ function swap_node_ugen!(g::Genome, node_id::Int; dir::Int = 1)
     n.rate in nspec.rates || (n.rate = nspec.rates[1])
     repair!(g)
     return nxt
+end
+
+# Enveloppe la SORTIE du nœud `node_id` dans un nouveau nœud de rôle `role` :
+# tout ce qui référençait node_id pointe désormais vers le nouveau nœud, dont
+# la 1re entrée signal = node_id. Choisit le 1er UGen du rôle (ordre stable) —
+# l'utilisateur affine ensuite avec o/O. Renvoie l'id du nouveau nœud (ou nothing).
+function insert_node_after!(g::Genome, node_id::Int; role::Symbol = :filter)
+    haskey(g.nodes, node_id) || return nothing
+    cands = sort!([s.name for s in catalog_by_role(role)])
+    isempty(cands) && return nothing
+    spec = ugen_spec(first(cands))
+    spec === nothing && return nothing
+    args = Arg[]
+    for (i, sp) in enumerate(spec.slots)
+        push!(args, (i == 1 && _is_signalish(sp.kind)) ? NodeRef(node_id) : ConstArg(sp.default))
+    end
+    new_id = add_node!(g, spec.name, spec.rates[1], args)
+    for (id, n) in g.nodes
+        id == new_id && continue
+        for j in eachindex(n.args)
+            a = n.args[j]
+            a isa NodeRef && a.id == node_id && (n.args[j] = NodeRef(new_id))
+        end
+    end
+    g.output_id == node_id && (g.output_id = new_id)
+    repair!(g)
+    return new_id
+end
+
+# Position de l'UGen d'un nœud dans le cycle de son rôle : (nom, i, total).
+# Sert au feedback « ‹RLPF 2/5› » quand un knob-nœud est focalisé.
+function ugen_role_position(g::Genome, node_id::Int)
+    haskey(g.nodes, node_id) || return (nothing, 0, 0)
+    n = g.nodes[node_id]; spec = ugen_spec(n.ugen)
+    spec === nothing && return (n.ugen, 0, 0)
+    cands = sort!([s.name for s in catalog_by_role(spec.role)])
+    return (n.ugen, something(findfirst(==(n.ugen), cands), 0), length(cands))
+end
+
+# La 1re VRAIE entrée audio (`kind === :audio`) d'un nœud, ou nothing. On
+# exclut les slots `:signal` (freq modulable d'une source…) : bypasser/recâbler
+# à travers eux n'a pas de sens (une source pure n'a pas d'entrée audio).
+function _audio_input_slot(n::UGenNode)
+    spec = ugen_spec(n.ugen)
+    spec === nothing && return nothing
+    return findfirst(i -> i <= length(n.args) && spec.slots[i].kind === :audio,
+                     1:length(spec.slots))
+end
+
+# brick 3 — Retire `node_id` en faisant PASSER son signal d'entrée à sa place :
+# tout ce qui le référençait pointe vers son entrée audio (bypass). Refuse une
+# source pure (pas de bypass → silence : utiliser swap). Renvoie le nœud sur
+# lequel refocaliser (l'entrée reconnectée / la sortie), ou nothing.
+function delete_node!(g::Genome, node_id::Int)
+    (haskey(g.nodes, node_id) && length(g.nodes) > 1) || return nothing
+    n = g.nodes[node_id]
+    si = _audio_input_slot(n)
+    si === nothing && return nothing            # source pure → pas de contournement
+    bypass = n.args[si]
+    delete!(g.nodes, node_id)
+    for other in values(g.nodes), j in eachindex(other.args)
+        other.args[j] isa NodeRef && other.args[j].id == node_id &&
+            (other.args[j] = bypass)
+    end
+    g.output_id == node_id && (g.output_id = bypass isa NodeRef ? bypass.id : 0)
+    repair!(g)
+    return bypass isa NodeRef ? bypass.id : g.output_id
+end
+
+# brick 4 — Recâble l'entrée audio de `node_id` vers le nœud suivant/précédent
+# (ordre stable par id, cyclique). repair! casse un éventuel cycle. Renvoie
+# node_id (on reste sur le même nœud), ou nothing.
+function rewire_input!(g::Genome, node_id::Int; dir::Int = 1)
+    haskey(g.nodes, node_id) || return nothing
+    n = g.nodes[node_id]
+    si = _audio_input_slot(n)
+    si === nothing && return nothing
+    cands = sort!([id for id in keys(g.nodes) if id != node_id])
+    isempty(cands) && return nothing
+    cur = n.args[si]
+    curid = cur isa NodeRef ? cur.id : 0
+    i = something(findfirst(==(curid), cands), 0)
+    n.args[si] = NodeRef(cands[mod1(i + dir, length(cands))])
+    repair!(g)
+    return node_id
+end
+
+# brick 5 — Cycle le taux de `node_id` parmi ceux qu'autorise son UGen
+# (ar/kr…). repair! propage un éventuel désaccord. Renvoie node_id ou nothing.
+function toggle_rate!(g::Genome, node_id::Int; dir::Int = 1)
+    haskey(g.nodes, node_id) || return nothing
+    n = g.nodes[node_id]
+    spec = ugen_spec(n.ugen)
+    (spec === nothing || length(spec.rates) <= 1) && return nothing
+    i = something(findfirst(==(n.rate), spec.rates), 1)
+    n.rate = spec.rates[mod1(i + dir, length(spec.rates))]
+    repair!(g)
+    return node_id
+end
+
+# brick 6 — Clone le sous-graphe enraciné sur `node_id` et le mixe EN PARALLÈLE
+# partout où le nœud était consommé (épaississement / détune). Borné à 30 nœuds.
+# Renvoie la racine du clone (à refocaliser), ou nothing.
+function duplicate_subgraph_at!(g::Genome, node_id::Int)
+    (haskey(g.nodes, node_id) && length(g.nodes) < 30) || return nothing
+    is_output = g.output_id == node_id
+    # consommateurs de node_id — calculés AVANT de cloner (ids d'origine).
+    consumers = Tuple{Int,Int}[]
+    for (id, n) in g.nodes, j in eachindex(n.args)
+        a = n.args[j]
+        a isa NodeRef && a.id == node_id && push!(consumers, (id, j))
+    end
+    (is_output || !isempty(consumers)) || return nothing   # clone orphelin → on ne touche à rien
+    sub = collect(_subtree_ids(g, node_id))
+    remap = Dict{Int,Int}()
+    for old in sub
+        remap[old] = g.next_id; g.next_id += 1
+    end
+    for old in sub
+        dn = g.nodes[old]
+        newargs = Arg[a isa NodeRef && haskey(remap, a.id) ? NodeRef(remap[a.id]) : a
+                      for a in dn.args]
+        g.nodes[remap[old]] = UGenNode(remap[old], dn.ugen, dn.rate, newargs)
+    end
+    clone_root = remap[node_id]
+    for (id, j) in consumers                    # mixe le clone en parallèle
+        mixid = add_node!(g, :Mix, :ar, Arg[NodeRef(node_id), NodeRef(clone_root)])
+        g.nodes[id].args[j] = NodeRef(mixid)
+    end
+    is_output &&
+        (g.output_id = add_node!(g, :Mix, :ar, Arg[NodeRef(node_id), NodeRef(clone_root)]))
+    repair!(g)
+    return clone_root
+end
+
+# brick 7 — Remplace le slot `arg_index` (un ConstArg) de `node_id` par un
+# modulateur LFO (rôle :mod, 1er du catalogue). Renvoie l'id du modulateur
+# (à refocaliser : on règle ensuite son taux), ou nothing.
+function graft_mod!(g::Genome, node_id::Int; arg_index::Int = 0)
+    haskey(g.nodes, node_id) || return nothing
+    n = g.nodes[node_id]
+    (1 <= arg_index <= length(n.args) && n.args[arg_index] isa ConstArg) || return nothing
+    mods = catalog_by_role(:mod)
+    isempty(mods) && return nothing
+    spec = ugen_spec(first(sort!([s.name for s in mods])))
+    spec === nothing && return nothing
+    mod_id = _new_node_from_spec!(g, spec, ConstArg(spec.slots[1].default))
+    g.nodes[node_id].args[arg_index] = NodeRef(mod_id)
+    repair!(g)
+    return mod_id
 end
 
 # ── Proximité de graphe (épine + quartiers) ────────────────────────
