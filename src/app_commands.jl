@@ -480,6 +480,7 @@ _register_literal!(m -> _cycle_log_tail!(m), "log")
 _register_literal!(m -> _switch_workspace_named!(m, "PLAY"),    "play")
 _register_literal!(m -> _switch_workspace_named!(m, "DESIGN"),  "design")
 _register_literal!(m -> _switch_workspace_named!(m, "EXPLORE"), "explore")
+_register_literal!(m -> _toggle_zoom!(m), "zoom")
 _register_regex!(r"^log\s+(\d+)$", (m, mt) -> _cycle_log_tail!(m, parse(Int, mt.captures[1])))
 
 # ── Starter / scale / cps ───────────────────────────────────────────
@@ -512,7 +513,7 @@ _register_literal!(m -> _explain_command!(m, ""), "explain")
 _register_regex!(r"^explain\s+([\w.-]+)$",
     (m, mt) -> _explain_command!(m, mt.captures[1]))
 
-# :sculpt [nom] → src/modal_sculpt.jl (avec _open_sculpt_modal! / _save_sculpt!).
+# :sculpt [nom] → src/app_sculpt.jl (avec _open_sculpt_pane! / _save_sculpt!).
 
 # ── SC autodiscover commands (sub-project 8) ────────────────────────
 _register_literal!(m -> _sc_rediscover_command!(m), "sc-rediscover")
@@ -645,10 +646,10 @@ _register_special!(
 # Small named helpers — kept out of the inline lambdas above so they
 # stay readable + greppable. Each takes (m, mt::RegexMatch).
 # _save_sculpt! (sauve le génome sculpté en .jl re-jouable/re-sculptable)
-# → src/modal_sculpt.jl.
+# → src/app_sculpt.jl.
 
 function _save_or_session(m::RessacApp)
-    if m.modal === :sculpt
+    if _focused_sculpt_pane(m) !== nothing
         _save_sculpt!(m, "")
     elseif _focused_role(m) === :synth && _synth_pane_open(m)
         _save_current_synth!(m)
@@ -657,7 +658,7 @@ function _save_or_session(m::RessacApp)
     end
 end
 function _save_or_session_named(m::RessacApp, mt::RegexMatch)
-    if m.modal === :sculpt
+    if _focused_sculpt_pane(m) !== nothing
         _save_sculpt!(m, mt.captures[1])
     elseif _focused_role(m) === :synth && _synth_pane_open(m)
         _save_current_synth!(m; new_name = mt.captures[1])

@@ -16,7 +16,7 @@ _log_pane_ctor(::AbstractDict) = LogPane()
 
 function render!(p::LogPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
-    _render_pane_block_simple!(rect, "LOGS", buf)
+    _render_pane_block_simple!(rect, "JOURNAL", buf)
     inner = _inner_rect_simple(rect)
     inner.height < 1 && return
     log = _APP_LOG[]

@@ -131,22 +131,25 @@ end
         app, tb, frame = _br_app()
         _bex(app, "synth zorglub")                             # starter une-ligne
         _bex(app, "sculpt")
-        @test app.modal === :sculpt
-        _bkey(app, :escape)
-        @test app.modal === :none
+        @test Ressac._focused_sculpt_pane(app) !== nothing        # pane sculpt ouverte…
+        @test app.zoom_leaf == Ressac.current_workspace(app.workspaces).focused_pane   # …et zoomée
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')); _bkey(app, 'c'); _bkey(app, :escape)
+        Ressac._PANE_MODE.active = false
+        @test Ressac._focused_sculpt_pane(app) === nothing         # Ctrl-w c ferme la pane
         write(joinpath(pwd(), "plugins", "user-synths", "raw.jl"),
               "@synth :raw (freq=220, sustain=0.5) SynthDSL.Sig(\"{ SinOsc.ar(freq) }.value\")\n")
         _bex(app, "sculpt raw")
-        @test app.modal === :none
+        @test Ressac._focused_sculpt_pane(app) === nothing
         @test occursin("SC brut", app.logs[end])
         _bex(app, "sculpt nexistepas")
         @test occursin("introuvable", app.logs[end])
         # U depuis le studio sculpt (buffer focalisé = zorglub) : sauve + @dN dans PLAY
+        Ressac._focused_role(app) === :synth || _bkey(app, :tab)   # refocalise la pane synth
+        @test Ressac._focused_role(app) === :synth
         _bex(app, "sculpt")
-        @test app.modal === :sculpt
-        @test app.sculpt_pane.label == "zorglub"
+        sp = Ressac._focused_sculpt_pane(app)
+        @test sp !== nothing && sp.label == "zorglub"
         _bkey(app, 'U')
-        @test app.modal === :none
         @test _bws(app) == "PLAY"
         @test occursin("p\"zorglub*4\"", Tachikoma.text(Ressac._active_editor(app)))
     end
@@ -164,4 +167,73 @@ end
     @test occursin("@synth", Tachikoma.text(Ressac._active_editor(app)))
     _bex(app, "explore")
     @test Ressac._focused_pane_impl(app) isa Ressac.SynthExplorerPane   # l'explorer est toujours là
+end
+
+# ── Étape 5 : zoom de pane, sculpt en pane ────────────────────────────
+@testset "zoom — Ctrl-w z rend la pane focalisée seule ; le focus ailleurs dézoome ; :zoom" begin
+    app, tb, frame = _br_app()
+    _bex(app, "vsplit log")
+    ws = Ressac.current_workspace(app.workspaces)
+    @test length(collect(Ressac._all_leaves(ws.tree))) == 2
+    scr = _bscreen(app, tb, frame)
+    @test occursin("JOURNAL", scr) && occursin("PATTERNS", scr)
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')); _bkey(app, 'z'); _bkey(app, :escape)
+    Ressac._PANE_MODE.active = false
+    @test app.zoom_leaf == ws.focused_pane
+    scr = _bscreen(app, tb, frame)
+    @test occursin("JOURNAL", scr) && !occursin("─ PATTERNS", scr)   # seule la pane journal
+    @test occursin("ZOOM", split(scr, "\n")[1])                     # badge dans la status line
+    # rects : le leaf zoomé prend toute la largeur
+    rects = Ressac._workspace_rects(app, ws, app._last_ws_area)
+    @test length(rects) == 1 && first(values(rects)).w == 120
+    # changement de focus → dézoom
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')); _bkey(app, 'h'); _bkey(app, :escape)
+    Ressac._PANE_MODE.active = false
+    _bscreen(app, tb, frame)
+    @test app.zoom_leaf == 0
+    _bex(app, "zoom"); @test app.zoom_leaf != 0
+    _bex(app, "zoom"); @test app.zoom_leaf == 0
+end
+
+@testset "sculpt en pane — studio (onde, knobs groupés, explication), M depuis l'explorer, :w" begin
+    _in_sandbox() do
+        old = Ressac._WAVE_RENDER[]
+        Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100))
+        try
+            app, tb, frame = _br_app()
+            _bex(app, "explore")
+            _bkey(app, 'M')                                   # sculpter le candidat focalisé
+            sp = Ressac._focused_sculpt_pane(app)
+            @test sp !== nothing && sp.sculpt
+            @test app.zoom_leaf != 0
+            @test !isempty(sp.explain_lines)
+            scr = _bscreen(app, tb, frame)
+            @test occursin("SCULPT · candidat", scr)
+            @test occursin("▸ global", scr) || occursin("▸ ", scr)   # knobs groupés
+            @test occursin("SYNTHÈSE", scr) || occursin("EN SORTIE", scr) || occursin("À LA BASE", scr)
+            @test occursin("SCULPT", split(scr, "\n")[1])          # surface dans la status line
+            # les touches vont bien à la pane
+            f0 = sp.focus
+            _bkey(app, 'j')
+            @test sp.focus == f0 + 1
+            # </> défile l'explication
+            _bkey(app, '>'); @test sp.explain_scroll == 1
+            _bkey(app, '<'); @test sp.explain_scroll == 0
+            # :w <nom> sauve le sculpt (fichier avec génome embarqué)
+            _bex(app, "w scusave")
+            path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")
+            @test isfile(path) && occursin("ressac-genome:", read(path, String))
+            @test Ressac._focused_sculpt_pane(app) !== nothing    # on reste dans le studio
+            # ? donne l'aide du sculpt
+            _bkey(app, '?')
+            @test app.modal === :help && app.help_scopes[1] === :sculpt
+            _bkey(app, :escape)
+            # e exporte dans DESIGN
+            _bkey(app, 'e')
+            @test _bws(app) == "DESIGN" && Ressac._focused_role(app) === :synth
+        finally
+            Ressac._WAVE_RENDER[] = old
+            Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+        end
+    end
 end

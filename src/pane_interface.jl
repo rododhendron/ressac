@@ -113,15 +113,17 @@ list_pane_kinds() = sort!(collect(keys(_PANE_KINDS)))
 
 function _render_pane_block_simple!(rect::TK.Rect, title::AbstractString,
                                     buf::TK.Buffer)
-    rect.width < 2 || rect.height < 2 && return
+    (rect.width < 2 || rect.height < 2) && return
     style = TK.tstyle(:text_dim)
     text_style = TK.tstyle(:text)
     TK.set_string!(buf, rect.x, rect.y,
                    "┌" * "─"^(rect.width - 2) * "┐", style)
-    label = " " * String(title) * " "
-    label_x = rect.x + 2
-    if label_x + textwidth(label) < rect.x + rect.width
-        TK.set_string!(buf, label_x, rect.y, label, text_style)
+    # Titre tronqué à la largeur (jamais omis : une pane doit être nommée).
+    maxw = rect.width - 4
+    if maxw >= 3
+        t = String(title)
+        textwidth(t) > maxw && (t = first(t, max(1, maxw - 1)) * "…")
+        TK.set_string!(buf, rect.x + 2, rect.y, " " * t * " ", text_style)
     end
     for y in 1:(rect.height - 2)
         TK.set_string!(buf, rect.x, rect.y + y, "│", style)

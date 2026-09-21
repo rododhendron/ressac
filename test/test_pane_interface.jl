@@ -151,12 +151,12 @@ end
         @test Ressac.serialize(lp) == Dict{String,Any}()
     end
 
-    @testset "render! draws LOGS border and log lines" begin
+    @testset "render! draws JOURNAL border and log lines" begin
         lp = Ressac._pane_new(:log, Dict{String,Any}())
         Ressac._APP_LOG[] = ["[INFO] line A", "[INFO] line B"]
         tb = Tachikoma.TestBackend(40, 6)
         Ressac.render!(lp, Tachikoma.Rect(1, 1, 40, 6), tb.buf)
-        @test occursin("LOGS", Tachikoma.row_text(tb, 1))
+        @test occursin("JOURNAL", Tachikoma.row_text(tb, 1))
         # Body rows show the lines (tail = last 4 of 2 -> both visible)
         body = join((Tachikoma.row_text(tb, y) for y in 2:5), '\n')
         @test occursin("line A", body)

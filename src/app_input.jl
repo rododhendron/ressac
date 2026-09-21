@@ -111,6 +111,7 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     _drain_explorer_export!(m)
     _drain_explorer_waveform!(m)
     _drain_explorer_sculpt!(m)
+    _drain_sculpt_use!(m)
     # Non consommée par la pane → le scope :global a sa chance (aide,
     # hush, scope…) dans update!.
     return consumed ? :consumed : :pass
@@ -158,9 +159,8 @@ function _drain_explorer_waveform!(m::RessacApp)
     return true
 end
 
-# Sculpt studio modal (ouverture, drain explorer `M`, commandes :sculpt/:w,
-# routage clavier, rendu) → src/modal_sculpt.jl, inclus plus bas avec les
-# autres modaux.
+# Sculpt (ouverture d'une pane sculpt, drain explorer `M`, :sculpt/:w)
+# → src/app_sculpt.jl.
 
 """
     _workspace_scroll_to_pane!(m, evt) -> Bool
@@ -174,7 +174,7 @@ function _workspace_scroll_to_pane!(m::RessacApp, evt::TK.MouseEvent)
     ws = current_workspace(m.workspaces)
     ws === nothing && return false
     m._last_ws_area === nothing && return false
-    rects = _compute_rects(ws.tree, m._last_ws_area)
+    rects = _workspace_rects(m, ws, m._last_ws_area)
     for (leaf_id, r) in rects
         if _in_rect_xywh(r.x, r.y, r.w, r.h, evt.x, evt.y)
             leaf = _find_leaf_by_id(ws.tree, leaf_id)
@@ -205,7 +205,7 @@ function _workspace_mouse_dispatch!(m::RessacApp, evt::TK.MouseEvent)
         end
     end
     m._last_ws_area === nothing && return false
-    rects = _compute_rects(ws.tree, m._last_ws_area)
+    rects = _workspace_rects(m, ws, m._last_ws_area)
     for (leaf_id, r) in rects
         if _in_rect_xywh(r.x, r.y, r.w, r.h, evt.x, evt.y)
             ws.focused_pane = leaf_id
@@ -388,6 +388,8 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
                 cmd_focus!(m.workspaces, :up);    return
             elseif evt.key === :right
                 cmd_focus!(m.workspaces, :right); return
+            elseif evt.key === :char && evt.char == 'z'
+                _toggle_zoom!(m); return             # z : zoom / dézoom du leaf focalisé
             elseif evt.key === :char
                 _dispatch_pane_mode_key(m.workspaces, evt.char)
                 return

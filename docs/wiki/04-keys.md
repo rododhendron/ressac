@@ -223,6 +223,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Ctrl-w s` | split horizontal |
 | `Ctrl-w v` | split vertical |
 | `Ctrl-w c` | fermer la pane |
+| `Ctrl-w z` | zoom / dézoom (la pane seule à l'écran) |
 | `Ctrl-w Esc / Ctrl-w Enter / Ctrl-w Ctrl-w` | quitter le mode pane |
 
 **Naviguer**
@@ -392,6 +393,7 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `e` | exporter dans l'éditeur |
+| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
 
 **Vues**
 
@@ -401,6 +403,7 @@ Lecture d'une carte :
 | `H` | défiler l'onde ← |
 | `0` | toute l'onde |
 | `s` | revenir à la vue d'onde |
+| `> / <` | défiler l'explication |
 
 **Sous-modes (touches une fois dedans)**
 
@@ -655,29 +658,3 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `?` | aide |
-
-## Studio sculpt
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `Esc / q` | fermer le studio |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `> / <` | défiler l'explication |
-
-**Fichiers**
-
-| Touche | Action |
-|---|---|
-| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |

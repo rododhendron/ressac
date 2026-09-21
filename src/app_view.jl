@@ -302,7 +302,9 @@ function TK.view(m::RessacApp, f::TK.Frame)
         m._last_ws_area = ws_nt
         ws = current_workspace(m.workspaces)
         if ws !== nothing
-            rects = _compute_rects(ws.tree, ws_nt)
+            # Un changement de focus dézoome (comme tmux).
+            m.zoom_leaf != 0 && m.zoom_leaf != ws.focused_pane && (m.zoom_leaf = 0)
+            rects = _workspace_rects(m, ws, ws_nt)
             _render_tree!(ws.tree, rects, buf, m)
             m.floats_hidden || _render_floats!(ws.floats, buf, m)
         end
@@ -363,8 +365,6 @@ function TK.view(m::RessacApp, f::TK.Frame)
             _render_wiki_modal!(m, marea, buf)
         elseif m.modal === :mixer
             _render_mixer_modal!(m, marea, buf)
-        elseif m.modal === :sculpt
-            _render_sculpt_modal!(m, marea, buf)
         elseif m.modal === :help
             _render_help_modal!(m, marea, buf)
         else
@@ -446,6 +446,7 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Live-state section (rec / tap / piano / visual) — each gets a
     # priority colour so it pops against the normal title style.
     state_parts = Tuple{String,TK.Style}[]
+    m.zoom_leaf != 0 && push!(state_parts, ("⤢ ZOOM", TK.tstyle(:accent, bold = true)))
     if m.recording
         secs = floor(Int, time() - m.recording_start_ts)
         mins, s = divrem(secs, 60)
@@ -537,7 +538,7 @@ const _PANE_LABELS_FR = Dict{Symbol,String}(
 const _MODAL_LABELS_FR = Dict{Symbol,String}(
     :modal_help => "AIDE", :modal_text => "TEXTE", :modal_browse => "SONS",
     :modal_lib => "LIBRAIRIE", :modal_snippets => "SNIPPETS", :modal_wiki => "WIKI",
-    :modal_mixer => "MIXER", :modal_sccode => "SCCODE", :modal_sculpt => "SCULPT",
+    :modal_mixer => "MIXER", :modal_sccode => "SCCODE",
 )
 
 """

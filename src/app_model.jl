@@ -64,9 +64,9 @@ non-empty), and the focus toggle for keystroke routing.
     prefix_since::Float64        = 0.0
     # Lines shown by the generic :explain modal (`:explain <name>`).
     explain_lines::Vector{String} = String[]
-    # Sculpt studio modal (`:sculpt` / explorer `M`) : une WaveformPane en
-    # mode sculpt rendue plein écran avec l'explainer en regard.
-    sculpt_pane::Union{Nothing,WaveformPane} = nothing
+    # Zoom : id du leaf rendu seul dans tout le workspace (0 = aucun).
+    # Ctrl-w z / :zoom basculent ; un changement de focus dézoome.
+    zoom_leaf::Int               = 0
     # Synth library picker state (only meaningful when modal === :synth_library).
     synthlib_cursor::Int         = 1
     # Snippet picker state (only meaningful when modal === :snippets).
@@ -406,7 +406,7 @@ function _focused_editor_rect(m::RessacApp)
     (1 <= leaf.current_tab <= length(leaf.tabs)) || return nothing
     pane = leaf.tabs[leaf.current_tab]
     pane isa EditorPane || return nothing
-    rects = _compute_rects(ws.tree, m._last_ws_area)
+    rects = _workspace_rects(m, ws, m._last_ws_area)
     r_nt = get(rects, leaf.id, nothing)
     r_nt === nothing && return nothing
     return _inner_rect_simple(_nt_to_rect(r_nt))
@@ -531,4 +531,37 @@ function _focused_pane_impl(m::RessacApp)
     (leaf === nothing || isempty(leaf.tabs)) && return nothing
     1 <= leaf.current_tab <= length(leaf.tabs) || return nothing
     return leaf.tabs[leaf.current_tab]
+end
+
+# ── Zoom de pane ────────────────────────────────────────────────────
+"""
+    _workspace_rects(m, ws, area) -> Dict{Int,NamedTuple}
+
+Rects des leaves du workspace : tout l'arbre, ou seulement le leaf zoomé
+(qui prend toute l'aire) quand `m.zoom_leaf` désigne le leaf focalisé.
+"""
+function _workspace_rects(m::RessacApp, ws::Workspace, area::NamedTuple)
+    if m.zoom_leaf != 0 && m.zoom_leaf == ws.focused_pane &&
+       _find_leaf_by_id(ws.tree, m.zoom_leaf) !== nothing
+        return Dict{Int,NamedTuple}(m.zoom_leaf => area)
+    end
+    return _compute_rects(ws.tree, area)
+end
+
+"""
+    _toggle_zoom!(m)
+
+Zoome le leaf focalisé (seul à l'écran) ou dézoome s'il l'est déjà.
+"""
+function _toggle_zoom!(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    m.zoom_leaf = m.zoom_leaf == ws.focused_pane ? 0 : ws.focused_pane
+    return
+end
+
+# La pane sculpt focalisée, ou nothing.
+function _focused_sculpt_pane(m::RessacApp)
+    p = _focused_pane_impl(m)
+    return p isa WaveformPane && p.sculpt ? p : nothing
 end

@@ -111,7 +111,7 @@ const _COMMAND_NAMES = [
     "synth", "back", "reload", "save-synth", "save-synth-as",
     "swap", "test", "test-raw", "synth-guide", "scope",
     "sculpt",
-    "w", "close", "tabs", "tabnext", "tabprev", "log", "play", "design", "explore",
+    "w", "close", "tabs", "tabnext", "tabprev", "log", "play", "design", "explore", "zoom",
 ]
 
 const _COMBINATOR_NAMES = [

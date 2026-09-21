@@ -175,6 +175,7 @@ bind!(:pane_mode, "Ctrl-w s", "split horizontal"; group = :layout)
 bind!(:pane_mode, "Ctrl-w v", "split vertical"; group = :layout)
 bind!(:pane_mode, ["Ctrl-w h", "Ctrl-w j", "Ctrl-w k", "Ctrl-w l"], "focus ← ↓ ↑ → (ou flèches)"; group = :nav)
 bind!(:pane_mode, "Ctrl-w c", "fermer la pane"; group = :layout)
+bind!(:pane_mode, "Ctrl-w z", "zoom / dézoom (la pane seule à l'écran)"; group = :layout)
 bind!(:pane_mode, ["Ctrl-w Esc", "Ctrl-w Enter", "Ctrl-w Ctrl-w"], "quitter le mode pane"; group = :layout)
 
 scope!(:visual, "Sélection visuelle (v / V)")

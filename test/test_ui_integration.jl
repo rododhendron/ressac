@@ -1448,7 +1448,7 @@ end
             Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
         end
 
-        @testset ":sculpt <name> opens the fullscreen sculpt modal" begin
+        @testset ":sculpt <name> opens a zoomed sculpt pane (studio), Ctrl-w z unzooms" begin
             dir = joinpath(pwd(), "plugins", "user-synths")
             mkpath(dir)
             path = joinpath(dir, "scutest.jl")
@@ -1462,15 +1462,17 @@ end
                 app, frame = _new_app()
                 try
                     _exec_ex_command!(app, "sculpt scutest")
-                    @test app.modal === :sculpt
-                    @test app.sculpt_pane isa Ressac.WaveformPane
-                    @test app.sculpt_pane.sculpt
-                    @test !isempty(app.explain_lines)        # explainer chargé
-                    # le rendu plein écran ne plante pas
-                    @test (Tachikoma.view(app, frame); true)
-                    # Esc ferme le modal
+                    sp = Ressac._focused_sculpt_pane(app)
+                    @test sp isa Ressac.WaveformPane && sp.sculpt
+                    @test !isempty(sp.explain_lines)          # explication chargée dans la pane
+                    @test app.zoom_leaf != 0                  # zoomée
+                    @test (Tachikoma.view(app, frame); true)  # le studio se rend
+                    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
+                    Tachikoma.update!(app, Tachikoma.KeyEvent('z'))
                     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
-                    @test app.modal === :none
+                    Ressac._PANE_MODE.active = false
+                    @test app.zoom_leaf == 0
+                    @test Ressac._focused_sculpt_pane(app) !== nothing   # toujours là, dézoomée
                 finally
                     Ressac._WAVE_RENDER[] = old
                 end
@@ -1479,28 +1481,25 @@ end
             end
         end
 
-        @testset "modal keys reach the sculpt modal even with a pane focused" begin
+        @testset "keys reach the sculpt pane (registry :sculpt) when it is focused" begin
             old = Ressac._WAVE_RENDER[]
             Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
             app, _ = _new_app()
             try
-                # focus un pane explorer (non-patterns) — c'est lui qui mangeait
-                # les touches avant le fix du routage modal.
                 Ressac.cmd_vsplit!(app.workspaces, "explorer", Dict{String,Any}("rng" => 2))
                 g = Ressac.archetype(:pluck)
-                Ressac._open_sculpt_modal!(app, Ressac.serialize_genome(g), "x")
-                @test app.modal === :sculpt
-                f0 = app.sculpt_pane.focus
-                Tachikoma.update!(app, Tachikoma.KeyEvent('j'))   # doit atteindre le modal
-                @test app.sculpt_pane.focus == f0 + 1
-                Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
-                @test app.modal === :none
+                Ressac._open_sculpt_pane!(app, Ressac.serialize_genome(g), "x")
+                sp = Ressac._focused_sculpt_pane(app)
+                @test sp !== nothing
+                f0 = sp.focus
+                Tachikoma.update!(app, Tachikoma.KeyEvent('j'))
+                @test sp.focus == f0 + 1
             finally
                 Ressac._WAVE_RENDER[] = old
             end
         end
 
-        @testset "e in the sculpt modal exports to an editor (then :w saves)" begin
+        @testset "e in the sculpt pane exports to an editor in DESIGN (then :w saves)" begin
             Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
             old = Ressac._WAVE_RENDER[]
             Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
@@ -1508,22 +1507,18 @@ end
             app, _ = _new_app()
             try
                 g = Ressac.archetype(:pluck)
-                Ressac._open_sculpt_modal!(app, Ressac.serialize_genome(g), "mybass")
-                @test app.modal === :sculpt
-                ws0 = Ressac.current_workspace(app.workspaces)
-                n0 = length(collect(Ressac._all_leaves(ws0.tree)))
+                Ressac._open_sculpt_pane!(app, Ressac.serialize_genome(g), "mybass")
                 Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
-                @test app.modal === :none                          # studio fermé
                 @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing # export drainé
-                ws1 = Ressac.current_workspace(app.workspaces)
-                @test length(collect(Ressac._all_leaves(ws1.tree))) == n0 + 1  # éditeur ouvert
+                @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+                @test Ressac._focused_role(app) === :synth
             finally
                 Ressac._WAVE_RENDER[] = old
                 Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
             end
         end
 
-        @testset ":w <name> in the sculpt modal saves the synth directly" begin
+        @testset ":w <name> in the sculpt pane saves the synth directly" begin
             Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
             old = Ressac._WAVE_RENDER[]
             Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
@@ -1532,11 +1527,10 @@ end
             app, _ = _new_app()
             try
                 g = Ressac.archetype(:pluck)
-                Ressac._open_sculpt_modal!(app, Ressac.serialize_genome(g), "x")
-                @test app.modal === :sculpt
+                Ressac._open_sculpt_pane!(app, Ressac.serialize_genome(g), "x")
                 _exec_ex_command!(app, "w scusave")
                 @test isfile(path)                       # fichier écrit
-                @test app.modal === :sculpt              # on reste dans le studio
+                @test Ressac._focused_sculpt_pane(app) !== nothing   # on reste dans le studio
                 @test occursin("ressac-genome:", read(path, String))   # re-sculptable
             finally
                 Ressac._WAVE_RENDER[] = old

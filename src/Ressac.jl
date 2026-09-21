@@ -108,11 +108,11 @@ include("app_modal.jl")          # infra modaux + guide/tutorial/explain
 include("modal_browser.jl")      # :browse
 include("modal_mixer.jl")        # :mixer
 include("modal_synth_library.jl")# :lib
-include("modal_sculpt.jl")       # :sculpt (enregistre ses commandes ex)
 include("modal_wiki.jl")         # :wiki
 include("modal_snippets.jl")     # :snip
 include("modal_sccode.jl")       # :sccode
 include("app_view.jl")           # TK.view : chrome + arbre + modal
+include("app_sculpt.jl")         # :sculpt → pane waveform zoomée, :w, drains M / U
 include("app_keymap.jl")         # bindings :global/:editor/:patterns/:synth/:leader (après toutes les actions)
 
 # ─── Plugin section handlers (last — uses SynthDSL.@synth via

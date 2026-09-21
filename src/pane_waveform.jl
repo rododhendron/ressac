@@ -36,6 +36,8 @@ mutable struct WaveformPane <: PaneImpl
     pending::Union{Nothing,Tuple{Vector{Float32},Int,Vector{Float64},Int}}  # (samples,sr,descr,version)
     audition::AuditionState
     lock::ReentrantLock
+    explain_lines::Vector{String}   # prose de l'explainer (rafraîchie à chaque édit structurel)
+    explain_scroll::Int
 end
 
 # Constructeur de compatibilité 7-args (anciens appels + tests viewer).
@@ -43,10 +45,13 @@ WaveformPane(samples, sr, vs, vl, label, genome, last_rect) =
     WaveformPane(samples, sr, vs, vl, label, genome, last_rect,
                  false, Knob[], 1, false, "", false, Int[], Float64[], zeros(0, 0),
                  KnobSignatures(), Float64[], 0, 0, 0, false, false,
-                 nothing, AuditionState(1), ReentrantLock())
+                 nothing, AuditionState(1), ReentrantLock(), String[], 0)
 
 # Seam de rendu : par défaut le rendu NRT, surchargeable en test (sync, mock).
 const _WAVE_RENDER = Ref{Function}(render_genome_audio)
+# Seam « U » : la pane demande à l'app de la sauver + l'utiliser dans un
+# pattern (elle ne connaît pas RessacApp).
+const _SCULPT_USE_REQUEST = Ref{Union{Nothing,WaveformPane}}(nothing)
 # En test on rend SYNCHRONE (pas de thread → pas de course).
 const _WAVE_SYNC = Ref{Bool}(false)
 
@@ -95,7 +100,15 @@ function _sculpt_init!(p::WaveformPane)
     p.focus = 1
     p.dgraph = knob_graph_distances(p.genome, p.knobs)
     _sculpt_recluster!(p)
+    _sculpt_refresh_explain!(p)
     return p
+end
+
+# Prose « pourquoi ça sonne comme ça » du génome courant.
+function _sculpt_refresh_explain!(p::WaveformPane)
+    p.explain_lines = p.genome === nothing ? String[] : explain_genome(p.genome)
+    p.explain_scroll = 0
+    return
 end
 
 # Recalcule quartiers + force depuis (graphe × signatures). NE déplace rien.
@@ -134,6 +147,7 @@ function _sculpt_reinit_structure!(p::WaveformPane; focus_node::Int = 0)
     p.last_descr = Float64[]
     p.last_tugged = 0
     _sculpt_recluster!(p)
+    _sculpt_refresh_explain!(p)
     p.structure_dirty = true
     p.req_version += 1
     return
@@ -386,6 +400,7 @@ function render!(p::WaveformPane, area, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 2 || inner.height < 1) && return
     if p.sculpt
+        inner.height >= 12 && (_render_sculpt_studio!(p, inner, buf); return)
         striph = min(2, inner.height)
         waveh = inner.height - striph
         if waveh >= 1 && n > 0
@@ -527,3 +542,78 @@ bind!(:sculpt, "0", "toute l'onde"; group = :view, hint = false, when = _sc_has,
 bind!(:sculpt, "s", "revenir à la vue d'onde"; short = "vue", group = :view, action = p -> (p.sculpt = false))
 bind!(:sculpt, ["Enter", "Esc", "Bksp"], "saisie de valeur : valider / annuler / effacer";
       group = :submode, hint = false)
+
+# ── Disposition « studio » (pane assez haute, typiquement zoomée) ────
+# Onde en haut (tiers), bande de knobs, puis knobs groupés par fonction
+# (gauche) ⟷ explication (droite, défilable </>).
+function _render_sculpt_studio!(p::WaveformPane, inner::TK.Rect, buf::TK.Buffer)
+    waveh = clamp(inner.height ÷ 3, 3, inner.height - 5)
+    warea = TK.Rect(inner.x, inner.y, inner.width, waveh)
+    if !isempty(p.samples)
+        p.last_rect = (warea.x, warea.y, warea.width, waveh)
+        _render_wave_buffer!(p, warea, buf)
+    else
+        TK.set_string!(buf, inner.x, inner.y, "  (rendu en cours / indisponible)", TK.tstyle(:text_dim))
+    end
+    sepy = inner.y + waveh
+    TK.set_string!(buf, inner.x, sepy, "─"^inner.width, TK.tstyle(:text_dim))
+    _render_knob_strip!(p, TK.Rect(inner.x, sepy + 1, inner.width, 1), buf)
+    bottomy = sepy + 2
+    bottomh = inner.y + inner.height - bottomy
+    bottomh < 2 && return
+    kw = clamp(inner.width ÷ 2, 16, inner.width - 10)
+    _render_sculpt_knobs!(p, TK.Rect(inner.x, bottomy, kw - 1, bottomh), buf)
+    for yy in bottomy:(bottomy + bottomh - 1)
+        TK.set_string!(buf, inner.x + kw, yy, "│", TK.tstyle(:text_dim))
+    end
+    _render_sculpt_explain!(p, TK.Rect(inner.x + kw + 2, bottomy, inner.width - kw - 2, bottomh), buf)
+    return
+end
+
+# Knobs groupés par fonction ; le focalisé surligné (+ saisie en cours). Pour
+# un knob-nœud on montre l'UGen porteur (‹RLPF 2/5›) → feedback de o/O/n.
+function _render_sculpt_knobs!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
+    p.genome === nothing && return
+    groups = knob_groups(p.genome, p.knobs)
+    y = area.y
+    for (label, idxs) in groups
+        y >= area.y + area.height && break
+        gtag = isempty(idxs) ? "" : _sculpt_ugen_tag(p, p.knobs[idxs[1]])
+        TK.set_string!(buf, area.x, y, first("▸ $label$gtag", area.width), TK.tstyle(:text_dim))
+        y += 1
+        for i in idxs
+            y >= area.y + area.height && break
+            kb = p.knobs[i]
+            mark = i == p.focus ? "◉" : (get(p.strength, i, 1.0) > 0.5 ? "●" : "·")
+            val = if i == p.focus && p.value_edit
+                "= $(p.value_buf)▏"
+            else
+                string(round(knob_value(p.genome, kb); sigdigits = 5))
+            end
+            row = "  $mark $(rpad(String(kb.name), 8)) $val"
+            sty = i == p.focus ? TK.tstyle(:primary) : TK.tstyle(:text)
+            TK.set_string!(buf, area.x, y, first(row, area.width), sty)
+            y += 1
+        end
+    end
+end
+
+# Prose de l'explainer (défilable via </>).
+function _render_sculpt_explain!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
+    lines = p.explain_lines
+    isempty(lines) && return
+    start = clamp(p.explain_scroll + 1, 1, max(1, length(lines)))
+    for i in 0:(area.height - 1)
+        idx = start + i
+        idx > length(lines) && break
+        TK.set_string!(buf, area.x, area.y + i, first(lines[idx], area.width), TK.tstyle(:text))
+    end
+end
+
+bind!(:sculpt, [">", "<"], "défiler l'explication"; short = "explication", group = :view,
+      hint = false, when = _sc_has,
+      action = (p, evt) -> (p.explain_scroll = evt.char == '>' ?
+          min(p.explain_scroll + 1, max(0, length(p.explain_lines) - 1)) :
+          max(0, p.explain_scroll - 1)))
+bind!(:sculpt, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
+      group = :file, when = _sc_has, action = p -> (_SCULPT_USE_REQUEST[] = p))

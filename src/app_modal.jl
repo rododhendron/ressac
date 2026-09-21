@@ -214,9 +214,6 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif m.modal === :mixer
         _handle_mixer_key!(m, evt)
         return
-    elseif m.modal === :sculpt
-        _handle_sculpt_key!(m, evt)
-        return
     end
     # Aide générée / modaux texte (tutoriel, explain…) : registre.
     dispatch!(((modal_scope(m), m),), evt)
@@ -227,7 +224,7 @@ end
 const _MODAL_SCOPES = Dict{Symbol,Symbol}(
     :browse => :modal_browse, :synth_library => :modal_lib, :sccode => :modal_sccode,
     :snippets => :modal_snippets, :wiki => :modal_wiki, :mixer => :modal_mixer,
-    :sculpt => :modal_sculpt, :help => :modal_help,
+    :help => :modal_help,
 )
 """
     modal_scope(m) -> Symbol
@@ -299,8 +296,7 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     end
 end
 
-# Sculpt studio modal — _close_sculpt_modal! / _handle_sculpt_key! /
-# _render_sculpt_modal! (+ knobs, explainer) → src/modal_sculpt.jl.
+# Sculpt : une pane :waveform en mode sculpt (app_sculpt.jl), plus un modal.
 
 """
     _render_modal_block!(buf, area; title, title_right="", w_max=100, h_target=20) -> Rect
@@ -443,7 +439,7 @@ const _HELP_ALL_SCOPES = Symbol[
     :global, :editor, :patterns, :leader, :synth, :visual, :insert, :pane_mode,
     :explorer, :waveform, :sculpt, :log, :doc, :tuning, :tap, :piano,
     :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets,
-    :modal_wiki, :modal_mixer, :modal_sccode, :modal_sculpt,
+    :modal_wiki, :modal_mixer, :modal_sccode,
 ]
 
 """
