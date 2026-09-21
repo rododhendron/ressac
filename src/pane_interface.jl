@@ -137,7 +137,7 @@ function _render_pane_block_simple!(rect::TK.Rect, title::AbstractString,
     btns = _pane_buttons(rect)
     bsty = fc === nothing ? TK.Style(fg = th.text_dim) : TK.Style(fg = fc, bold = true)
     for (x, sym, _) in btns
-        TK.set_string!(buf, x, rect.y, " " * sym, bsty)
+        TK.set_string!(buf, x, rect.y, " " * sym * " ", bsty)
     end
     # Titre tronqué à la largeur (jamais omis : une pane doit être nommée) ;
     # en pastille de la couleur du mode quand la pane est focalisée.
@@ -163,8 +163,8 @@ const _PANE_BUTTONS = (("⊞", :vsplit), ("⊟", :hsplit), ("⤢", :zoom), ("✕
     _pane_buttons(rect) -> Vector{Tuple{Int,String,Symbol}}
 
 (x, glyphe, action) des boutons du bord supérieur d'une pane, de gauche
-à droite ; vide si la pane est trop étroite. Chaque bouton occupe 2
-colonnes (« ⊞» avec son espace) et répond au clic sur x ou x+1.
+à droite ; vide si la pane est trop étroite. Chaque bouton occupe 3
+colonnes (« ⊞ » entouré d'espaces) et répond au clic sur x..x+2.
 """
 function _pane_buttons(rect::TK.Rect)
     rect.width < 28 && return Tuple{Int,String,Symbol}[]
@@ -177,7 +177,7 @@ end
 function _pane_button_at(rect::TK.Rect, x::Int, y::Int)
     y == rect.y || return nothing
     for (bx, _, act) in _pane_buttons(rect)
-        bx <= x <= bx + 1 && return act
+        bx <= x <= bx + 2 && return act
     end
     return nothing
 end
