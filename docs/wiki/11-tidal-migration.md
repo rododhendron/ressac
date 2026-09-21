@@ -10,12 +10,19 @@ vocabulaire se transposent. Les grandes différences :
 | `d1 silence`               | `@d1`        (sans corps = vide) |
 | `hush`                     | `:hush` ou `,`                 |
 | pipe `#`                   | pipe `\|>`                     |
-| `s "bd" # gain 0.7`        | `"bd" \|> gain(0.7)`           |
-| `n "0 3 5"`                | `n("0 3 5")`                   |
-| `every 4 rev`              | `every(4, rev)`                |
-| `jux rev`                  | `jux(rev)`                     |
-| `degradeBy 0.3`            | `degradeBy(0.3)`               |
-| `(|+|) pat1 pat2`          | pas encore — utilise `stack`   |
+| `s "bd" # gain 0.7`        | `s "bd" \|> gain 0.7`  ou `"bd" \|> gain(0.7)` |
+| `n "0 3 5" # s "piano"`    | `n "0 3 5" \|> s "piano"`     |
+| `every 4 rev $ s "bd"`     | `every 4 rev "bd"`             |
+| `jux rev`                  | `jux rev`  ou `jux(rev)`       |
+| `degradeBy 0.3`            | `degradeBy 0.3`                |
+| `pat1 |+| pat2`            | `pat1 + pat2`                  |
+| `n "0 3" |+ n 12`          | `n("0 3") \|> add(:n, 12)`    |
+| `every 4 (fast 2)`         | `every 4 fast(2)`              |
+
+L'écriture sans parenthèses (`n "0 3" |> s "bd" |> fast 2`) est du sucre
+de la macro `@dN` : voir « Écriture façon Tidal » dans `02-patterns`. Les
+parenthèses restent obligatoires pour un argument qui est lui-même un
+appel (`fast(2)`) et hors d'une ligne `@dN`.
 
 ## Ce qui est pareil
 
@@ -48,9 +55,14 @@ pour un pattern à un seul nom.
 @d1 "bd hh sn hh" |> fast(2) |> gain(0.8) |> lpf(1500)
 ```
 
-Règles de composition (comme le `#` de Tidal) :
+Règles de composition :
 - `gain` × · `lpf` min · `hpf` max · `speed` × · `pan` / `n` / `room` /
-  `delay` / `shape` : le dernier gagne.
+  `delay` / `shape` : le dernier gagne. `add(:clé, x)`, `sub`, `mul`
+  pour composer explicitement (`|+`, `|-`, `|*` de Tidal).
+- Structure : un contrôle à valeur pattern (`n("0 1 2 3")`) découpe les
+  événements aux intersections — c'est le `|>|` de Tidal (structure des
+  deux côtés), pas son `#` (structure de gauche seule). C'est ce qui rend
+  `:bd |> n("0 1 2 3")` musical : quatre coups. Idem pour `+ - * /`.
 
 ### `set` pour n'importe quel paramètre
 
@@ -82,24 +94,29 @@ pose le synth dans un pattern, `gs` remonte d'un pattern au synth.
 
 ### Couverture des fonctions Tidal
 
-| Tidal | Ressac | Remarque |
-|---|---|---|
-| `fast` `slow` `hurry` `rev` `iter` `iter'` `palindrome` | `fast` `slow` `hurry` `rev` `iter` `iterBack` `palindrome` | |
-| `every` `every'` `whenmod` `sometimesBy` `someCyclesBy` | `every` `lastOf`/`firstOf` `whenmod` `sometimesBy` `someCyclesBy` | `sometimesBy` décide par cycle |
-| `degradeBy` `unDegradeBy` | `degradeBy` | pas de `unDegradeBy` |
-| `jux` `juxBy` `off` `superimpose` `layer` `stut` `echo` | `jux` `juxBy` `off` `superimpose` `layer` `stut` | `echo` = `stut` |
-| `euclid` `euclidInv` `euclidOff` `euclidFull` | `euclid` `euclidInv` `euclidOff` | `euclidFull` = `stack(euclid, euclidInv(f))` |
-| `struct` `mask` `sew` `stitch` | `structPat` `mask("1 0 1 1")` | pas de `sew`/`stitch` |
-| `rot` `shuffle` `scramble` `linger` `brak` `swingBy` `swing` | idem | |
-| `fastGap` `compress` `zoom` `inside` `outside` `ply` `segment` | idem | |
-| `chunk` `chunk'` | `chunk` | pas de `chunk'` |
-| `arp` `rolled` `rolledBy` accords `c'maj` | idem | |
-| `n` `note` avec noms de notes `c e g` | idem | octave 5 = 0 |
-| `range` `irand` `rand` `sine` `perlin` `saw` `tri` `square` | `range_pat` `rand_pat` `sine` `perlin` `saw` `tri` `square` | `range`/`rand` clashent avec Base |
-| `striate` `chop` `slice` `splice` `loopAt` | `striate` `chopp` | pas de `slice`/`splice`/`loopAt` |
-| `nudge` `fix` `bite` `squeeze` `ur` `weave` `wedge` `ncat` `wchoose` `select` `pickF` | — | pas encore |
-| `(|+|)` `(|*|)` arithmétique entre patterns | — | `stack` pour le parallèle |
-| `setcps` `hush` `once` `solo` `mute` | `cps!` `:hush` `:solo` `:mute` | `once` : joue avec `T` |
+Presque tout le vocabulaire est là, sous le même nom. Renommages forcés
+par Julia (mot-clé ou clash avec `Base`) : `struct` → `structPat`,
+`trunc` → `truncp`, `ascii` → `asciip`, `run` → `runp`, `chop` → `chopp`,
+`rand` → `rand_pat`, `range` → `range_pat`, `chunk'` → `chunkBack`,
+`every'` → `every(n, décalage, f)`, `iter'` → `iterBack`, `begin`/`end` →
+`begin_`/`end_`, `while` → `sew(b, f(p), p)`.
+
+| Famille Tidal | Ressac |
+|---|---|
+| temps : `fast` `slow` `hurry` `rev` `iter` `iter'` `palindrome` `ply` `plyWith` `swingBy` `swing` `inside` `outside` `rot` `linger` `trunc` `zoom` `compress` `fastGap` `press` `pressBy` `spaceOut` `early` `late` `off` | idem (`iterBack`, `truncp`) |
+| concaténation : `cat` `slowcat` `fastcat` `timeCat` `randcat` `wrandcat` `append` `fastAppend` `slowAppend` `overlay` `stack` `wedge` `ncat` `seq` | idem |
+| structure : `struct` `substruct` `mask` `inv` `sew` `stitch` `euclid` `euclidInv` `euclidOff` `euclidFull` `binary` `binaryN` `ascii` `necklace` `mono` `chunk` `chunk'` `shuffle` `scramble` `superimpose` `layer` | idem (`structPat`, `asciip`, `chunkBack`) — pas de `substruct` |
+| conditionnel : `every` `every'` `whenmod` `when` `whenT` `within` `ifp` `sometimesBy` `sometimes` `often` `rarely` `almostAlways` `almostNever` `always` `never` `someCyclesBy` `somecycles` `degradeBy` `unDegradeBy` `fix` `unfix` `contrast` `while` | idem — `while` = `sew(b, f(p), p)` |
+| aléatoire : `rand` `irand` `perlin` `brand` `brandBy` `choose` `chooseBy` `wchoose` `wchooseBy` `cycleChoose` `randslice` `select` `selectF` `pickF` `squeeze` | idem (`rand_pat`) |
+| accumulation : `stut` `echo` `echoWith` `stutWith` `stutter` `off` `superimpose` `layer` `spread` `fastspread` `spreadf` `spreadChoose` `spreadr` `ghost` `ghostWith` | idem |
+| samples : `chop` `striate` `striateBy` `slice` `splice` `bite` `chew` `loopAt` `smash` `randslice` `fit` `hurry` | idem (`chopp`) |
+| harmonie : `arp` `arpeggiate` `arpg` `rolled` `rolledBy` `toScale` `scale` accords `c'maj` `n "c e g"` | idem — `scale(:major)` est un contrôle |
+| signaux : `sine` `cosine` `tri` `saw` `square` `range` `rangex` `quantise` `smooth` `segment` `discretise` `run` `scan` | idem (`range_pat`, `runp`) |
+| arrangement : `ur` `weave` `weaveWith` | idem |
+| arithmétique : `|+|` `|-|` `|*|` `|/|` `|%|` ; `|+` `|*` … ; `#` | `+ - * / %` ; `add`/`sub`/`mul` en pipe ; `\|>` |
+| contrôles : `s` `sound` `n` `note` `up` `gain` `pan` `speed` `begin` `end` `unit` `cut` `orbit` `nudge` `loop` `squiz` `midinote` `channel` `dry` `legato` `sustain` `accelerate` `vowel` `cutoff` `resonance` `room` `size` `delay`… | idem (`begin_`, `end_`) ; `set(:size, x)` pour les rares absents |
+| session : `setcps` `hush` `once` `solo` `mute` `xfade` `jump` | `cps!` `:hush` `T` `:solo` `:mute` — pas de transitions |
+| `nTake` `numerals` `sec` `msec` `fix` avec fonctions d'état | pas encore |
 
 - **Entrée MIDI** — pas de driver natif (voir `13-external-midi`).
 
@@ -109,11 +126,12 @@ S'il te manque quelque chose de précis, ouvre une issue.
 
 ```haskell
 -- Tidal                              -- Ressac
-d1 $ s "bd hh sn hh"                  -- @d1 "bd hh sn hh"
-d1 $ s "bd*4" # gain 0.8              -- @d1 "bd*4" |> gain(0.8)
-d1 $ every 4 (fast 2) $ s "bd"        -- @d1 :bd |> every(4, fast(2))
-d1 $ jux rev $ s "bd hh sn hh"        -- @d1 "bd hh sn hh" |> jux(rev)
-d1 $ s "bd" # n "0 3 5"               -- @d1 :bd |> n("0 3 5")
+d1 $ s "bd hh sn hh"                  -- @d1 s "bd hh sn hh"
+d1 $ s "bd*4" # gain 0.8              -- @d1 s "bd*4" |> gain 0.8
+d1 $ every 4 (fast 2) $ s "bd"        -- @d1 every 4 fast(2) "bd"
+d1 $ jux rev $ s "bd hh sn hh"        -- @d1 jux rev "bd hh sn hh"
+d1 $ n "0 3 5" # s "superpiano"       -- @d1 n "0 3 5" |> s "superpiano"
+d1 $ n ("0 3" + "<0 12>") # s "bd"    -- @d1 n (p"0 3" + "<0 12>") |> s "bd"
 hush                                  -- :hush  ou  ,
 ```
 

@@ -100,7 +100,21 @@ This matches TidalCycles' `#` operator semantics.
 """
 # Bare-string val: parse as mini-notation, then route to the
 # Pattern overload. Lets users write `set(:cutoff, "<400 800>")`.
-set(key::Symbol, s::AbstractString) = set(key, parse_minino(String(s)))
+set(key::Symbol, s::AbstractString) = set(key, _string_control_value(String(s)))
+
+# Une chaîne qui n'est qu'un seul jeton constant (`"c"`, `"bd:3"`, `"0.5"`)
+# vaut sa valeur scalaire : les événements plus longs qu'un cycle ne sont
+# pas découpés par l'intersection avec un pattern d'un événement par cycle.
+# Tout ce qui varie (`"<a b>"`, `"a?"`, plusieurs pas) reste un pattern.
+function _string_control_value(str::String)
+    pat = parse_minino(str)
+    (occursin('<', str) || occursin('?', str)) && return pat
+    evs = pat(0 // 1, 1 // 1)
+    if length(evs) == 1 && evs[1].start == 0 && evs[1].stop == 1
+        return evs[1].value
+    end
+    return pat
+end
 
 function set(key::Symbol, pat::Pattern)
     return function (p)
@@ -143,7 +157,7 @@ function _control_op(key::Symbol, op, val)
     # `set(:cutoff, "<400 800 1600>")` instead of
     # `set(:cutoff, p"<400 800 1600>")`. Single-token strings like
     # `"1000"` round-trip through `_resolve_value` to numeric.
-    val = val isa AbstractString ? parse_minino(String(val)) : val
+    val = val isa AbstractString ? _string_control_value(String(val)) : val
     # n / note : un nom de note (c, e5, cs, af4) vaut ses demi-tons.
     resolve = key in (:n, :note) ? _resolve_note : _resolve_value
     resolved_scalar = resolve(val)
@@ -272,6 +286,31 @@ shape(x) = _control_op(:shape, _overwrite, x)
 # Float64 — `note(60.5)` plays a quarter-tone sharp middle C.
 # Overwrite semantics like `n`.
 note(x)  = _control_op(:note,  _overwrite, x)
+
+"""
+    s(x) / sound(x) -> (Pattern -> ControlPattern)
+
+Le son (sample ou synth) : `n("0 3 7") |> s("superpiano")`, `s("bd:3 sn")`.
+Les variantes `bd:3` posent aussi `n` à l'envoi. Écrase la valeur précédente.
+"""
+s(x)     = _control_op(:s,     _overwrite, x)
+const sound = s
+
+"""
+    up(x) -> (Pattern -> ControlPattern)
+
+Alias Tidal de `note` (demi-tons).
+"""
+up(x)    = _control_op(:note,  _overwrite, x)
+
+"""
+    begin_(x) / end_(x) -> (Pattern -> ControlPattern)
+
+Fenêtre de lecture du sample, 0..1 (`begin` et `end` sont des mots-clés
+Julia, d'où le tiret bas) : `:amen |> begin_(0.25) |> end_(0.5)`.
+"""
+begin_(x) = _control_op(:begin, _overwrite, x)
+end_(x)   = _control_op(:end,   _overwrite, x)
 
 """
     scale(s) — apply a `Scale` to a degree pattern, producing :note
@@ -537,6 +576,8 @@ const _SUPERDIRT_PARAM_HELPERS = [
     # Compression — SuperDirt orbit-level compressor params.
     # `compress(x)` lowers dynamics. Composition is overwrite, last wins.
     :compress, :compressThreshold, :compressRatio,
+    # Tidal : lecture, routage, timing
+    :unit, :cut, :orbit, :nudge, :loop, :squiz, :midinote, :channel, :dry,
 ]
 
 for name in _SUPERDIRT_PARAM_HELPERS

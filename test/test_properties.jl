@@ -96,18 +96,18 @@ isdefined(Main, :Reservoir) ||
     end
 
     # ══════════════════════════════════════════════════════════════════
-    # 5 — `striate(n, p)` event count is n × source-events-per-cycle
+    # 5 — `chop(n, p)` event count is n × source-events-per-cycle
     # ──────────────────────────────────────────────────────────────────
 
-    @testset "striate(n, p) emits n slices per source event per cycle" begin
+    @testset "chop(n, p) emits n slices per source event per cycle" begin
         sample_names = ["bd", "sn", "hh"]
-        @check db = false function striate_event_count(
+        @check db = false function chop_event_count(
             n = Data.Integers(1, 16),
             toks = Data.Vectors(Data.SampledFrom(sample_names);
                                  min_size=1, max_size=4))
             p = Ressac.parse_minino(join(toks, " "))
             src_count = length(p(0//1, 1//1))
-            out = Ressac.striate(n, p)(0//1, 1//1)
+            out = Ressac.chop(n, p)(0//1, 1//1)
             length(out) == n * src_count
         end
     end

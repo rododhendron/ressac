@@ -365,25 +365,26 @@ using Ressac
     end
 
     # ── Sample slicing — striate / chop ─────────────────────────────
-    @testset "striate(n) emits n events with begin/end params" begin
-        evs = query(:bd |> striate(4), 0, 1)
+    @testset "chopp(n) découpe chaque événement en n tranches consécutives" begin
+        evs = query(:bd |> chopp(4), 0, 1)
         @test length(evs) == 4
-        # First slice covers begin=0, end=1/4 of the sample.
         @test evs[1].value[:s] === :bd
         @test evs[1].value[:begin] ≈ 0.0f0
         @test evs[1].value[:end]   ≈ 0.25f0
-        # Last slice covers 3/4..1.
         @test evs[end].value[:begin] ≈ 0.75f0
         @test evs[end].value[:end]   ≈ 1.0f0
+        @test [ev.value for ev in query(:bd |> Ressac.chop(4), 0, 1)] ==
+              [ev.value for ev in query(:bd |> chopp(4), 0, 1)]
+        # chop garde les contrôles déjà posés
+        @test all(ev.value[:gain] == 0.5 for ev in query(:bd |> gain(0.5) |> chopp(2), 0, 1))
     end
 
-    @testset "chopp is an alias of striate today" begin
-        # Exported as `chopp` (Base.chop collision); also reachable via
-        # `Ressac.chop` for Tidal-style code.
-        @test [ev.value for ev in query(:bd |> striate(4), 0, 1)] ==
-              [ev.value for ev in query(:bd |> chopp(4),    0, 1)]
-        @test [ev.value for ev in query(:bd |> Ressac.chop(4), 0, 1)] ==
-              [ev.value for ev in query(:bd |> striate(4),     0, 1)]
+    @testset "striate(n) joue le pattern n fois, une tranche par répétition (Tidal)" begin
+        evs = query("bd sn" |> striate(2), 0, 1)
+        @test length(evs) == 4
+        @test [ev.value[:s] for ev in evs] == [:bd, :sn, :bd, :sn]
+        @test [ev.value[:begin] for ev in evs] ≈ [0.0f0, 0.0f0, 0.5f0, 0.5f0]
+        @test [ev.start for ev in evs] == [0//1, 1//4, 1//2, 3//4]
     end
 
     # ── nrun convenience ────────────────────────────────────────────

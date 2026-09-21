@@ -20,6 +20,7 @@ include("core_combinators.jl")   # fast/slow/jux/every/sometimes/…
 include("core_algebra.jl")       # stack/cat/mask
 include("core_tuning.jl")        # Scale, scale_to_semitones, registry
 include("core_controls.jl")      # gain/lpf/hpf/pan/n/set/pump/…
+include("core_tidal.jl")         # le reste du vocabulaire Tidal (fix, bite, ur, …)
 
 # ─── I/O primitives ───────────────────────────────────────────────
 include("io_osc.jl")             # OSC wire format (encode/decode)
@@ -136,6 +137,18 @@ export rot, hurry, shuffle, scramble, linger, swingBy, swing, whenmod
 export someCyclesBy, someCycles, fastGap, compress, zoom
 export euclid, euclidInv, euclidOff, superimpose, layer, inside, outside
 export rolled, rolledBy, brak, stut
+export fastcat, slowcat, append, slowAppend, fastAppend, overlay, timeCat, ncat
+export randcat, wrandcat, wedge, spaceOut
+export sew, stitch, euclidFull, binary, binaryN, asciip, necklace, mono
+export when, whenT, within, ifp, always, never, almostAlways, almostNever
+export somecycles, somecyclesBy, fix, unfix, contrast
+export irand, brand, brandBy, chooseBy, wchoose, wchooseBy, cycleChoose, unDegradeBy
+export randslice, select, selectF, pickF, squeeze, bite, chew
+export striateBy, slice, splice, loopAt, smash, fit
+export echo, echoWith, stutWith, stutter, plyWith, arpeggiate, arpg
+export spread, fastspread, spreadf, spreadChoose, spreadr, chunkBack
+export ghost, ghostWith, press, pressBy, truncp, weave, weaveWith, ur
+export quantise, smooth, rangex, toScale, scan, discretise, add, sub, mul
 # Continuous signals. `range_pat` / `rand_pat` keep `_pat` to avoid
 # clashing with Base.range / Base.rand respectively.
 export sine, cosine, tri, saw, square, perlin, segment
@@ -151,6 +164,8 @@ export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
 export pan, n, room, delay, shape, pump, note, scale
+export s, sound, up, begin_, end_
+export unit, cut, orbit, nudge, loop, squiz, midinote, channel, dry
 export transpose_cents, scale_stretch, bend
 # Tunings — Scale type + registry + constructors.
 export Scale, scale_to_semitones, register_scale!, lookup_scale, list_scales
