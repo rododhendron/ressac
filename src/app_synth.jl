@@ -381,6 +381,17 @@ function _goto_synth_under_cursor!(m::RessacApp)
     return
 end
 
+# Y a-t-il une pane patterns dans le workspace courant ?
+function _patterns_pane_present(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return false
+    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+        tab isa EditorPane && 1 <= tab.current_tab <= length(tab.tabs) &&
+            tab.tabs[tab.current_tab].role === :patterns && return true
+    end
+    return false
+end
+
 # L'éditeur patterns du workspace courant (le crée si besoin).
 function _patterns_editor!(m::RessacApp)
     ws = current_workspace(m.workspaces)

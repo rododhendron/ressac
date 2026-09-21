@@ -66,9 +66,12 @@ bind!(:global, "-", "réservoir : plus lent"; group = :view, hint = false, when 
 
 # ── :editor — commun aux panes patterns et synth (mode normal) ─────
 scope!(:editor, "Éditeur (patterns et synth)")
+# Tab n'a de sens que si les DEUX panes existent dans le workspace courant
+# (dans DESIGN, sans pane patterns, il ne ferait rien).
+_km_can_swap(m::RessacApp) = _km_normal_ed(m) && _synth_pane_open(m) &&
+    _patterns_pane_present(m) && !_is_waveform_sculpt_focused(m)
 bind!(:editor, "Tab", "basculer patterns ⟷ synth"; short = "patterns⟷synth", group = :nav,
-      when = m -> _km_normal_ed(m) && _synth_pane_open(m) && !_is_waveform_sculpt_focused(m),
-      action = _swap_focus!)
+      when = _km_can_swap, action = _swap_focus!)
 bind!(:editor, ".", "répéter la dernière édition"; group = :edit, hint = false,
       when = _km_normal_ed, action = m -> _vim_replay!(m, _km_ed(m)))
 bind!(:editor, "v", "sélection visuelle (caractères)"; group = :select, hint = false,

@@ -151,7 +151,12 @@ end
     _hex(app, "synth kick")
     bar = _bottom_bar(app, tb, frame)
     @test occursin("t tester", bar)
-    @test occursin("Tab patterns⟷synth", bar)
+    @test occursin("Tab patterns⟷synth", bar)              # PLAY : patterns + synth présents
+    _hex(app, "design")                                      # DESIGN : pas de pane patterns
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("t tester", bar)
+    @test !occursin("Tab patterns", bar)
+    _hex(app, "play")
     @test !occursin("e évaluer", bar)
     app2, tb2, frame2 = _help_app()
     _hex(app2, "vsplit explorer")
