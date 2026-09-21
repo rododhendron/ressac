@@ -4,6 +4,13 @@ Le DSL décrit un SynthDef comme une expression Julia enchaînée par des
 pipes, compilée en SC au chargement. Chargé dans Main automatiquement,
 pas de `using` nécessaire.
 
+
+> **Dans un pattern** : `@d1 :monsynth |> n("0 4 7")` pilote `freq` du
+> SynthDef (`n`/`note`/`octave`/`midinote` → fréquence, note 0 = do 5) et
+> sa durée suit l'événement si le SynthDef déclare `sustain`. Déclare donc
+> `freq` et `sustain` dans les paramètres pour qu'un synth réponde aux
+> notes et au rythme.
+
 ## Minimal — 3 mots
 
 ```julia

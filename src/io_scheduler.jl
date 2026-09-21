@@ -154,6 +154,35 @@ function _timing_args!(args::Vector{Any}, ev::Event, cps)
 end
 _event_delta(ev::Event, cps) = Float64(ev.stop - ev.start) / Float64(cps)
 
+"""
+    _direct_pitch!(final, sc_target)
+
+Synth utilisateur joué en direct (/ressac/play) : SuperDirt n'est pas là
+pour traduire `n` / `note` / `octave` / `midinote` en `freq`, on le fait
+ici, avec sa convention (note 0 = do 5 = MIDI 60, `octave` 5 par défaut,
+`n` vaut `note` pour un synth). Ne s'applique que si le SynthDef déclare
+`freq` et que l'événement ne le fixe pas. Les clés de hauteur traduites
+sont retirées, sauf celles que le SynthDef déclare lui-même.
+"""
+function _direct_pitch!(final::AbstractDict, sc_target::Symbol)
+    params = _user_synth_params(sc_target)
+    haskey(params, "freq") || return final
+    pitch_keys = (:midinote, :note, :n, :octave)
+    if !haskey(final, :freq) && any(k -> haskey(final, k), pitch_keys)
+        midi = _resolve_value(get(final, :midinote, nothing))
+        if !(midi isa Real)
+            note = _resolve_value(get(final, :note, get(final, :n, 0)))
+            octave = _resolve_value(get(final, :octave, 5))
+            midi = (note isa Real ? note : 0) + 12 * (octave isa Real ? octave : 5)
+        end
+        final[:freq] = 440.0 * 2.0^((Float64(midi) - 69) / 12)
+    end
+    for k in pitch_keys
+        haskey(params, String(k)) || delete!(final, k)
+    end
+    return final
+end
+
 # Synth utilisateur joué en direct (/ressac/play) : la durée suit
 # l'événement si le SynthDef a un paramètre `sustain` et que l'événement
 # ne fixe pas `sustain` lui-même. `legato(x)` multiplie la durée.
@@ -260,6 +289,7 @@ function event_to_osc(ev::Event{ControlMap}; cps = nothing)
         else
             args = Any[String(sc_target)]
             delete!(final, :s)
+            _direct_pitch!(final, sc_target)
             _direct_sustain!(final, ev, cps, sc_target)
             _push_kv_args!(args, final)
             return OSCMessage("/ressac/play", args)

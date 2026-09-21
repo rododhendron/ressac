@@ -73,6 +73,14 @@ une longue. `legato(2)` allonge, `sustain(0.2)` fixe en secondes. Un
 synth utilisateur joué en direct suit la même règle dès que son SynthDef
 a un paramètre `sustain` ; `T` (audition) garde les défauts du SynthDef.
 
+### Hauteur des synths utilisateur
+
+Un synth `@synth` joué sans effet SuperDirt part en direct vers
+SuperCollider. Ressac traduit alors `n`, `note`, `octave` et `midinote`
+en `freq` avec la convention Tidal (note 0 = do 5 = MIDI 60, `octave` 5
+par défaut), à condition que le SynthDef déclare `freq`. Avec un effet
+(`lpf`, `room`…), SuperDirt fait la même traduction lui-même.
+
 ### `set` pour n'importe quel paramètre
 
 Si un paramètre SuperDirt n'a pas de helper, `set(:clé, valeur)` le

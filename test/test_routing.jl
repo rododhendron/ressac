@@ -58,7 +58,9 @@ end
     Ressac.register_synth!(Ressac.SynthEntry(:monson, "user-dsl",
         Dict{String,Any}("params" => Dict{String,Any}("freq" => 220, "sustain" => 0.5))))
     direct = Ressac.event_to_osc((pure(:monson) |> n("[0 3] 7"))(0//1, 1//1)[1]; cps = 0.5)
-    @test direct.address == "/ressac/play" && direct.args == ["monson", "n", 0, "sustain", 0.5f0]
+    @test direct.address == "/ressac/play" && direct.args[1:2] == ["monson", "freq"]   # n → freq (route directe)
+    @test isapprox(direct.args[3], 261.63; atol = 0.01)
+    @test direct.args[4:5] == ["sustain", 0.5f0]
     fixed = Ressac.event_to_osc((pure(:monson) |> sustain(3))(0//1, 1//1)[1]; cps = 0.5)
     @test fixed.args == ["monson", "sustain", 3]                              # sustain explicite : intact
     bare = Ressac.event_to_osc(Ressac.Event(0//1, 1//4, :monson); cps = 0.5)
@@ -80,4 +82,23 @@ end
     @test Ressac._string_control_value("0 _") isa Pattern
     # un événement de deux cycles n'est plus découpé par unit("c")
     @test length((slow(2, pure(:bd)) |> unit("c"))(0//1, 2//1)) == 1
+end
+
+@testset "routage — synth direct : n / note / octave / midinote deviennent freq" begin
+    Ressac.register_synth!(Ressac.SynthEntry(:arpdriver, "user-dsl",
+        Dict{String,Any}("params" => Dict{String,Any}("freq" => 220, "sustain" => 0.12))))
+    kv(m) = Dict(m.args[i] => m.args[i + 1] for i in 2:2:length(m.args) - 1)
+    m = Ressac.event_to_osc((pure(:arpdriver) |> n("0 4 7"))(0//1, 1//1)[2])
+    @test m.address == "/ressac/play" && m.args[1] == "arpdriver"
+    @test kv(m)["freq"] ≈ 329.63 atol = 0.01                      # n 4 → mi 5 (MIDI 64)
+    @test !haskey(kv(m), "n")
+    @test kv(Ressac.event_to_osc((pure(:arpdriver) |> note("c e"))(0//1, 1//1)[1]))["freq"] ≈ 261.63 atol = 0.01
+    @test kv(Ressac.event_to_osc((pure(:arpdriver) |> n(0) |> octave(4))(0//1, 1//1)[1]))["freq"] ≈ 130.81 atol = 0.01
+    @test kv(Ressac.event_to_osc((pure(:arpdriver) |> midinote(69))(0//1, 1//1)[1]))["freq"] ≈ 440.0
+    @test kv(Ressac.event_to_osc((pure(:arpdriver) |> n(12) |> freq(100))(0//1, 1//1)[1]))["freq"] == 100   # freq explicite
+    @test !haskey(kv(Ressac.event_to_osc((pure(:arpdriver) |> gain(0.5))(0//1, 1//1)[1])), "freq")   # sans hauteur : défaut du SynthDef
+    # les noms de notes et les accords passent aussi
+    chord = Ressac.event_to_osc.((pure(:arpdriver) |> n("c'maj"))(0//1, 1//1))
+    @test isapprox([kv(x)["freq"] for x in chord], [261.63, 329.63, 392.0]; atol = 0.01)
+    delete!(Ressac._SYNTH_REGISTRY, :arpdriver)
 end
