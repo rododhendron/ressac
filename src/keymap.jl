@@ -132,6 +132,11 @@ function lookup(scope::Symbol, chord::AbstractString; target = nothing)
     return nothing
 end
 
+# Une action prend la cible seule, ou (cible, evt) si elle a besoin de
+# l'événement (touche maintenue, caractère tapé…).
+_run_action(f::Function, target, evt) =
+    applicable(f, target, evt) ? f(target, evt) : f(target)
+
 """
     dispatch!(layers, evt; prefix="") -> Bool
 
@@ -139,7 +144,8 @@ end
 AVEC action dont l'accord (`prefix` + touche) correspond et dont `when`
 accepte la cible, l'exécute, renvoie true. Les répétitions (touche
 maintenue) ne déclenchent que les bindings `repeat`. Les bindings sans
-action ne consomment jamais la touche.
+action ne consomment jamais la touche. Une action à deux arguments
+reçoit `(cible, evt)`.
 """
 function dispatch!(layers, evt::TK.KeyEvent; prefix::AbstractString = "")
     name = keyname(evt)
@@ -154,7 +160,7 @@ function dispatch!(layers, evt::TK.KeyEvent; prefix::AbstractString = "")
             _matches(b, chord) || continue
             (is_press || b.repeat) || continue
             b.when(target) || continue
-            b.action(target)
+            _run_action(b.action, target, evt)
             return true
         end
     end

@@ -498,10 +498,18 @@ end
     leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
     @test leaf.tabs[1].tabs[1].role === :synth
     leaf.tabs[1].tabs[1].code_editor.mode = :normal
-    # _route_key_to_focused_pane! intercepts T on a synth pane and
-    # fires _test_current_synth! (no-op without a live scheduler, but
-    # it CONSUMES the key → returns true).
-    @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('T')) == true
+    # La pane synth est une pane éditeur : le routage la laisse au flux
+    # éditeur (:editor), où le binding :synth « t/T/Space » tire le synth
+    # via _fire_t_with_accel! (no-op sans scheduler, mais il arme l'horloge
+    # de rafale) et consomme la touche (rien n'est tapé dans le buffer).
+    @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('T')) === :editor
+    before = Tachikoma.text(leaf.tabs[1].tabs[1].code_editor)
+    Tachikoma.update!(app, Tachikoma.KeyEvent('T'))
+    @test app.last_t_fire > 0
+    @test Tachikoma.text(leaf.tabs[1].tabs[1].code_editor) == before
+    # Touche maintenue → chemin « held » (répétition accélérée), pas de plantage.
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'T', Tachikoma.key_repeat))
+    @test app.last_t_fire > 0
 end
 
 # ── Modal flows — navigation, not just close ───────────────────────

@@ -113,6 +113,7 @@ include("modal_wiki.jl")         # :wiki
 include("modal_snippets.jl")     # :snip
 include("modal_sccode.jl")       # :sccode
 include("app_view.jl")           # TK.view : chrome + arbre + modal
+include("app_keymap.jl")         # bindings :global/:editor/:patterns/:synth/:leader (après toutes les actions)
 
 # ─── Plugin section handlers (last — uses SynthDSL.@synth via
 #     Base.include for .jl orphan auto-discovery) ─────────────────

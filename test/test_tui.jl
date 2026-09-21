@@ -181,8 +181,8 @@ end
     ws = Ressac.current_workspace(app.workspaces)
     # Focused pane is the default editor (Ressac._active_editor(m)).
     @test ws.focused_pane == ws.tree.id
-    # _route_key_to_focused_pane! returns false → legacy path runs.
-    @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('i')) == false
+    # _route_key_to_focused_pane! renvoie :editor → flux éditeur (registre + vim).
+    @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('i')) === :editor
 end
 
 @testset "_render_workspace_strip! shows pane mode cheat sheet when active" begin

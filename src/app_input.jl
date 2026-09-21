@@ -49,7 +49,7 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
 end
 
 """
-    _route_key_to_focused_pane!(m, evt) -> Bool
+    _route_key_to_focused_pane!(m, evt) -> :editor | :consumed | :pass
 
 Forward a KeyEvent to the focused workspace pane's PaneImpl
 `handle_key!` when the focused pane is NOT the legacy patterns
@@ -60,17 +60,17 @@ moves, autocomplete, etc.
 """
 function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     ws = current_workspace(m.workspaces)
-    ws === nothing && return false
+    ws === nothing && return :editor
     leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
-    (leaf === nothing || isempty(leaf.tabs)) && return false
-    1 <= leaf.current_tab <= length(leaf.tabs) || return false
+    (leaf === nothing || isempty(leaf.tabs)) && return :editor
+    1 <= leaf.current_tab <= length(leaf.tabs) || return :editor
     pane = leaf.tabs[leaf.current_tab]
     ed = _active_editor(m)        # `nothing` when no editor pane is open
     # While the editor is in ex command mode, ALL keys belong to it —
     # otherwise typed chars after ':' would land in the focused side
     # pane instead of the ex command buffer. Same for :search.
     if ed !== nothing && (ed.mode === :command || ed.mode === :search)
-        return false
+        return :editor
     end
     # Global shortcuts that always belong to the editor regardless of
     # which workspace pane has focus. ':' opens ex command mode;
@@ -78,26 +78,15 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     # from a focused log / doc / scope side pane.
     if evt.key === :char && evt.char == ':' &&
        ed !== nothing && ed.mode === :normal
-        return false
+        return :editor
     end
-    # Synth-role pane: route T/t/Space (in :normal mode) to the
-    # legacy _test_current_synth! path so DSL eval / SC ship still
-    # fires. Without this, the EditorPane handle_key! stub is a
-    # no-op and pressing T appears to do nothing.
-    if pane isa EditorPane &&
-       1 <= pane.current_tab <= length(pane.tabs) &&
-       pane.tabs[pane.current_tab].role === :synth &&
-       pane.tabs[pane.current_tab].code_editor.mode === :normal &&
-       evt.key === :char && (evt.char == 'T' || evt.char == 't' ||
-                              evt.char == ' ')
-        _test_current_synth!(m)
-        return true
-    end
-    # Patterns pane uses _active_editor(m) — legacy path owns it.
+    # Pane éditeur focalisée (patterns OU synth) : son CodeEditor est
+    # `_active_editor(m)` → c'est le flux éditeur de update! qui la sert
+    # (registre :patterns/:synth/:editor/:global, puis moteur vim).
     if pane isa EditorPane &&
        1 <= pane.current_tab <= length(pane.tabs) &&
        pane.tabs[pane.current_tab].code_editor === ed
-        return false
+        return :editor
     end
     # TK.CodeEditor.handle_key! short-circuits to `false` when
     # `.focused` is false — its keymap is gated on focus. Make sure
@@ -107,7 +96,7 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
        1 <= pane.current_tab <= length(pane.tabs)
         pane.tabs[pane.current_tab].code_editor.focused = true
     end
-    handle_key!(pane, evt)
+    consumed = handle_key!(pane, evt) === true
     # Ex-command bridge: when an EditorPane finishes a `:foo` command
     # via its own TK.CodeEditor command mode, drain it and dispatch
     # through Ressac's ex command pipeline. Without this, `:q` typed
@@ -122,7 +111,9 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     _drain_explorer_export!(m)
     _drain_explorer_waveform!(m)
     _drain_explorer_sculpt!(m)
-    return true
+    # Non consommée par la pane → le scope :global a sa chance (aide,
+    # hush, scope…) dans update!.
+    return consumed ? :consumed : :pass
 end
 
 """
@@ -449,13 +440,14 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # path because _active_editor(m) IS that pane's tabs[1].code_editor — letting
     # the legacy update! body run keeps cursor moves / autocomplete /
     # eval flash / playhead intact.
-    if _route_key_to_focused_pane!(m, evt)
+    r = _route_key_to_focused_pane!(m, evt)
+    r === :consumed && return
+    # Pane non-éditeur focalisée (touche non consommée) ou aucun éditeur
+    # ouvert : seul le scope :global s'applique (aide, hush, scope…).
+    if r === :pass || _active_editor(m) === nothing
+        dispatch!(((:global, m),), evt)
         return
     end
-    # No editor pane open at all → nothing below (the legacy patterns
-    # keystroke flow) applies. The focused pane already had its chance
-    # via routing above; eat the key.
-    _active_editor(m) === nothing && return
     # Cause A fix: the legacy update! body below calls
     # `TK.handle_key!(_active_editor(m), evt)`, which short-circuits
     # when `.focused == false`. _render_tree_inner! clears that flag
@@ -510,157 +502,37 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         return
     end
     evt = _normalise_event(evt)
-    # (Modal keys are handled earlier, before focus-pane routing.)
     ed = _active_editor(m)
     is_press = evt.action === TK.key_press
-    # Vim `.` repeat — replay the text typed during the last insert
-    # session at the current cursor. Intercept BEFORE Tachikoma so the
-    # editor doesn't swallow it as a "join lines" or no-op.
-    if is_press && ed.mode === :normal && evt.char == '.'
-        _vim_replay!(m, ed); return
-    end
-    # Visual-line mode dispatch — handles selection + operators.
+    # Sélection visuelle : ses propres touches (étendre, d/y/c, m, e, Esc).
     if m.visual_active && is_press
         _visual_handle!(m, ed, evt) && return
     end
-    # `V` (capital) enters visual-line mode.
-    if is_press && ed.mode === :normal && evt.char == 'V' && !m.visual_active
-        m.visual_active = true
-        m.visual_kind = :line
-        m.visual_anchor_row = ed.cursor_row
-        m.visual_anchor_col = ed.cursor_col
-        _push_app_log!(m, "[INFO] V — visual line · j/k extend · d/y/c act · Esc cancel")
-        return
-    end
-    # `v` (lowercase) enters character-wise visual.
-    if is_press && ed.mode === :normal && evt.char == 'v' && !m.visual_active
-        m.visual_active = true
-        m.visual_kind = :char
-        m.visual_anchor_row = ed.cursor_row
-        m.visual_anchor_col = ed.cursor_col
-        _push_app_log!(m, "[INFO] v — visual char · hjkl extend · d/y/c act · Esc cancel")
-        return
-    end
-    # Pattern editor — context-aware ops fire only when the cursor is
-    # inside a `p"…"` body. Outside, the keys fall through to the
-    # editor's normal vim behaviour (indent / motion).
-    if is_press && ed.mode === :normal && _pat_at_cursor(ed) !== nothing
-        if evt.char == '>'
-            _pat_zoom!(m, ed, +1); return
-        elseif evt.char == '<'
-            _pat_zoom!(m, ed, -1); return
-        elseif evt.char == 'L'
-            _pat_shift!(m, ed, +1); return
-        elseif evt.char == 'H'
-            _pat_shift!(m, ed, -1); return
-        elseif evt.char == 'X'
-            _pat_silence!(m, ed); return
-        end
-    end
     # Track insert-session text so `.` has something to replay.
     _vim_record_keystroke!(m, ed, evt, is_press)
-    # Tab in :normal swaps focus between patterns and the active synth tab.
-    if is_press && evt.key === :tab && ed.mode === :normal && _synth_pane_open(m) &&
-       !_is_waveform_sculpt_focused(m)
-        _swap_focus!(m)
-        return
-    end
-    # gt / gT cycle synth panes while focused on a synth pane.
-    if is_press && ed.mode === :normal &&
-       _focused_role(m) === :synth && length(_all_synth_buffers(m)) > 1
-        if evt.char == 't' && ed.pending_key == 'g'
-            ed.pending_key = nothing
-            _cycle_synth_tab!(m; dir=+1)
-            return
-        elseif evt.char == 'T' && ed.pending_key == 'g'
-            ed.pending_key = nothing
-            _cycle_synth_tab!(m; dir=-1)
-            return
-        end
-    end
-    # Nudge: fires on key_press AND key_repeat so the user can HOLD
-    # +/-/*//to scrub through values. Other normal-mode actions stay
-    # press-only (we don't want every action to retrigger on held key).
-    if ed.mode === :normal &&
-       (evt.action === TK.key_press || evt.action === TK.key_repeat) &&
-       evt.char in ('+','-','*','/') && _has_number_under_cursor(ed)
-        step = evt.char == '+' ? 1 :
-               evt.char == '-' ? -1 :
-               evt.char == '*' ? 10 : -10
-        _nudge_number_under_cursor!(m, ed, step)
-        return
-    end
-    # T (or Space) held: fire repeatedly with accelerating interval.
-    # The initial press goes through the normal-mode block below;
-    # key_repeat events are handled here so they bypass the press-only
-    # gate. Each fire multiplies the interval by config.t_hold_accel
-    # (clamped to t_hold_min_ms).
-    if ed.mode === :normal && evt.action === TK.key_repeat &&
-       (evt.char == 'T' || evt.char == 't' || evt.char == ' ') &&
-       _synth_pane_open(m)
-        _fire_t_with_accel!(m; held=true)
-        return
-    end
-    # Vim operator + motion combos (cw / dw / yw / c$ / d0 / …).
-    # Tachikoma sets ed.pending_key to the operator on the first
-    # press (c/d/y) and only knows how to handle cc/dd/yy. We piggyback
-    # so the SECOND press dispatches a word-motion-based operation
-    # when relevant, otherwise falls through to Tachikoma's own logic
-    # (so cc/dd/yy still work).
-    if is_press && ed.mode === :normal
-        pk = ed.pending_key
-        if pk !== nothing && pk in ('c', 'd', 'y') &&
-           evt.key === :char && evt.char in ('w', 'b', 'e', 'W', 'B', 'E', '\$', '0')
-            ed.pending_key = nothing
-            _vim_op_motion!(m, ed, pk, evt.char)
+    # ── Registre de bindings (app_keymap.jl) ─────────────────────────
+    # Toutes les ACTIONS passent par ici, en mode normal seulement : jamais
+    # une touche tapée en insertion ne déclenche une action. Couches :
+    # pane focalisée (:patterns | :synth) → :editor → :global. Un binding
+    # qui ne matche pas laisse la touche au moteur vim de l'éditeur.
+    if ed.mode === :normal
+        if m.pending_leader
+            # Space déjà pressé : la touche suivante choisit dans :leader.
+            is_press || return
+            if evt.key === :escape
+                m.pending_leader = false; return
+            end
+            # Modificateur seul (Shift avant un E majuscule…) : on attend.
+            (evt.key !== :char || evt.char == '\0') && return
+            m.pending_leader = false
+            dispatch!(((:leader, m),), evt; prefix = "Space")
             return
         end
-        if pk === nothing && evt.key === :char && evt.char in ('w', 'b', 'W', 'B')
-            _vim_word_motion!(ed, evt.char)
+        # `g` en attente (posé par l'éditeur) → accords « g t », « g T »…
+        prefix = ed.pending_key == 'g' ? "g" : ""
+        if dispatch!(_editor_layers(m), evt; prefix = prefix)
+            isempty(prefix) || (ed.pending_key = nothing)
             return
-        end
-    end
-    # Space-leader trigger lookup. Runs BEFORE other normal-mode
-    # handlers so the trigger char isn't stolen by `e` / `m` / etc.
-    # Actions (open picker / modal) win over snippet expansions on the
-    # same char, since callbacks don't need cursor state.
-    if is_press && ed.mode === :normal && m.pending_leader
-        # Escape cancels the leader without firing anything.
-        if evt.key === :escape
-            m.pending_leader = false; return
-        end
-        # Ignore non-char keystrokes — this includes modifier-only
-        # events (Shift / Alt by themselves) emitted by some terminals
-        # in between Space and the actual trigger char. Without this
-        # guard, pressing Space then Shift+E would consume the leader
-        # on the Shift event and `E` never gets the snippet.
-        if evt.key !== :char || evt.char == '\0'
-            return
-        end
-        m.pending_leader = false
-        if haskey(_LEADER_ACTIONS, evt.char)
-            _LEADER_ACTIONS[evt.char](m); return
-        end
-        if haskey(_LEADER_SNIPPETS, evt.char)
-            _expand_snippet!(m, ed, _LEADER_SNIPPETS[evt.char])
-            return
-        end
-        # Unknown trigger — silently cancel leader.
-        return
-    end
-    # Page-scroll keys (PgUp/PgDn + vim Ctrl-D/Ctrl-U). We handle these
-    # ourselves so the view AND cursor move by the same delta — keeps
-    # the cursor in the same screen position rather than re-centering.
-    # Available in :normal mode in both panes.
-    if is_press && ed.mode === :normal
-        if evt.key === :pagedown
-            _page_scroll!(m, ed, +_viewport_h(m, ed)); return
-        elseif evt.key === :pageup
-            _page_scroll!(m, ed, -_viewport_h(m, ed)); return
-        elseif evt.key === :ctrl && evt.char == 'd'
-            _page_scroll!(m, ed, +max(1, _viewport_h(m, ed) ÷ 2)); return
-        elseif evt.key === :ctrl && evt.char == 'u'
-            _page_scroll!(m, ed, -max(1, _viewport_h(m, ed) ÷ 2)); return
         end
     end
     # Operator-motion combos (cw / dw / yw + big variants + e variants).
@@ -688,98 +560,6 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         dir  = (evt.char == 'w' || evt.char == 'W') ? +1 : -1
         _word_motion!(ed, dir, kind)
         return
-    end
-    # +/- nudge the number under the cursor (keyboard version of the
-    # existing mouse-wheel nudge). Only intercepts when the cursor IS
-    # on a number — otherwise falls through to vim's `+`/`-`
-    # "next/previous line" motion.
-    if is_press && ed.mode === :normal && _focused_role(m) === :patterns
-        if evt.char == '+'
-            _try_nudge_at!(m, ed, ed.cursor_row, ed.cursor_col, +1) && return
-        elseif evt.char == '-'
-            _try_nudge_at!(m, ed, ed.cursor_row, ed.cursor_col, -1) && return
-        elseif evt.char == '*'
-            _try_scale_at!(m, ed, ed.cursor_row, ed.cursor_col, 2.0) && return
-        elseif evt.char == '/'
-            _try_scale_at!(m, ed, ed.cursor_row, ed.cursor_col, 0.5) && return
-        end
-    end
-    # Intercept our normal-mode actions BEFORE handle_key! so the
-    # CodeEditor doesn't swallow them (it interprets T/K/S/e/m as
-    # potential vim commands and consumes the keystroke).
-    if is_press && ed.mode === :normal
-        if evt.char == 'e' && _focused_role(m) === :patterns
-            # `e` evals the current line as Julia. Only meaningful in the
-            # patterns pane — the synth pane buffer contains SuperCollider
-            # code which Julia can't parse, so leave `e` for the editor's
-            # vim "end of word" motion there.
-            _eval_current_line!(m); return
-        elseif evt.char == 'E' && _focused_role(m) === :patterns
-            # `E` evals every @dN block in the buffer. Same intercept
-            # reasoning as `e` — vim's "end of WORD" motion would
-            # otherwise swallow the keystroke. Help text + welcome
-            # buffer + README all promise this binding.
-            _eval_pattern_blocks!(m, :all); return
-        elseif (evt.char == 'T' || evt.char == 't' || evt.char == ' ') &&
-               _synth_pane_open(m) && _focused_role(m) === :synth
-            # t / T / Space all fire the test in the synth pane. Vim's
-            # `t` (till motion) isn't useful there, and giving up the
-            # shift keypress is worth it for the iteration speed.
-            _fire_t_with_accel!(m)
-            return
-        elseif evt.char == ' ' && _focused_role(m) === :patterns && !m.tap_recording
-            # Space-as-leader for snippet expansion. Patterns pane
-            # only — synth pane uses Space to fire the test synth.
-            # The next char picks a template from _LEADER_SNIPPETS.
-            m.pending_leader = true
-            return
-        elseif evt.char == 'K' && _focused_role(m) === :patterns
-            _preview_word_under_cursor!(m); return
-        elseif evt.char == 'S'
-            # Allow S anywhere — scope is useful even without a synth
-            # pane open (e.g. while a pattern is playing).
-            _scope_cycle_key!(m); return
-        elseif evt.char == 'm' && _focused_role(m) === :patterns
-            _toggle_mute_current_line!(m); return
-        elseif evt.char == '?' && _focused_role(m) === :patterns
-            # Quick help — opens the guide modal without going through
-            # `:?`. Matches the footer hint shown in normal-mode.
-            m.modal = :guide; m.modal_scroll = 0
-            return
-        elseif evt.char == ','
-            # Soft hush — pulls patterns from the scheduler but lets
-            # SC's currently-playing synths complete their envelope
-            # naturally. Use for "stop the loop but don't slaughter
-            # the reverb tail".
-            _hush!(m); return
-        elseif evt.char == '+' && _APP_SCOPE_TYPE[] === :wave
-            m.scope_zoom = clamp(m.scope_zoom * 1.5, 0.1, 32.0)
-            _push_app_log!(m, "[INFO] scope Y-zoom ×$(round(m.scope_zoom; digits=2))"); return
-        elseif evt.char == '-' && _APP_SCOPE_TYPE[] === :wave
-            m.scope_zoom = clamp(m.scope_zoom / 1.5, 0.1, 32.0)
-            _push_app_log!(m, "[INFO] scope Y-zoom ×$(round(m.scope_zoom; digits=2))"); return
-        elseif evt.char == '+' &&
-               (_APP_SCOPE_TYPE[] === :reservoir ||
-                _APP_SCOPE_TYPE[] === Symbol("reservoir-graph"))
-            _APP_SCOPE_RESERVOIR_SPAN[] = clamp(
-                _APP_SCOPE_RESERVOIR_SPAN[] / 1.5, 0.1, 60.0)
-            _push_app_log!(m, "[INFO] reservoir scope span = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (faster)"); return
-        elseif evt.char == '-' &&
-               (_APP_SCOPE_TYPE[] === :reservoir ||
-                _APP_SCOPE_TYPE[] === Symbol("reservoir-graph"))
-            _APP_SCOPE_RESERVOIR_SPAN[] = clamp(
-                _APP_SCOPE_RESERVOIR_SPAN[] * 1.5, 0.1, 60.0)
-            _push_app_log!(m, "[INFO] reservoir scope span = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (slower)"); return
-        elseif evt.char == '=' && _APP_SCOPE_TYPE[] === :wave
-            m.scope_zoom = 1.0; m.scope_zoom_x = 1.0
-            _push_app_log!(m, "[INFO] scope zoom reset (X & Y)"); return
-        elseif evt.char == '>' && _APP_SCOPE_TYPE[] === :wave
-            m.scope_zoom_x = clamp(m.scope_zoom_x * 1.5, 0.1, 32.0)
-            _push_app_log!(m, "[INFO] scope X-zoom ×$(round(m.scope_zoom_x; digits=2))"); return
-        elseif evt.char == '<' && _APP_SCOPE_TYPE[] === :wave
-            m.scope_zoom_x = clamp(m.scope_zoom_x / 1.5, 0.1, 32.0)
-            _push_app_log!(m, "[INFO] scope X-zoom ×$(round(m.scope_zoom_x; digits=2))"); return
-        end
     end
     # Tab autocomplete in :insert mode. Priority order:
     #   1. If a ghost suggestion is visible, accept it.

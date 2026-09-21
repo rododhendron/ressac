@@ -55,6 +55,9 @@ end
     @test Ressac.dispatch!(layers, rep_e) == false
     @test Ressac.dispatch!(layers, rep_p) == true
     @test length(hits) == n0 + 1
+    # action à deux arguments : reçoit l'événement
+    Ressac.bind!(:t_global, "R", "avec evt"; action = (t, e) -> push!(hits, "R:" * string(e.char)))
+    @test Ressac.dispatch!(layers, TKk.KeyEvent('R')) && hits[end] == "R:R"
     # re-bind du même (touches, label) remplace au lieu de dupliquer
     Ressac.bind!(:t_scope, "e", "évaluer"; action = t -> push!(hits, "e2"))
     @test count(b -> b.keys == ["e"], Ressac.bindings(:t_scope)) == 1
