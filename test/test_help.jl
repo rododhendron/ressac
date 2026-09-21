@@ -11,6 +11,13 @@ if !isdefined(Main, :MockOSCClient)
     Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
 end
 
+# Sandbox : :synth / U écrivent dans plugins/user-synths → on travaille
+# dans un répertoire temporaire pour ne rien laisser dans le dépôt.
+const _HELP_SANDBOX = mktempdir()
+mkpath(joinpath(_HELP_SANDBOX, "plugins", "user-synths"))
+const _HELP_OLD_PWD = pwd()
+cd(_HELP_SANDBOX)
+
 function _help_app()
     sched = Ressac.Scheduler(MockOSCClient(); cps = 0.5)
     app = Ressac.RessacApp(; scheduler = sched)
@@ -291,3 +298,5 @@ end
     @test occursin("✎ SinOsc", rows[i - 1])
     @test occursin("? aide", rows[i - 1])
 end
+
+cd(_HELP_OLD_PWD)   # fin du sandbox

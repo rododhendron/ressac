@@ -25,6 +25,11 @@ const W = parse(Int, get(ENV, "SHOT_W", "140"))
 const H = parse(Int, get(ENV, "SHOT_H", "40"))
 const OUT = isempty(ARGS) ? mktempdir() : ARGS[1]
 isdir(OUT) || mkpath(OUT)
+# Les scénarios écrivent dans plugins/user-synths (:synth, U) : on se
+# place dans un répertoire temporaire pour ne rien laisser dans le dépôt.
+const _SHOT_DIR = mktempdir()
+mkpath(joinpath(_SHOT_DIR, "plugins", "user-synths"))
+cd(_SHOT_DIR)
 
 function newapp()
     sched = Ressac.Scheduler(_ShotOSC(); cps = 0.5)
