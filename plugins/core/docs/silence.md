@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "silence"
-short = "silence(T) — empty pattern of type T. Useful as a placeholder."
+short = "silence(T) — pattern vide de type T. Utile comme bouche-trou."
 tags = []
 +++
 

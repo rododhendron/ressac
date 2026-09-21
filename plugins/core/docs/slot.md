@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "slot"
-short = "A named pattern channel (:d1 to :d64). The scheduler queries each slot every cycle and ships its events to OSC."
+short = "Un canal de pattern nommé (:d1 à :d64). Le scheduler interroge chaque slot à chaque cycle et envoie ses événements en OSC."
 tags = []
 +++
 

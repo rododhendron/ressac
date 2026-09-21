@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "velocity"
-short = "Note velocity (0-1). Often shaped into amplitude or filter cutoff."
+short = "Vélocité de la note (0-1). Souvent transformée en amplitude ou en cutoff."
 tags = []
 +++
 

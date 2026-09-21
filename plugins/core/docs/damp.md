@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "damp"
-short = "Damping (0-1). In reverbs: high freq absorption. In drums: sharpness of the body."
+short = "Amortissement (0-1). Réverbs : absorption des aigus. Percussions : netteté du corps."
 tags = []
 +++
 

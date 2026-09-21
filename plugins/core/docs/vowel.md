@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "vowel"
-short = "Formant filter, vowels :a :e :i :o :u. Makes things 'speak'."
+short = "Filtre à formants, voyelles :a :e :i :o :u. Fait « parler » un son."
 tags = []
 +++
 

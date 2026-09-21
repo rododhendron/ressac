@@ -298,7 +298,28 @@ Les questions telles qu'elles étaient posées :
    `Space` en mode normal (c'est déjà un leader), après 300 ms sur `g` et
    `Ctrl-w` pour ne pas gêner les habitués.
 
-## 6. Risques
+## 6. Réalisé (2026-09-21)
+
+Les six étapes sont livrées, suite complète verte à chaque commit :
+
+| Étape | Commits | Contenu |
+|---|---|---|
+| 1 Structure | `8fb56a6`, `c1f34da` | tui_app.jl → 10 fichiers app_*.jl (déplacements purs), code mort, wiki architecture |
+| 2 Registre | `c5ef51b` → `ac1cd47` | keymap.jl, bindings app/panes/modaux, `?` générée partout, barre de touches, which-key, wiki des touches généré |
+| 3 Chrome | `bcb654d` | status line fusionnée (mode, surface, workspaces), barre de touches unique, journal 3 lignes, modaux sans débordement |
+| 4 Ponts | `5021636` | PLAY/DESIGN/EXPLORE, gs, U, :synth librairie, :sculpt robuste, export → DESIGN |
+| 5 Conteneurs | `f38e83b` | zoom de pane (Ctrl-w z), sculpt en pane zoomée avec studio, titres partout |
+| 6 Langue | `9b866b6`, wiki | messages, titres, tutoriel, guides, librairie, 12 pages de wiki en français |
+
+Outils : `scripts/tui_shot.jl` (captures), `scripts/gen_keys_wiki.jl`
+(wiki des touches), `test/test_keymap.jl`, `test/test_help.jl`,
+`test/test_bridges.jl`.
+
+Restes connus : les docs SC des UGens (`_SC_UGEN_DOCS`) citent la doc
+SuperCollider en anglais ; `test_ui_integration.jl` a toujours deux
+tests `:starter` dépendants de l'ordre de la suite.
+
+## 7. Risques
 
 - Le découpage pur de 6000 lignes touche l'ordre d'include : Julia
   résout les noms à l'appel, donc seuls les `const` et les `struct`

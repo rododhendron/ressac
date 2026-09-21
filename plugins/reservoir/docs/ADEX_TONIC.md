@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ADEX_TONIC"
-short = "AdEx preset — tonic spiking (steady firing, no adaptation)."
+short = "Préréglage AdEx — décharge tonique (régulière, sans adaptation)."
 tags = ["reservoir", "preset"]
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "slide"
-short = "Pitch slide between notes."
+short = "Glissement de hauteur entre les notes."
 tags = []
 +++
 

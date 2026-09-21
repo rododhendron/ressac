@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ratio"
-short = "Compressor ratio (1=no compression, 4=4:1, ∞=limiting)."
+short = "Ratio du compresseur (1 = aucune compression, 4 = 4:1, ∞ = limiteur)."
 tags = []
 +++
 

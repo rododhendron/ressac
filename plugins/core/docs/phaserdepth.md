@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "phaserdepth"
-short = "Phaser depth (0-1)."
+short = "Profondeur du phaser (0-1)."
 tags = []
 +++
 

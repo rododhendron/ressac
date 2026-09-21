@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "()"
-short = "name(k,n) — Euclidean rhythm: k hits over n steps. p\"bd(3,8)\" = classic 3-against-8."
+short = "nom(k,n) — rythme euclidien : k coups sur n pas. p\"bd(3,8)\" = le 3-contre-8 classique."
 tags = []
 +++
 

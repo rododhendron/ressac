@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "enhance"
-short = "Mid/treble enhancer (0-1)."
+short = "Rehausseur de médiums/aigus (0-1)."
 tags = []
 +++
 

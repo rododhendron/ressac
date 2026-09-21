@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "*"
-short = "name*N inside p\"…\" — repeat name N times inside its slot. p\"bd*4\" = 4 hits/cycle."
+short = "nom*N dans p\"…\" — répète nom N fois dans son pas. p\"bd*4\" = 4 coups/cycle."
 tags = []
 +++
 

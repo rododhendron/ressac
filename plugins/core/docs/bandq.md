@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "bandq"
-short = "Band-pass filter Q (resonance/width)."
+short = "Q du filtre passe-bande (résonance / largeur)."
 tags = []
 +++
 

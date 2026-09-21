@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "out"
-short = "Synth output bus number. 0=master left, 1=master right. SuperDirt routes through DirtPan via this."
+short = "Bus de sortie du synth. 0 = master gauche, 1 = master droite. SuperDirt route par DirtPan avec ça."
 tags = []
 +++
 

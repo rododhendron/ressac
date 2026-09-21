@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "centre"
-short = "Centre / pivot value an LFO modulates around. Used together with `depth` for symmetric sweeps."
+short = "Valeur centrale autour de laquelle un LFO module. Avec `depth` pour des balayages symétriques."
 tags = []
 +++
 

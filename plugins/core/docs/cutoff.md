@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "cutoff"
-short = "Filter frequency for the synth's internal filter (Hz). Lower = darker."
+short = "Fréquence du filtre interne du synth (Hz). Plus bas = plus sombre."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "drive_ramp"
-short = "drive_ramp(low, high, period_steps) → Function. Sawtooth ramp."
+short = "drive_ramp(low, high, period_steps) → Function. Rampe en dents-de-scie."
 tags = ["reservoir", "drive"]
 +++
 

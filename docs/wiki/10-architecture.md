@@ -289,10 +289,11 @@ sauvegarde ghost usage  écriture asynchrone de ghost_usage.json.
 fetch sccode            synchrone (bloque le modal).
 ```
 
-## Ce qui va changer
+## Le registre de touches
 
-La refonte UI/UX en cours est décrite dans
-`docs/journal/20260921_ui_ux_refonte_design.md` : registre de bindings
-unique (hints, aide `?` et wiki des touches générés), chrome réduit à
-trois lignes, workspaces PLAY / DESIGN / EXPLORE, sculpt en pane
-zoomable, UI en français.
+Toutes les touches sont déclarées dans le registre (`src/keymap.jl`) :
+`app_keymap.jl` pour l'app, chaque pane et chaque modal pour les
+siennes. La barre de touches, l'aide `?`, le popup which-key et
+`docs/wiki/04-keys.md` (généré par `scripts/gen_keys_wiki.jl`) en
+dérivent. La refonte qui a mené là est décrite dans
+`docs/journal/20260921_ui_ux_refonte_design.md`.

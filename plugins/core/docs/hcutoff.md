@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "hcutoff"
-short = "Synth-internal high-pass cutoff."
+short = "Cutoff du passe-haut interne du synth."
 tags = []
 +++
 

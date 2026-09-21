@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "!"
-short = "name!N — give name N times the weight (takes N slots)."
+short = "nom!N — donne à nom N fois le poids (occupe N pas)."
 tags = []
 +++
 

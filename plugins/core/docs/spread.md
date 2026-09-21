@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "spread"
-short = "Stereo spread / detuning amount."
+short = "Largeur stéréo / désaccord."
 tags = []
 +++
 

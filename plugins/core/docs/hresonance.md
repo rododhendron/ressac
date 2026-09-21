@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "hresonance"
-short = "Synth-internal high-pass resonance."
+short = "Résonance du passe-haut interne du synth."
 tags = []
 +++
 

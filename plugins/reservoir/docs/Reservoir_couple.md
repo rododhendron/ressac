@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Reservoir.couple"
-short = "Build a CoupledReservoirs group from a vector of reservoirs. Followed by connect!() for projections. kwarg: output_idx."
+short = "Construit un groupe CoupledReservoirs depuis un vecteur de réservoirs. Puis connect!() pour les projections. kwarg : output_idx."
 tags = ["reservoir"]
 +++
 

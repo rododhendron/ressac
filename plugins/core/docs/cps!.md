@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "cps!"
-short = "cps!(x) — set the live scheduler tempo in cycles/sec. Equivalent to :cps x at the command line."
+short = "cps!(x) — règle le tempo du scheduler en cycles/s. Équivaut à :cps x en ligne de commande."
 tags = []
 +++
 

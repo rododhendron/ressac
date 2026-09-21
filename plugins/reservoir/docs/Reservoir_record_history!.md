@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Reservoir.record_history!"
-short = "Opt-in spike history recording for the visual scope. record_history!(r, capacity). Set capacity=0 to stop."
+short = "Enregistrement optionnel de l'historique d'impulsions pour le scope. record_history!(r, capacity). capacity=0 pour arrêter."
 tags = ["reservoir"]
 +++
 

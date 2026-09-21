@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Chaos.henon"
-short = "Hénon map (2D discrete). kwargs: a=1.4, b=0.3, axis=:x|:y, steps_per_cycle=64, init=(x,y). Returns Pattern{Float64}."
+short = "Carte de Hénon (2D discrète). kwargs : a=1.4, b=0.3, axis=:x|:y, steps_per_cycle=64, init=(x,y). Renvoie un Pattern{Float64}."
 tags = ["chaos"]
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "hush_all!"
-short = "hush_all!() — stop every slot. Panic button."
+short = "hush_all!() — arrête tous les slots. Le bouton panique."
 tags = []
 +++
 

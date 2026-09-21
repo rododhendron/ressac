@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "drive_sin"
-short = "drive_sin(amp, period_steps; offset=0, phase=0) → Function. Sine wave, period in steps."
+short = "drive_sin(amp, period_steps; offset=0, phase=0) → Function. Sinus, période en pas."
 tags = ["reservoir", "drive"]
 +++
 

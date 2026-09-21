@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Reservoir.spectral_cloud"
-short = "Route II — N additive partials per frame, amps from reservoir state. kwargs: bins, frames_per_cycle, layout, drive, amplitude_kind, amplitude_scale, overlap, synth."
+short = "Route II — N partiels additifs par trame, amplitudes lues dans l'état du réservoir. kwargs : bins, frames_per_cycle, layout, drive, amplitude_kind, amplitude_scale, overlap, synth."
 tags = ["reservoir", "route", "spectral"]
 +++
 

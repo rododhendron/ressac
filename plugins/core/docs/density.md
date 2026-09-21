@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "density"
-short = "Alias for fast — TidalCycles compat."
+short = "Alias de fast — compatibilité TidalCycles."
 tags = []
 +++
 

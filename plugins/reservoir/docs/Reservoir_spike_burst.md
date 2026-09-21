@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Reservoir.spike_burst"
-short = "Route I — each spike fires a sineburst event at the neuron's mapped freq. kwargs: drive, layout, layout_args, lo, hi, burst_dur, gain, synth."
+short = "Route I — chaque impulsion tire une bouffée de sinus à la fréquence du neurone. kwargs : drive, layout, layout_args, lo, hi, burst_dur, gain, synth."
 tags = ["reservoir", "route"]
 +++
 

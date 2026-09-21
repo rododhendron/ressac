@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "fbsine"
-short = "AUDIO-rate FBSineL UGen for @synth. Args: freq, im, fb, a, c, xi, yi."
+short = "UGen FBSineL au taux AUDIO pour @synth. Args : freq, im, fb, a, c, xi, yi."
 tags = ["chaos", "ugen"]
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "vibrato"
-short = "Pitch wobble amount."
+short = "Ampleur du vibrato."
 tags = []
 +++
 

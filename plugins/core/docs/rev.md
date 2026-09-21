@@ -1,7 +1,7 @@
 +++
 examples = ["@d1 p\"bd hh sn hh\" |> rev            # hh sn hh bd"]
 name = "rev"
-short = "rev(p) — reverse events within each cycle."
+short = "rev(p) — inverse les événements dans chaque cycle."
 tags = []
 +++
 

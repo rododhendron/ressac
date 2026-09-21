@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "modfreq"
-short = "Modulator frequency for FM synthesis."
+short = "Fréquence du modulateur en FM."
 tags = []
 +++
 

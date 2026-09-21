@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "freqshift"
-short = "Frequency shifter amount (Hz, signed)."
+short = "Décalage de fréquence (Hz, signé)."
 tags = []
 +++
 

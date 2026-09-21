@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "drive_square"
-short = "drive_square(amp, period_steps; duty=0.5, offset=0) → Function. On/off pulse train."
+short = "drive_square(amp, period_steps; duty=0.5, offset=0) → Function. Train d'impulsions on/off."
 tags = ["reservoir", "drive"]
 +++
 

@@ -1,22 +1,22 @@
 using Test
 using Ressac
 
-# Frozen samples from pre-migration _PARAM_DOCS / _STARTER_PACKS.
+# Échantillons figés des docs de plugins (en français depuis 2026-09-21).
 # This is a smoke check, not exhaustive: 10 representative doc entries
 # and 3 starters spanning every routing bucket (core, reservoir, chaos).
 # Goal: catch a regression where a routing rule silently dropped content.
 
 const _MIGRATION_SAMPLE_DOCS = Dict{String,String}(
-    "gain" => "Volume multiplier. 1=neutral, 0.5=half, 2=double. Composes ×.",
-    "cps" => "Cycles per second — Ressac's tempo unit. 0.5 = 1 cycle / 2s (30 BPM @ 4 beats/cycle), 0.8 = ~48 BPM, 0.3 = 18 BPM. cps!(x) sets it live, :cps x is the TUI form.",
-    "n" => "Note offset (semitones) for synths, or sample-variant index for sample banks.",
-    "fast" => "fast(n, p) or `p |> fast(n)` — compress time ×n. fast(2) plays twice in a cycle.",
-    "Reservoir.adex" => "Build an AdEx spiking-neuron reservoir. kwargs: N, params=ADEX_*, σ_noise (OU noise pA), τ_noise (ms), inhibitory_fraction, p_connect, W_gain, V_init=:rest|:scattered, seed.",
-    "Reservoir.spike_burst" => "Route I — each spike fires a sineburst event at the neuron's mapped freq. kwargs: drive, layout, layout_args, lo, hi, burst_dur, gain, synth.",
-    "drive_const" => "drive_const(amp) → Function. Constant current to all neurons each step.",
-    "ADEX_TONIC" => "AdEx preset — tonic spiking (steady firing, no adaptation).",
-    "lorenz" => "AUDIO-rate LorenzL UGen for @synth (sc3-plugins). Args: freq, σ, ρ, β, h, xi, yi, zi. For control-rate use Chaos.lorenz.",
-    "henon" => "AUDIO-rate HenonL UGen for @synth. Args: freq, a, b, x0, x1. For control-rate use Chaos.henon.",
+    "gain" => "Multiplicateur de volume. 1 = neutre, 0.5 = moitié, 2 = double. Se compose en ×.",
+    "cps" => "Cycles par seconde — l'unité de tempo de Ressac. 0.5 = 1 cycle / 2 s (30 BPM à 4 temps/cycle), 0.8 ≈ 48 BPM, 0.3 = 18 BPM. cps!(x) le règle en live, :cps x depuis la TUI.",
+    "n" => "Décalage de note (demi-tons) pour un synth, ou index de variante pour une banque de samples.",
+    "fast" => "fast(n, p) ou `p |> fast(n)` — compresse le temps ×n. fast(2) joue deux fois par cycle.",
+    "Reservoir.adex" => "Construit un réservoir de neurones AdEx. kwargs : N, params=ADEX_*, σ_noise (bruit OU en pA), τ_noise (ms), inhibitory_fraction, p_connect, W_gain, V_init=:rest|:scattered, seed.",
+    "Reservoir.spike_burst" => "Route I — chaque impulsion tire une bouffée de sinus à la fréquence du neurone. kwargs : drive, layout, layout_args, lo, hi, burst_dur, gain, synth.",
+    "drive_const" => "drive_const(amp) → Function. Courant constant sur tous les neurones à chaque pas.",
+    "ADEX_TONIC" => "Préréglage AdEx — décharge tonique (régulière, sans adaptation).",
+    "lorenz" => "UGen LorenzL au taux AUDIO pour @synth (sc3-plugins). Args : freq, σ, ρ, β, h, xi, yi, zi. Au taux de contrôle : Chaos.lorenz.",
+    "henon" => "UGen HenonL au taux AUDIO pour @synth. Args : freq, a, b, x0, x1. Au taux de contrôle : Chaos.henon.",
 )
 
 const _MIGRATION_SAMPLE_STARTERS = ["dub-techno", "reservoir-pop5", "chaos-explore"]

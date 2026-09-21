@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Reservoir.connect!"
-short = "Add a directional projection src → dst between members of a coupled group. kwargs: gain, p_connect, sign=:positive|:negative|:mixed, seed."
+short = "Ajoute une projection dirigée src → dst entre membres d'un groupe couplé. kwargs : gain, p_connect, sign=:positive|:negative|:mixed, seed."
 tags = ["reservoir"]
 +++
 

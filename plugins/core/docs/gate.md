@@ -1,7 +1,7 @@
 +++
 examples = ["@d1 gate(:bd, p\"1 0 1 0 1 0 1 0\")"]
 name = "gate"
-short = "gate(:name, p\"1 0 0 1 …\") — substitute :name for every non-silence event of p. Short alias for rhythm masks."
+short = "gate(:nom, p\"1 0 0 1 …\") — substitue :nom à chaque événement non silencieux de p. Alias court pour un masque rythmique."
 tags = []
 +++
 

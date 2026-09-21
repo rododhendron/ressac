@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "attack"
-short = "Time to reach full volume after a note triggers (sec). 0.01=instant, 0.5=soft fade in."
+short = "Temps pour atteindre le volume plein après le déclenchement (s). 0.01 = instantané, 0.5 = fondu doux."
 tags = []
 +++
 

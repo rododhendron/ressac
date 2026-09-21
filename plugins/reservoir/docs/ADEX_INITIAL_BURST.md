@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ADEX_INITIAL_BURST"
-short = "AdEx preset — initial burst on stimulus onset then sparse."
+short = "Préréglage AdEx — bouffée au début du stimulus puis clairsemé."
 tags = ["reservoir", "preset"]
 +++
 

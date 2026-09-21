@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "moddepth"
-short = "Modulator depth / amplitude for FM."
+short = "Profondeur / amplitude du modulateur en FM."
 tags = []
 +++
 

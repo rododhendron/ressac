@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "resonance"
-short = "Filter resonance (0-1). Higher = more peak around cutoff, 0.5+ starts to whistle."
+short = "Résonance du filtre (0-1). Plus haut = plus de pic au cutoff ; 0.5+ commence à siffler."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "feedback"
-short = "Delay or comb feedback amount (0-0.95). High = long tails / oscillation."
+short = "Feedback du delay ou du comb (0-0.95). Haut = longues queues / oscillation."
 tags = []
 +++
 

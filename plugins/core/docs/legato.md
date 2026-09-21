@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "legato"
-short = "Note overlap (0 = no overlap, 1 = full hold). Use for connected lines."
+short = "Chevauchement des notes (0 = aucun, 1 = tenue complète). Pour des lignes liées."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "<>"
-short = "<a b c> — alternation: a on cycle 0, b on cycle 1, c on cycle 2, repeat."
+short = "<a b c> — alternance : a au cycle 0, b au cycle 1, c au cycle 2, puis on recommence."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "logistic"
-short = "AUDIO-rate Logistic UGen for @synth. Args: freq, paramA, x0."
+short = "UGen Logistic au taux AUDIO pour @synth. Args : freq, paramA, x0."
 tags = ["chaos", "ugen"]
 +++
 

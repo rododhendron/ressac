@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ADEX_IRREGULAR"
-short = "AdEx preset — chaotic dynamics near bifurcation."
+short = "Préréglage AdEx — dynamique chaotique près de la bifurcation."
 tags = ["reservoir", "preset"]
 +++
 

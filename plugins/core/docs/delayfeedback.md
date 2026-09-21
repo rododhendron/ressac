@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "delayfeedback"
-short = "Delay regen (0-0.95). High = long tails."
+short = "Régénération du delay (0-0.95). Haut = longues queues."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ADEX_REGULAR_BURST"
-short = "AdEx preset — repeating bursts on sustained input."
+short = "Préréglage AdEx — bouffées répétées sous entrée soutenue."
 tags = ["reservoir", "preset"]
 +++
 

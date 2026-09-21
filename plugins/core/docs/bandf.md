@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "bandf"
-short = "Band-pass filter frequency (Hz)."
+short = "Fréquence du filtre passe-bande (Hz)."
 tags = []
 +++
 

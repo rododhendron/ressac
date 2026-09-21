@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "[]"
-short = "[a b] inside p\"…\" — sub-group (treated as one slot, recursively divided)."
+short = "[a b] dans p\"…\" — sous-groupe (un seul pas, divisé récursivement)."
 tags = []
 +++
 

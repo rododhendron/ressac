@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "pure"
-short = "pure(v) — pattern that fires v once per cycle. The atom you build on."
+short = "pure(v) — pattern qui émet v une fois par cycle. L'atome sur lequel tout se construit."
 tags = []
 +++
 

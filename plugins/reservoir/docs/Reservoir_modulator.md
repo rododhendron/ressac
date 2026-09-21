@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Reservoir.modulator"
-short = "Route III — read a scalar from one neuron as Pattern{Float64}. kwargs: neuron, kind=:auto|:V|:w|:spike|:density|:bit, scale, drive."
+short = "Route III — lit un scalaire d'un neurone comme Pattern{Float64}. kwargs : neuron, kind=:auto|:V|:w|:spike|:density|:bit, scale, drive."
 tags = ["reservoir", "route", "modulator"]
 +++
 

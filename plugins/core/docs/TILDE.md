@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "~"
-short = "~ inside p\"…\" — silence (no event for that slot)."
+short = "~ dans p\"…\" — silence (pas d'événement pour ce pas)."
 tags = []
 +++
 

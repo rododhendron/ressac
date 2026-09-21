@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ADEX_TRANSIENT"
-short = "AdEx preset — brief onset firing then stops despite input."
+short = "Préréglage AdEx — bref tir au début puis s'arrête malgré l'entrée."
 tags = ["reservoir", "preset"]
 +++
 

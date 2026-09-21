@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "crush"
-short = "Bit-crush depth (1=destroyed, 16=clean). 6-8 = lofi."
+short = "Profondeur de bit-crush (1 = détruit, 16 = propre). 6-8 = lo-fi."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "rq"
-short = "Reciprocal Q for SuperCollider filters (RLPF, RHPF). 1.0=no resonance, 0.1=very resonant."
+short = "Q réciproque des filtres SuperCollider (RLPF, RHPF). 1.0 = sans résonance, 0.1 = très résonant."
 tags = []
 +++
 

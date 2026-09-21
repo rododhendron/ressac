@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "delaytime"
-short = "Delay time in beats. 0.25=16th, 0.5=8th, 1=quarter."
+short = "Temps de delay en temps. 0.25 = double-croche, 0.5 = croche, 1 = noire."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "d!"
-short = "d!(:dN, pattern) — set a slot from Julia code (REPL or :julia hooks). Same effect as @dN."
+short = "d!(:dN, pattern) — règle un slot depuis du Julia (REPL ou hooks :julia). Même effet que @dN."
 tags = []
 +++
 

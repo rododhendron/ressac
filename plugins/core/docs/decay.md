@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "decay"
-short = "Decay time in sec. ADSR's D — how long from peak to sustain level."
+short = "Temps de decay en s. Le D de l'ADSR — du pic au niveau de sustain."
 tags = []
 +++
 

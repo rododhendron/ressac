@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "drive_const"
-short = "drive_const(amp) → Function. Constant current to all neurons each step."
+short = "drive_const(amp) → Function. Courant constant sur tous les neurones à chaque pas."
 tags = ["reservoir", "drive"]
 +++
 

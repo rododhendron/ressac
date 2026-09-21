@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "tremolodepth"
-short = "Tremolo depth (0-1)."
+short = "Profondeur du trémolo (0-1)."
 tags = []
 +++
 

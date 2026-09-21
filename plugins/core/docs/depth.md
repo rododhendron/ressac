@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "depth"
-short = "Modulation depth. For an LFO on cutoff: how wide the cutoff sweeps around `centre`."
+short = "Profondeur de modulation. Pour un LFO sur le cutoff : l'amplitude du balayage autour de `centre`."
 tags = []
 +++
 

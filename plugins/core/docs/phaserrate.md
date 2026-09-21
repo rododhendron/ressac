@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "phaserrate"
-short = "Phaser sweep speed (Hz)."
+short = "Vitesse de balayage du phaser (Hz)."
 tags = []
 +++
 

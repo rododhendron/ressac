@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "cycle"
-short = "Ressac's time unit. Every pattern repeats once per cycle. A `p\"a b c d\"` produces 4 events evenly across one cycle."
+short = "L'unité de temps de Ressac. Chaque pattern se répète une fois par cycle. Un `p\"a b c d\"` produit 4 événements répartis sur un cycle."
 tags = []
 +++
 

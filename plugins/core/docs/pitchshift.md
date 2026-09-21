@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "pitchshift"
-short = "Pitch shifter amount (semitones)."
+short = "Transposition (demi-tons)."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "sustain"
-short = "Level held while the note is on (0-1). Affects ADSR shape."
+short = "Niveau tenu pendant la note (0-1). Change la forme de l'ADSR."
 tags = []
 +++
 

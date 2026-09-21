@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "quad"
-short = "AUDIO-rate QuadL UGen for @synth. Args: freq, a, b, c, xi."
+short = "UGen QuadL au taux AUDIO pour @synth. Args : freq, a, b, c, xi."
 tags = ["chaos", "ugen"]
 +++
 

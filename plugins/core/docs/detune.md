@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "detune"
-short = "Detune amount (cents/0-1)."
+short = "Désaccord (cents / 0-1)."
 tags = []
 +++
 

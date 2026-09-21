@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "henon"
-short = "AUDIO-rate HenonL UGen for @synth. Args: freq, a, b, x0, x1. For control-rate use Chaos.henon."
+short = "UGen HenonL au taux AUDIO pour @synth. Args : freq, a, b, x0, x1. Au taux de contrôle : Chaos.henon."
 tags = ["chaos", "ugen"]
 +++
 

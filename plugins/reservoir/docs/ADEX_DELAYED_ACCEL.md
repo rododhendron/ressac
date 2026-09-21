@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ADEX_DELAYED_ACCEL"
-short = "AdEx preset — pause then accelerating spike rate."
+short = "Préréglage AdEx — pause puis cadence d'impulsions qui accélère."
 tags = ["reservoir", "preset"]
 +++
 

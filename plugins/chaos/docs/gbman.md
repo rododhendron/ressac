@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "gbman"
-short = "AUDIO-rate GbmanL (Gingerbreadman) UGen for @synth. Args: freq, xi, yi."
+short = "UGen GbmanL (Gingerbreadman) au taux AUDIO pour @synth. Args : freq, xi, yi."
 tags = ["chaos", "ugen"]
 +++
 

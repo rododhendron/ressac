@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "accelerate"
-short = "Pitch sweep across the note (semitones/sec). Positive = up, negative = down."
+short = "Glissement de hauteur sur la note (demi-tons/s). Positif = monte, négatif = descend."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "cut"
-short = "Cut group: voices sharing the same positive int truncate each other."
+short = "Groupe de coupe : les voix partageant le même entier positif se coupent mutuellement."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "hold"
-short = "How long the envelope stays at peak before release (sec)."
+short = "Durée au pic de l'enveloppe avant le release (s)."
 tags = []
 +++
 

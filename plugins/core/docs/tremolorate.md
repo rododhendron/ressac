@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "tremolorate"
-short = "Tremolo speed (Hz)."
+short = "Vitesse du trémolo (Hz)."
 tags = []
 +++
 

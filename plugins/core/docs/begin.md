@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "begin"
-short = "Sample start position (0-1)."
+short = "Position de départ dans le sample (0-1)."
 tags = []
 +++
 

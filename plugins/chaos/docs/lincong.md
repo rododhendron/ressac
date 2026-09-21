@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "lincong"
-short = "AUDIO-rate LinCongL UGen for @synth. Args: freq, a, c, m, xi."
+short = "UGen LinCongL au taux AUDIO pour @synth. Args : freq, a, c, m, xi."
 tags = ["chaos", "ugen"]
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "unset!"
-short = "unset!(:dN) — stop slot dN. Equivalent to commenting the line with `m`."
+short = "unset!(:dN) — arrête le slot dN. Équivaut à commenter la ligne avec `m`."
 tags = []
 +++
 

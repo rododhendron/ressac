@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "center"
-short = "Alias for centre. American spelling."
+short = "Alias de centre (orthographe américaine)."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "fade"
-short = "Fade-in or crossfade time (sec)."
+short = "Temps de fondu d'entrée ou de fondu enchaîné (s)."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "mix"
-short = "Dry/wet mix for FX (0=dry, 1=wet)."
+short = "Mélange sec/mouillé d'un effet (0 = sec, 1 = mouillé)."
 tags = []
 +++
 

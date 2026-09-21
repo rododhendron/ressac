@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "octave"
-short = "Octave offset."
+short = "Décalage d'octave."
 tags = []
 +++
 

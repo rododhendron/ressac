@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "shape"
-short = "Waveshaper drive (0-1). Subtle saturation at 0.1, heavy distortion at 0.5+."
+short = "Drive du waveshaper (0-1). Saturation subtile à 0.1, grosse distorsion à 0.5+."
 tags = []
 +++
 

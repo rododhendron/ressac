@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "cusp"
-short = "AUDIO-rate CuspL UGen for @synth. Args: freq, a, b, xi."
+short = "UGen CuspL au taux AUDIO pour @synth. Args : freq, a, b, xi."
 tags = ["chaos", "ugen"]
 +++
 

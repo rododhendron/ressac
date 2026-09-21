@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "freq"
-short = "Raw frequency in Hz. Sets the synth's freq param directly (bypasses n→freq mapping)."
+short = "Fréquence brute en Hz. Règle le paramètre freq du synth directement (contourne n→freq)."
 tags = []
 +++
 

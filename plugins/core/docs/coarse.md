@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "coarse"
-short = "Sample-rate reduction. Higher = chunkier aliasing."
+short = "Réduction du taux d'échantillonnage. Plus haut = repliement plus grossier."
 tags = []
 +++
 

@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "size"
-short = "Reverb size / room size (0-1). Larger = bigger virtual space."
+short = "Taille de la réverb / de la pièce (0-1). Plus grand = espace virtuel plus vaste."
 tags = []
 +++
 

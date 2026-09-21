@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "ADEX_ADAPTING"
-short = "AdEx preset — adapting (initial rapid burst then slows as adaptation builds)."
+short = "Préréglage AdEx — adaptatif (bouffée rapide au départ puis ralentit avec l'adaptation)."
 tags = ["reservoir", "preset"]
 +++
 

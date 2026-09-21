@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "Chaos.logistic"
-short = "Logistic map (1D). kwargs: r=3.9, steps_per_cycle=64, init=0.5. r∈[3.57, 4] is chaotic."
+short = "Carte logistique (1D). kwargs : r=3.9, steps_per_cycle=64, init=0.5. r∈[3.57, 4] est chaotique."
 tags = ["chaos"]
 +++
 

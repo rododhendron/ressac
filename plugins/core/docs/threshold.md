@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "threshold"
-short = "Compressor / gate threshold (typically in dB or amp 0-1)."
+short = "Seuil du compresseur / gate (en dB ou en amplitude 0-1)."
 tags = []
 +++
 

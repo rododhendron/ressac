@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "latoo"
-short = "AUDIO-rate Latoocarfian (Pickover) UGen for @synth. Args: freq, a, b, c, d, xi, yi."
+short = "UGen Latoocarfian (Pickover) au taux AUDIO pour @synth. Args : freq, a, b, c, d, xi, yi."
 tags = ["chaos", "ugen"]
 +++
 

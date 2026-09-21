@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "rate"
-short = "LFO rate in Hz. 4 = 4 cycles/sec, 0.5 = slow swell, 16 = fast wobble."
+short = "Vitesse d'un LFO en Hz. 4 = 4 cycles/s, 0.5 = gonflement lent, 16 = wobble rapide."
 tags = []
 +++
 

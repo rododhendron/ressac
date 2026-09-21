@@ -1,7 +1,7 @@
 +++
 examples = []
 name = "release"
-short = "Time to fade out after the note ends (sec). 0.1=staccato, 0.5=normal, 2=long tail."
+short = "Temps d'extinction après la fin de la note (s). 0.1 = staccato, 0.5 = normal, 2 = longue queue."
 tags = []
 +++
 
