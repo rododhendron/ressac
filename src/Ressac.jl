@@ -88,10 +88,30 @@ include("session_themes.jl")     # _apply_theme!, palette switching
 include("content_sccode.jl")     # sccode.org HTTP client
 include("content_wiki.jl")       # docs/wiki/*.md loader
 
-# ─── RessacApp TUI (transitively includes the modal_*.jl + key
-#     handlers + autocomplete + editor_ops + input_modes
-#     + pattern_editor + leader_snippets) ─────────────────────────
-include("tui_app.jl")
+# ─── RessacApp TUI — un fichier par responsabilité, tous prennent
+#     un m::RessacApp (le modèle vient donc en premier) ─────────────
+include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
+include("app_input.jl")          # TK.update! clavier/souris, routage panes/modaux
+include("app_editor.jl")         # motions vim, nudge, raccourcis pattern
+include("tui_pattern_editor.jl") # playhead + édition contextuelle de mininotation
+include("tui_leader_snippets.jl")# Space-leader : templates + placeholders
+include("tui_autocomplete.jl")   # Tab : identifiants, ghost, commandes ex
+include("tui_editor_ops.jl")     # opérations texte pures (mots, lignes)
+include("tui_input_modes.jl")    # tap / piano / bpm
+include("app_patterns.jl")       # mute/solo, preview, eval @dN + cascade
+include("app_scope.jl")          # :scope + rendu des vues
+include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
+include("app_transport.jl")      # rec / export / panic / hush
+include("app_commands.jl")       # tables ex + commandes + historique
+include("app_modal.jl")          # infra modaux + guide/tutorial/explain
+include("modal_browser.jl")      # :browse
+include("modal_mixer.jl")        # :mixer
+include("modal_synth_library.jl")# :lib
+include("modal_sculpt.jl")       # :sculpt (enregistre ses commandes ex)
+include("modal_wiki.jl")         # :wiki
+include("modal_snippets.jl")     # :snip
+include("modal_sccode.jl")       # :sccode
+include("app_view.jl")           # TK.view : chrome + arbre + modal
 
 # ─── Plugin section handlers (last — uses SynthDSL.@synth via
 #     Base.include for .jl orphan auto-discovery) ─────────────────
