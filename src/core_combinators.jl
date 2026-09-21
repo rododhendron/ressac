@@ -876,3 +876,73 @@ Exported alias of [`chop`](@ref). Renamed to avoid clashing with
 `Base.chop` (which trims trailing characters from a string).
 """
 const chopp = chop
+
+# ---------------------------------------------------------------------------
+# arp — arpège des accords (événements simultanés), comme Tidal
+# ---------------------------------------------------------------------------
+
+# Ordre des indices 1..n pour un mode d'arpège Tidal.
+function _arp_order(mode::Symbol, n::Int)
+    up = collect(1:n); down = reverse(up)
+    conv = Int[]; lo, hi = 1, n
+    while lo <= hi
+        push!(conv, lo); lo == hi || push!(conv, hi); lo += 1; hi -= 1
+    end
+    m = String(mode)
+    m == "up"            && return up
+    m == "down"          && return down
+    m == "updown"        && return n <= 1 ? up : vcat(up[1:end-1], down[1:end-1])
+    m == "downup"        && return n <= 1 ? up : vcat(down[1:end-1], up[1:end-1])
+    m == "up&down"       && return vcat(up, down)
+    m == "down&up"       && return vcat(down, up)
+    m == "converge"      && return conv
+    m == "diverge"       && return reverse(conv)
+    m == "disconverge"   && return vcat(conv, reverse(conv)[2:end])
+    m == "pinkyup"       && return n <= 1 ? up : vcat([[i, n] for i in 1:(n-1)]...)
+    m == "pinkyupdown"   && return n <= 1 ? up : vcat([[i, n] for i in 1:(n-1)]..., [[i, n] for i in (n-1):-1:2]...)
+    m == "thumbup"       && return n <= 1 ? up : vcat([[1, i] for i in 2:n]...)
+    m == "thumbupdown"   && return n <= 1 ? up : vcat([[1, i] for i in 2:n]..., [[1, i] for i in (n-1):-1:2]...)
+    throw(ArgumentError("mode d'arpège inconnu « $m » (up down updown downup up&down down&up converge diverge disconverge pinkyup pinkyupdown thumbup thumbupdown)"))
+end
+
+# Hauteur d'un événement pour trier les notes d'un accord.
+_arp_key(v::Symbol) = (r = _resolve_note(v); r isa Real ? Float64(r) : 0.0)
+_arp_key(v::Real) = Float64(v)
+_arp_key(v::AbstractDict) = (x = get(v, :note, get(v, :n, 0)); x isa Real ? Float64(x) : _arp_key(x))
+_arp_key(v) = 0.0
+
+"""
+    arp(mode, p) / p |> arp(mode)
+
+Arpège : les notes jouées ensemble (même début et même fin — un accord
+`c'maj`, un `[0,4,7]`) sont jouées l'une après l'autre dans leur
+créneau, dans l'ordre du mode. `mode` : `:up`, `"down"`, ou un pattern
+de modes `"<up down>"` (échantillonné au début de chaque accord).
+"""
+function arp(modes, p::Pattern{T}) where {T}
+    mp = _as_pattern(modes)
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        evs = p(s, e)
+        spans = Tuple{Rational{Int64},Rational{Int64}}[]
+        groups = Dict{Tuple{Rational{Int64},Rational{Int64}},Vector{Event{T}}}()
+        for ev in evs
+            k = (ev.start, ev.stop)
+            haskey(groups, k) || (push!(spans, k); groups[k] = Event{T}[])
+            push!(groups[k], ev)
+        end
+        sort!(spans, by = first)
+        out = Event{T}[]
+        for (a, b) in spans
+            notes = sort(groups[(a, b)]; by = ev -> _arp_key(ev.value))
+            mevs = mp(a, b)
+            mode = isempty(mevs) ? :up : Symbol(String(mevs[1].value))
+            order = _arp_order(mode, length(notes))
+            slice = (b - a) / length(order)
+            for (k, idx) in enumerate(order)
+                push!(out, Event{T}(a + slice * (k - 1), k == length(order) ? b : a + slice * k, notes[idx].value))
+            end
+        end
+        out
+    end)
+end
+arp(modes) = p -> arp(modes, _as_pattern(p))

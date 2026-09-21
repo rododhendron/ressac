@@ -115,7 +115,7 @@ const _COMMAND_NAMES = [
 ]
 
 const _COMBINATOR_NAMES = [
-    "pure", "silence", "fast", "slow", "density", "rev", "every",
+    "pure", "silence", "fast", "slow", "density", "rev", "every", "arp",
     "stack", "cat", "mask", "gate",
     "gain", "speed", "lpf", "hpf", "pan", "n", "room", "delay",
     "shape", "set", "degree",

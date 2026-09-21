@@ -440,3 +440,27 @@ end
     Tachikoma.set_text!(ed, "x = 42"); ed.cursor_col = 5
     @test Ressac._livedoc_under_cursor(app) === nothing
 end
+
+# ── Snippet Espace : on reste en mode normal, Tab saute entre les trous ──
+@testset "snippet — Space d laisse en mode normal ; Tab / i / Esc" begin
+    app, tb, frame = _help_app()
+    ed = Ressac._active_editor(app)
+    Tachikoma.set_text!(ed, ""); ed.cursor_row = 1; ed.cursor_col = 0
+    _hkey(app, ' '); _hkey(app, 'd')
+    @test ed.mode === :normal
+    @test app.placeholder_active && app.placeholder_idx == 1
+    @test occursin("@d", Tachikoma.text(ed))
+    c1 = ed.cursor_col
+    _hkey(app, :tab)                                   # trou suivant, toujours en normal
+    @test app.placeholder_idx == 2 && ed.cursor_col > c1 && ed.mode === :normal
+    _hkey(app, :backtab)
+    @test app.placeholder_idx == 1
+    _hkey(app, 'i')                                    # remplir
+    @test ed.mode === :insert
+    _hkey(app, '3')
+    @test occursin("@d3", Tachikoma.text(ed))
+    _hkey(app, :escape)
+    @test ed.mode === :normal && app.placeholder_active
+    _hkey(app, :escape)                                # sort des trous
+    @test !app.placeholder_active
+end

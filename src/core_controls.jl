@@ -144,7 +144,9 @@ function _control_op(key::Symbol, op, val)
     # `set(:cutoff, p"<400 800 1600>")`. Single-token strings like
     # `"1000"` round-trip through `_resolve_value` to numeric.
     val = val isa AbstractString ? parse_minino(String(val)) : val
-    resolved_scalar = _resolve_value(val)
+    # n / note : un nom de note (c, e5, cs, af4) vaut ses demi-tons.
+    resolve = key in (:n, :note) ? _resolve_note : _resolve_value
+    resolved_scalar = resolve(val)
     return function (p)
         # Auto-lift any of (Pattern | Symbol | AbstractString) so
         # users can drop the `p"…"` prefix:
@@ -163,7 +165,7 @@ function _control_op(key::Symbol, op, val)
                         a = max(ev_in.start, ev_v.start)
                         b = min(ev_in.stop,  ev_v.stop)
                         a < b || continue
-                        v_resolved = _resolve_value(ev_v.value)
+                        v_resolved = resolve(ev_v.value)
                         new_cm = copy(ev_in.value)
                         new_cm[key] = haskey(new_cm, key) ?
                                       op(new_cm[key], v_resolved) :
@@ -212,6 +214,13 @@ function _resolve_value(v::Symbol)
     return v
 end
 _resolve_value(v) = v
+
+# Pour n / note : nom de note Tidal → demi-tons, sinon comme _resolve_value.
+function _resolve_note(v::Symbol)
+    nn = _note_number(String(v))
+    return nn === nothing ? _resolve_value(v) : nn
+end
+_resolve_note(v) = _resolve_value(v)
 
 """
     gain(x) -> (Pattern -> ControlPattern)

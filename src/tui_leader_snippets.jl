@@ -140,7 +140,9 @@ function _expand_snippet!(m::RessacApp, ed::TK.CodeEditor, template::AbstractStr
     m.placeholder_idx    = 1
     m.placeholder_active = true
     ed.cursor_col = m.placeholder_cols[1]
-    ed.mode = :insert
+    # On reste en mode NORMAL : Tab / Maj-Tab sautent entre les trous, `i`
+    # remplit, `u` annule tout de suite si le snippet ne convient pas.
+    ed.mode = :normal
 end
 
 """

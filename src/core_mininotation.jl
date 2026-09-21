@@ -76,13 +76,20 @@ function _tokenize(s::String)
                 end
                 push!(tokens, MToken(:float, parse(Float64, s[i:prevind(s, k)]), i))
                 i = k
+            elseif j <= n && s[j] == '\''
+                # Accord à racine numérique : `0'maj` — on lit le mot entier.
+                while j <= n && (isletter(s[j]) || isdigit(s[j]) || s[j] == '\'')
+                    j = nextind(s, j)
+                end
+                push!(tokens, MToken(:ident, s[i:prevind(s, j)], i))
+                i = j
             else
                 push!(tokens, MToken(:int, parse(Int, s[i:prevind(s, j)]), i))
                 i = j
             end
         elseif isletter(c) || c == '_'
             j = i
-            while j <= n && (isletter(s[j]) || isdigit(s[j]) || s[j] == '_' || s[j] == ':')
+            while j <= n && (isletter(s[j]) || isdigit(s[j]) || s[j] == '_' || s[j] == ':' || s[j] == '\'')
                 j = nextind(s, j)
             end
             word = s[i:prevind(s, j)]
@@ -127,7 +134,9 @@ function _parse_unit!(ps::ParseState)
 
     if t.kind == :ident
         _advance!(ps)
-        node = AtomNode(Symbol(t.value))
+        # `c'maj`, `e5'min7`, `0'dom7` : un accord = un empilement de notes
+        # (demi-tons) jouées ensemble, comme `[0,4,7]`.
+        node = occursin('\'', t.value) ? _chord_node(String(t.value)) : AtomNode(Symbol(t.value))
     elseif t.kind == :silence
         _advance!(ps)
         node = SilenceNode()
@@ -484,4 +493,97 @@ String macro: `p"bd hh sn hh"` is equivalent to `parse_minino("bd hh sn hh")`.
 """
 macro p_str(s)
     return :(parse_minino($s))
+end
+
+# ── Noms de notes et accords (comme Tidal) ─────────────────────────
+# `c` = 0, `e` = 4, `a4` = -3 : octave 5 par défaut, s/# dièse, f/b bémol.
+const _NOTE_BASE = Dict('c' => 0, 'd' => 2, 'e' => 4, 'f' => 5, 'g' => 7, 'a' => 9, 'b' => 11)
+
+"""
+    _note_number(str) -> Union{Nothing,Int}
+
+Demi-tons d'un nom de note Tidal (`c`, `cs`, `ef5`, `a4`) ; `nothing` si
+ce n'est pas un nom de note. Octave 5 = 0.
+"""
+function _note_number(str::AbstractString)
+    m = match(r"^([a-gA-G])(ss|ff|s|f|#|b)?(-?\d+)?$", str)
+    m === nothing && return nothing
+    v = _NOTE_BASE[lowercase(m.captures[1][1])]
+    acc = m.captures[2]
+    acc === nothing || (v += acc in ("s", "#") ? 1 : acc == "ss" ? 2 : acc == "ff" ? -2 : -1)
+    oct = m.captures[3] === nothing ? 5 : parse(Int, m.captures[3])
+    return v + (oct - 5) * 12
+end
+
+# Table d'accords (intervalles en demi-tons), noms Tidal.
+const _CHORD_TABLE = Dict{String,Vector{Int}}(
+    "major" => [0, 4, 7], "maj" => [0, 4, 7], "M" => [0, 4, 7],
+    "aug" => [0, 4, 8], "plus" => [0, 4, 8], "sharp5" => [0, 4, 8],
+    "six" => [0, 4, 7, 9], "6" => [0, 4, 7, 9], "sixNine" => [0, 4, 7, 9, 14], "six9" => [0, 4, 7, 9, 14],
+    "major7" => [0, 4, 7, 11], "maj7" => [0, 4, 7, 11],
+    "major9" => [0, 4, 7, 11, 14], "maj9" => [0, 4, 7, 11, 14],
+    "add9" => [0, 4, 7, 14], "major11" => [0, 4, 7, 11, 14, 17], "maj11" => [0, 4, 7, 11, 14, 17],
+    "add11" => [0, 4, 7, 17], "major13" => [0, 4, 7, 11, 14, 21], "maj13" => [0, 4, 7, 11, 14, 21],
+    "add13" => [0, 4, 7, 21],
+    "dom7" => [0, 4, 7, 10], "dom9" => [0, 4, 7, 14], "dom11" => [0, 4, 7, 17], "dom13" => [0, 4, 7, 21],
+    "sevenFlat5" => [0, 4, 6, 10], "7f5" => [0, 4, 6, 10], "sevenSharp5" => [0, 4, 8, 10], "7s5" => [0, 4, 8, 10],
+    "sevenFlat9" => [0, 4, 7, 10, 13], "7f9" => [0, 4, 7, 10, 13], "nine" => [0, 4, 7, 10, 14],
+    "eleven" => [0, 4, 7, 10, 14, 17], "11" => [0, 4, 7, 10, 14, 17],
+    "thirteen" => [0, 4, 7, 10, 14, 17, 21], "13" => [0, 4, 7, 10, 14, 17, 21],
+    "minor" => [0, 3, 7], "min" => [0, 3, 7], "m" => [0, 3, 7],
+    "diminished" => [0, 3, 6], "dim" => [0, 3, 6],
+    "minorSharp5" => [0, 3, 8], "msharp5" => [0, 3, 8], "mS5" => [0, 3, 8],
+    "minor6" => [0, 3, 7, 9], "min6" => [0, 3, 7, 9], "m6" => [0, 3, 7, 9],
+    "minorSixNine" => [0, 3, 9, 7, 14], "minor69" => [0, 3, 9, 7, 14], "min69" => [0, 3, 9, 7, 14], "m69" => [0, 3, 9, 7, 14],
+    "minor7flat5" => [0, 3, 6, 10], "min7flat5" => [0, 3, 6, 10], "m7flat5" => [0, 3, 6, 10], "m7f5" => [0, 3, 6, 10],
+    "minorMajor7" => [0, 3, 7, 11], "minMaj7" => [0, 3, 7, 11], "mmaj7" => [0, 3, 7, 11],
+    "minor7sharp5" => [0, 3, 8, 10], "min7sharp5" => [0, 3, 8, 10], "m7sharp5" => [0, 3, 8, 10], "m7s5" => [0, 3, 8, 10],
+    "diminished7" => [0, 3, 6, 9], "dim7" => [0, 3, 6, 9],
+    "minor7" => [0, 3, 7, 10], "min7" => [0, 3, 7, 10], "m7" => [0, 3, 7, 10],
+    "minor7flat9" => [0, 3, 7, 10, 13], "min7flat9" => [0, 3, 7, 10, 13], "m7flat9" => [0, 3, 7, 10, 13], "m7f9" => [0, 3, 7, 10, 13],
+    "minor7sharp9" => [0, 3, 7, 10, 14], "min7sharp9" => [0, 3, 7, 10, 14], "m7sharp9" => [0, 3, 7, 10, 14], "m7s9" => [0, 3, 7, 10, 14],
+    "minor9" => [0, 3, 7, 10, 14], "min9" => [0, 3, 7, 10, 14], "m9" => [0, 3, 7, 10, 14],
+    "minor11" => [0, 3, 7, 10, 14, 17], "min11" => [0, 3, 7, 10, 14, 17], "m11" => [0, 3, 7, 10, 14, 17],
+    "minor13" => [0, 3, 7, 10, 14, 17, 21], "min13" => [0, 3, 7, 10, 14, 17, 21], "m13" => [0, 3, 7, 10, 14, 17, 21],
+    "one" => [0], "1" => [0], "five" => [0, 7], "5" => [0, 7],
+    "sus2" => [0, 2, 7], "sus4" => [0, 5, 7],
+    "sevenSus2" => [0, 2, 7, 10], "7sus2" => [0, 2, 7, 10], "sevenSus4" => [0, 5, 7, 10], "7sus4" => [0, 5, 7, 10],
+    "nineSus4" => [0, 5, 7, 10, 14], "ninesus4" => [0, 5, 7, 10, 14], "9sus4" => [0, 5, 7, 10, 14],
+    "sevenFlat10" => [0, 4, 7, 10, 15], "7f10" => [0, 4, 7, 10, 15],
+    "nineSharp5" => [0, 1, 13], "9sharp5" => [0, 1, 13], "9s5" => [0, 1, 13],
+    "minor9sharp5" => [0, 1, 14], "minor9s5" => [0, 1, 14], "min9sharp5" => [0, 1, 14], "min9s5" => [0, 1, 14], "m9sharp5" => [0, 1, 14], "m9s5" => [0, 1, 14],
+    "sevenSharp5flat9" => [0, 4, 8, 10, 13], "7s5f9" => [0, 4, 8, 10, 13],
+    "minor7sharp5flat9" => [0, 3, 8, 10, 13], "m7s5f9" => [0, 3, 8, 10, 13],
+    "elevenSharp" => [0, 4, 7, 10, 14, 18], "11s" => [0, 4, 7, 10, 14, 18],
+    "minor11sharp" => [0, 3, 7, 10, 14, 18], "m11sharp" => [0, 3, 7, 10, 14, 18], "m11s" => [0, 3, 7, 10, 14, 18],
+)
+chord_names() = sort!(collect(keys(_CHORD_TABLE)))
+
+# `c'maj`, `e5'min7`, `0'dom7`, `c'maj'i` (renversement) → ChordNode.
+function _chord_node(word::String)
+    parts = split(word, '\'')
+    root_s = String(parts[1]); name = length(parts) >= 2 ? String(parts[2]) : "major"
+    root = _note_number(root_s)
+    root === nothing && (root = tryparse(Int, root_s))
+    root === nothing && throw(ArgumentError("racine d'accord inconnue « $root_s » dans « $word »"))
+    ivs = get(_CHORD_TABLE, name, nothing)
+    ivs === nothing && throw(ArgumentError("accord inconnu « $name » dans « $word » (voir chord_names())"))
+    notes = [root + iv for iv in ivs]
+    # modificateurs Tidal : 'i / 'ii / 'iii = renversements, 'o = ouvert,
+    # 'N (entier) = nombre de notes (répète l'accord à l'octave).
+    for mod in parts[3:end]
+        if all(==('i'), mod) && !isempty(mod)
+            for _ in 1:length(mod)
+                push!(notes, popfirst!(notes) + 12)
+            end
+        elseif mod == "o" && length(notes) >= 3
+            notes = vcat([notes[1] - 12, notes[3] - 12], notes[2:2], notes[4:end])
+        elseif (k = tryparse(Int, mod)) !== nothing && k > 0
+            base = copy(notes); notes = Int[]
+            for i in 0:(k - 1)
+                push!(notes, base[mod1(i + 1, length(base))] + 12 * (i ÷ length(base)))
+            end
+        end
+    end
+    return ChordNode(MNode[AtomNode(Symbol(string(v))) for v in notes])
 end

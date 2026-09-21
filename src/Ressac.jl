@@ -131,6 +131,7 @@ export lastOf, firstOf, early, late, ply, runp, choose, seq, structPat
 # `chop` collides with Base.chop (string trim); export as `chopp`.
 # `Ressac.chop` still works for copy-pasted Tidal code.
 export striate, chopp, nrun
+export arp, chord_names
 # Continuous signals. `range_pat` / `rand_pat` keep `_pat` to avoid
 # clashing with Base.range / Base.rand respectively.
 export sine, cosine, tri, saw, square, perlin, segment

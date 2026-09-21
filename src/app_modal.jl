@@ -444,7 +444,7 @@ end
 
 # Ordre canonique des sections en mode « tout ».
 const _HELP_ALL_SCOPES = Symbol[
-    :global, :editor, :patterns, :leader, :synth, :visual, :insert, :pane_mode,
+    :global, :editor, :patterns, :leader, :placeholder, :synth, :visual, :insert, :pane_mode,
     :explorer, :waveform, :sculpt, :log, :doc, :tuning, :tap, :piano,
     :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets,
     :modal_wiki, :modal_mixer, :modal_sccode,

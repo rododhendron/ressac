@@ -157,6 +157,18 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Space w` | ▸ wiki |
 | `Space ?` | ▸ aide |
 
+## Snippet avec des trous (après Space + lettre)
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Tab` | trou suivant |
+| `S-Tab` | trou précédent |
+| `i` | remplir le trou (insertion) |
+| `u` | annuler le snippet |
+| `Esc` | sortir des trous |
+
 ## Pane synth
 
 **Jouer / écouter**

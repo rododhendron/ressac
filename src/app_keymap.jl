@@ -193,6 +193,12 @@ bind!(:visual, "Esc", "annuler"; group = :select)
 
 scope!(:insert, "Mode insertion")
 bind!(:insert, "Esc", "retour au mode normal"; group = :edit)
+scope!(:placeholder, "Snippet avec des trous (après Space + lettre)")
+bind!(:placeholder, "Tab", "trou suivant"; group = :edit)
+bind!(:placeholder, "S-Tab", "trou précédent"; group = :edit)
+bind!(:placeholder, "i", "remplir le trou (insertion)"; group = :edit)
+bind!(:placeholder, "u", "annuler le snippet"; group = :edit)
+bind!(:placeholder, "Esc", "sortir des trous"; group = :edit)
 bind!(:insert, "Tab", "compléter (ghost, identifiants) · placeholder suivant"; group = :edit)
 bind!(:insert, "S-Tab", "placeholder précédent"; group = :edit)
 

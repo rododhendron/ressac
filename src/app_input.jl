@@ -558,6 +558,12 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # pane focalisée (:patterns | :synth) → :editor → :global. Un binding
     # qui ne matche pas laisse la touche au moteur vim de l'éditeur.
     if ed.mode === :normal
+        # Trous d'un snippet, en mode normal : Tab / Maj-Tab sautent, Esc sort.
+        if m.placeholder_active && is_press
+            evt.key === :tab     && (_placeholder_jump!(m, ed, +1); return)
+            evt.key === :backtab && (_placeholder_jump!(m, ed, -1); return)
+            evt.key === :escape  && (m.placeholder_active = false; return)
+        end
         if m.pending_leader
             # Space déjà pressé : la touche suivante choisit dans :leader.
             is_press || return
@@ -619,10 +625,8 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         if m.placeholder_active && evt.key === :backtab
             _placeholder_jump!(m, ed, -1); return
         end
-        if m.placeholder_active && evt.key === :escape
-            m.placeholder_active = false
-            # fall through to TK so Esc still exits insert mode.
-        end
+        # Esc en insertion : retour au mode normal, les trous restent
+        # actifs (Tab y saute encore) ; un second Esc en normal les quitte.
         if evt.key === :tab
             if !isempty(m.ghost) && _accept_ghost!(m)
                 _compute_ghost!(m)
