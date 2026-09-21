@@ -224,6 +224,9 @@ non-empty), and the focus toggle for keystroke routing.
     # Log scroll offset (lines from the bottom). 0 = bottom, increases
     # backwards into history. Bumped by wheel events over the log pane.
     log_scroll::Int                      = 0
+    # Journal en bas de l'écran : nombre de lignes (0 = replié). `:log`
+    # bascule 3 → 10 → 0. Une pane :log dans l'arbre le replie aussi.
+    log_tail_rows::Int                   = 3
     # Tap-to-record rhythm. `:tap [sample] [steps]` enters this mode;
     # Space records a hit at the current time, Enter commits the
     # quantized pattern into the buffer, Esc cancels. Any other key is

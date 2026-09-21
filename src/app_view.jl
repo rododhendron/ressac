@@ -4,43 +4,24 @@
 # _push_app_log!.
 
 """
-    _render_livedoc_row(m, area, buf)
+    _livedoc_under_cursor(m) -> Union{Nothing,Tuple{String,String}}
 
-Pluto-style: look at the word under the cursor in the active editor,
-look it up via `_lookup_livedoc`, render one line of doc in green.
-Empty when no entry found.
+(mot, doc) du mot sous le curseur de l'éditeur actif s'il est documenté
+(params SuperDirt, UGens…), sinon `nothing`. Affiché à droite de la
+barre de touches.
 """
-function _render_livedoc_row(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    # Always blank the row first so previous-frame content (e.g. an
-    # ex command bar that's no longer active) doesn't leak through.
-    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
-                   TK.tstyle(:text))
+function _livedoc_under_cursor(m::RessacApp)
     ed = _active_editor(m)
-    ed === nothing && return        # no editor → no word-under-cursor doc
-    1 <= ed.cursor_row <= length(ed.lines) || return
+    ed === nothing && return nothing
+    1 <= ed.cursor_row <= length(ed.lines) || return nothing
     line_chars = ed.lines[ed.cursor_row]
-    isempty(line_chars) && return
-    # Find the word at cursor_col (0-based in Tachikoma's CodeEditor).
+    isempty(line_chars) && return nothing
     col = clamp(ed.cursor_col + 1, 1, length(line_chars))
     word = _word_under_cursor_chars(line_chars, col)
-    isempty(word) && return
+    isempty(word) && return nothing
     doc = _lookup_livedoc(word)
-    doc === nothing && return
-    # Two-tone row: word in accent, doc in plain text — makes the
-    # word jump out so the eye can confirm what's being documented.
-    prefix = "  ✎ "
-    w = "$word"
-    sep = " ──  "
-    TK.set_string!(buf, area.x, area.y, prefix, TK.tstyle(:text_dim))
-    x = area.x + length(prefix)
-    TK.set_string!(buf, x, area.y, w, TK.tstyle(:accent, bold=true))
-    x += length(w)
-    TK.set_string!(buf, x, area.y, sep, TK.tstyle(:text_dim))
-    x += length(sep)
-    remaining = max(0, area.width - (x - area.x))
-    TK.set_string!(buf, x, area.y,
-                   first(String(doc), remaining),
-                   TK.tstyle(:text))
+    doc === nothing && return nothing
+    return (String(word), String(doc))
 end
 
 function _word_under_cursor_chars(chars::Vector{Char}, col::Integer)
@@ -124,39 +105,6 @@ function _active_slots_summary(m::RessacApp)
     join(("@" * String(s) for s in slots), " ")
 end
 
-"""
-    _render_workspace_strip!(m, area, buf)
-
-Render workspace tabs at `area` (typically a single-row band at the
-very top). The current workspace renders with the accent style,
-others with text_dim. Untitled workspaces show as `[N]`.
-
-Used by the workspace dispatcher in Task 5 — not yet called from
-`view()` so this is a pure addition.
-"""
-function _render_workspace_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    x = area.x
-    for (i, ws) in enumerate(m.workspaces.workspaces)
-        is_current = i == m.workspaces.current_idx
-        label = isempty(ws.name) ? "[$i]" : "[$i: $(ws.name)]"
-        style = is_current ?
-            TK.tstyle(:accent, bold = true) :
-            TK.tstyle(:text_dim)
-        x + textwidth(label) > area.x + area.width && break
-        TK.set_string!(buf, x, area.y, label, style)
-        x += textwidth(label) + 1
-    end
-    # Pane mode hint — visible only while in pane mode. Spells out the
-    # exit keys + the recognized ops so the user has a cheat sheet on
-    # the strip itself.
-    if _PANE_MODE.active
-        hint = " · s/v split · hjkl or ←↓↑→ focus · c close · Esc/Enter/C-w exit"
-        if x + textwidth(hint) <= area.x + area.width
-            TK.set_string!(buf, x, area.y, hint,
-                           TK.tstyle(:warning, bold = true))
-        end
-    end
-end
 
 """
     _render_global_log_tail!(m, area, buf)
@@ -287,14 +235,24 @@ bottom of the screen. Collapses to 0 when any workspace tree leaf
 holds a LogPane (avoid duplicate rendering).
 """
 function _global_log_tail_height(m::RessacApp)
+    m.log_tail_rows <= 0 && return 0
     ws = current_workspace(m.workspaces)
-    ws === nothing && return 10
-    for leaf in _all_leaves(ws.tree)
-        for t in leaf.tabs
+    if ws !== nothing
+        for leaf in _all_leaves(ws.tree), t in leaf.tabs
             t isa LogPane && return 0
         end
     end
-    return 10
+    return m.log_tail_rows + 2          # + les deux bordures
+end
+
+# `:log` : bascule le journal du bas 3 → 10 → 0 → 3 lignes ; `:log N` fixe.
+function _cycle_log_tail!(m::RessacApp, n::Union{Nothing,Int} = nothing)
+    m.log_tail_rows = n !== nothing ? clamp(n, 0, 30) :
+                      m.log_tail_rows == 3 ? 10 : m.log_tail_rows == 10 ? 0 : 3
+    m.log_scroll = 0
+    _push_app_log!(m, m.log_tail_rows == 0 ? "[INFO] journal replié (:log pour le rouvrir · :copylogs copie tout)" :
+                                             "[INFO] journal : $(m.log_tail_rows) lignes")
+    return
 end
 
 function TK.view(m::RessacApp, f::TK.Frame)
@@ -326,26 +284,15 @@ function TK.view(m::RessacApp, f::TK.Frame)
     buf = f.buffer
 
     area = f.area
-    cmdline_active = is_active(m.command_line)
-    cmdline_h = cmdline_active ? 1 : 0
-    log_h     = _global_log_tail_height(m)
-    footer_h  = 1
-    livedoc_h = 1
-    mode_h    = 1
-    strip_h   = 1
-    status_h  = 1
-    # Top chrome: tempo / state status bar.
-    # Bottom chrome stack (top → bottom):
-    #   workspace_strip · mode_strip · livedoc · command_bar? · footer · log
-    status_y    = area.y
-    log_y       = area.y + area.height - log_h
-    footer_y    = log_y - footer_h
-    cmdline_y   = footer_y - cmdline_h
-    livedoc_y   = cmdline_y - livedoc_h
-    mode_y      = livedoc_y - mode_h
-    strip_y     = mode_y - strip_h
-    ws_y        = status_y + status_h
-    ws_height   = max(0, strip_y - ws_y)
+    # Chrome : status line en haut ; en bas la barre de touches (ou la
+    # barre de commande quand elle est active) puis le journal (0 / 3 /
+    # 10 lignes + bordures). Tout le reste est le workspace.
+    log_h     = completion_active(m.command_line) ? 12 : _global_log_tail_height(m)
+    status_y  = area.y
+    keybar_y  = area.y + area.height - 1 - log_h
+    log_y     = keybar_y + 1
+    ws_y      = status_y + 1
+    ws_height = max(0, keybar_y - ws_y)
 
     # Workspace area — dispatched through _compute_rects. Cached on
     # the model so the mouse handler can hit-test workspace leaves
@@ -375,23 +322,18 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_ghost!(m, _focused_editor_rect(m), buf)
     end
 
-    # Top chrome — tempo + state status bar.
-    _render_status_bar(m, TK.Rect(area.x, status_y, area.width, status_h), buf)
-    # Bottom chrome — workspace tabs + mode strip + livedoc + cmd + footer + log.
-    _render_workspace_strip!(m, TK.Rect(area.x, strip_y,   area.width, strip_h),   buf)
-    _render_mode_strip!(m,      TK.Rect(area.x, mode_y,    area.width, mode_h),    buf)
-    _render_livedoc_row(m,      TK.Rect(area.x, livedoc_y, area.width, livedoc_h), buf)
-    if cmdline_active
-        render_bar!(m.command_line,
-                    TK.Rect(area.x, cmdline_y, area.width, cmdline_h), buf)
+    _render_status_bar(m, TK.Rect(area.x, status_y, area.width, 1), buf)
+    keybar_rect = TK.Rect(area.x, keybar_y, area.width, 1)
+    if is_active(m.command_line)
+        render_bar!(m.command_line, keybar_rect, buf)
+    else
+        _render_footer(m, keybar_rect, buf)
     end
-    _render_footer(m, TK.Rect(area.x, footer_y, area.width, footer_h), buf)
     if log_h > 0
         log_rect = TK.Rect(area.x, log_y, area.width, log_h)
         # When the CommandLine is showing completion candidates, the
-        # log tail area becomes a picker — same chrome row, different
-        # content. The user gets the candidate list right where the
-        # log used to be, with no extra layout shift.
+        # log tail area becomes a picker — same chrome rows, different
+        # content.
         if completion_active(m.command_line)
             _render_pane_block_simple!(log_rect, "COMPLETIONS", buf)
             render_picker!(m.command_line,
@@ -403,13 +345,12 @@ function TK.view(m::RessacApp, f::TK.Frame)
 
     # Which-key : popup des suites possibles d'un préfixe (Space, g, Ctrl-w),
     # juste au-dessus de la barre de touches.
-    _render_whichkey!(m, TK.Rect(area.x, area.y, area.width, footer_y - area.y), buf)
+    _render_whichkey!(m, TK.Rect(area.x, ws_y, area.width, max(1, keybar_y - ws_y)), buf)
 
-    # Modal overlay sits on top of everything — BUT leaves the bottom row
-    # free for a persistent command bar (toujours à disposition, même dans
-    # un modal). `marea` = aire du modal moins cette ligne.
+    # Modal : par-dessus le workspace, JAMAIS sur la barre de touches (qui
+    # montre ses raccourcis) ni sur le journal.
     if m.modal !== :none
-        marea = TK.Rect(area.x, area.y, area.width, max(1, area.height - 1))
+        marea = TK.Rect(area.x, ws_y, area.width, max(1, keybar_y - ws_y))
         if m.modal === :browse
             _render_browser_modal!(m, marea, buf)
         elseif m.modal === :synth_library
@@ -429,24 +370,9 @@ function TK.view(m::RessacApp, f::TK.Frame)
         else
             _render_modal!(m, marea, buf)
         end
-        _render_modal_cmdbar!(m, TK.Rect(area.x, area.y + area.height - 1,
-                                         area.width, 1), buf)
     end
 end
 
-# Barre commande persistante au bas d'un modal : l'input quand elle est
-# active, sinon un prompt `:` discret (+ raccourcis utiles selon le modal).
-function _render_modal_cmdbar!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
-    if is_active(m.command_line)
-        render_bar!(m.command_line, rect, buf)
-    else
-        hint = m.modal === :sculpt ?
-            ": commande   ·   :w <nom> sauver · :synth <nom> jouer · :sculpt <nom>" :
-            ": commande"
-        TK.set_string!(buf, rect.x, rect.y, first(hint, rect.width), TK.tstyle(:text_dim))
-    end
-    return
-end
 
 
 # ---------------------------------------------------------------------
@@ -481,9 +407,6 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     rest = bar_w - full - (isempty(partial) ? 0 : 1)
     cycle_bar = "█" ^ full * partial * "░" ^ max(0, rest)
 
-    # Mode info moved to its own strip — status bar is pure
-    # tempo + state info now.
-
     # Sections — each is a tuple of (text, style). They get joined with
     # ` │ ` separators rendered in :text_dim so the eye groups them.
     sections = Vector{Vector{Tuple{String,TK.Style}}}()
@@ -505,6 +428,11 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         ("✧ $(sched.events_shipped[])", TK.tstyle(:title)),
     ]
     push!(sections, tempo_section)
+
+    # Mode (badge coloré) + surface focalisée.
+    mode = _current_mode_symbol(m)
+    push!(sections, [(_MODE_LABELS_FR[mode], _mode_style(mode; bold = true))])
+    push!(sections, [(_surface_label(m), TK.tstyle(:title, bold = true))])
 
     # Synth section (only if a synth pane is open)
     syn = _all_synth_buffers(m)
@@ -562,18 +490,29 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # when sections shrink (e.g. recording stops).
     TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
                    TK.tstyle(:text))
+    # Workspaces, alignés à droite : [1 PLAY] 2 3 — le courant en accent.
+    wsx = area.x + area.width
+    for (i, ws) in Iterators.reverse(collect(enumerate(m.workspaces.workspaces)))
+        is_cur = i == m.workspaces.current_idx
+        label = isempty(ws.name) ? "$i" : "$i $(ws.name)"
+        label = is_cur ? "[$label]" : " $label "
+        wsx -= textwidth(label)
+        wsx <= area.x + 40 && break
+        TK.set_string!(buf, wsx, area.y, label,
+                       is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text_dim))
+    end
     sep = " │ "
     sep_style = TK.tstyle(:text_dim)
     x = area.x
+    xmax = wsx - 1                         # ne pas écraser les workspaces
     for (i, sec) in enumerate(sections)
         if i > 1
-            x + textwidth(sep) > area.x + area.width && break
+            x + textwidth(sep) > xmax && break
             TK.set_string!(buf, x, area.y, sep, sep_style)
             x += textwidth(sep)
         end
         for (txt, sty) in sec
-            x + textwidth(txt) > area.x + area.width && (txt = first(txt,
-                max(0, area.x + area.width - x)))
+            x + textwidth(txt) > xmax && (txt = first(txt, max(0, xmax - x)))
             isempty(txt) && break
             TK.set_string!(buf, x, area.y, txt, sty)
             x += textwidth(txt)
@@ -587,6 +526,39 @@ end
 # strip AND the focused-pane border share one accent colour. Picked
 # the existing semantic palette so themes carry through.
 
+const _MODE_LABELS_FR = Dict{Symbol,String}(
+    :normal => "NORMAL", :insert => "INSERTION", :visual => "VISUEL",
+    :command => "COMMANDE", :search => "RECHERCHE", :pane => "PANE",
+)
+const _PANE_LABELS_FR = Dict{Symbol,String}(
+    :explorer => "EXPLORER", :waveform => "ONDE", :sculpt => "SCULPT",
+    :log => "JOURNAL", :doc => "DOC", :tuning => "GAMME",
+)
+const _MODAL_LABELS_FR = Dict{Symbol,String}(
+    :modal_help => "AIDE", :modal_text => "TEXTE", :modal_browse => "SONS",
+    :modal_lib => "LIBRAIRIE", :modal_snippets => "SNIPPETS", :modal_wiki => "WIKI",
+    :modal_mixer => "MIXER", :modal_sccode => "SCCODE", :modal_sculpt => "SCULPT",
+)
+
+"""
+    _surface_label(m) -> String
+
+Nom de la surface focalisée pour la status line : le modal ouvert, la
+pane éditeur (PATTERNS / SYNTH · nom) ou la pane (EXPLORER, ONDE…).
+"""
+function _surface_label(m::RessacApp)
+    m.modal !== :none && return get(_MODAL_LABELS_FR, modal_scope(m), uppercase(String(m.modal)))
+    pane = _focused_pane_impl(m)
+    pane === nothing && return "—"
+    if pane isa EditorPane
+        b = _focused_buffer(m)
+        b === nothing && return "ÉDITEUR"
+        return b.role === :patterns ? "PATTERNS" : "SYNTH · $(b.name)"
+    end
+    ps = pane_scope(pane)
+    return get(_PANE_LABELS_FR, ps, uppercase(String(ps)))
+end
+
 const _MODE_COLORS = (
     normal  = :primary,
     insert  = :success,
@@ -596,7 +568,6 @@ const _MODE_COLORS = (
     pane    = :error,
 )
 
-const _MODE_ORDER = (:normal, :insert, :visual, :command, :search, :pane)
 
 """
     _current_mode_symbol(m) -> Symbol
@@ -629,40 +600,6 @@ function _mode_style(mode::Symbol; bold::Bool = false)
     return TK.tstyle(palette, bold = bold)
 end
 
-"""
-    _render_mode_strip!(m, area, buf)
-
-Single-row horizontal mode indicator. Lists every mode in
-`_MODE_ORDER`; the current one renders in its mode colour + bold,
-the others dim. Replaces the old `⟪ MODE @ focus ⟫` badge — the
-user sees ALL modes at once with the current one highlighted.
-"""
-function _render_mode_strip!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width),
-                   TK.tstyle(:text))
-    cur = _current_mode_symbol(m)
-    sep_style = TK.tstyle(:text_dim)
-    x = area.x
-    sep = " · "
-    for (i, mode) in enumerate(_MODE_ORDER)
-        label = String(mode)
-        if mode === cur
-            label = uppercase(label)
-        end
-        chunk_w = textwidth(label)
-        if i > 1
-            x + textwidth(sep) > area.x + area.width && break
-            TK.set_string!(buf, x, area.y, sep, sep_style)
-            x += textwidth(sep)
-        end
-        x + chunk_w > area.x + area.width && break
-        style = mode === cur ?
-            _mode_style(mode; bold = true) :
-            TK.tstyle(:text_dim)
-        TK.set_string!(buf, x, area.y, label, style)
-        x += chunk_w
-    end
-end
 
 """
     _keybar_layers(m) -> (layers, prefix)
@@ -709,6 +646,9 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     key_style = TK.tstyle(:title, bold = true)
     txt_style = TK.tstyle(:text_dim)
     # « ? aide » toujours visible, épinglé à droite ; retiré de la liste.
+    # Sous un modal, « : commande » l'accompagne (la barre de commande
+    # reste accessible). Sinon, la livedoc du mot sous le curseur prend
+    # la partie droite (au plus la moitié de la largeur).
     filter!(p -> p[1] != "?", pairs)
     pin = "? aide"
     right = area.x + area.width - textwidth(pin) - 1
@@ -717,6 +657,22 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         TK.set_string!(buf, right + 1, area.y, " aide", txt_style)
     else
         right = area.x + area.width
+    end
+    if m.modal !== :none
+        cmd = ": commande"
+        right -= textwidth(cmd) + 3
+        TK.set_string!(buf, right, area.y, ":", key_style)
+        TK.set_string!(buf, right + 1, area.y, " commande · ", txt_style)
+    elseif (ld = _livedoc_under_cursor(m)) !== nothing
+        word, doc = ld
+        maxw = area.width ÷ 2
+        txt = first("✎ " * word * " — " * doc, maxw)
+        right -= textwidth(txt) + 3
+        TK.set_string!(buf, right, area.y, "✎ ", txt_style)
+        TK.set_string!(buf, right + 2, area.y, word, TK.tstyle(:accent, bold = true))
+        TK.set_string!(buf, right + 2 + textwidth(word), area.y,
+                       first(" — " * doc, max(0, textwidth(txt) - 2 - textwidth(word))), txt_style)
+        TK.set_string!(buf, right + textwidth(txt), area.y, " · ", txt_style)
     end
     x = area.x + 1
     for (i, (k, t)) in enumerate(pairs)

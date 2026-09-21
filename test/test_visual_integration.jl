@@ -142,16 +142,15 @@ end
     @test _find_row(tb, "COMMAND") > 0
 end
 
-@testset "workspace strip carries the pane-mode cheat sheet" begin
+@testset "mode pane : badge PANE dans la status line + touches dans la barre" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
     Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
-    Tachikoma.view(app, frame)
-    # The strip is now in the bottom chrome; the cheat sheet appears
-    # somewhere in the rendered buffer when pane mode is active.
+    Tachikoma.reset!(tb.buf); Tachikoma.view(app, frame)
+    @test occursin("PANE", Tachikoma.row_text(tb, 1))
     rendered = join((Tachikoma.row_text(tb, y) for y in 1:_VIS_H), '\n')
-    @test occursin("split", rendered) || occursin("focus", rendered)
+    @test occursin("split vertical", rendered)
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
 end
 

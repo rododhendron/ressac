@@ -475,6 +475,8 @@ _register_literal!(m -> (m.paused = true;
         _push_app_log!(m, "[INFO] paused — shift-drag to select & copy, any key resumes")),
     "pause", "freeze")
 _register_literal!(m -> _copy_logs_to_clipboard!(m), "copylogs", "yanklogs")
+_register_literal!(m -> _cycle_log_tail!(m), "log")
+_register_regex!(r"^log\s+(\d+)$", (m, mt) -> _cycle_log_tail!(m, parse(Int, mt.captures[1])))
 
 # ── Starter / scale / cps ───────────────────────────────────────────
 _register_literal!(m -> _push_app_log!(m,

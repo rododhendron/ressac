@@ -240,3 +240,54 @@ end
         @test true
     end
 end
+
+# ── Géométrie du chrome ─────────────────────────────────────────────
+@testset "chrome — 3 lignes en haut/bas : status, barre de touches, journal 3 lignes" begin
+    app, tb, frame = _help_app()
+    scr = _screen(app, tb, frame)
+    rows = split(scr, "\n")
+    @test occursin("RESSAC", rows[1]) && occursin("NORMAL", rows[1]) && occursin("PATTERNS", rows[1])
+    @test startswith(rows[40], "╰")                       # dernière ligne = bas du journal
+    i = findfirst(r -> startswith(r, "╭ LOG"), rows)
+    @test i == 40 - 4                                     # boîte de 5 lignes (3 + bordures)
+    @test occursin("? aide", rows[i - 1])                 # barre juste au-dessus
+    @test !any(occursin("insert · visual", r) for r in rows)   # plus de mode strip
+    # workspaces à droite de la status line
+    @test occursin("[1]", rows[1])
+    # :log replie / déplie
+    _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
+    @test findfirst(r -> startswith(r, "╭ LOG"), rows) == 40 - 11
+    _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
+    @test findfirst(r -> startswith(r, "╭ LOG"), rows) === nothing
+    @test occursin("? aide", rows[40])                    # la barre est alors tout en bas
+    _hex(app, "log 3")
+    @test app.log_tail_rows == 3
+end
+
+@testset "chrome — un modal ne recouvre ni la barre de touches ni le journal" begin
+    app, tb, frame = _help_app()
+    _hex(app, "lib")
+    rows = split(_screen(app, tb, frame), "\n")
+    i = findfirst(r -> startswith(r, "╭ LOG"), rows)
+    @test i == 36
+    @test occursin("? aide", rows[35]) && occursin(": commande", rows[35])
+    @test startswith(rows[40], "╰")
+    @test !any(occursin(": commande─", r) for r in rows)       # plus d'artefact sur la bordure
+    @test occursin("LIBRAIRIE", rows[1])                        # surface = modal
+    # la barre de commande prend la place de la barre de touches
+    _hkey(app, ':')
+    rows = split(_screen(app, tb, frame), "\n")
+    @test occursin(":", rows[35]) && !occursin("? aide", rows[35])
+    _hkey(app, :escape)
+end
+
+@testset "chrome — livedoc du mot sous le curseur à droite de la barre" begin
+    app, tb, frame = _help_app()
+    ed = Ressac._active_editor(app)
+    Tachikoma.set_text!(ed, "SinOsc.ar(440)")
+    ed.cursor_row = 1; ed.cursor_col = 2                       # sur « SinOsc »
+    rows = split(_screen(app, tb, frame), "\n")
+    i = findfirst(r -> startswith(r, "╭ LOG"), rows)
+    @test occursin("✎ SinOsc", rows[i - 1])
+    @test occursin("? aide", rows[i - 1])
+end

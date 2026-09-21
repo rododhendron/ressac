@@ -56,18 +56,19 @@ function _row_to_string(buf::Tachikoma.Buffer, y::Int)
     return String(cells)
 end
 
-@testset "_render_workspace_strip! draws workspace labels" begin
+@testset "status line : workspaces à droite, le courant entre crochets" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac.create_workspace!(app.workspaces, "live")
     Ressac.create_workspace!(app.workspaces, "synth")
     app.workspaces.current_idx = 1
-    tb = Tachikoma.TestBackend(60, 5)
-    Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 60, 1), tb.buf)
+    tb = Tachikoma.TestBackend(120, 5)
+    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
     row = _row_to_string(tb.buf, 1)
-    @test occursin("[1: live]", row)
-    @test occursin("[2: synth]", row)
+    @test occursin("[1 live]", row)
+    @test occursin(" 2 synth ", row)
+    @test findfirst("RESSAC", row).start < findfirst("[1 live]", row).start
 end
 
 @testset "TK.view dispatches through WorkspaceManager (smoke)" begin
@@ -185,43 +186,27 @@ end
     @test Ressac._route_key_to_focused_pane!(app, Tachikoma.KeyEvent('i')) === :editor
 end
 
-@testset "_render_workspace_strip! shows pane mode cheat sheet when active" begin
-    mock = MockOSCClient()
-    sched = Scheduler(mock; cps=0.5)
-    app = Ressac.RessacApp(; scheduler=sched)
-    Ressac.create_workspace!(app.workspaces, "live")
-    Ressac._PANE_MODE.active = false
-    tb = Tachikoma.TestBackend(80, 5)
-    Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb.buf)
-    @test !occursin("split", _row_to_string(tb.buf, 1))
-
-    Ressac._PANE_MODE.active = true
-    tb2 = Tachikoma.TestBackend(80, 5)
-    Ressac._render_workspace_strip!(app, Tachikoma.Rect(1, 1, 80, 1), tb2.buf)
-    row = _row_to_string(tb2.buf, 1)
-    @test occursin("split", row)
-    @test occursin("focus", row)
-    @test occursin("exit",  row)
-    Ressac._PANE_MODE.active = false
-end
-
-@testset "mode strip lists all modes; current one in caps" begin
+@testset "status line : badge de mode (NORMAL / INSERTION / PANE) et surface focalisée" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
     tb = Tachikoma.TestBackend(120, 5)
-    Ressac._render_mode_strip!(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
+    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
     row = _row_to_string(tb.buf, 1)
-    @test occursin("NORMAL", row)       # current in caps
-    @test occursin("insert", row)        # others lowercase
-    @test occursin("pane", row)
-    # Pane mode active → PANE shows in caps
-    Ressac._PANE_MODE.active = true
+    @test occursin("│ NORMAL │", row)
+    @test occursin("PATTERNS", row)
+    @test !occursin("insert", row)               # plus de strip listant tous les modes
+    Ressac._active_editor(app).mode = :insert
     tb2 = Tachikoma.TestBackend(120, 5)
-    Ressac._render_mode_strip!(app, Tachikoma.Rect(1, 1, 120, 1), tb2.buf)
-    @test occursin("PANE", _row_to_string(tb2.buf, 1))
+    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb2.buf)
+    @test occursin("INSERTION", _row_to_string(tb2.buf, 1))
+    Ressac._active_editor(app).mode = :normal
+    Ressac._PANE_MODE.active = true
+    tb3 = Tachikoma.TestBackend(120, 5)
+    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb3.buf)
+    @test occursin("│ PANE │", _row_to_string(tb3.buf, 1))
     Ressac._PANE_MODE.active = false
 end
 
@@ -299,7 +284,13 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
-    @test Ressac._global_log_tail_height(app) == 10
+    @test Ressac._global_log_tail_height(app) == 5      # 3 lignes + 2 bordures
+    Ressac._cycle_log_tail!(app)
+    @test Ressac._global_log_tail_height(app) == 12     # 10 lignes
+    Ressac._cycle_log_tail!(app)
+    @test Ressac._global_log_tail_height(app) == 0      # replié
+    Ressac._cycle_log_tail!(app, 3)
+    @test Ressac._global_log_tail_height(app) == 5
     ws = Ressac.current_workspace(app.workspaces)
     push!(ws.tree.tabs, Ressac._pane_new(:log, Dict{String,Any}()))
     @test Ressac._global_log_tail_height(app) == 0
