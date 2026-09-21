@@ -483,33 +483,33 @@ _sc_has(p::WaveformPane) = !isempty(p.knobs)
 
 scope!(:waveform, "Vue d'onde")
 bind!(:waveform, "s", "sculpter"; group = :structure, action = p -> _sculpt_init!(p))
-bind!(:waveform, ["l", "→"], "défiler →"; group = :nav, when = _wv_has,
+bind!(:waveform, ["l", "→"], "défiler →"; group = :nav, when = _wv_has, repeat = true,
       action = p -> _wave_pan!(p, p.view_len ÷ 8))
-bind!(:waveform, ["h", "←"], "défiler ←"; group = :nav, when = _wv_has,
+bind!(:waveform, ["h", "←"], "défiler ←"; group = :nav, when = _wv_has, repeat = true,
       action = p -> _wave_pan!(p, -(p.view_len ÷ 8)))
-bind!(:waveform, ["+", "i"], "zoom +"; group = :view, when = _wv_has,
+bind!(:waveform, ["+", "i"], "zoom +"; group = :view, when = _wv_has, repeat = true,
       action = p -> _wave_zoom!(p, 0.5, 0.8))
-bind!(:waveform, ["-", "o"], "zoom −"; group = :view, when = _wv_has,
+bind!(:waveform, ["-", "o"], "zoom −"; group = :view, when = _wv_has, repeat = true,
       action = p -> _wave_zoom!(p, 0.5, 1.25))
 bind!(:waveform, "0", "toute l'onde"; group = :view, when = _wv_has,
       action = p -> (p.view_start = 1; p.view_len = length(p.samples)))
 
 scope!(:sculpt, "Sculpt (l'onde et ses knobs)")
-bind!(:sculpt, ["j", "↓"], "knob suivant"; group = :nav, when = _sc_has,
+bind!(:sculpt, ["j", "↓"], "knob suivant"; group = :nav, when = _sc_has, repeat = true,
       action = p -> (p.focus = clamp(p.focus + 1, 1, length(p.knobs))))
-bind!(:sculpt, ["k", "↑"], "knob précédent"; group = :nav, when = _sc_has,
+bind!(:sculpt, ["k", "↑"], "knob précédent"; group = :nav, when = _sc_has, repeat = true,
       action = p -> (p.focus = clamp(p.focus - 1, 1, length(p.knobs))))
 bind!(:sculpt, "Tab", "nœud suivant"; short = "nœud", group = :nav, when = _sc_has,
       action = p -> _sculpt_focus_neighbour!(p, +1))
 bind!(:sculpt, "S-Tab", "nœud précédent"; group = :nav, hint = false, when = _sc_has,
       action = p -> _sculpt_focus_neighbour!(p, -1))
-bind!(:sculpt, ["l", "→"], "tirer +"; group = :edit, when = _sc_has,
+bind!(:sculpt, ["l", "→"], "tirer +"; group = :edit, when = _sc_has, repeat = true,
       action = p -> _sculpt_tug!(p, +1))
-bind!(:sculpt, ["h", "←"], "tirer −"; group = :edit, when = _sc_has,
+bind!(:sculpt, ["h", "←"], "tirer −"; group = :edit, when = _sc_has, repeat = true,
       action = p -> _sculpt_tug!(p, -1))
 bind!(:sculpt, "=", "saisir une valeur"; short = "valeur", group = :edit, when = _sc_has,
       action = p -> _sculpt_begin_value!(p))
-bind!(:sculpt, ["Space", "Enter"], "jouer"; group = :audio, when = _sc_has,
+bind!(:sculpt, ["Space", "Enter"], "jouer"; group = :audio, when = _sc_has, repeat = true,
       action = p -> _wave_play!(p))
 bind!(:sculpt, "o", "UGen suivant (même rôle)"; short = "UGen", group = :structure, when = _sc_has,
       action = p -> _sculpt_swap_focus_ugen!(p, +1))

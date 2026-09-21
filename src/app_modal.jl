@@ -263,9 +263,9 @@ function _bind_modal_common!(scope::Symbol; nav::Bool = true)
 end
 
 scope!(:modal_text, "Texte (guide, tutoriel, explication)")
-bind!(:modal_text, ["j", "↓"], "défiler"; group = :nav, hint = false,
+bind!(:modal_text, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat = true,
       action = m -> (m.modal_scroll = min(m.modal_scroll + 1, max(0, length(_modal_lines(m)) - 1))))
-bind!(:modal_text, ["k", "↑"], "remonter"; group = :nav, hint = false,
+bind!(:modal_text, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
       action = m -> (m.modal_scroll = max(0, m.modal_scroll - 1)))
 bind!(:modal_text, "G", "fin"; group = :nav, hint = false,
       action = m -> (m.modal_scroll = max(0, length(_modal_lines(m)) - 1)))
@@ -564,13 +564,13 @@ end
 
 _help_last(m::RessacApp) = max(0, length(_help_lines(m)) - 1)
 scope!(:modal_help, "Aide")
-bind!(:modal_help, ["j", "↓"], "défiler"; group = :nav, hint = false,
+bind!(:modal_help, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat = true,
       action = m -> (m.modal_scroll = min(m.modal_scroll + 1, _help_last(m))))
-bind!(:modal_help, ["k", "↑"], "remonter"; group = :nav, hint = false,
+bind!(:modal_help, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
       action = m -> (m.modal_scroll = max(0, m.modal_scroll - 1)))
-bind!(:modal_help, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false,
+bind!(:modal_help, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
       action = m -> (m.modal_scroll = min(m.modal_scroll + 20, _help_last(m))))
-bind!(:modal_help, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false,
+bind!(:modal_help, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
       action = m -> (m.modal_scroll = max(0, m.modal_scroll - 20)))
 bind!(:modal_help, ["g", "G"], "début / fin"; group = :nav, hint = false,
       action = (m, evt) -> (m.modal_scroll = evt.char == 'g' ? 0 : _help_last(m)))

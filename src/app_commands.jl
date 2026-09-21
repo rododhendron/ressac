@@ -845,10 +845,9 @@ function _open_or_reuse_editable_pane!(m::RessacApp;
                 Dict{String,Any}("buffer_role" => role, "name" => name))
     ws2 = current_workspace(m.workspaces)
     ws2 === nothing && return nothing
-    leaf = _find_leaf_by_id(ws2.tree, ws2.focused_pane)
-    (leaf === nothing || isempty(leaf.tabs)) && return nothing
-    pane = leaf.tabs[leaf.current_tab]
-    return pane isa EditorPane ? pane.tabs[pane.current_tab].code_editor : nothing
+    pane = _focused_pane_impl(m)
+    (pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs)) || return nothing
+    return pane.tabs[pane.current_tab].code_editor
 end
 
 """

@@ -85,17 +85,17 @@ end
 #    doivent exister au moment du bind!) ──
 _wiki_last(m::RessacApp) = max(0, length(m.wiki_pages[m.wiki_idx].lines) - 1)
 scope!(:modal_wiki, "Wiki")
-bind!(:modal_wiki, ["j", "↓"], "défiler"; group = :nav, hint = false,
+bind!(:modal_wiki, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat = true,
       action = m -> (m.wiki_scroll = min(m.wiki_scroll + 1, _wiki_last(m))))
-bind!(:modal_wiki, ["k", "↑"], "remonter"; group = :nav, hint = false,
+bind!(:modal_wiki, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
       action = m -> (m.wiki_scroll = max(0, m.wiki_scroll - 1)))
 bind!(:modal_wiki, ["n", "]", "→"], "page suivante"; group = :nav,
       action = m -> (m.wiki_idx = mod1(m.wiki_idx + 1, length(m.wiki_pages)); m.wiki_scroll = 0))
 bind!(:modal_wiki, ["p", "[", "←"], "page précédente"; group = :nav,
       action = m -> (m.wiki_idx = mod1(m.wiki_idx - 1, length(m.wiki_pages)); m.wiki_scroll = 0))
-bind!(:modal_wiki, "d", "10 lignes plus bas"; group = :nav, hint = false,
+bind!(:modal_wiki, "d", "10 lignes plus bas"; group = :nav, hint = false, repeat = true,
       action = m -> (m.wiki_scroll = min(m.wiki_scroll + 10, _wiki_last(m))))
-bind!(:modal_wiki, "u", "10 lignes plus haut"; group = :nav, hint = false,
+bind!(:modal_wiki, "u", "10 lignes plus haut"; group = :nav, hint = false, repeat = true,
       action = m -> (m.wiki_scroll = max(0, m.wiki_scroll - 10)))
 bind!(:modal_wiki, ["g", "G"], "début / fin de page"; group = :nav, hint = false,
       action = (m, evt) -> (m.wiki_scroll = evt.char == 'g' ? 0 : _wiki_last(m)))

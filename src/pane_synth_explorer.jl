@@ -1082,12 +1082,12 @@ bind!(:explorer, "+", "tag : bon exemple du rôle"; group = :select, hint = fals
       action = p -> _explorer_tag!(p, true))
 bind!(:explorer, "-", "tag : mauvais exemple du rôle"; group = :select, hint = false,
       action = p -> _explorer_tag!(p, false))
-bind!(:explorer, ["h", "j", "k", "l"], "candidat ← ↓ ↑ → (ou flèches, ou clic)"; group = :nav, hint = false,
+bind!(:explorer, ["h", "j", "k", "l"], "candidat ← ↓ ↑ → (ou flèches, ou clic)"; group = :nav, hint = false, repeat = true,
       action = (p, evt) -> _move_focus!(p,
           evt.char == 'l' || evt.key === :right ? 1 :
           evt.char == 'h' || evt.key === :left ? -1 :
           evt.char == 'j' || evt.key === :down ? _GA_GRID_COLS : -_GA_GRID_COLS))
-bind!(:explorer, ["→", "←", "↓", "↑"], "candidat voisin"; group = :nav, hint = false,
+bind!(:explorer, ["→", "←", "↓", "↑"], "candidat voisin"; group = :nav, hint = false, repeat = true,
       action = (p, evt) -> _move_focus!(p,
           evt.key === :right ? 1 : evt.key === :left ? -1 :
           evt.key === :down ? _GA_GRID_COLS : -_GA_GRID_COLS))

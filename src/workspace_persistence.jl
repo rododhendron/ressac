@@ -117,11 +117,15 @@ function _deserialize_tree(d::AbstractDict, wm::WorkspaceManager)
         state_dict = raw_state isa AbstractDict ?
             Dict{String,Any}(String(k) => v for (k, v) in raw_state) :
             Dict{String,Any}()
-        pane = _pane_new(kind, state_dict)
         leaf_id = Int(get(d, "id", wm.next_pane_id))
-        leaf = PaneLeaf(leaf_id, PaneImpl[pane], Int(get(d, "current_tab", 1)))
         wm.next_pane_id = max(wm.next_pane_id, leaf_id + 1)
-        return leaf
+        # Un leaf sauvé VIDE (current_tab 0 : workspace jamais visité) reste
+        # vide — _fill_workspace! le peuplera selon le nom du workspace.
+        # Sinon exactement une pane, onglet courant 1 : jamais 0 avec une
+        # pane (c'était une pane noire + BoundsError au premier rendu).
+        Int(get(d, "current_tab", 1)) == 0 && return PaneLeaf(leaf_id, PaneImpl[], 0)
+        pane = _pane_new(kind, state_dict)
+        return PaneLeaf(leaf_id, PaneImpl[pane], 1)
     else
         direction = Symbol(d["direction"])
         ratios = collect(Float64, d["ratios"])

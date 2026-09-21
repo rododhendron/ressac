@@ -361,11 +361,7 @@ _synth_pane_open(m::RessacApp) = !isempty(_all_synth_buffers(m))
 
 # Le pane focalisé est-il un WaveformPane en mode sculpt ? (laisse passer Tab)
 function _is_waveform_sculpt_focused(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return false
-    leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
-    (leaf === nothing || isempty(leaf.tabs)) && return false
-    pane = leaf.tabs[leaf.current_tab]
+    pane = _focused_pane_impl(m)
     return pane isa WaveformPane && pane.sculpt
 end
 
@@ -438,12 +434,28 @@ function _ensure_default_workspace!(m::RessacApp)
         end
         m.workspaces.current_idx = 1
     end
+    _ensure_named_workspaces!(m)
     # Make sure the global log Ref points at the live app log so the
     # LogPane and the chrome log row share storage.
     _APP_LOG[] = m.logs
     ws = current_workspace(m.workspaces)
     ws === nothing && return
     _fill_workspace!(ws)
+    return
+end
+
+# Un layout restauré (ancienne session) peut ne pas avoir les trois
+# workspaces : le premier sans nom devient PLAY, les manquants sont
+# créés vides (remplis à la première visite). Le courant ne change pas.
+function _ensure_named_workspaces!(m::RessacApp)
+    wm = m.workspaces
+    isempty(wm.workspaces) && return
+    isempty(wm.workspaces[1].name) && (wm.workspaces[1].name = "PLAY")
+    cur = wm.current_idx
+    for n in _DEFAULT_WORKSPACES
+        any(w -> w.name == n, wm.workspaces) || create_workspace!(wm, n)
+    end
+    wm.current_idx = clamp(cur, 1, length(wm.workspaces))
     return
 end
 

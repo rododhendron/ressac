@@ -426,8 +426,8 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # instead of the still-focused pane swallowing it.
     if m.modal !== :none
         mevt = _normalise_event(evt)
-        is_nav = mevt.char == 'j' || mevt.char == 'k' ||
-                 mevt.key === :up || mevt.key === :down
+        is_nav = mevt.char in ('j', 'k', 'd', 'u', 'h', 'l', 'n', 'p', '<', '>') ||
+                 mevt.key in (:up, :down, :left, :right, :pageup, :pagedown)
         if mevt.action === TK.key_press ||
            (mevt.action === TK.key_repeat && is_nav)
             _handle_modal_key!(m, mevt)

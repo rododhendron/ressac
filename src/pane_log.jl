@@ -36,8 +36,8 @@ end
 handle_key!(p::LogPane, evt) = evt isa TK.KeyEvent && dispatch!(((:log, p),), evt)
 pane_scope(::LogPane) = :log
 scope!(:log, "Journal")
-bind!(:log, ["k", "↑"], "remonter"; group = :nav, action = p -> (p.scroll += 1))
-bind!(:log, ["j", "↓"], "descendre"; group = :nav, when = p -> p.scroll > 0,
+bind!(:log, ["k", "↑"], "remonter"; group = :nav, action = p -> (p.scroll += 1), repeat = true)
+bind!(:log, ["j", "↓"], "descendre"; group = :nav, when = p -> p.scroll > 0, repeat = true,
       action = p -> (p.scroll -= 1))
 
 title(::LogPane) = "log"

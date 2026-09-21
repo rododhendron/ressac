@@ -110,7 +110,7 @@ function cmd_float!(wm::WorkspaceManager)
         parent.children[idx]
     end
     leaf isa PaneLeaf || return
-    isempty(leaf.tabs) && return
+    1 <= leaf.current_tab <= length(leaf.tabs) || return
     pane = leaf.tabs[leaf.current_tab]
     z = isempty(ws.floats) ? 1 : maximum(f.z_order for f in ws.floats) + 1
     push!(ws.floats, FloatingPane(pane, 10, 5, 60, 20, z))

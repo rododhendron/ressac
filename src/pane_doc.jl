@@ -44,8 +44,8 @@ end
 handle_key!(p::DocPane, evt) = evt isa TK.KeyEvent && dispatch!(((:doc, p),), evt)
 pane_scope(::DocPane) = :doc
 scope!(:doc, "Documentation")
-bind!(:doc, ["j", "↓"], "descendre"; group = :nav, action = p -> (p.scroll += 1))
-bind!(:doc, ["k", "↑"], "remonter"; group = :nav, when = p -> p.scroll > 0,
+bind!(:doc, ["j", "↓"], "descendre"; group = :nav, action = p -> (p.scroll += 1), repeat = true)
+bind!(:doc, ["k", "↑"], "remonter"; group = :nav, when = p -> p.scroll > 0, repeat = true,
       action = p -> (p.scroll -= 1))
 
 title(p::DocPane) = isempty(p.name) ? "doc" : "doc:$(p.name)"

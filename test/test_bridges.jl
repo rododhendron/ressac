@@ -237,3 +237,72 @@ end
         end
     end
 end
+
+# ── Régressions : layout restauré, onglet courant 0, défilement maintenu ──
+@testset "layout — un workspace vide sauvé/restauré reste vide, jamais de pane sans onglet courant" begin
+    app, tb, frame = _br_app()                        # PLAY rempli, DESIGN/EXPLORE vides
+    path = joinpath(mktempdir(), "layout.toml")
+    Ressac.save_layout(app.workspaces, path)          # DESIGN/EXPLORE : current_tab 0
+    wm = Ressac.WorkspaceManager()
+    Ressac.load_layout!(wm, path)
+    for ws in wm.workspaces
+        for leaf in Ressac._all_leaves(ws.tree)
+            @test isempty(leaf.tabs) || 1 <= leaf.current_tab <= length(leaf.tabs)
+        end
+    end
+    design = wm.workspaces[findfirst(w -> w.name == "DESIGN", wm.workspaces)]
+    @test design.tree isa Ressac.PaneLeaf && isempty(design.tree.tabs)
+    # l'app relancée sur ce layout : DESIGN se remplit à la visite, aucun crash au rendu
+    app2 = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))
+    Ressac.load_layout!(app2.workspaces, path)
+    tb2 = Tachikoma.TestBackend(120, 40)
+    frame2 = Tachikoma.Frame(tb2.buf, Tachikoma.Rect(1, 1, 120, 40), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    Tachikoma.view(app2, frame2)
+    Ressac._active_editor(app2).mode = :normal
+    _bex(app2, "design")
+    @test Ressac._focused_role(app2) === :synth
+    @test (Tachikoma.view(app2, frame2); true)
+    # un clic dans la pane, puis rendu : pas de BoundsError
+    Tachikoma.update!(app2, Tachikoma.MouseEvent(60, 10, Tachikoma.mouse_left, Tachikoma.mouse_press, false, false, false))
+    @test (Tachikoma.view(app2, frame2); true)
+end
+
+@testset "layout — un ancien layout sans noms reçoit PLAY/DESIGN/EXPLORE" begin
+    wm = Ressac.WorkspaceManager()
+    Ressac.create_workspace!(wm, "")
+    app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5), workspaces = wm)
+    Ressac._ensure_default_workspace!(app)
+    @test [w.name for w in app.workspaces.workspaces] == ["PLAY", "DESIGN", "EXPLORE"]
+    @test app.workspaces.current_idx == 1
+end
+
+@testset "garde — une pane sans onglet courant valide ne fait pas planter le rendu" begin
+    app, tb, frame = _br_app()
+    ws = Ressac.current_workspace(app.workspaces)
+    leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
+    leaf.current_tab = 0                              # état corrompu
+    @test Ressac._focused_pane_impl(app) === nothing
+    @test !Ressac._is_waveform_sculpt_focused(app)
+    @test (Tachikoma.view(app, frame); true)
+    leaf.current_tab = 1
+end
+
+@testset "défilement maintenu — key_repeat fait défiler le wiki, l'aide, le journal" begin
+    app, tb, frame = _br_app()
+    _bex(app, "wiki")
+    @test app.modal === :wiki
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:down, Tachikoma.key_repeat))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:down, Tachikoma.key_repeat))
+    @test app.wiki_scroll == 2
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'k', Tachikoma.key_repeat))
+    @test app.wiki_scroll == 1
+    _bkey(app, :escape)
+    _bkey(app, '?')
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'j', Tachikoma.key_repeat))
+    @test app.modal_scroll == 1
+    _bkey(app, :escape)
+    _bex(app, "vsplit log")
+    p = Ressac._focused_pane_impl(app)
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'k', Tachikoma.key_repeat))
+    @test p.scroll == 1
+end
