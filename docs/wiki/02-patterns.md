@@ -291,6 +291,26 @@ remplace son bloc ; sinon le bloc est ajouté en fin de buffer.
 côté rythme, de la librairie de synths : on essaie beaucoup, on garde ce
 qui marche, on le retrouve vite.
 
+## Explorer des variations
+
+`:vary` (ou `Espace V`) part du bloc sous le curseur et en propose huit
+variantes : un pas de la mini-notation change, un maillon d'effet est
+ajouté, retiré ou déréglé. Chaque candidat est vérifié avant d'être
+proposé, donc tout ce qui s'affiche est jouable.
+
+```
+Espace / K    écouter la variante sur un slot d'écoute (d64), sans toucher aux slots joués
+x             couper l'écoute
+l             verrouiller une variante qui plaît (elle survit aux relances)
+r             relancer une génération depuis les verrouillées
+Entrée        remplacer le bloc de départ par la variante et l'évaluer
+s             la ranger dans la bibliothèque
+```
+
+Le cycle est celui de l'exploration génétique des synths : on écoute, on
+garde, on recroise. Les verrouillées restent en tête de liste d'une
+génération à l'autre, et servent de graines aux suivantes.
+
 ## Snippets
 
 `:snip` (ou `Espace I`) ouvre le sélecteur. Les catégories tournent avec

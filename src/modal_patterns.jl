@@ -146,7 +146,7 @@ function _block_under_cursor(m::RessacApp)
     row = clamp(ed.cursor_row, 1, max(1, length(lines)))
     1 <= row <= length(lines) || return nothing
     (a, b) = _logical_block_range(lines, row)
-    return join(lines[a:max(b, a)], "\n")
+    return _join_logical_block(lines[a:max(b, a)])
 end
 
 """

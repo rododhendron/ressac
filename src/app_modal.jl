@@ -222,6 +222,9 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif m.modal === :patterns
         _handle_patterns_key!(m, evt)
         return
+    elseif m.modal === :evolve
+        _handle_evolve_key!(m, evt)
+        return
     end
     # Aide générée / modaux texte (tutoriel, explain…) : registre.
     dispatch!(((modal_scope(m), m),), evt)
@@ -231,7 +234,7 @@ end
 # ── Scopes des modaux ─────────────────────────────────────────────
 const _MODAL_SCOPES = Dict{Symbol,Symbol}(
     :browse => :modal_browse, :synth_library => :modal_lib, :sccode => :modal_sccode,
-    :snippets => :modal_snippets, :mixer => :modal_mixer, :patterns => :modal_patterns,
+    :snippets => :modal_snippets, :mixer => :modal_mixer, :patterns => :modal_patterns, :evolve => :modal_evolve,
     :help => :modal_help,
 )
 """
@@ -447,6 +450,7 @@ const _HELP_ALL_SCOPES = Symbol[
     :global, :editor, :patterns, :leader, :placeholder, :synth, :visual, :insert, :pane_mode,
     :explorer, :waveform, :sculpt, :log, :doc, :wiki, :tuning, :tap, :piano,
     :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets, :modal_patterns,
+    :modal_evolve,
     :modal_mixer, :modal_sccode,
 ]
 

@@ -4,6 +4,7 @@
 # par défaut. Tout ce qui suit dans app_*.jl prend un `m::RessacApp`.
 
 using Dates
+using Random
 # `using Tachikoma` and `const TK = Tachikoma` now live at the top
 # of Ressac.jl so pane impls (loaded before this file) can reference
 # TK types directly.
@@ -153,6 +154,14 @@ non-empty), and the focus toggle for keystroke routing.
     pat_cursor::Int              = 1      # bibliothèque de patterns
     pat_query::String            = ""
     pat_search_mode::Bool        = false
+    # Exploration de variations de pattern (modal :evolve)
+    evolve_seed::String          = ""
+    evolve_items::Vector{String} = String[]
+    evolve_locked::Vector{String} = String[]
+    evolve_cursor::Int           = 1
+    evolve_gen::Int              = 1
+    evolve_count::Int            = 8
+    evolve_rng::Random.MersenneTwister = Random.MersenneTwister(0)
     logs::Vector{String}         = ["[INFO] Ressac — ? aide · e évalue · :synth <nom> pour concevoir un son · :q quitte"]
     quit::Bool                   = false
     tick::Int                    = 0

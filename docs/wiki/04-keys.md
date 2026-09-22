@@ -161,6 +161,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Space L` | ▸ librairie synths |
 | `Space I` | ▸ snippets |
 | `Space P` | ▸ patterns rangés |
+| `Space V` | ▸ variations du bloc |
 | `Space w` | ▸ wiki |
 | `Space ?` | ▸ aide |
 
@@ -646,6 +647,44 @@ Lecture d'une carte :
 | `k / ↑` | précédent |
 | `g` | premier |
 | `G` | dernier |
+| `j / k / ↓ / ↑` | naviguer |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+## Variations de pattern
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Space / K` | écouter |
+| `x` | couper l'écoute |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `l` | verrouiller / relâcher |
+| `r` | relancer depuis les verrouillées |
+| `Enter` | remplacer le bloc |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `s` | ranger dans la bibliothèque |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
 | `j / k / ↓ / ↑` | naviguer |
 | `Esc / q` | fermer |
 

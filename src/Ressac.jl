@@ -11,6 +11,7 @@ module Ressac
 # Module-wide Tachikoma alias — hoisted here so pane impls loaded
 # before tui_app.jl can reference TK.CodeEditor / TK.Rect.
 using Tachikoma
+using Random
 const TK = Tachikoma
 
 # ─── Core domain — pure pattern types + algebra, no I/O ───────────
@@ -114,6 +115,8 @@ include("modal_wiki.jl")         # :wiki
 include("modal_snippets.jl")     # :snip
 include("pattern_library.jl")    # patterns rangés sur disque
 include("modal_patterns.jl")     # sélecteur de patterns rangés
+include("pattern_evolve.jl")     # variations de patterns (mutation, croisement)
+include("modal_evolve.jl")       # modal « variations »
 include("modal_sccode.jl")       # :sccode
 include("app_view.jl")           # TK.view : chrome + arbre + modal
 include("app_sculpt.jl")         # :sculpt → pane waveform zoomée, :w, drains M / U
@@ -167,6 +170,7 @@ export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
 export PatternEntry, save_pattern!, load_pattern, list_patterns, delete_pattern!
 export retarget_pattern, pattern_slot
+export mutate_pattern, crossover_patterns, evolve_patterns, valid_pattern_code
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
 export pan, n, room, delay, shape, pump, note, scale, degree
 export s, sound, up, begin_, end_

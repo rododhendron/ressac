@@ -2,6 +2,7 @@
 using Test
 using Ressac
 using Tachikoma
+using Random
 
 if !@isdefined(_PlMock)
     mutable struct _PlMock
@@ -85,7 +86,7 @@ end
                 _plex(app, "keep jersey kick")
                 e = load_pattern("jersey")
                 @test e !== nothing
-                @test e.code == "@d1 p\"bd(3,8)\"\n  |> gain(0.9)"    # le bloc entier
+                @test e.code == "@d1 p\"bd(3,8)\" |> gain(0.9)"    # le bloc entier, recollé
                 @test e.tags == ["kick"]
                 @test occursin("rangé", app.logs[end])
                 # :save sans nom explique, ne range rien
@@ -128,6 +129,99 @@ end
                 @test length(list_patterns()) == 1
                 _plkey(app, :escape)
                 @test app.modal === :none
+            finally
+                Ressac._LIVE_SCHEDULER[] = old
+            end
+        end
+    end
+end
+
+@testset "variations de pattern — mutation, croisement, validité" begin
+    seed = "@d1 p\"bd ~ sn bd\" |> gain(0.9)"
+    @test Ressac._split_block(seed) == ("@d1 ", "p\"bd ~ sn bd\"", ["gain(0.9)"])
+    @test Ressac._split_block("p\"bd\"") == ("", "p\"bd\"", String[])
+    # un `|>` dans une chaîne ou des parenthèses ne coupe pas le bloc
+    h, b, l = Ressac._split_block("@d1 p\"bd\" |> every(4, x -> x |> rev) |> gain(1)")
+    @test l == ["every(4, x -> x |> rev)", "gain(1)"]
+    @test Ressac._minino_steps("bd ~ [sn cp] bd*2") == ["bd", "~", "[sn cp]", "bd*2"]
+    @test Ressac._minino_steps("<bd sn> hh") == ["<bd sn>", "hh"]
+    @test Ressac._strip_mods("bd*2?") == "bd" && Ressac._strip_mods("bd(3,8)") == "bd"
+    @test Ressac._rejoin_block("@d2 ", "p\"bd\"", ["rev"]) == "@d2 p\"bd\" |> rev"
+
+    rng = Random.MersenneTwister(42)
+    muts = [Ressac.mutate_pattern(seed; rng = rng) for _ in 1:30]
+    @test all(m -> startswith(m, "@d1 "), muts)
+    @test any(m -> m != seed, muts)
+    @test all(Ressac.valid_pattern_code, muts)       # toute mutation reste jouable
+    @test Ressac.crossover_patterns(seed, "@d3 p\"hh*8\" |> lpf(400)") == "@d1 p\"bd ~ sn bd\" |> lpf(400)"
+
+    @test valid_pattern_code("@d1 p\"bd\" |> gain(0.5)")
+    @test !valid_pattern_code("@d1 p\"bd\" |> nope(")
+    @test !valid_pattern_code("")
+    @test !valid_pattern_code("@d1 1 + 1")           # ce n'est pas un pattern
+
+    vs = evolve_patterns([seed], 6; rng = Random.MersenneTwister(7))
+    @test length(vs) == 6
+    @test length(unique(vs)) == 6 && !(seed in vs)
+    @test all(valid_pattern_code, vs)
+    @test isempty(evolve_patterns(String[], 4))
+end
+
+@testset ":vary — écouter, verrouiller, relancer, garder" begin
+    mktempdir() do dir
+        cd(dir) do
+            app, tb, frame = _pl_app()
+            old = Ressac._LIVE_SCHEDULER[]
+            Ressac._LIVE_SCHEDULER[] = app.scheduler
+            try
+                ed = Ressac._active_editor(app)
+                Tachikoma.set_text!(ed, "@d1 p\"bd ~ sn bd\"\n  |> gain(0.9)")
+                ed.cursor_row = 1
+                app.evolve_rng = Random.MersenneTwister(3)
+                _plex(app, "vary")
+                @test app.modal === :evolve
+                @test app.evolve_seed == "@d1 p\"bd ~ sn bd\" |> gain(0.9)"
+                @test length(app.evolve_items) == app.evolve_count
+                @test all(Ressac.valid_pattern_code, app.evolve_items)
+                scr = _plscreen(app, tb, frame)
+                @test occursin("VARIATIONS", scr) && occursin("génération 1", scr)
+                @test occursin("départ :", scr)
+                # écoute sur le slot dédié, sans toucher à d1
+                _plkey(app, ' ')
+                @test haskey(app.scheduler.patterns, Symbol("d", Ressac._EVOLVE_SLOT))
+                @test !haskey(app.scheduler.patterns, :d1)
+                _plkey(app, 'x')
+                @test !haskey(app.scheduler.patterns, Symbol("d", Ressac._EVOLVE_SLOT))
+                # verrouillage puis relance : les verrouillées restent en tête
+                app.evolve_cursor = 2
+                kept = app.evolve_items[2]
+                _plkey(app, 'l')
+                @test app.evolve_locked == [kept]
+                _plkey(app, 'r')
+                @test app.evolve_gen == 2
+                @test app.evolve_items[1] == kept
+                @test length(app.evolve_items) == app.evolve_count
+                app.evolve_cursor = 1
+                _plkey(app, 'l'); @test isempty(app.evolve_locked)   # relâche
+                _plkey(app, 'l'); @test app.evolve_locked == [kept]  # reverrouille
+                # ranger dans la bibliothèque
+                _plkey(app, 's')
+                @test length(list_patterns()) == 1
+                @test occursin("rangée", app.logs[end])
+                # Entrée remplace le bloc de départ et évalue
+                app.evolve_cursor = 3
+                chosen = app.evolve_items[3]
+                _plkey(app, :enter)
+                @test app.modal === :none
+                txt = Tachikoma.text(ed)
+                @test occursin(replace(chosen, "@d1 " => ""), txt)
+                @test count("@d1", txt) == 1
+                @test haskey(app.scheduler.patterns, :d1)
+                # sans bloc @dN sous le curseur, :vary explique
+                Tachikoma.set_text!(ed, "basse = p\"bd\"")
+                ed.cursor_row = 1
+                _plex(app, "vary")
+                @test app.modal === :none && occursin("pose le curseur", app.logs[end])
             finally
                 Ressac._LIVE_SCHEDULER[] = old
             end
