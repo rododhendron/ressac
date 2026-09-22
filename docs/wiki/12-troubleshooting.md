@@ -124,3 +124,18 @@ Ouvre une issue avec :
 - Tes versions de Julia, Ressac et SuperCollider
 
 `:copylogs` copie le journal dans le presse-papier.
+
+## Une voix continue après un `:mute`
+
+Un synth garde sa voix tant que son enveloppe n'est pas finie : couper
+le slot arrête les nouveaux événements, pas celui qui sonne encore.
+
+Trois niveaux, du plus doux au plus brutal :
+
+- `:hush` (ou `,`) arrête tous les patterns et laisse les queues finir.
+- `:panic` arrête tout et libère les voix côté SuperCollider.
+- Si une voix ne s'arrête jamais toute seule, c'est que son SynthDef n'a
+  pas de paramètre `sustain` : le titre de sa pane l'indique
+  (`sans hauteur`, ou pas de `durée sustain`). Un `@synth` du DSL en a
+  toujours un ; un `.scd` écrit à la main doit le déclarer, ou fixer sa
+  propre enveloppe avec `doneAction: 2`.

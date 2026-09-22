@@ -149,5 +149,6 @@ function _hush!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     hush!(sched)
-    _push_app_log!(m, "[INFO] hush — patterns arrêtés, les queues finissent")
+    _push_app_log!(m, "[INFO] hush — patterns arrêtés, les queues finissent · :panic coupe aussi les voix")
 end
+
