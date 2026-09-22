@@ -359,6 +359,7 @@ signale un nom de son inconnu.
 | `Espace c`  | `\|> cat(["$1", "$2"])`                       |
 | `Espace S`  | `\|> stack("$1", "$2")`                       |
 | `Espace v`  | `rev`                                         |
+| `Espace a`  | `\|> gain($1) \|> lpf($2) \|> room($3)`        |
 | `Espace E`  | `$1($2,$3)` — token euclidien                 |
 | `Espace R`  | `$1($2,$3,$4)` — euclidien tourné             |
 | `Espace J`  | `@d$1 "bd(3,8)" \|> gain($2)` — jersey        |
@@ -371,6 +372,8 @@ Actions (ouvrent un modal) :
 | `Espace L`  | `:lib` (librairie de synths)                  |
 | `Espace I`  | `:snip` (snippets)                            |
 | `Espace w`  | `:wiki`                                       |
+| `Espace P`  | les patterns rangés                           |
+| `Espace V`  | les variations du bloc                        |
 | `Espace ?`  | l'aide                                        |
 
 ## Raccourcis en ligne de commande — `:s<verbe>`

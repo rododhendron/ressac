@@ -433,6 +433,7 @@ _register_literal!(m -> _open_mixer!(m),             "mixer", "mix")
 _register_literal!(m -> _open_snippets!(m),          "snip", "snippets", "snippet")
 _register_literal!(m -> _open_patterns_modal!(m),    "pats", "patterns", "patlib")
 _register_literal!(m -> _open_evolve_modal!(m),      "vary", "variations", "evolve")
+_register_literal!(m -> _open_palette!(m),           "palette", "p")
 # Patterns rangés — verbes distincts de :save / :load, qui appartiennent
 # déjà aux sessions (un workspace entier, pas un bloc).
 _register_literal!(m -> _push_app_log!(m,

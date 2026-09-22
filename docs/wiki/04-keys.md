@@ -11,6 +11,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | Touche | Action |
 |---|---|
 | `?` | aide |
+| `Ctrl-p` | palette : commandes, sons, fonctions, patterns |
 
 **Jouer / écouter**
 
@@ -152,6 +153,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Space E` | euclidien |
 | `Space R` | euclidien tourné |
 | `Space J` | jersey (bd(3,8)) |
+| `Space a` | chaîne d'effets (gain, lpf, room) |
 
 **Aide**
 
@@ -693,6 +695,23 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `?` | aide |
+
+## Palette (Ctrl-p)
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | ouvrir / insérer / lancer |
+| `a-z` | filtrer en tapant |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `↓ / Ctrl-n` | suivant |
+| `↑ / Ctrl-p` | précédent |
+| `Esc` | fermer |
 
 ## Mixer
 

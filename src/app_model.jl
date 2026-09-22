@@ -162,6 +162,8 @@ non-empty), and the focus toggle for keystroke routing.
     evolve_gen::Int              = 1
     evolve_count::Int            = 8
     evolve_rng::Random.MersenneTwister = Random.MersenneTwister(0)
+    palette_query::String        = ""
+    palette_cursor::Int          = 1
     logs::Vector{String}         = ["[INFO] Ressac — ? aide · e évalue · :synth <nom> pour concevoir un son · :q quitte"]
     quit::Bool                   = false
     tick::Int                    = 0

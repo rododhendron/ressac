@@ -36,6 +36,8 @@ bind!(:global, "S", "scope suivant"; group = :view, when = _km_normal,
       action = m -> _scope_cycle_key!(m))
 bind!(:global, ":", "commande"; group = :misc)                 # app_input.jl (structurel)
 bind!(:global, "/", "rechercher"; group = :misc, hint = false)
+bind!(:global, "Ctrl-p", "palette : commandes, sons, fonctions, patterns"; short = "palette",
+      group = :help, when = m -> m.modal === :none, action = _open_palette!)
 bind!(:global, "Ctrl-w", "mode pane"; group = :layout, hint = false)
 bind!(:global, ["Ctrl-1", "Ctrl-2", "Ctrl-3", "Ctrl-4", "Ctrl-5",
                 "Ctrl-6", "Ctrl-7", "Ctrl-8", "Ctrl-9"],
@@ -164,6 +166,7 @@ const _LEADER_FR = Dict{Char,String}(
     'f' => "fast", 's' => "slow", 'r' => "room", 'n' => "n()", 'e' => "every",
     'm' => "mask", 'D' => "chaîne delay", 'c' => "cat", 'S' => "stack", 'v' => "rev",
     'E' => "euclidien", 'R' => "euclidien tourné", 'J' => "jersey (bd(3,8))",
+    'a' => "chaîne d'effets (gain, lpf, room)",
     'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ librairie synths",
     'I' => "▸ snippets", 'P' => "▸ patterns rangés", 'V' => "▸ variations du bloc", 'w' => "▸ wiki", '?' => "▸ aide",
 )

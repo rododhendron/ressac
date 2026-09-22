@@ -33,6 +33,8 @@ const _LEADER_SNIPPETS = Dict{Char,String}(
     'c' => "|> cat([p\"\$1\", p\"\$2\"])",
     'S' => "|> stack(p\"\$1\", p\"\$2\")",
     'v' => "rev",     # no placeholder, just inserts as-is
+    # Chaîne d'effets type, à dégrossir : gain, filtre, espace.
+    'a' => "|> gain(\$1) |> lpf(\$2) |> room(\$3)",
     # ── Euclidean rhythms (Bjorklund k-of-n) ──
     # `E` = generic euclidean token: sample, k, n. Drop it inside a
     # p"…" or as the body of a fresh pattern.  Examples:
@@ -77,7 +79,7 @@ const _LEADER_LABELS = Pair{Char,String}[
     's' => "slow",   'r' => "room",   'n' => "n()",
     'e' => "every",  'm' => "mask",   'D' => "delay-chain",
     'c' => "cat",    'S' => "stack",  'v' => "rev",
-    'E' => "eucl",   'R' => "eucl-rot", 'J' => "jersey",
+    'E' => "eucl",   'R' => "eucl-rot", 'J' => "jersey", 'a' => "chaîne fx",
     # ── pickers ──
     'b' => "▸browse-sounds", 'L' => "▸synth-lib", 'I' => "▸snippets", 'P' => "▸patterns", 'V' => "▸variations",
     'w' => "▸wiki",  '?' => "▸guide",

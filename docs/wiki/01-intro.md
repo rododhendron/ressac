@@ -5,6 +5,23 @@ SuperDirt. Tu écris des **patterns** (mini-notation façon TidalCycles),
 des **synths** (un DSL Julia compilé en SC), et la session en cours fait
 du son à travers SuperDirt.
 
+
+## Tout retrouver : Ctrl-p
+
+`Ctrl-p` ouvre la palette. On tape, elle filtre, `Entrée` fait ce qu'il
+faut selon ce qu'on a choisi :
+
+| Nature | Entrée fait… |
+|---|---|
+| `:` commande | la lance |
+| ♪ son | l'insère au curseur |
+| ƒ fonction | l'insère et ouvre sa fiche dans la pane DOC |
+| ▣ pattern rangé | le recharge sur son slot |
+| ◈ recette de synth | l'installe |
+| ? page du wiki | l'ouvre en pane |
+
+C'est le raccourci à retenir quand on ne sait plus où est quelque chose.
+
 ## Démarrage rapide
 
 1. Lance SuperCollider avec le script de démarrage de Ressac

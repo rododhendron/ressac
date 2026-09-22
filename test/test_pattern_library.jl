@@ -228,3 +228,64 @@ end
         end
     end
 end
+
+@testset "palette — tout retrouver au même endroit (Ctrl-p)" begin
+    mktempdir() do dir
+        cd(dir) do
+            app, tb, frame = _pl_app()
+            Ressac.register_sample!(Ressac.SampleEntry(:plkick, "test", "", String[], Dict{String,Any}()))
+            save_pattern!("plmotif", "@d2 p\"hh*8\"")
+            old = Ressac._LIVE_SCHEDULER[]
+            Ressac._LIVE_SCHEDULER[] = app.scheduler
+            try
+                ed = Ressac._active_editor(app)
+                Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'p'))
+                @test app.modal === :palette
+                items = Ressac._palette_items(app)
+                kinds = unique(i.kind for i in items)
+                @test :cmd in kinds && :sound in kinds && :func in kinds && :pattern in kinds
+                @test any(i -> i.label == ":hush", items)
+                @test any(i -> i.label == "plkick" && i.kind === :sound, items)
+                @test any(i -> i.label == "plmotif" && i.kind === :pattern, items)
+                # taper filtre, le plus court d'abord
+                for c in "plkick"; _plkey(app, c); end
+                @test app.palette_query == "plkick"
+                f = Ressac._palette_items(app)
+                @test !isempty(f) && f[1].label == "plkick"
+                scr = _plscreen(app, tb, frame)
+                @test occursin("PALETTE", scr) && occursin("plkick", scr)
+                # Entrée insère le son au curseur
+                Tachikoma.set_text!(ed, "@d1 p\"\"")
+                ed.cursor_row = 1; ed.cursor_col = 6
+                _plkey(app, :enter)
+                @test app.modal === :none
+                @test Tachikoma.text(ed) == "@d1 p\"plkick\""
+                # une commande de la palette s'exécute
+                Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'p'))
+                for c in "hush"; _plkey(app, c); end
+                @test Ressac._palette_items(app)[1].label == ":hush"
+                _plkey(app, :enter)
+                @test app.modal === :none
+                # retour arrière et Échap
+                Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'p'))
+                _plkey(app, 'z'); _plkey(app, :backspace)
+                @test isempty(app.palette_query)
+                _plkey(app, :escape)
+                @test app.modal === :none
+            finally
+                Ressac._LIVE_SCHEDULER[] = old
+                delete!(Ressac._SAMPLE_REGISTRY, :plkick)
+            end
+        end
+    end
+end
+
+@testset "Espace a — chaîne d'effets type" begin
+    app, tb, frame = _pl_app()
+    ed = Ressac._active_editor(app)
+    Tachikoma.set_text!(ed, "@d1 p\"bd\"")
+    ed.cursor_row = 1; ed.cursor_col = 0
+    _plkey(app, ' '); _plkey(app, 'a')
+    @test Tachikoma.text(ed) == "@d1 p\"bd\" |> gain() |> lpf() |> room()"
+    @test app.placeholder_active && length(app.placeholder_cols) == 3
+end

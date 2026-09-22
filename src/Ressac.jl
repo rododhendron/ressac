@@ -117,6 +117,7 @@ include("pattern_library.jl")    # patterns rangés sur disque
 include("modal_patterns.jl")     # sélecteur de patterns rangés
 include("pattern_evolve.jl")     # variations de patterns (mutation, croisement)
 include("modal_evolve.jl")       # modal « variations »
+include("modal_palette.jl")      # palette universelle (Ctrl-p)
 include("modal_sccode.jl")       # :sccode
 include("app_view.jl")           # TK.view : chrome + arbre + modal
 include("app_sculpt.jl")         # :sculpt → pane waveform zoomée, :w, drains M / U
