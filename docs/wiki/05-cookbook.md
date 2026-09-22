@@ -314,3 +314,76 @@ MIDIFunc.noteOn({ |vel, num, chan|
 ```
 
 Le détail dans [13-external-midi](13-external-midi.md).
+
+## Empêcher les sons de se marcher dessus
+
+Quand deux voix frappent au même moment dans les mêmes fréquences, elles
+s'additionnent et saturent, ou se masquent, ou s'annulent si leurs phases
+s'opposent. C'est le travail de mixage, et l'essentiel s'automatise.
+
+Trois façons de se gêner, trois réponses.
+
+**Même moment.** `duck` baisse une voix à chaque attaque d'une autre,
+comme un sidechain, mais piloté par le pattern lui-même : ça suit les
+syncopes au lieu d'une grille fixe.
+
+```julia
+@d1 "bd(3,8)"
+@d2 :bass |> n("0 3 5 3") |> duck("bd(3,8)")
+@d3 :pad |> duck("bd(3,8)"; depth = 0.5, release = 1//4)
+```
+
+`avoid` va plus loin : il retire ou décale ce qui tombe trop près.
+
+```julia
+@d4 "hh*8" |> avoid("bd(3,8)")                   # le charleston laisse la place
+@d5 :perc |> avoid("bd*4"; mode = :nudge)        # décalé plutôt que supprimé
+```
+
+`pump` reste utile pour un pompage régulier sans déclencheur.
+
+**Même bande.** Donner une fenêtre de fréquences à chaque voix est la
+façon la plus directe d'arrêter le masquage.
+
+```julia
+@d1 :bass |> band(40, 250)
+@d2 :pad  |> band(250, 2000)
+@d3 :lead |> band(2000, 12000)
+```
+
+`slot_band(i, n)` fait le découpage tout seul, géométriquement, parce que
+l'oreille entend les fréquences ainsi.
+
+```julia
+@d1 :bass |> slot_band(1, 3)
+@d2 :pad  |> slot_band(2, 3)
+@d3 :lead |> slot_band(3, 3)
+```
+
+**Même endroit.** `fan(i, n)` répartit les voix dans le champ stéréo.
+
+```julia
+@d1 "hh*8"  |> fan(1, 3)
+@d2 "cp*2"  |> fan(2, 3)
+@d3 :shaker |> fan(3, 3)
+```
+
+**Les trois d'un coup.** `declash` prend une liste de patterns et leur
+donne à chacun sa fenêtre, sa place et son ducking sous la voix choisie.
+
+```julia
+voix = declash([p"bd*4", :bass |> n("0 3"), :pad, "hh*8"]; duck_first = 1)
+@d1 voix[1]
+@d2 voix[2]
+@d3 voix[3]
+@d4 voix[4]
+```
+
+**Savoir ce qui se cogne.** `:clash` regarde les slots qui jouent et dit
+quelles paires frappent ensemble, lesquelles partagent une bande, et
+quoi essayer.
+
+Une limite honnête : l'annulation de phase proprement dite se joue dans
+le signal, pas dans le pattern. Ressac écarte les attaques et les bandes,
+ce qui suffit dans l'immense majorité des cas ; pour un kick et une basse
+qui s'annulent vraiment, il faut aligner leurs phases côté SynthDef.

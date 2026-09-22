@@ -404,6 +404,38 @@ _register_literal!(m -> _push_app_log!(m,
     "audio-in")
 
 """
+    _clash_report!(m)
+
+`:clash` — ce qui se cogne dans les slots qui jouent : attaques
+simultanées, bandes qui se recouvrent, avec la correction à essayer.
+"""
+function _clash_report!(m::RessacApp)
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing || isempty(sched.patterns)
+        _push_app_log!(m, "[INFO] :clash — rien ne joue pour l'instant")
+        return
+    end
+    found = clashes(sched.patterns)
+    if isempty(found)
+        _show_listing!(m, "COLLISIONS",
+                       ["Rien ne se cogne : les attaques ne tombent pas ensemble.", "",
+                        "`:doc duck` · `:doc avoid` · `:doc slot_band` pour dégager à l'avance."])
+        return
+    end
+    lines = String["Ce qui se gêne dans les slots qui jouent, du plus net au moins net.", "",
+                   rpad("voix", 16) * rpad("ensemble", 12) * "à essayer", ""]
+    for (a, b, share, note) in found
+        push!(lines, rpad("$a ↔ $b", 16) * rpad("$(round(Int, 100 * share)) %", 12) * note)
+    end
+    push!(lines, "")
+    push!(lines, "duck(\"bd*4\") baisse sous un autre · avoid(…) écarte les attaques")
+    push!(lines, "slot_band(i, n) donne une fenêtre de fréquences · fan(i, n) écarte en stéréo")
+    push!(lines, "declash([…]) applique les trois d'un coup")
+    _show_listing!(m, "COLLISIONS", lines)
+    return
+end
+
+"""
     _scales_listing() -> Vector{String}
 
 Les gammes enregistrées avec leur nombre de degrés et leur période,
@@ -451,6 +483,7 @@ _register_literal!(m -> _open_snippets!(m),          "snip", "snippets", "snippe
 _register_literal!(m -> _open_patterns_modal!(m),    "pats", "patterns", "patlib")
 _register_literal!(m -> _open_evolve_modal!(m),      "vary", "variations", "evolve")
 _register_literal!(m -> _open_palette!(m),           "palette", "p")
+_register_literal!(m -> _clash_report!(m),           "clash", "clashes", "collisions")
 # Patterns rangés — verbes distincts de :save / :load, qui appartiennent
 # déjà aux sessions (un workspace entier, pas un bloc).
 _register_literal!(m -> _push_app_log!(m,

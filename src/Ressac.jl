@@ -23,6 +23,7 @@ include("core_tuning.jl")        # Scale, scale_to_semitones, registry
 include("core_controls.jl")      # gain/lpf/hpf/pan/n/set/pump/…
 include("core_tidal.jl")         # le reste du vocabulaire Tidal (fix, bite, ur, …)
 include("core_maths.jl")         # courbes, lois de probabilité, suites, hauteurs
+include("mix_helpers.jl")        # duck / avoid / band / fan / declash / clashes
 
 # ─── I/O primitives ───────────────────────────────────────────────
 include("io_osc.jl")             # OSC wire format (encode/decode)
@@ -165,6 +166,7 @@ export ramp, expramp, curve
 export fib, primes_n, harmonics, logistic_map, euclid_steps
 export ratio_to_cents, cents_to_ratio, midi_to_hz, hz_to_midi, semitones
 export patvals, tomini, pat
+export duck, avoid, band, slot_band, fan, declash, clashes
 export range_pat, rand_pat
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
