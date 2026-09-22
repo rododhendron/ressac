@@ -122,6 +122,7 @@ include("pattern_evolve.jl")     # variations de patterns (mutation, croisement)
 include("modal_evolve.jl")       # modal « variations »
 include("modal_palette.jl")      # palette universelle (Ctrl-p)
 include("modal_sccode.jl")       # :sccode
+include("rack_view.jl")          # bandeau des slots chargés
 include("app_view.jl")           # TK.view : chrome + arbre + modal
 include("app_sculpt.jl")         # :sculpt → pane waveform zoomée, :w, drains M / U
 include("app_keymap.jl")         # bindings :global/:editor/:patterns/:synth/:leader (après toutes les actions)

@@ -134,6 +134,11 @@ non-empty), and the focus toggle for keystroke routing.
     # Aperçu en bout de ligne de ce que chaque slot joue vraiment.
     inline_preview::Bool = true
     inline_cache::Dict{Symbol,Tuple{Any,String}} = Dict{Symbol,Tuple{Any,String}}()
+    # Bandeau des slots chargés, au-dessus des panes.
+    rack_visible::Bool = true
+    rack_cache::Dict{Symbol,Tuple{Any,Tuple{String,String}}} = Dict{Symbol,Tuple{Any,Tuple{String,String}}}()
+    _rack_hits::Vector{Tuple{Int,Symbol}} = Tuple{Int,Symbol}[]
+    _rack_y0::Int = 0
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).

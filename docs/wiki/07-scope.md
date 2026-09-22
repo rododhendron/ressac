@@ -48,6 +48,27 @@ de repli à 4 Hz garde le panneau vivant.
 
 Ajouter un scope = un `SynthDef` SC, un relais `OSCFunc`, un rendu Julia.
 
+## Le bandeau des slots
+
+Au-dessus des panes, une ligne par slot chargé : son nom dans sa
+couleur, son motif sur le cycle courant avec le pas en train de sonner
+surligné, et le nom des sons qu'il joue.
+
+```
+d1  ▸ │x·····x·····x···│ bd
+d2  ▸ │x····x····x·····│ pad
+d3  ⏸ │x·x·x·x·x·x·x·x·│ hh
+d5  ▸ │x·······x·······│ cp
+```
+
+La hauteur suit le nombre de slots : rien de chargé, rien affiché, et
+les panes reprennent toute la place. Un slot coupé reste visible avec
+`⏸` — il fait partie du morceau même quand il ne sonne pas. Au-delà de
+huit slots, la dernière ligne compte le reste.
+
+Un clic sur une ligne coupe ou remet le slot. `:slots` affiche ou
+masque le bandeau.
+
 ## Voir les notes défiler
 
 `:notes` ouvre un visualiseur à côté des patterns : le temps va de

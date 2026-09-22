@@ -322,9 +322,16 @@ function TK.view(m::RessacApp, f::TK.Frame)
     status_y  = area.y
     keybar_y  = area.y + area.height - 1 - log_h
     log_y     = keybar_y + 1
-    ws_y      = status_y + 1
+    rack_y    = status_y + 1
+    rack_h    = _rack_height(m, max(0, keybar_y - rack_y))
+    ws_y      = rack_y + rack_h
     ws_height = max(0, keybar_y - ws_y)
 
+    if rack_h > 0
+        _render_rack!(m, TK.Rect(area.x, rack_y, area.width, rack_h), buf)
+    else
+        empty!(m._rack_hits)
+    end
     # Workspace area — dispatched through _compute_rects. Cached on
     # the model so the mouse handler can hit-test workspace leaves
     # without re-deriving chrome heights.

@@ -269,6 +269,7 @@ end
 # Clic sur la barre de touches / la status line : exécute le bouton
 # sous le curseur. Les zones sont remplies par le rendu.
 function _chrome_click!(m::RessacApp, x::Int, y::Int)
+    _rack_click!(m, y) && return true
     hits = y == m._keybar_y ? m._keybar_hits :
            y == m._status_y ? m._status_hits : nothing
     hits === nothing && return false

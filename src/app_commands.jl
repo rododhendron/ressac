@@ -504,6 +504,7 @@ _register_literal!(m -> _open_evolve_modal!(m),      "vary", "variations", "evol
 _register_literal!(m -> _open_palette!(m),           "palette", "p")
 _register_literal!(m -> _clash_report!(m),           "clash", "clashes", "collisions")
 _register_literal!(m -> _open_notes_pane!(m),        "notes", "roll", "piano-roll")
+_register_literal!(m -> _toggle_rack!(m),            "slots", "rack")
 _register_literal!(m -> (m.inline_preview = !m.inline_preview;
         _push_app_log!(m, "[INFO] aperçu en bout de ligne " *
                           (m.inline_preview ? "activé" : "coupé"))),

@@ -143,3 +143,61 @@ end
     @test Ressac._preview_of([], 30) == ""
     @test length(Ressac._preview_of(notes, 4)) <= 4           # tronqué à la place dispo
 end
+
+@testset "bandeau des slots — hauteur dynamique, muet, clic, bascule" begin
+    app, tb, frame = _nv_app(; w = 100, h = 22)
+    old = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    empty!(Ressac._APP_MUTED_PATTERNS)
+    try
+        # rien de chargé : pas de bandeau, la disposition ne bouge pas
+        @test app.rack_visible
+        @test Ressac._rack_height(app) == 0
+        scr0 = _nv_screen(app, tb, frame, 22)
+        @test occursin("PATTERNS", split(scr0, "\n")[2])
+        # un slot par ligne
+        app.scheduler.t_start = time() - 1.3
+        set_pattern!(app.scheduler, :d1, pat("bd(3,8)"))
+        @test Ressac._rack_height(app) == 1
+        set_pattern!(app.scheduler, :d2, :pad |> n("0 4 7"))
+        set_pattern!(app.scheduler, :d5, pat("cp*2"))
+        @test Ressac._rack_height(app) == 3
+        rows = split(_nv_screen(app, tb, frame, 22), "\n")
+        @test occursin("d1", rows[2]) && occursin("d2", rows[3]) && occursin("d5", rows[4])
+        @test occursin("bd", rows[2]) && occursin("pad", rows[3])
+        @test occursin("x·····x·····x···", rows[2])       # le motif du cycle
+        @test occursin("PATTERNS", rows[5])                # les panes ont été poussées
+        # un slot coupé reste visible, avec sa marque
+        Ressac._mute_pattern_slot!(app, :d2)
+        @test Ressac._rack_height(app) == 3                # toujours trois lignes
+        rows = split(_nv_screen(app, tb, frame, 22), "\n")
+        @test occursin("⏸", rows[3]) && occursin("d2", rows[3])
+        @test occursin("▸", rows[2])
+        # un clic sur la ligne coupe, un deuxième remet
+        y_d1 = 2
+        @test Ressac._rack_click!(app, y_d1)
+        @test !haskey(app.scheduler.patterns, :d1)
+        @test Ressac._rack_click!(app, y_d1)
+        @test haskey(app.scheduler.patterns, :d1)
+        @test !Ressac._rack_click!(app, 21)                # hors bandeau
+        # la bascule
+        Ressac._toggle_rack!(app)
+        @test !app.rack_visible && Ressac._rack_height(app) == 0
+        @test occursin("PATTERNS", split(_nv_screen(app, tb, frame, 22), "\n")[2])
+        Ressac._toggle_rack!(app)
+        @test app.rack_visible
+        # au-delà du maximum, une ligne récapitule
+        for i in 6:16; set_pattern!(app.scheduler, Symbol("d", i), pat("bd")); end
+        h = Ressac._rack_height(app)
+        @test 2 <= h <= Ressac._RACK_MAX_ROWS + 1
+        rows = split(_nv_screen(app, tb, frame, 22), "\n")
+        @test any(r -> occursin("autres slots", r), rows)   # le reste est compté
+        @test count(r -> occursin("│x", r) || occursin("│·", r), rows) < 16
+        # et jamais plus de la moitié de la fenêtre
+        @test Ressac._rack_height(app, 6) <= 3
+    finally
+        hush!(app.scheduler)
+        empty!(Ressac._APP_MUTED_PATTERNS)
+        Ressac._LIVE_SCHEDULER[] = old
+    end
+end
