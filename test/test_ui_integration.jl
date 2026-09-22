@@ -658,10 +658,32 @@ end
     @test :cf_1_2_2_2 in Ressac.list_scales()
 end
 
-@testset ":scale list logs all registered scale names" begin
+@testset ":scale ouvre la liste des gammes dans un modal défilable" begin
     app, _ = _new_app()
     _exec_ex_command!(app, "scale list")
-    @test any(l -> occursin("major", l) || occursin("minor", l), app.logs)
+    @test app.modal === :listing
+    @test app.listing_title == "GAMMES"
+    @test any(l -> occursin("major", l) || occursin("minor", l), app.listing_lines)
+    @test any(l -> occursin("degrés", l), app.listing_lines)
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test app.modal === :none
+    # `:scale` tout court ouvre la même liste
+    _exec_ex_command!(app, "scale")
+    @test app.modal === :listing && !isempty(app.listing_lines)
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    # les autres listes passent par le même modal
+    for (cmd, title) in (("samples", "SAMPLES"), ("synths", "SYNTHS"),
+                         ("instruments", "INSTRUMENTS"), ("chords", "ACCORDS"),
+                         ("themes", "THÈMES"))
+        _exec_ex_command!(app, cmd)
+        @test app.modal === :listing
+        @test app.listing_title == title
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    end
+    # mise en colonnes : cent noms courts tiennent en quelques lignes
+    cols = Ressac._columnise(["n$i" for i in 1:100]; width = 96)
+    @test length(cols) < 20 && occursin("n1", cols[1])
+    @test isempty(Ressac._columnise(String[]))
 end
 
 @testset "Snippet panes with unknown kind warns + skips that side" begin

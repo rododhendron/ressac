@@ -89,6 +89,11 @@ scope!(:doc, "Documentation")
 bind!(:doc, ["j", "↓"], "descendre"; group = :nav, action = p -> (p.scroll += 1), repeat = true)
 bind!(:doc, ["k", "↑"], "remonter"; group = :nav, when = p -> p.scroll > 0, repeat = true,
       action = p -> (p.scroll -= 1))
+bind!(:doc, ["d", "PgDn"], "page suivante"; group = :nav, hint = false, repeat = true,
+      action = p -> (p.scroll += 15))
+bind!(:doc, ["u", "PgUp"], "page précédente"; group = :nav, hint = false, repeat = true,
+      when = p -> p.scroll > 0, action = p -> (p.scroll = max(0, p.scroll - 15)))
+bind!(:doc, "g", "début"; group = :nav, hint = false, action = p -> (p.scroll = 0))
 
 title(p::DocPane) = isempty(p.name) ? "doc" : "doc:$(p.name)"
 

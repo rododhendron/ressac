@@ -31,7 +31,47 @@ _modal_lines(m::RessacApp) =
     m.modal === :dsl_guide   ? _DSL_GUIDE_LINES :
     m.modal === :tutorial    ? _TUTORIAL_LINES :
     m.modal === :explain     ? m.explain_lines :
+    m.modal === :listing     ? m.listing_lines :
     String[]
+
+"""
+    _show_listing!(m, title, lines)
+
+Affiche une liste dans un modal défilable plutôt que dans le journal :
+trois lignes de log ne montrent rien d'une centaine de noms. `q` ou Esc
+ferme, `j`/`k` et PgUp/PgDn défilent.
+"""
+function _show_listing!(m::RessacApp, title::AbstractString, lines::AbstractVector{<:AbstractString})
+    m.listing_title = String(title)
+    m.listing_lines = collect(String, lines)
+    m.modal = :listing
+    m.modal_scroll = 0
+    return nothing
+end
+
+"""
+    _columnise(names; width = 96, gap = 2) -> Vector{String}
+
+Met des noms courts en colonnes, pour qu'une liste de cent entrées tienne
+à l'écran au lieu de défiler sur cent lignes.
+"""
+function _columnise(names::AbstractVector{<:AbstractString}; width::Int = 96, gap::Int = 2)
+    isempty(names) && return String[]
+    w = maximum(textwidth, names) + gap
+    ncols = max(1, width ÷ w)
+    nrows = cld(length(names), ncols)
+    out = String[]
+    for r in 1:nrows
+        row = IOBuffer()
+        for c in 0:(ncols - 1)
+            i = r + c * nrows
+            i <= length(names) || continue
+            print(row, rpad(names[i], w))
+        end
+        push!(out, rstrip(String(take!(row))))
+    end
+    return out
+end
 
 """
     _TUTORIAL_LINES
@@ -236,6 +276,7 @@ end
 
 # ── Scopes des modaux ─────────────────────────────────────────────
 const _MODAL_SCOPES = Dict{Symbol,Symbol}(
+    :listing => :modal_text,
     :browse => :modal_browse, :synth_library => :modal_lib, :sccode => :modal_sccode,
     :snippets => :modal_snippets, :mixer => :modal_mixer, :patterns => :modal_patterns, :evolve => :modal_evolve, :palette => :modal_palette,
     :help => :modal_help,
@@ -273,6 +314,10 @@ bind!(:modal_text, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat 
       action = m -> (m.modal_scroll = min(m.modal_scroll + 1, max(0, length(_modal_lines(m)) - 1))))
 bind!(:modal_text, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
       action = m -> (m.modal_scroll = max(0, m.modal_scroll - 1)))
+bind!(:modal_text, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.modal_scroll = min(m.modal_scroll + 15, max(0, length(_modal_lines(m)) - 1))))
+bind!(:modal_text, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 15)))
 bind!(:modal_text, "G", "fin"; group = :nav, hint = false,
       action = m -> (m.modal_scroll = max(0, length(_modal_lines(m)) - 1)))
 bind!(:modal_text, "g", "début"; group = :nav, hint = false,
@@ -293,7 +338,8 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     title = m.modal === :synth_guide ? "SYNTH GUIDE" :
             m.modal === :dsl_guide   ? "DSL GUIDE" :
             m.modal === :tutorial    ? "TUTORIAL · 5-minute tour" :
-            m.modal === :explain     ? "EXPLAIN" : "INFO"
+            m.modal === :explain     ? "EXPLAIN" :
+            m.modal === :listing     ? m.listing_title : "INFO"
     inner = _render_modal_block!(buf, area;
         title = title,
         title_right = _modal_hint_text(m, :modal_text),

@@ -166,5 +166,9 @@ bind!(:modal_palette, ["↓", "Ctrl-n"], "suivant"; group = :nav, hint = false, 
       action = m -> (m.palette_cursor = min(m.palette_cursor + 1, max(1, length(_palette_items(m))))))
 bind!(:modal_palette, ["↑", "Ctrl-p"], "précédent"; group = :nav, hint = false, repeat = true,
       action = m -> (m.palette_cursor = max(1, m.palette_cursor - 1)))
+bind!(:modal_palette, ["PgDn"], "page suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.palette_cursor = min(m.palette_cursor + 15, max(1, length(_palette_items(m))))))
+bind!(:modal_palette, ["PgUp"], "page précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.palette_cursor = max(1, m.palette_cursor - 15)))
 bind!(:modal_palette, "Esc", "fermer"; group = :nav, action = m -> (m.modal = :none))
 bind!(:modal_palette, "a-z", "filtrer en tapant"; group = :edit, hint = false)

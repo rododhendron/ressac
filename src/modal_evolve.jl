@@ -32,6 +32,13 @@ function _evolve_breed!(m::RessacApp)
     fresh = evolve_patterns(seeds, max(1, m.evolve_count - length(kept)); rng = m.evolve_rng)
     m.evolve_items = vcat(kept, fresh)
     m.evolve_cursor = clamp(m.evolve_cursor, 1, max(1, length(m.evolve_items)))
+    if isempty(m.evolve_items)
+        # Aucune variante n'a survécu à la validation : c'est presque
+        # toujours que le bloc de départ lui-même ne s'évalue pas.
+        why = valid_pattern_code(m.evolve_seed) ? "aucune variante valide n'est sortie" :
+              "le bloc de départ ne s'évalue pas — corrige-le puis relance"
+        _push_app_log!(m, "[WARN] variations : $why")
+    end
     return m.evolve_items
 end
 
@@ -168,6 +175,10 @@ bind!(:modal_evolve, "s", "ranger dans la bibliothèque"; short = "ranger", grou
       action = m -> _evolve_keep!(m))
 bind!(:modal_evolve, "x", "couper l'écoute"; group = :audio, hint = false,
       action = m -> _evolve_stop_preview!(m))
+bind!(:modal_evolve, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.evolve_cursor = min(m.evolve_cursor + 15, max(1, length(m.evolve_items)))))
+bind!(:modal_evolve, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.evolve_cursor = max(1, m.evolve_cursor - 15)))
 bind!(:modal_evolve, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
       action = m -> (m.evolve_cursor = min(m.evolve_cursor + 1, max(1, length(m.evolve_items)))))
 bind!(:modal_evolve, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,

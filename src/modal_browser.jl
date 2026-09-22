@@ -283,9 +283,9 @@ bind!(:modal_browse, ["j", "↓"], "ligne suivante"; group = :nav, hint = false,
       action = m -> _browser_move!(m, m.browser_cols))
 bind!(:modal_browse, ["k", "↑"], "ligne précédente"; group = :nav, hint = false, repeat = true,
       action = m -> _browser_move!(m, -m.browser_cols))
-bind!(:modal_browse, "Ctrl-d", "page suivante"; group = :nav, hint = false, repeat = true,
+bind!(:modal_browse, ["Ctrl-d", "PgDn"], "page suivante"; group = :nav, hint = false, repeat = true,
       action = m -> _browser_move!(m, m.browser_cols * m.browser_rows))
-bind!(:modal_browse, "Ctrl-u", "page précédente"; group = :nav, hint = false, repeat = true,
+bind!(:modal_browse, ["Ctrl-u", "PgUp"], "page précédente"; group = :nav, hint = false, repeat = true,
       action = m -> _browser_move!(m, -m.browser_cols * m.browser_rows))
 bind!(:modal_browse, "g", "premier"; group = :nav, hint = false,
       action = m -> (m.browser_cursor = 1))

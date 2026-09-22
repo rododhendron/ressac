@@ -59,8 +59,8 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Tab` | basculer patterns ⟷ synth |
 | `PgDn` | page suivante |
 | `PgUp` | page précédente |
-| `Ctrl-d` | demi-page suivante |
-| `Ctrl-u` | demi-page précédente |
+| `Ctrl-d / PgDn` | demi-page suivante |
+| `Ctrl-u / PgUp` | demi-page précédente |
 | `h / j / k / l` | déplacer le curseur (ou flèches) |
 | `w / b / e` | mot suivant / précédent / fin de mot |
 | `f / F / t / T` | aller au caractère (f dessus, t avant, majuscule = à gauche) |
@@ -450,6 +450,8 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `k / ↑` | remonter |
+| `PgUp` | remonter d'un écran |
+| `PgDn` | redescendre d'un écran |
 | `j / ↓` | descendre |
 
 ## Documentation
@@ -460,6 +462,9 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | descendre |
 | `k / ↑` | remonter |
+| `d / PgDn` | page suivante |
+| `u / PgUp` | page précédente |
+| `g` | début |
 
 ## Wiki (pane)
 
@@ -469,10 +474,10 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | défiler |
 | `k / ↑` | remonter |
-| `n / ] / →` | page suivante |
-| `p / [ / ←` | page précédente |
-| `d` | 10 lignes plus bas |
-| `u` | 10 lignes plus haut |
+| `n / ] / →` | page du wiki suivante |
+| `p / [ / ←` | page du wiki précédente |
+| `d / PgDn` | défiler d'un écran |
+| `u / PgUp` | remonter d'un écran |
 | `g / G` | début / fin de page |
 | `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
 
@@ -533,6 +538,8 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | défiler |
 | `k / ↑` | remonter |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
 | `G` | fin |
 | `g` | début |
 | `Esc / q` | fermer |
@@ -562,8 +569,8 @@ Lecture d'une carte :
 | `l / →` | suivant |
 | `j / ↓` | ligne suivante |
 | `k / ↑` | ligne précédente |
-| `Ctrl-d` | page suivante |
-| `Ctrl-u` | page précédente |
+| `Ctrl-d / PgDn` | page suivante |
+| `Ctrl-u / PgUp` | page précédente |
 | `g` | premier |
 | `G` | dernier |
 | `j / k / ↓ / ↑` | naviguer |
@@ -650,6 +657,8 @@ Lecture d'une carte :
 | `/` | chercher |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
 | `g` | premier |
 | `G` | dernier |
 | `j / k / ↓ / ↑` | naviguer |
@@ -688,6 +697,8 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
 | `j / k / ↓ / ↑` | naviguer |
@@ -714,6 +725,8 @@ Lecture d'une carte :
 |---|---|
 | `↓ / Ctrl-n` | suivant |
 | `↑ / Ctrl-p` | précédent |
+| `PgDn` | page suivante |
+| `PgUp` | page précédente |
 | `Esc` | fermer |
 
 ## Mixer

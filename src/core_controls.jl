@@ -521,6 +521,7 @@ the recognisable "pumping" sound users want. For real sidechain
 on SuperCollider side, see the global compressor wiring in the
 SuperDirt boot script.
 """
+pump(steps_per_cycle::Real, depth::Real = 0.6) = pump(round(Int, steps_per_cycle), depth)
 function pump(steps_per_cycle::Int = 4, depth::Real = 0.6)
     n_steps = max(2, steps_per_cycle)
     floor_v = clamp(1.0 - float(depth), 0.0, 1.0)

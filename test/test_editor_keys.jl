@@ -114,3 +114,38 @@ end
     @test vals(alt, 4, 5) == [Symbol("100")]          # et ça boucle
     @test [ev.value[:cutoff] for ev in (:pad |> lpf(slowcat(200:200:600)))(1//1, 2//1)] == [400]
 end
+
+@testset "PgUp / PgDn défilent partout où l'on défile" begin
+    for sc in (:wiki, :doc, :log, :modal_text, :modal_help, :modal_browse,
+               :modal_patterns, :modal_evolve, :modal_palette, :editor)
+        @test Ressac.lookup(sc, "PgDn") !== nothing
+        @test Ressac.lookup(sc, "PgUp") !== nothing
+    end
+    # dans la pane wiki, PgDn fait la même chose que d
+    app, ed, _, _ = _ek_app()
+    Ressac._open_wiki!(app)
+    wp = Ressac._focused_pane_impl(app)
+    @test wp isa Ressac.WikiPane
+    wp.scroll = 0
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:pagedown))
+    @test wp.scroll == 10
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:pageup))
+    @test wp.scroll == 0
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:pageup))
+    @test wp.scroll == 0                       # borné
+end
+
+@testset "disposition de clavier — Maj + touche AZERTY donne le bon caractère" begin
+    # Sans le drapeau « touches alternatives », le terminal n'envoie que
+    # la touche de base : Tachikoma applique alors une table QWERTY, où
+    # ù, é, à n'existent pas. Ressac complète cette table.
+    ev(cp) = Tachikoma._kitty_keycode_to_event(cp, true, false, false, Tachikoma.key_press)
+    @test ev(Int('ù')).char == '%'
+    @test ev(Int('é')).char == '2'
+    @test ev(Int('à')).char == '0'
+    @test ev(Int('ç')).char == '9'
+    @test ev(Int('<')).char == '>'
+    @test ev(Int('a')).char == 'A'            # le cas usuel n'est pas touché
+    @test ev(Int('5')).char == '%'            # ni la table QWERTY
+    @test isdefined(Ressac, :_request_alternate_keys)
+end

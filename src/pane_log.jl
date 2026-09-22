@@ -37,6 +37,10 @@ handle_key!(p::LogPane, evt) = evt isa TK.KeyEvent && dispatch!(((:log, p),), ev
 pane_scope(::LogPane) = :log
 scope!(:log, "Journal")
 bind!(:log, ["k", "↑"], "remonter"; group = :nav, action = p -> (p.scroll += 1), repeat = true)
+bind!(:log, "PgUp", "remonter d'un écran"; group = :nav, hint = false, repeat = true,
+      action = p -> (p.scroll += 15))
+bind!(:log, "PgDn", "redescendre d'un écran"; group = :nav, hint = false, repeat = true,
+      when = p -> p.scroll > 0, action = p -> (p.scroll = max(0, p.scroll - 15)))
 bind!(:log, ["j", "↓"], "descendre"; group = :nav, when = p -> p.scroll > 0, repeat = true,
       action = p -> (p.scroll -= 1))
 

@@ -67,6 +67,8 @@ non-empty), and the focus toggle for keystroke routing.
     esc_quit_at::Float64         = 0.0
     # Lines shown by the generic :explain modal (`:explain <name>`).
     explain_lines::Vector{String} = String[]
+    listing_lines::Vector{String} = String[]   # modal :listing (listes longues)
+    listing_title::String         = "LISTE"
     # Zoom : id du leaf rendu seul dans tout le workspace (0 = aucun).
     # Ctrl-w z / :zoom basculent ; un changement de focus dézoome.
     zoom_leaf::Int               = 0

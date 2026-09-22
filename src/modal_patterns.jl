@@ -218,6 +218,10 @@ bind!(:modal_patterns, ["j", "↓"], "suivant"; group = :nav, hint = false, repe
       action = m -> (m.pat_cursor = min(m.pat_cursor + 1, max(1, length(_pattern_entries(m))))))
 bind!(:modal_patterns, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
       action = m -> (m.pat_cursor = max(1, m.pat_cursor - 1)))
+bind!(:modal_patterns, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.pat_cursor = min(m.pat_cursor + 15, max(1, length(_pattern_entries(m))))))
+bind!(:modal_patterns, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> (m.pat_cursor = max(1, m.pat_cursor - 15)))
 bind!(:modal_patterns, "g", "premier"; group = :nav, hint = false,
       action = m -> (m.pat_cursor = 1))
 bind!(:modal_patterns, "G", "dernier"; group = :nav, hint = false,

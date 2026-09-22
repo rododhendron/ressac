@@ -96,13 +96,13 @@ bind!(:wiki, ["j", "↓"], "défiler"; group = :nav, repeat = true,
       action = p -> (p.scroll = min(p.scroll + 1, _wiki_last(p))))
 bind!(:wiki, ["k", "↑"], "remonter"; group = :nav, repeat = true, when = p -> p.scroll > 0,
       action = p -> (p.scroll = max(0, p.scroll - 1)))
-bind!(:wiki, ["n", "]", "→"], "page suivante"; group = :nav,
+bind!(:wiki, ["n", "]", "→"], "page du wiki suivante"; group = :nav,
       action = p -> (isempty(p.pages) || (p.idx = mod1(p.idx + 1, length(p.pages)); p.scroll = 0)))
-bind!(:wiki, ["p", "[", "←"], "page précédente"; group = :nav,
+bind!(:wiki, ["p", "[", "←"], "page du wiki précédente"; group = :nav,
       action = p -> (isempty(p.pages) || (p.idx = mod1(p.idx - 1, length(p.pages)); p.scroll = 0)))
-bind!(:wiki, "d", "10 lignes plus bas"; group = :nav, hint = false, repeat = true,
+bind!(:wiki, ["d", "PgDn"], "défiler d'un écran"; group = :nav, hint = false, repeat = true,
       action = p -> (p.scroll = min(p.scroll + 10, _wiki_last(p))))
-bind!(:wiki, "u", "10 lignes plus haut"; group = :nav, hint = false, repeat = true,
+bind!(:wiki, ["u", "PgUp"], "remonter d'un écran"; group = :nav, hint = false, repeat = true,
       action = p -> (p.scroll = max(0, p.scroll - 10)))
 bind!(:wiki, ["g", "G"], "début / fin de page"; group = :nav, hint = false,
       action = (p, evt) -> (p.scroll = evt.char == 'g' ? 0 : _wiki_last(p)))

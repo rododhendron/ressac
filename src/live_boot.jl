@@ -46,6 +46,30 @@ end
 restart_live!(; kwargs...) = (stop_live!(); start_live!(; kwargs...))
 
 """
+    _request_alternate_keys()
+
+Demande au terminal de signaler le caractère « tel qu'il sort avec Maj »
+(bit 4 du protocole clavier kitty). Tachikoma n'active que les bits 1, 2
+et 8 et retombe donc sur une table Maj **QWERTY** : sur un clavier
+AZERTY, Maj+ù rendait `ù` au lieu de `%`. Avec ce drapeau, le terminal
+envoie le caractère produit, quelle que soit la disposition.
+`CSI = flags ; 1 u` change le niveau courant de la pile, sans empiler un
+niveau qu'il faudrait dépiler à la sortie.
+
+Sans terminal (tests, exécution non interactive) l'appel ne fait rien.
+"""
+function _request_alternate_keys()
+    try
+        isa(stdout, Base.TTY) || return nothing
+        write(stdout, "\e[=15;1u")
+        flush(stdout)
+    catch
+        # Un terminal qui ne connaît pas la séquence l'ignore.
+    end
+    return nothing
+end
+
+"""
     live(; host, port, cps, lookahead)
 
 Boot the Tachikoma-based TUI on top of an active (or freshly-started)
@@ -57,6 +81,7 @@ function live(; host::AbstractString = "127.0.0.1",
                 port::Integer = 57120,
                 cps::Real = 0.5,
                 lookahead::Real = 0.05)
+    _ = nothing
     existed = _LIVE_SCHEDULER[] !== nothing
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     cfg = _load_ressac_config!()
@@ -79,6 +104,7 @@ function live(; host::AbstractString = "127.0.0.1",
         @warn "Failed to load layout" exception=err
     end
     _ensure_default_workspace!(app)
+    _request_alternate_keys()
     try
         Tachikoma.app(app; fps=cfg.fps)
     finally

@@ -693,8 +693,17 @@ function __init__()
     # this map; without the patch the user would see `<` again instead
     # of `>`. Safe to set unconditionally — US layouts produce `>` from
     # Shift+`.` (already mapped) and never hit `<` with shift.
+    # Même problème pour un clavier AZERTY : Maj+ù donne `%`, Maj+é
+    # donne `2`… Aucune de ces touches n'existe côté QWERTY, donc rien
+    # n'est écrasé. Le vrai correctif est `_request_alternate_keys()`
+    # au démarrage ; ceci reste le repli quand le terminal l'ignore.
     try
         Tachikoma._SHIFT_SYMBOL_MAP['<'] = '>'
+        for (base, shifted) in ('ù' => '%', 'é' => '2', 'è' => '7', 'à' => '0',
+                                'ç' => '9', '²' => '~', '°' => ')', 'µ' => '*',
+                                '§' => '!', '£' => '\$')
+            Tachikoma._SHIFT_SYMBOL_MAP[base] = shifted
+        end
     catch
     end
     # Register custom themes and load config (best-effort — neither is

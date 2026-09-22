@@ -403,6 +403,23 @@ _register_literal!(m -> _push_app_log!(m,
         "       :audio-in stop   → libère le nœud d'écoute"),
     "audio-in")
 
+"""
+    _scales_listing() -> Vector{String}
+
+Les gammes enregistrées avec leur nombre de degrés et leur période,
+pour choisir sans aller lire le code.
+"""
+function _scales_listing()
+    out = String["`:doc scale` explique l'usage · `@d1 :pad |> n(0:6) |> scale(:nom)`", ""]
+    for name in list_scales()
+        sc = lookup_scale(name)
+        sc === nothing && continue
+        per = round(Int, sc.period_cents)
+        push!(out, rpad(String(name), 24) * "$(length(sc.cents)) degrés · période $(per) ¢")
+    end
+    return out
+end
+
 # ── Scope ───────────────────────────────────────────────────────────
 _register_literal!(m -> _scope_command!(m, :off),    "scope")
 _register_regex!(r"^scope\s+([\w-]+)$",
@@ -508,9 +525,9 @@ _register_regex!(r"^piano-rec\s+(\w+)$",
     (m, mt) -> _piano_start!(m; synth = String(mt.captures[1]), record = true))
 
 # ── Theme / config / safety ─────────────────────────────────────────
-_register_literal!(m -> _push_app_log!(m,
-        "[INFO] thèmes : " * join(_available_themes(), ", ")),
-    "theme")
+_register_literal!(m -> _show_listing!(m, "THÈMES",
+        vcat("`:theme <nom>` applique", "", _columnise(sort!(String.(_available_themes()))))),
+    "theme", "themes")
 _register_regex!(r"^theme\s+(\w+)$",
     (m, mt) -> _theme_switch(m, mt))
 _register_literal!(m -> _reload_config_action(m),    "reload-config", "reload-cfg")
@@ -637,12 +654,27 @@ _register_regex!(r"^import\s+(\S+?)\s+as\s+(\w+)$",
     (m, mt) -> _import_wav!(m, mt.captures[1], mt.captures[2]))
 _register_regex!(r"^import\s+(\S+)$",
     (m, mt) -> _import_wav!(m, mt.captures[1], nothing))
-_register_literal!(m -> _push_app_log!(m,
-        "[INFO] $(length(list_scales())) gamme(s) enregistrée(s) — `:scale list` pour la liste"),
-    "scale")
-_register_literal!(m -> _push_app_log!(m,
-        "[INFO] gammes : " * join(list_scales(), ", ")),
+# Les listes vont dans un modal défilable : le journal fait trois lignes.
+_register_literal!(m -> _show_listing!(m, "GAMMES", _scales_listing()),
+    "scale", "scales", "gammes")
+_register_literal!(m -> _show_listing!(m, "GAMMES", _scales_listing()),
     "scale list")
+_register_literal!(m -> _show_listing!(m, "SAMPLES",
+        vcat("$(length(_SAMPLE_REGISTRY)) banque(s) — `:browse` pour écouter", "",
+             _columnise(sort!(String.(collect(keys(_SAMPLE_REGISTRY))))))),
+    "samples")
+_register_literal!(m -> _show_listing!(m, "INSTRUMENTS",
+        vcat("$(length(_INSTRUMENT_REGISTRY)) instrument(s) préréglé(s)", "",
+             _columnise(sort!(String.(collect(keys(_INSTRUMENT_REGISTRY))))))),
+    "instruments")
+_register_literal!(m -> _show_listing!(m, "SYNTHS",
+        vcat("$(length(_SYNTH_REGISTRY)) synth(s) chargé(s) — `:add <nom>` en installe un de la librairie", "",
+             _columnise(sort!(String.(collect(keys(_SYNTH_REGISTRY))))))),
+    "synths")
+_register_literal!(m -> _show_listing!(m, "ACCORDS",
+        vcat("Racine'nom dans la mini-notation : c'maj, 0'dom7, e'min7'ii", "",
+             _columnise(sort!(String.(chord_names()))))),
+    "chords", "accords")
 
 # ── :tuning <variant> — build + register a new Scale ────────────────
 # Each variant builds a Scale via the constructors in core_tuning,
@@ -1068,8 +1100,9 @@ function _list_sessions_app!(m::RessacApp)
         _push_app_log!(m, "[INFO] (aucune session sauvée)")
         return
     end
-    names = join((splitext(f)[1] for f in files), ", ")
-    _push_app_log!(m, "[INFO] sessions : $names  (:load <nom>)")
+    _show_listing!(m, "SESSIONS",
+                   vcat("`:load <nom>` recharge une session", "",
+                        _columnise(sort!([splitext(f)[1] for f in files]))))
 end
 
 function _doc_command!(m::RessacApp, name::AbstractString)

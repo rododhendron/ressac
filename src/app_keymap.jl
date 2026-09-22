@@ -98,9 +98,9 @@ bind!(:editor, "PgDn", "page suivante"; group = :nav, hint = false, when = _km_n
       action = m -> (ed = _km_ed(m); _page_scroll!(m, ed, +_viewport_h(m, ed))))
 bind!(:editor, "PgUp", "page précédente"; group = :nav, hint = false, when = _km_normal_ed,
       action = m -> (ed = _km_ed(m); _page_scroll!(m, ed, -_viewport_h(m, ed))))
-bind!(:editor, "Ctrl-d", "demi-page suivante"; group = :nav, hint = false, when = _km_normal_ed,
+bind!(:editor, ["Ctrl-d", "PgDn"], "demi-page suivante"; group = :nav, hint = false, when = _km_normal_ed,
       action = m -> (ed = _km_ed(m); _page_scroll!(m, ed, +max(1, _viewport_h(m, ed) ÷ 2))))
-bind!(:editor, "Ctrl-u", "demi-page précédente"; group = :nav, hint = false, when = _km_normal_ed,
+bind!(:editor, ["Ctrl-u", "PgUp"], "demi-page précédente"; group = :nav, hint = false, when = _km_normal_ed,
       action = m -> (ed = _km_ed(m); _page_scroll!(m, ed, -max(1, _viewport_h(m, ed) ÷ 2))))
 # Moteur vim de l'éditeur (documentaire).
 bind!(:editor, ["i", "a", "o", "O"], "insérer (avant / après / ligne dessous / dessus)"; group = :edit, hint = false)
