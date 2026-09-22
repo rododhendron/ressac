@@ -101,6 +101,7 @@ This matches TidalCycles' `#` operator semantics.
 # Bare-string val: parse as mini-notation, then route to the
 # Pattern overload. Lets users write `set(:cutoff, "<400 800>")`.
 set(key::Symbol, s::AbstractString) = set(key, _string_control_value(String(s)))
+set(key::Symbol, xs::Union{AbstractVector,AbstractRange}) = set(key, _as_pattern(xs))
 
 # Une chaîne qui n'est qu'un seul jeton constant (`"c"`, `"bd:3"`, `"0.5"`)
 # vaut sa valeur scalaire : les événements plus longs qu'un cycle ne sont
@@ -157,7 +158,8 @@ function _control_op(key::Symbol, op, val)
     # `set(:cutoff, "<400 800 1600>")` instead of
     # `set(:cutoff, p"<400 800 1600>")`. Single-token strings like
     # `"1000"` round-trip through `_resolve_value` to numeric.
-    val = val isa AbstractString ? _string_control_value(String(val)) : val
+    val = val isa AbstractString ? _string_control_value(String(val)) :
+          (val isa AbstractVector || val isa AbstractRange) ? _as_pattern(val) : val
     # n / note : un nom de note (c, e5, cs, af4) vaut ses demi-tons.
     resolve = key in (:n, :note) ? _resolve_note : _resolve_value
     resolved_scalar = resolve(val)
@@ -293,6 +295,15 @@ shape(x) = _control_op(:shape, _overwrite, x)
 note(x)  = _control_op(:note,  _overwrite, x)
 
 """
+    degree(x) -> (Pattern -> ControlPattern)
+
+Degré dans une gamme, à convertir en demi-tons par `scale` :
+`:pad |> degree("0 2 4") |> scale(:minor)`. Sans `scale`, le degré n'a
+pas de sens et n'est pas envoyé.
+"""
+degree(x) = _control_op(:degree, _overwrite, x)
+
+"""
     s(x) / sound(x) -> (Pattern -> ControlPattern)
 
 Le son (sample ou synth) : `n("0 3 7") |> s("superpiano")`, `s("bd:3 sn")`.
@@ -346,19 +357,27 @@ function scale(s::Scale)
             evs = p(start, stop)
             out = Vector{Event{ControlMap}}(undef, length(evs))
             for (i, ev) in enumerate(evs)
-                cm, deg_src = if ev.value isa ControlMap
+                # D'où vient le degré : `degree` explicite, sinon `n`
+                # (`n("0 2 4") |> scale(:minor)` est l'écriture courante),
+                # sinon `note`, sinon un nom de son numérique.
+                cm, deg_src, from_n = if ev.value isa ControlMap
                     cm_copy = copy(ev.value)
                     src = get(cm_copy, :degree, nothing)
-                    if src === nothing
-                        src = get(cm_copy, :s, nothing)
+                    used_n = false
+                    if src === nothing && haskey(cm_copy, :n)
+                        src = cm_copy[:n]; used_n = true
                     end
-                    (cm_copy, src)
+                    if src === nothing
+                        src = get(cm_copy, :note, get(cm_copy, :s, nothing))
+                    end
+                    (cm_copy, src, used_n)
                 else
-                    (Dict{Symbol,Any}(), ev.value)
+                    (Dict{Symbol,Any}(), ev.value, false)
                 end
                 v = _resolve_value(deg_src)
                 if v isa Real
                     cm[:note] = scale_to_semitones(s, Float64(v))
+                    from_n && delete!(cm, :n)   # c'était un degré, pas une variante
                     if haskey(cm, :s) && _resolve_value(cm[:s]) isa Real
                         delete!(cm, :s)
                     end

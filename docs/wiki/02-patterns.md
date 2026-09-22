@@ -109,7 +109,7 @@ ControlPatterns les clés numériques communes se combinent. En pipe :
 livedoc les montre dès que le curseur est dans l'appel.
 
 **Contrôles** (paramètres par événement, en chaîne `|>`) :
-- `s` (`sound`) `n` `note` (`up`) `gain` `speed` `pan` `degree`
+- `s` (`sound`) `n` `note` (`up`) `degree` `gain` `speed` `pan`
 - `begin_` `end_` `unit` `cut` `orbit` `nudge` `loop` `squiz` `midinote`
   `channel` `dry`
 - `lpf` (= `cutoff`) `hpf` (= `hcutoff`) `resonance` `hresonance` `bandq` `bandf`
@@ -168,6 +168,69 @@ notes d'un accord comme une main sur un piano.
 @d1 :pad |> n("c'maj7") |> arp("converge") |> fast(2)
 @d1 :pad |> n("c'maj") |> rolled
 ```
+
+## Variables : composer par morceaux
+
+Une ligne du buffer qui n'est pas un `@dN` est du Julia ordinaire, et
+`E` (tout évaluer) l'exécute avant les slots. On peut donc nommer des
+morceaux et les réutiliser :
+
+```julia
+basse   = p"bd ~ bd bd"
+accords = ["c'maj", "a4'min", "f'maj", "g'dom7"]
+lent(p) = p |> slow(2) |> room(0.3)
+
+@d1 basse |> gain(0.9)
+@d2 :pad |> n(accords) |> arp("up") |> lent
+@d3 basse |> fast(2) |> degradeBy(0.4)
+```
+
+`e` (évaluer le bloc sous le curseur) marche aussi sur une définition
+seule : changer `basse` puis ré-évaluer les slots qui l'utilisent suffit.
+`cps!(0.5)` posé en haut du buffer est appliqué par `E` comme le reste.
+
+## Listes et suites Julia
+
+Partout où un pattern est attendu, une liste ou un range Julia devient
+une séquence d'un cycle :
+
+```julia
+@d1 :pad |> n(0:7)                    # 8 degrés montants
+@d1 :pad |> n([0, 3, 7, 10])
+@d1 "hh*8" |> lpf(range(400, 4000, length = 8))   # rampe linéaire
+@d1 "hh*8" |> lpf(geom(200, 6000, 8))             # rampe géométrique
+@d1 :pad |> n(2 .^ (0:3))             # tout le broadcast Julia marche
+@d1 :pad |> n(reverse(0:7))
+```
+
+`geom(départ, arrivée, n)` donne une suite géométrique, l'échelle
+naturelle des fréquences. Pour du linéaire, `range` de Julia suffit.
+
+## Gammes
+
+`scale` transforme des degrés en demi-tons. Il lit `degree` s'il est
+posé, sinon `n` — donc l'écriture courante marche telle quelle :
+
+```julia
+@d1 :pad |> n("0 2 4 6") |> scale(:minor)
+@d1 :pad |> n(0:7) |> scale(:minor_pentatonic)
+@d1 :pad |> degree("0 2 4") |> scale(:major)
+```
+
+`list_scales()` liste les gammes enregistrées, `lookup_scale(:major)`
+en renvoie une. Au-delà du tempérament égal, Ressac sait construire des
+gammes : `edo(:n19, 19)` (19 tons égaux), `from_ratios` (intonation
+juste), `from_cents`, `bohlen_pierce`, `golden_meantone`,
+`fibonacci_scale`, `stern_brocot`, `continued_fraction_scale`. On les
+enregistre puis on les nomme :
+
+```julia
+register_scale!(edo(:n19, 19))
+@d1 :pad |> n(0:6) |> scale(:n19)
+```
+
+`transpose_cents(50)` décale d'un quart de ton, `scale_stretch(g, 1.02)`
+étire une gamme entière. `:doc scale` et `:doc edo` donnent le détail.
 
 ## `n` et `note` ne font pas la même chose
 

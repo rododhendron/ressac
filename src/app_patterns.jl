@@ -299,13 +299,24 @@ function _eval_pattern_blocks!(m::RessacApp, target)
     txt = TK.text(_active_editor(m))
     lines = collect(split(txt, '\n'; keepempty=true))
     blocks = Dict{Symbol,String}()
+    prelude = String[]                  # tout ce qui n'est pas un slot, dans l'ordre
     i = 1
     head_rx = r"^\s*(#+\s*)?@d(\d+)\b"
     while i <= length(lines)
         line = lines[i]
         mt = match(head_rx, line)
         if mt === nothing
-            i += 1
+            # Une ligne hors slot : définition de variable, cps!, fonction…
+            # Elle est évaluée avant les slots, pour qu'un `@d1 basse` voie
+            # la `basse = p"…"` écrite plus haut.
+            if isempty(strip(line)) || startswith(lstrip(line), "#")
+                i += 1
+                continue
+            end
+            (a, b) = _logical_block_range(lines, i)
+            b = max(b, i)
+            push!(prelude, join(lines[a:b], "\n"))
+            i = b + 1
             continue
         end
         # Capture the whole block: this line + continuation lines.
@@ -324,6 +335,18 @@ function _eval_pattern_blocks!(m::RessacApp, target)
         target
     ok = 0; err = 0
     ok_slots = Symbol[]
+    defs = 0
+    if target === :all
+        for src in prelude
+            try
+                Core.eval(Main, Meta.parse(src))
+                defs += 1
+            catch e
+                err += 1
+                _push_app_log!(m, "[ERROR] éval : $(_humanize_eval_error(e, src))")
+            end
+        end
+    end
     for slot in targets
         src = get(blocks, slot, nothing)
         src === nothing && continue
@@ -355,7 +378,8 @@ function _eval_pattern_blocks!(m::RessacApp, target)
     m.eval_flash_rows = flash
     m.eval_flash_ts   = time()
     suffix = err > 0 ? " ($err failed)" : ""
-    _push_app_log!(m, "[INFO] :e — $ok bloc$(ok == 1 ? "" : "s") évalué$(ok == 1 ? "" : "s")$suffix")
+    defs_txt = defs == 0 ? "" : " + $defs définition$(defs == 1 ? "" : "s")"
+    _push_app_log!(m, "[INFO] :e — $ok bloc$(ok == 1 ? "" : "s") évalué$(ok == 1 ? "" : "s")$defs_txt$suffix")
     _warn_unknown_sounds!(m, [get(blocks, slot, "") for slot in ok_slots])
 end
 

@@ -60,6 +60,26 @@ Used by every combinator's curried form (`gain(x)`, `jux(f)`,
 _as_pattern(p::Pattern) = p
 _as_pattern(p::Symbol)  = pure(p)
 _as_pattern(p::AbstractString) = parse_minino(String(p))
+# Un nombre isolé est un pas ; une liste ou un range Julia devient une
+# séquence d'un cycle : `n(0:7)`, `n([0, 3, 7])`, `lpf(2 .^ (7:12))`.
+_as_pattern(x::Real) = pure(Symbol(string(x)))
+_as_pattern(xs::AbstractVector) = isempty(xs) ? silence(Symbol) : seq([_as_pattern(x) for x in xs])
+_as_pattern(r::AbstractRange) = _as_pattern(collect(r))
+
+"""
+    geom(départ, arrivée, n) -> Vector{Float64}
+
+Suite géométrique de `n` valeurs de `départ` à `arrivée` — l'échelle
+naturelle des fréquences : `lpf(geom(200, 6000, 8))`. La version
+linéaire est `range(200, 6000, length = 8)` de Julia.
+"""
+function geom(a::Real, b::Real, n::Integer)
+    n > 0 || throw(ArgumentError("geom : n > 0"))
+    (a > 0 && b > 0) || throw(ArgumentError("geom : bornes strictement positives"))
+    n == 1 && return [float(a)]
+    r = (b / a)^(1 / (n - 1))
+    return [float(a) * r^(i - 1) for i in 1:n]
+end
 
 """
     fast(n, p) -> Pattern{T}

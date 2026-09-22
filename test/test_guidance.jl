@@ -220,3 +220,58 @@ end
         delete!(Ressac._SAMPLE_REGISTRY, :gdjazz)
     end
 end
+
+@testset "variables et suites Julia dans le buffer" begin
+    app, tb, frame = _gd_app()
+    old = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    try
+        ed = Ressac._active_editor(app)
+        # E évalue aussi ce qui n'est pas un slot : variables, cps!, fonctions
+        Tachikoma.set_text!(ed, """
+        basse = p"bd ~ bd bd"
+        motif = [0, 3, 7]
+        @d1 basse |> gain(0.9)
+        @d2 :pad |> n(motif)
+        """)
+        _gdkey(app, 'E')
+        # Julia 1.12 partitionne les bindings par âge de monde : une variable
+        # créée par Core.eval n'est pas visible du code déjà compilé (ce
+        # testset), mais l'est des évaluations suivantes — comme dans la TUI.
+        @test Core.eval(Main, :(basse isa Ressac.Pattern))
+        @test Core.eval(Main, :(motif == [0, 3, 7]))
+        @test haskey(app.scheduler.patterns, :d1) && haskey(app.scheduler.patterns, :d2)
+        @test any(l -> occursin("définition", l), app.logs)
+        # une ligne commentée reste ignorée
+        Tachikoma.set_text!(ed, "# zzz_pas_defini = 1\n@d1 p\"bd\"")
+        _gdkey(app, 'E')
+        @test !Core.eval(Main, :(isdefined(Main, :zzz_pas_defini)))
+        # une erreur dans une définition est signalée et n'empêche pas les slots
+        Tachikoma.set_text!(ed, "oups = (\n@d1 p\"bd\"")
+        _gdkey(app, 'E')
+        @test any(l -> occursin("[ERROR]", l), app.logs)
+    finally
+        Ressac._LIVE_SCHEDULER[] = old
+    end
+end
+
+@testset "listes, ranges Julia et gammes dans les contrôles" begin
+    nv(p) = [get(ev.value, :n, nothing) for ev in sort(p(0//1, 1//1); by = e -> e.start)]
+    @test nv(:pad |> n(0:3)) == [0, 1, 2, 3]
+    @test nv(:pad |> n([0, 3, 7])) == [0, 3, 7]
+    @test nv(:pad |> n(2 .^ (0:2))) == [1, 2, 4]
+    @test [ev.start for ev in (:pad |> n(0:3))(0//1, 1//1)] == [0//1, 1//4, 1//2, 3//4]
+    @test [round(get(ev.value, :cutoff, 0)) for ev in (:bd |> lpf(geom(200, 6400, 3)))(0//1, 1//1)] ==
+          [200.0, 1131.0, 6400.0]
+    @test length(geom(100, 200, 1)) == 1
+    @test_throws ArgumentError geom(0, 100, 4)
+    @test [get(ev.value, :room, 0) for ev in (:bd |> set(:room, range(0, 1, length = 3)))(0//1, 1//1)] ==
+          [0.0, 0.5, 1.0]
+    # gammes : degré → demi-tons
+    notes(p) = [get(ev.value, :note, nothing) for ev in sort(p(0//1, 1//1); by = e -> e.start)]
+    @test notes(:pad |> n(0:3) |> scale(:major)) == [0.0, 2.0, 4.0, 5.0]
+    @test notes(:pad |> degree("0 2 4") |> scale(:minor)) == [0.0, 3.0, 7.0]
+    @test :major in list_scales() && lookup_scale(:major) !== nothing
+    @test scale_to_semitones(lookup_scale(:major), 4) == 7.0
+    @test Ressac.lookup_doc("scale") !== nothing && Ressac.lookup_doc("degree") !== nothing
+end

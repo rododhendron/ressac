@@ -122,7 +122,7 @@ include("app_keymap.jl")         # bindings :global/:editor/:patterns/:synth/:le
 include("plugin_handlers.jl")
 
 export Event, Pattern, query
-export pure, silence, fast, slow, density, rev, every, gate
+export pure, silence, fast, slow, density, rev, every, gate, geom
 export mask
 export jux, juxBy, off, degrade, degradeBy
 export sometimes, sometimesBy, often, rarely
@@ -164,7 +164,7 @@ export SampleEntry, sample_info, list_samples, register_sample!
 export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
-export pan, n, room, delay, shape, pump, note, scale
+export pan, n, room, delay, shape, pump, note, scale, degree
 export s, sound, up, begin_, end_
 export unit, cut, orbit, nudge, loop, squiz, midinote, channel, dry
 export transpose_cents, scale_stretch, bend
