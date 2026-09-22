@@ -538,7 +538,6 @@ Lecture d'une carte :
 |---|---|
 | `Enter` | insérer dans le pattern |
 | `Bksp` | effacer le filtre |
-| `a-z` | filtrer en tapant |
 
 **Jouer / écouter**
 
@@ -551,6 +550,15 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `Tab` | catégorie suivante |
+| `/` | chercher |
+| `h / ←` | précédent |
+| `l / →` | suivant |
+| `j / ↓` | ligne suivante |
+| `k / ↑` | ligne précédente |
+| `Ctrl-d` | page suivante |
+| `Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
 | `j / k / ↓ / ↑` | naviguer |
 | `Esc / q` | fermer |
 

@@ -54,6 +54,16 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
 end
 
 """
+    _modal_owns_key(m, chord) -> Bool
+
+Vrai si le modal ouvert déclare ce raccourci : l'app lui laisse alors la
+touche, même quand elle en a un autre usage (le navigateur de sons a sa
+propre recherche sur `/`).
+"""
+_modal_owns_key(m::RessacApp, chord::AbstractString) =
+    m.modal !== :none && lookup(modal_scope(m), chord; target = m) !== nothing
+
+"""
     _route_key_to_focused_pane!(m, evt) -> :editor | :consumed | :pass
 
 Forward a KeyEvent to the focused workspace pane's PaneImpl
@@ -449,13 +459,15 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         end
         # CommandLine entry — ':' opens ex command, '/' opens search.
         # Only when the editor is in :normal (so ':' typed during insert
-        # is a literal char). Replaces TK.CodeEditor's built-in
-        # :command/:search mode entry, which we never want to trigger.
+        # is a literal char) et hors modal : un modal peut avoir sa propre
+        # recherche (`/` dans le navigateur de sons). Replaces
+        # TK.CodeEditor's built-in :command/:search mode entry, which we
+        # never want to trigger.
         if in_normal && evt.key === :char
             if evt.char == ':'
                 enter!(m.command_line, :command)
                 return
-            elseif evt.char == '/'
+            elseif evt.char == '/' && !_modal_owns_key(m, "/")
                 enter!(m.command_line, :search)
                 return
             end

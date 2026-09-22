@@ -147,6 +147,9 @@ non-empty), and the focus toggle for keystroke routing.
     browser_cursor::Int          = 1
     browser_filter::Symbol       = :all   # :all | :instruments | :samples | :synths
     browser_last_preview::Float64 = 0.0
+    browser_cols::Int            = 1      # colonnes de la grille (posé au rendu)
+    browser_rows::Int            = 1      # lignes visibles (idem)
+    browser_search_mode::Bool    = false  # `/` : la frappe va dans la recherche
     logs::Vector{String}         = ["[INFO] Ressac — ? aide · e évalue · :synth <nom> pour concevoir un son · :q quitte"]
     quit::Bool                   = false
     tick::Int                    = 0

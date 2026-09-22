@@ -170,3 +170,53 @@ end
         delete!(Ressac._SAMPLE_REGISTRY, :gdkick)
     end
 end
+
+@testset "navigateur de sons — grille 2D et recherche explicite" begin
+    app, tb, frame = _gd_app()
+    names = [Symbol("gd$i") for i in 1:12]
+    for nm in names
+        Ressac.register_sample!(Ressac.SampleEntry(nm, "test", "", String[], Dict{String,Any}()))
+    end
+    Ressac.register_sample!(Ressac.SampleEntry(:gdjazz, "test", "", String[], Dict{String,Any}()))
+    try
+        _gdex(app, "browse")
+        @test app.modal === :browse && !app.browser_search_mode
+        scr = _gdscreen(app, tb, frame)
+        @test occursin("/ pour chercher", scr) && occursin("sons", scr)
+        n = length(Ressac._browser_entries(app))
+        @test n >= 13
+        @test app.browser_cols >= 1                       # la grille a été mesurée au rendu
+        # navigation 2D : l/h d'une case, j/k d'une ligne
+        app.browser_cursor = 1
+        _gdkey(app, 'l'); @test app.browser_cursor == 2
+        _gdkey(app, 'h'); @test app.browser_cursor == 1
+        _gdkey(app, 'j'); @test app.browser_cursor == 1 + app.browser_cols
+        _gdkey(app, 'k'); @test app.browser_cursor == 1
+        _gdkey(app, 'k'); @test app.browser_cursor == 1    # borné en haut
+        _gdkey(app, 'G'); @test app.browser_cursor == n
+        _gdkey(app, 'l'); @test app.browser_cursor == n    # borné en bas
+        _gdkey(app, 'g'); @test app.browser_cursor == 1
+        # recherche : « jazz » contient j et a, qui sont des raccourcis hors recherche
+        _gdkey(app, '/')
+        @test app.browser_search_mode
+        for c in "jazz"; _gdkey(app, c); end
+        @test app.browser_query == "jazz"
+        @test [String(e.name) for e in Ressac._browser_entries(app)] == ["gdjazz"]
+        @test occursin("⌕ jazz", _gdscreen(app, tb, frame))
+        _gdkey(app, :enter)                                # valide : filtre gardé, nav revient
+        @test !app.browser_search_mode && app.browser_query == "jazz"
+        _gdkey(app, :escape)                               # 1er Esc efface le filtre
+        @test isempty(app.browser_query) && app.modal === :browse
+        _gdkey(app, :escape)                               # 2e ferme
+        @test app.modal === :none
+        # Esc pendant la recherche efface aussi
+        _gdex(app, "browse"); _gdkey(app, '/'); _gdkey(app, 'k')
+        @test app.browser_query == "k"
+        _gdkey(app, :escape)
+        @test !app.browser_search_mode && isempty(app.browser_query) && app.modal === :browse
+        _gdkey(app, :escape)
+    finally
+        for nm in names; delete!(Ressac._SAMPLE_REGISTRY, nm); end
+        delete!(Ressac._SAMPLE_REGISTRY, :gdjazz)
+    end
+end

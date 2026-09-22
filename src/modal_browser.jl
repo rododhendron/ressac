@@ -63,6 +63,24 @@ function _open_browser!(m::RessacApp)
     _open_modal!(m, :browse, :browser_cursor)
     m.browser_query = ""
     m.browser_filter = :all
+    m.browser_search_mode = false
+end
+
+# Largeur d'une case de la grille : assez pour un nom de son + la marge.
+const _BROWSER_CELL_W = 22
+_browser_cols(width::Int) = max(1, width ÷ _BROWSER_CELL_W)
+
+"""
+    _browser_move!(m, d) -> Bool
+
+Déplace le curseur de `d` cases dans la grille (±1 = voisin,
+±`browser_cols` = ligne au-dessus / en dessous), en restant dans la liste.
+"""
+function _browser_move!(m::RessacApp, d::Int)
+    n = length(_browser_entries(m))
+    n == 0 && return true
+    m.browser_cursor = clamp(m.browser_cursor + d, 1, n)
+    return true
 end
 
 function _browser_entries(m::RessacApp)
@@ -88,22 +106,41 @@ function _browser_entries(m::RessacApp)
 end
 
 function _handle_browser_key!(m::RessacApp, evt::TK.KeyEvent)
-    entries = _browser_entries(m)
-    n = length(entries)
-    # Query-aware Esc: with a non-empty query the modal stays open and
-    # the user just clears their filter. So this can't use the generic
-    # _modal_close_key! helper.
-    if evt.key === :escape || (evt.char == 'q' && isempty(m.browser_query))
-        m.modal = :none
+    # ── Mode recherche (`/`) : toute la frappe va dans la requête, pour
+    # pouvoir chercher « jazz » sans que j et a soient des raccourcis.
+    if m.browser_search_mode
+        if evt.key === :escape
+            m.browser_search_mode = false
+            m.browser_query = ""
+            m.browser_cursor = 1
+            return
+        elseif evt.key === :enter
+            m.browser_search_mode = false
+            return
+        elseif evt.key === :backspace
+            isempty(m.browser_query) ||
+                (m.browser_query = m.browser_query[1:prevind(m.browser_query, end)])
+            m.browser_cursor = 1
+            return
+        elseif evt.key === :char && evt.char != '\0' && _is_typable_ascii(evt.char)
+            m.browser_query *= string(evt.char)
+            m.browser_cursor = 1
+            return
+        end
+        # flèches, Tab… passent à la navigation normale
+    end
+    # Esc ferme, sauf si un filtre est posé : il l'efface d'abord.
+    if evt.key === :escape || evt.char == 'q'
+        if isempty(m.browser_query)
+            m.modal = :none
+        else
+            m.browser_query = ""
+            m.browser_cursor = 1
+        end
         return
     end
-    _modal_cursor_nav!(m, evt, :browser_cursor, n) && return
     dispatch!(((:modal_browse, m),), evt) && return
-    # Tout autre caractère imprimable filtre la liste.
-    if evt.key === :char && evt.char != '\0' && _is_typable_ascii(evt.char)
-        m.browser_query *= string(evt.char)
-        m.browser_cursor = 1
-    end
+    return
 end
 
 function _browser_preview!(m::RessacApp, entry::_BrowserEntry)
@@ -176,36 +213,50 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         end
     end
     # ── Row 2: search bar ─────────────────────────────────────────
-    sb_text = "⌕ " * m.browser_query * "▏"
+    count_txt = "$(n) son$(n == 1 ? "" : "s")" *
+                (n == 0 ? "" : "  ·  $(m.browser_cursor)/$n")
+    sb_text = m.browser_search_mode ? "⌕ " * m.browser_query * "▏" :
+              isempty(m.browser_query) ? "/ pour chercher" : "⌕ " * m.browser_query
+    sb_style = m.browser_search_mode ? TK.tstyle(:accent, bold = true) :
+               isempty(m.browser_query) ? TK.tstyle(:text_dim) : TK.tstyle(:text)
     TK.set_string!(buf, inner.x, inner.y + 1,
-                   first(rpad(sb_text, inner.width), inner.width),
-                   TK.tstyle(:text_dim))
-    # Body fills rows 3..end.
+                   first(rpad(sb_text, max(0, inner.width - textwidth(count_txt))),
+                         max(0, inner.width - textwidth(count_txt))), sb_style)
+    TK.set_string!(buf, inner.x + inner.width - textwidth(count_txt), inner.y + 1,
+                   count_txt, TK.tstyle(:text_dim))
+    # ── Grille : les noms en colonnes, le détail de la sélection en bas ──
     body_y = inner.y + 2
-    body_h = inner.height - 2
-    # Auto-scroll so the cursor stays in view as the user j/k's past
-    # the bottom of the viewport.
-    m.modal_scroll = _scroll_to_show(m.browser_cursor, n, body_h, m.modal_scroll)
-    visible = m.modal_scroll + 1 <= n ?
-              entries[(m.modal_scroll + 1):min(end, m.modal_scroll + body_h)] :
-              _BrowserEntry[]
-    for i in 1:body_h
-        line = ""
-        if i <= length(visible)
-            e = visible[i]
-            abs_idx = m.modal_scroll + i
-            marker = abs_idx == m.browser_cursor ? "▶ " : "  "
+    body_h = max(1, inner.height - 3)            # -1 pour la ligne de détail
+    ncols = _browser_cols(inner.width)
+    cell_w = inner.width ÷ ncols
+    m.browser_cols = ncols
+    m.browser_rows = body_h
+    nrows_total = cld(max(n, 1), ncols)
+    cur_row = cld(max(m.browser_cursor, 1), ncols)
+    m.modal_scroll = _scroll_to_show(cur_row, nrows_total, body_h, m.modal_scroll)
+    for r in 1:body_h
+        row = m.modal_scroll + r
+        row > nrows_total && break
+        for c in 1:ncols
+            idx = (row - 1) * ncols + c
+            idx > n && break
+            e = entries[idx]
             kind_letter = e.kind === :instrument ? "I" :
                           e.kind === :sample     ? "S" : "Y"
-            line = "$(marker)[$kind_letter] $(rpad(String(e.name), 18))  $(e.summary)"
+            sel = idx == m.browser_cursor
+            label = "$(sel ? "▶" : " ")$kind_letter $(String(e.name))"
+            style = sel ? TK.tstyle(:accent, bold = true) :
+                    e.kind === :sample ? TK.tstyle(:text) : TK.tstyle(:text_bright)
+            TK.set_string!(buf, inner.x + (c - 1) * cell_w, body_y + r - 1,
+                           first(rpad(label, cell_w), cell_w), style)
         end
-        style = if i <= length(visible) && (m.modal_scroll + i) == m.browser_cursor
-            TK.tstyle(:accent, bold = true)
-        else
-            TK.tstyle(:text)
-        end
-        TK.set_string!(buf, inner.x, body_y + i - 1,
-                       first(rpad(line, inner.width), inner.width), style)
+    end
+    # Détail de la sélection (le résumé ne tient pas dans une case).
+    if 1 <= m.browser_cursor <= n
+        e = entries[m.browser_cursor]
+        detail = "$(e.kind) $(e.name)  ·  $(e.plugin)" * (isempty(e.summary) ? "" : "  ·  $(e.summary)")
+        TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+                       first(rpad(detail, inner.width), inner.width), TK.tstyle(:text_dim))
     end
 end
 
@@ -222,9 +273,26 @@ bind!(:modal_browse, "Tab", "catégorie suivante"; group = :nav,
                      i = findfirst(==(m.browser_filter), filters);
                      m.browser_filter = filters[(i % length(filters)) + 1];
                      m.browser_cursor = 1))
+bind!(:modal_browse, "/", "chercher"; short = "chercher", group = :nav,
+      action = m -> (m.browser_search_mode = true))
+bind!(:modal_browse, ["h", "←"], "précédent"; group = :nav, hint = false, repeat = true,
+      action = m -> _browser_move!(m, -1))
+bind!(:modal_browse, ["l", "→"], "suivant"; group = :nav, hint = false, repeat = true,
+      action = m -> _browser_move!(m, 1))
+bind!(:modal_browse, ["j", "↓"], "ligne suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> _browser_move!(m, m.browser_cols))
+bind!(:modal_browse, ["k", "↑"], "ligne précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> _browser_move!(m, -m.browser_cols))
+bind!(:modal_browse, "Ctrl-d", "page suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> _browser_move!(m, m.browser_cols * m.browser_rows))
+bind!(:modal_browse, "Ctrl-u", "page précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> _browser_move!(m, -m.browser_cols * m.browser_rows))
+bind!(:modal_browse, "g", "premier"; group = :nav, hint = false,
+      action = m -> (m.browser_cursor = 1))
+bind!(:modal_browse, "G", "dernier"; group = :nav, hint = false,
+      action = m -> (m.browser_cursor = max(1, length(_browser_entries(m)))))
 bind!(:modal_browse, "Bksp", "effacer le filtre"; group = :edit, hint = false,
       when = m -> !isempty(m.browser_query),
       action = m -> (m.browser_query = m.browser_query[1:prevind(m.browser_query, end)];
                      m.browser_cursor = 1))
-bind!(:modal_browse, "a-z", "filtrer en tapant"; group = :edit, hint = false)
 _bind_modal_common!(:modal_browse)

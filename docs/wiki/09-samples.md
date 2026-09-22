@@ -38,6 +38,17 @@ Dans les patterns, tu choisis la variante avec `n(...)` :
 @d1 "mykick:1"                  # la variante 1 précisément
 ```
 
+## Parcourir les sons
+
+`:browse` (ou `Espace b`) ouvre le catalogue en grille : `h j k l` ou les
+flèches pour se déplacer, `Ctrl-d` / `Ctrl-u` par page, `g` / `G` début
+et fin. `Tab` change de catégorie (tous, instruments, samples, synths).
+
+`/` lance une recherche : tout ce que tu tapes filtre la liste, `Entrée`
+valide et rend la navigation, `Échap` efface. `K` ou `Espace` écoute le
+son sélectionné, `Entrée` l'insère dans le pattern. La ligne du bas
+donne le détail du son sous le curseur.
+
 ## Un son de la librairie de synths
 
 `acid303`, `chaoglitch` et la cinquantaine d'autres recettes ne sont pas
