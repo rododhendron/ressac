@@ -107,6 +107,15 @@ bind!(:editor, ["i", "a", "o", "O"], "insérer (avant / après / ligne dessous /
 bind!(:editor, "Esc", "retour au mode normal"; group = :edit, hint = false)
 bind!(:editor, ["h", "j", "k", "l"], "déplacer le curseur (ou flèches)"; group = :nav, hint = false)
 bind!(:editor, ["w", "b", "e"], "mot suivant / précédent / fin de mot"; group = :nav, hint = false)
+bind!(:editor, ["f", "F", "t", "T"], "aller au caractère (f dessus, t avant, majuscule = à gauche)";
+      group = :nav, hint = false, when = _km_normal_ed,
+      action = (m, evt) -> (m.pending_find = evt.char))
+bind!(:editor, ";", "refaire la recherche de caractère"; group = :nav, hint = false,
+      when = m -> _km_normal_ed(m) && m.last_find !== nothing, repeat = true,
+      action = m -> _repeat_find!(m, _km_ed(m), +1))
+bind!(:editor, ",", "refaire la recherche de caractère, à l'envers"; group = :nav, hint = false,
+      when = m -> _km_normal_ed(m) && m.last_find !== nothing, repeat = true,
+      action = m -> _repeat_find!(m, _km_ed(m), -1))
 bind!(:patterns, "K", "doc du mot sous le curseur (pane DOC)"; short = "doc", group = :help,
       when = _km_patterns, action = _doc_under_cursor!)
 bind!(:editor, ["W", "B", "E"], "MOT (séparé par des espaces)"; group = :nav, hint = false)

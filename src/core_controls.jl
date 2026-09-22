@@ -528,7 +528,8 @@ function pump(steps_per_cycle::Int = 4, depth::Real = 0.6)
     # The first slot is the duck floor; each subsequent slot ramps
     # linearly up toward 1.0 by the end of the cycle.
     Pattern_T = Pattern{Float64}
-    return (p::Pattern) -> begin
+    return function (p)
+        p = _as_pattern(p)
         gain_pat = Pattern_T((s::Rational, e::Rational) -> begin
             out = Event{Float64}[]
             cyc_start = floor(Int, s)

@@ -206,6 +206,16 @@ une séquence d'un cycle :
 `geom(départ, arrivée, n)` donne une suite géométrique, l'échelle
 naturelle des fréquences. Pour du linéaire, `range` de Julia suffit.
 
+Une liste devient une **séquence** : tout tient dans un cycle, comme
+`[…]`. Pour une **alternance**, un élément par cycle comme `<…>`, passe
+par `slowcat` :
+
+```julia
+@d1 "hh*8" |> lpf(100:300:1000)            # 4 valeurs dans le cycle
+@d1 "hh*8" |> lpf(slowcat(100:300:1000))   # 100, puis 400, puis 700…
+@d1 :pad |> n(slowcat([0, 3, 7, 12]))      # un accord par cycle
+```
+
 ## Gammes
 
 `scale` transforme des degrés en demi-tons. Il lit `degree` s'il est

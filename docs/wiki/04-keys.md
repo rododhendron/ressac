@@ -63,6 +63,9 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Ctrl-u` | demi-page précédente |
 | `h / j / k / l` | déplacer le curseur (ou flèches) |
 | `w / b / e` | mot suivant / précédent / fin de mot |
+| `f / F / t / T` | aller au caractère (f dessus, t avant, majuscule = à gauche) |
+| `;` | refaire la recherche de caractère |
+| `,` | refaire la recherche de caractère, à l'envers |
 | `W / B / E` | MOT (séparé par des espaces) |
 | `0 / $` | début / fin de ligne |
 | `g g / G` | début / fin du buffer |

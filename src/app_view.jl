@@ -15,6 +15,11 @@ function _creation_hint(m::RessacApp)
     ed === nothing && return nothing
     1 <= ed.cursor_row <= length(ed.lines) || return nothing
     line = String(ed.lines[ed.cursor_row])
+    _ = line
+    if m.placeholder_active
+        n = length(m.placeholder_cols)
+        return "✎ trou $(m.placeholder_idx)/$n : i remplit · Tab suivant · u annule"
+    end
     if isempty(strip(line))
         return "✎ vide : Espace d slot · Espace I snippets · K doc"
     end

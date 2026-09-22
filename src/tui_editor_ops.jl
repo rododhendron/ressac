@@ -449,3 +449,44 @@ function _vim_replay!(m::RessacApp, ed::TK.CodeEditor)
     end
     _push_app_log!(m, "[INFO] . — rien à répéter")
 end
+
+
+# ── f / F / t / T : aller au caractère sur la ligne ────────────────
+
+"""
+    _find_char!(m, ed, motion, c) -> Bool
+
+Déplace le curseur au caractère `c` de la ligne courante : `f` vers la
+droite dessus, `t` juste avant, `F` vers la gauche dessus, `T` juste
+après. Renvoie false et laisse le curseur tranquille si le caractère
+n'est pas là.
+"""
+function _find_char!(m::RessacApp, ed::TK.CodeEditor, motion::Char, c::Char)
+    1 <= ed.cursor_row <= length(ed.lines) || return false
+    line = ed.lines[ed.cursor_row]
+    col = ed.cursor_col + 1                      # 1-based, caractère sous le curseur
+    forward = motion in ('f', 't')
+    idx = if forward
+        findnext(==(c), line, min(col + 1, length(line) + 1))
+    else
+        col > 1 ? findprev(==(c), line, col - 1) : nothing
+    end
+    idx === nothing && return false
+    target = motion == 't' ? idx - 1 : motion == 'T' ? idx + 1 : idx
+    ed.cursor_col = clamp(target - 1, 0, max(0, length(line) - 1))
+    m.last_find = (motion, c)
+    return true
+end
+
+"""
+    _repeat_find!(m, ed, dir) -> Bool
+
+`;` refait la dernière recherche de caractère, `,` la refait à l'envers.
+"""
+function _repeat_find!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
+    m.last_find === nothing && return false
+    motion, c = m.last_find
+    inverse = Dict('f' => 'F', 'F' => 'f', 't' => 'T', 'T' => 't')
+    use = dir > 0 ? motion : inverse[motion]
+    return _find_char!(m, ed, use, c)
+end

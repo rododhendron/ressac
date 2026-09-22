@@ -164,6 +164,10 @@ non-empty), and the focus toggle for keystroke routing.
     evolve_rng::Random.MersenneTwister = Random.MersenneTwister(0)
     palette_query::String        = ""
     palette_cursor::Int          = 1
+    # `f` / `F` / `t` / `T` en attente du caractère à chercher sur la ligne,
+    # et le dernier couple (motion, caractère) pour `;` et `,`.
+    pending_find::Union{Nothing,Char} = nothing
+    last_find::Union{Nothing,Tuple{Char,Char}} = nothing
     logs::Vector{String}         = ["[INFO] Ressac — ? aide · e évalue · :synth <nom> pour concevoir un son · :q quitte"]
     quit::Bool                   = false
     tick::Int                    = 0

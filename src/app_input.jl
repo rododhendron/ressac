@@ -53,6 +53,17 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     end
 end
 
+# Touches de l'éditeur qui consomment le caractère suivant tel quel :
+# `r` remplace, `f`/`F`/`t`/`T` cherchent un caractère sur la ligne.
+const _LITERAL_PENDING = ('r',)
+
+# L'éditeur (ou Ressac, pour f/t) attend un caractère littéral : aucune
+# action globale ne doit l'intercepter.
+_awaiting_literal(m::RessacApp) =
+    m.pending_find !== nothing ||
+    ((ed = _active_editor(m)) !== nothing && ed.mode === :normal &&
+     ed.pending_key in _LITERAL_PENDING)
+
 """
     _modal_owns_key(m, chord) -> Bool
 
@@ -405,7 +416,10 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # et éditeur en insert/command/search (où `!` est un caractère).
     if evt.action === TK.key_press && evt.char == '!'
         ed_panic = _active_editor(m)
-        if ed_panic === nothing || ed_panic.mode === :normal
+        # …et à condition que l'éditeur n'attende pas un caractère
+        # littéral : `r!` remplace le caractère sous le curseur, `f!`
+        # saute au prochain `!`. Sans ça, ces touches sont inatteignables.
+        if (ed_panic === nothing || ed_panic.mode === :normal) && !_awaiting_literal(m)
             _panic!(m)
             return
         end
@@ -463,7 +477,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         # recherche (`/` dans le navigateur de sons). Replaces
         # TK.CodeEditor's built-in :command/:search mode entry, which we
         # never want to trigger.
-        if in_normal && evt.key === :char
+        if in_normal && evt.key === :char && !_awaiting_literal(m)
             if evt.char == ':'
                 enter!(m.command_line, :command)
                 return
@@ -588,11 +602,25 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
             dispatch!(((:leader, m),), evt; prefix = "Space")
             return
         end
-        # `g` en attente (posé par l'éditeur) → accords « g t », « g T »…
-        prefix = ed.pending_key == 'g' ? "g" : ""
-        if dispatch!(_editor_layers(m), evt; prefix = prefix)
-            isempty(prefix) || (ed.pending_key = nothing)
+        # `f` / `t` en attente : le caractère suivant est la cible.
+        if m.pending_find !== nothing && is_press
+            motion = m.pending_find
+            m.pending_find = nothing
+            if evt.key === :char && evt.char != '\0'
+                _find_char!(m, ed, motion, evt.char)
+            end
             return
+        end
+        # `r`, `f`, `t`… attendent un caractère LITTÉRAL : le registre ne
+        # doit pas l'intercepter, sinon `r!` déclenche le panic et `r `
+        # ouvre le menu Espace au lieu de remplacer le caractère.
+        if !(is_press && _awaiting_literal(m))
+            # `g` en attente (posé par l'éditeur) → accords « g t », « g T »…
+            prefix = ed.pending_key == 'g' ? "g" : ""
+            if dispatch!(_editor_layers(m), evt; prefix = prefix)
+                isempty(prefix) || (ed.pending_key = nothing)
+                return
+            end
         end
     end
     # Operator-motion combos (cw / dw / yw + big variants + e variants).

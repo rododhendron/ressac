@@ -106,3 +106,14 @@ et le copier. Une touche reprend.
 Bascule. Tant que c'est ON, chaque événement clavier est journalisé :
 `[KEY] <symbole> char='X' action=<press|repeat|release>`. Utile pour
 diagnostiquer une disposition de clavier.
+
+## Aller à un caractère
+
+`f<c>` place le curseur sur la prochaine occurrence de `c` sur la ligne,
+`t<c>` juste avant, `F<c>` et `T<c>` font la même chose vers la gauche.
+`;` refait la recherche, `,` la refait à l'envers.
+
+`r<c>` remplace le caractère sous le curseur. Tous les caractères sont
+acceptés, y compris ceux qui déclenchent autre chose seuls : `r!` écrit
+un point d'exclamation au lieu de couper le son, `r` suivi d'une espace
+écrit une espace au lieu d'ouvrir le menu.
