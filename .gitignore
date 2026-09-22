@@ -33,3 +33,6 @@ tachikoma_*.tach
 
 # Données utilisateur (seeds GA, synths sculptés) — non versionnées
 /plugins/synth-seeds/
+
+# Patterns rangés par l'utilisateur (données, pas du code)
+plugins/user-patterns/

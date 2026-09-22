@@ -315,7 +315,7 @@ function _eval_pattern_blocks!(m::RessacApp, target)
             end
             (a, b) = _logical_block_range(lines, i)
             b = max(b, i)
-            push!(prelude, join(lines[a:b], "\n"))
+            push!(prelude, _join_logical_block(lines[a:b]))
             i = b + 1
             continue
         end
@@ -326,7 +326,7 @@ function _eval_pattern_blocks!(m::RessacApp, target)
         end
         if mt.captures[1] === nothing
             slot = Symbol("d", mt.captures[2])
-            blocks[slot] = join(lines[i:j-1], " ")
+            blocks[slot] = _join_logical_block(lines[i:j-1])
         end
         i = j
     end
@@ -420,6 +420,31 @@ function _warn_unknown_sounds!(m::RessacApp, srcs::AbstractVector{<:AbstractStri
         " : recette de la librairie, pas encore installée — :add " * first(inlib) * " l'installe")
     isempty(rest) || _push_app_log!(m, "[WARN] son inconnu : " * join(("« $u »" for u in rest), ", ") *
         " — :browse ou Espace b pour la liste, :samples pour les banques")
+end
+
+"""
+    _join_logical_block(rows) -> String
+
+Recolle les lignes d'un bloc en une expression Julia. Une ligne de
+continuation qui commence par `|>` est accrochée à la précédente par
+une espace : Julia lit `@d1 p"bd"` puis `|> gain(1)` comme deux
+expressions et échoue, alors que `@d1 p"bd" |> gain(1)` est ce que l'on
+veut. Les autres lignes (corps de fonction, tableau multi-ligne)
+gardent leur saut de ligne.
+"""
+function _join_logical_block(rows)
+    isempty(rows) && return ""
+    out = IOBuffer()
+    for (i, line) in enumerate(rows)
+        if i == 1
+            print(out, line)
+        elseif startswith(lstrip(String(line)), "|>")
+            print(out, " ", strip(String(line)))
+        else
+            print(out, "\n", line)
+        end
+    end
+    return String(take!(out))
 end
 
 """
@@ -550,7 +575,7 @@ function _eval_current_line!(m::RessacApp)
     1 <= row <= length(lines) || return
     isempty(strip(lines[row])) && return
     (start_row, end_row) = _logical_block_range(lines, row)
-    block = join(lines[start_row:end_row], "\n")
+    block = _join_logical_block(lines[start_row:end_row])
     try
         ex = Meta.parse(block)
         result = Core.eval(Main, ex)
@@ -640,7 +665,7 @@ function _cascade_dN_reeval!(m::RessacApp, lines::Vector,
             parsed = Meta.parse(block; raise = false)
             if parsed isa Expr && parsed.head === :incomplete
                 end_row += 1
-                block = join(lines[i:end_row], "\n")
+                block = _join_logical_block(lines[i:end_row])
             else
                 break
             end

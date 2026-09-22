@@ -270,6 +270,27 @@ même slot le remplace. Pour arrêter un slot, commente-le (`# @d1 ...`)
 et `:e` ré-évalue (les slots mutes sont sautés). Ou `:mute d1` de
 n'importe où.
 
+## Ranger et rappeler des patterns
+
+Un bloc qui sonne bien se range sous un nom, et se rappelle sur
+n'importe quel slot :
+
+```
+:keep jersey kick        range le bloc @dN sous le curseur, étiqueté « kick »
+:recall jersey           le remet sur son slot d'origine et l'évalue
+:recall jersey 5         le remet sur d5
+Espace P                 la liste : / cherche, Entrée charge, 1-9 choisit le slot, x supprime
+```
+
+Les patterns vivent dans `plugins/user-patterns/<nom>.jl`, un fichier
+texte par pattern avec ses étiquettes en en-tête : éditable à la main,
+copiable d'une machine à l'autre. Rappeler sur un slot déjà occupé
+remplace son bloc ; sinon le bloc est ajouté en fin de buffer.
+
+`:keep` prend le bloc entier, lignes `|>` comprises. C'est le pendant,
+côté rythme, de la librairie de synths : on essaie beaucoup, on garde ce
+qui marche, on le retrouve vite.
+
 ## Snippets
 
 `:snip` (ou `Espace I`) ouvre le sélecteur. Les catégories tournent avec

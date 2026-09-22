@@ -160,6 +160,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Space b` | ▸ sons (samples, instruments, synths) |
 | `Space L` | ▸ librairie synths |
 | `Space I` | ▸ snippets |
+| `Space P` | ▸ patterns rangés |
 | `Space w` | ▸ wiki |
 | `Space ?` | ▸ aide |
 
@@ -617,6 +618,34 @@ Lecture d'une carte :
 | `Tab / l / →` | catégorie suivante |
 | `h / ←` | catégorie précédente |
 | `Esc / q` | effacer la recherche → la catégorie → fermer |
+| `j / k / ↓ / ↑` | naviguer |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+## Patterns rangés
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | charger |
+| `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | charger sur le slot N |
+| `x` | supprimer |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `/` | chercher |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `g` | premier |
+| `G` | dernier |
 | `j / k / ↓ / ↑` | naviguer |
 | `Esc / q` | fermer |
 

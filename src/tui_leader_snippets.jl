@@ -61,6 +61,7 @@ const _LEADER_ACTIONS = Dict{Char,Function}(
     '?' => m -> _open_help!(m),
     'w' => m -> _open_wiki!(m),
     'I' => m -> _open_snippets!(m),      # I for "insert snippet" picker
+    'P' => m -> _open_patterns_modal!(m),  # P comme patterns rangés
 )
 
 """
@@ -77,7 +78,7 @@ const _LEADER_LABELS = Pair{Char,String}[
     'c' => "cat",    'S' => "stack",  'v' => "rev",
     'E' => "eucl",   'R' => "eucl-rot", 'J' => "jersey",
     # ── pickers ──
-    'b' => "▸browse-sounds", 'L' => "▸synth-lib", 'I' => "▸snippets",
+    'b' => "▸browse-sounds", 'L' => "▸synth-lib", 'I' => "▸snippets", 'P' => "▸patterns",
     'w' => "▸wiki",  '?' => "▸guide",
 ]
 

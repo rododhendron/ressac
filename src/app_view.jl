@@ -389,6 +389,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
             _render_snippets_modal!(m, marea, buf)
         elseif m.modal === :mixer
             _render_mixer_modal!(m, marea, buf)
+        elseif m.modal === :patterns
+            _render_patterns_modal!(m, marea, buf)
         elseif m.modal === :help
             _render_help_modal!(m, marea, buf)
         else
@@ -570,7 +572,7 @@ const _PANE_LABELS_FR = Dict{Symbol,String}(
 )
 const _MODAL_LABELS_FR = Dict{Symbol,String}(
     :modal_help => "AIDE", :modal_text => "TEXTE", :modal_browse => "SONS",
-    :modal_lib => "LIBRAIRIE", :modal_snippets => "SNIPPETS",
+    :modal_lib => "LIBRAIRIE", :modal_snippets => "SNIPPETS", :modal_patterns => "PATTERNS",
     :modal_mixer => "MIXER", :modal_sccode => "SCCODE",
 )
 

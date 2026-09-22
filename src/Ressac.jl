@@ -112,6 +112,8 @@ include("modal_mixer.jl")        # :mixer
 include("modal_synth_library.jl")# :lib
 include("modal_wiki.jl")         # :wiki
 include("modal_snippets.jl")     # :snip
+include("pattern_library.jl")    # patterns rangés sur disque
+include("modal_patterns.jl")     # sélecteur de patterns rangés
 include("modal_sccode.jl")       # :sccode
 include("app_view.jl")           # TK.view : chrome + arbre + modal
 include("app_sculpt.jl")         # :sculpt → pane waveform zoomée, :w, drains M / U
@@ -163,6 +165,8 @@ export load_plugin, parse_manifest, discover_plugins, default_plugin_path
 export SampleEntry, sample_info, list_samples, register_sample!
 export InstrumentEntry, instrument_info, list_instruments, register_instrument!
 export SynthEntry, synth_info, list_synths, register_synth!
+export PatternEntry, save_pattern!, load_pattern, list_patterns, delete_pattern!
+export retarget_pattern, pattern_slot
 export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
 export pan, n, room, delay, shape, pump, note, scale, degree
 export s, sound, up, begin_, end_

@@ -150,6 +150,9 @@ non-empty), and the focus toggle for keystroke routing.
     browser_cols::Int            = 1      # colonnes de la grille (posé au rendu)
     browser_rows::Int            = 1      # lignes visibles (idem)
     browser_search_mode::Bool    = false  # `/` : la frappe va dans la recherche
+    pat_cursor::Int              = 1      # bibliothèque de patterns
+    pat_query::String            = ""
+    pat_search_mode::Bool        = false
     logs::Vector{String}         = ["[INFO] Ressac — ? aide · e évalue · :synth <nom> pour concevoir un son · :q quitte"]
     quit::Bool                   = false
     tick::Int                    = 0

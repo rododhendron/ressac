@@ -431,6 +431,19 @@ _register_literal!(m -> _push_app_log!(m,
 _register_regex!(r"^add\s+([\w-]+)$", (m, mt) -> _add_synth_from_library!(m, mt.captures[1]))
 _register_literal!(m -> _open_mixer!(m),             "mixer", "mix")
 _register_literal!(m -> _open_snippets!(m),          "snip", "snippets", "snippet")
+_register_literal!(m -> _open_patterns_modal!(m),    "pats", "patterns", "patlib")
+# Patterns rangés — verbes distincts de :save / :load, qui appartiennent
+# déjà aux sessions (un workspace entier, pas un bloc).
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] :keep <nom> [étiquettes…] — range le bloc @dN sous le curseur (:recall le rappelle)"),
+    "keep")
+_register_regex!(r"^keep\s+(.+)$", (m, mt) -> _save_pattern_cmd!(m, mt.captures[1]))
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] :recall <nom> [slot] — recharge un pattern rangé (Espace P pour la liste)"),
+    "recall")
+_register_regex!(r"^recall\s+([\w-]+)$", (m, mt) -> _load_pattern_cmd!(m, mt.captures[1]))
+_register_regex!(r"^recall\s+([\w-]+)\s+d?(\d+)$",
+    (m, mt) -> _load_pattern_cmd!(m, mt.captures[1], parse(Int, mt.captures[2])))
 _register_literal!(m -> _open_sccode!(m),            "sccode", "sc")
 _register_regex!(r"^(?:sccode|sc)\s+(\S+)$",
     (m, mt) -> _direct_load_sccode!(m, mt.captures[1]))
