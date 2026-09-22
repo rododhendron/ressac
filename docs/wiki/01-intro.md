@@ -105,3 +105,5 @@ en haut montre le mode, la surface focalisée et les workspaces.
 - `12-troubleshooting` — quand quelque chose ne marche pas
 - `13-external-midi` — MIDI + OSC depuis tout ce qui parle OSC
 - `14-chaos-reservoir` — générateurs chaotiques et patterns par réservoir
+- `15-maths` — les mathématiques de la musique : temps, hauteurs,
+  rythmes euclidiens, hasard tenu, chaos, et des pistes à essayer

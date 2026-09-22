@@ -22,6 +22,7 @@ include("core_algebra.jl")       # stack/cat/mask
 include("core_tuning.jl")        # Scale, scale_to_semitones, registry
 include("core_controls.jl")      # gain/lpf/hpf/pan/n/set/pump/…
 include("core_tidal.jl")         # le reste du vocabulaire Tidal (fix, bite, ur, …)
+include("core_maths.jl")         # courbes, lois de probabilité, suites, hauteurs
 
 # ─── I/O primitives ───────────────────────────────────────────────
 include("io_osc.jl")             # OSC wire format (encode/decode)
@@ -159,6 +160,11 @@ export quantise, smooth, rangex, toScale, scan, discretise, add, sub, mul
 # Continuous signals. `range_pat` / `rand_pat` keep `_pat` to avoid
 # clashing with Base.range / Base.rand respectively.
 export sine, cosine, tri, saw, square, perlin, segment
+export uniform, normal, expo, cauchy, bernoulli, poisson, walk, markov
+export ramp, expramp, curve
+export fib, primes_n, harmonics, logistic_map, euclid_steps
+export ratio_to_cents, cents_to_ratio, midi_to_hz, hz_to_midi, semitones
+export patvals, tomini, pat
 export range_pat, rand_pat
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc
