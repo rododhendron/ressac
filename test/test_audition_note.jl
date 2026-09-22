@@ -81,8 +81,12 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
                 @test m1.args[3] == "freq" && isapprox(m1.args[4], 130.81; atol = 0.01)
                 @test occursin("note c4", app.logs[end])
 
-                # synth sans hauteur : T joue les défauts, le journal le dit
+                # le DSL ajoute toujours freq / sustain : un @synth répond à n
                 Tachikoma.set_text!(tab.code_editor, "@synth :auditest (amp=0.5) white() |> env_perc(0.01, 0.1)")
+                @test Ressac._synth_title_suffix(tab) == "hauteur freq · durée sustain"
+                # un SynthDef SC sans paramètre de hauteur, lui, n'en a pas
+                tab.synth_mode = :sc
+                Tachikoma.set_text!(tab.code_editor, "SynthDef(\\auditest, { |out = 0, amp = 0.5| Out.ar(out, WhiteNoise.ar * amp) }).add;")
                 @test Ressac._synth_title_suffix(tab) == "sans hauteur"
                 empty!(mock.sent)
                 _ankey(app, 'T')

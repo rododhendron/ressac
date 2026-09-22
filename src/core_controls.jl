@@ -248,12 +248,17 @@ gain(x) = _control_op(:gain, *, x)
     lpf(x) — low-pass filter cutoff (Hz). Composes via `min`
     (the more restrictive cutoff wins).
 """
-lpf(x) = _control_op(:lpf, min, x)
+# SuperDirt ne connaît pas la clé « lpf » : son passe-bas s'appelle
+# `cutoff` (et le passe-haut `hcutoff`). Tidal fait le même alias côté
+# Haskell — envoyer « lpf » ne filtrait rien du tout.
+lpf(x) = _control_op(:cutoff, min, x)
+const cutoff = lpf
 
 """
     hpf(x) — high-pass filter cutoff (Hz). Composes via `max`.
 """
-hpf(x) = _control_op(:hpf, max, x)
+hpf(x) = _control_op(:hcutoff, max, x)
+const hcutoff = hpf
 
 """
     speed(x) — sample playback speed. Composes multiplicatively.
@@ -557,7 +562,7 @@ const _SUPERDIRT_PARAM_HELPERS = [
     # Envelope
     :attack, :release, :hold, :sustain, :legato,
     # Filters
-    :cutoff, :resonance, :bandq, :bandf, :hcutoff, :hresonance,
+    :resonance, :bandq, :bandf, :hresonance,
     # Distortion / bit-crush
     :crush, :coarse,
     # Modulation

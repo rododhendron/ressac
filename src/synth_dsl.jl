@@ -612,6 +612,24 @@ Base.:/(a::Symbol, b::Sig) = Sig("($a / $(b.code))")
 const _DEFAULT_PARAMS = (freq = 220, sustain = 0.5, gain = 0.5)
 
 """
+    effective_params(params) -> NamedTuple
+
+Les arguments que le SynthDef aura vraiment : ceux déclarés plus les
+défauts ajoutés par `build_synth` (`freq`, `sustain`, `gain`), moins les
+options de compilation (`auto_env`, `auto_gain`, `pan`). C'est cette
+liste qui dit à Ressac qu'un synth répond à `n` / `note` et que sa durée
+peut suivre l'événement.
+"""
+function effective_params(params::NamedTuple)
+    declared = NamedTuple()
+    for (k, v) in pairs(params)
+        k in (:auto_env, :auto_gain, :pan) && continue
+        declared = merge(declared, NamedTuple{(k,)}((v,)))
+    end
+    return merge(_DEFAULT_PARAMS, declared)
+end
+
+"""
     build_synth(name, sig; params, pan=0, auto_env=true, auto_gain=true)
 
 Compile a `Sig` chain into a full SynthDef source string.
@@ -724,10 +742,11 @@ function play_synth(sc_name::Symbol, sig::Sig;
     end
     kw = Dict{Symbol,Any}(kwargs)
     declared = get(kw, :params, NamedTuple())
+    eff = effective_params(declared)
     register_synth!(SynthEntry(sc_name, "user-dsl",
                                Dict{String,Any}("description" => "DSL-defined",
                                                 "tags" => ["dsl"],
-                                                "params" => Dict{String,Any}(String(k) => v for (k, v) in pairs(declared)
+                                                "params" => Dict{String,Any}(String(k) => v for (k, v) in pairs(eff)
                                                                              if v isa Real))))
     alias !== nothing && register_synth_alias!(alias, sc_name)
     src

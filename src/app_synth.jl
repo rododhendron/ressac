@@ -439,6 +439,12 @@ end
 # DSL (pour le routage SuperDirt d'un synth utilisateur). Vide sinon.
 function _dsl_params_from_text(text::AbstractString)
     out = Dict{String,Any}()
+    occursin(r"@synth\b", text) || return out
+    # `build_synth` ajoute freq / sustain / gain à tout SynthDef du DSL :
+    # ils comptent même si l'utilisateur ne les a pas écrits.
+    for (k, v) in pairs(SynthDSL._DEFAULT_PARAMS)
+        out[String(k)] = v
+    end
     mt = match(r"@synth\s+:\w+\s*\(([^)]*)\)", text)
     mt === nothing && return out
     for kv in split(mt.captures[1], ',')

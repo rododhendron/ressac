@@ -388,8 +388,14 @@ end
 function _warn_unknown_sounds!(m::RessacApp, srcs::AbstractVector{<:AbstractString})
     unknown = _unknown_sounds(srcs)
     isempty(unknown) && return
-    _push_app_log!(m, "[WARN] son inconnu : " * join(("« $u »" for u in unknown), ", ") *
-                      " — :browse ou Espace b pour la liste, :samples pour les banques")
+    # Un nom absent mais présent dans la librairie de synths s'installe
+    # d'une commande : on le dit plutôt que de renvoyer au catalogue.
+    inlib = [u for u in unknown if _synthlib_builtin_entry(u) !== nothing]
+    rest  = [u for u in unknown if !(u in inlib)]
+    isempty(inlib) || _push_app_log!(m, "[WARN] " * join(("« $u »" for u in inlib), ", ") *
+        " : recette de la librairie, pas encore installée — :add " * first(inlib) * " l'installe")
+    isempty(rest) || _push_app_log!(m, "[WARN] son inconnu : " * join(("« $u »" for u in rest), ", ") *
+        " — :browse ou Espace b pour la liste, :samples pour les banques")
 end
 
 """

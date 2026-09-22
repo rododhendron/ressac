@@ -38,6 +38,17 @@ Dans les patterns, tu choisis la variante avec `n(...)` :
 @d1 "mykick:1"                  # la variante 1 précisément
 ```
 
+## Un son de la librairie de synths
+
+`acid303`, `chaoglitch` et la cinquantaine d'autres recettes ne sont pas
+chargées d'office : ce sont des modèles. `:add acid303` en installe une
+dans `plugins/user-synths/` et la compile, `@d1 :acid303` la joue tout de
+suite. `:synth acid303` fait pareil en ouvrant l'éditeur, `Espace L`
+ouvre la librairie pour parcourir.
+
+Quand `e` ou `:e` rencontre un nom inconnu qui correspond à une recette,
+le journal propose directement la commande.
+
 ## Le chemin plugin
 
 Pour une banque de dizaines de samples rangés par catégorie, écris un

@@ -31,7 +31,7 @@ end
     m1 = Ressac.event_to_osc(fx)
     @test m1.address == "/dirt/play"                       # lpf → SuperDirt applique l'effet
     s = findfirst(==("s"), m1.args); @test m1.args[s + 1] == "monson"
-    @test "lpf" in m1.args
+    @test "cutoff" in m1.args                              # `lpf` → clé SuperDirt `cutoff`
     @test !("freq" in m1.args)                             # n pilote la hauteur : pas de freq injectée
     @test !("sustain" in m1.args)                          # durée : SuperDirt la déduit de delta
     fx2 = (pure(:monson) |> room(0.3))(0//1, 1//1)[1]
@@ -42,7 +42,7 @@ end
 
 @testset "routage — _dsl_params_from_text lit les défauts d'un @synth" begin
     @test Ressac._dsl_params_from_text("@synth :x (freq=110, sustain=2.5, cutoff=800) saw(:freq)") ==
-          Dict{String,Any}("freq" => 110, "sustain" => 2.5, "cutoff" => 800)
+          Dict{String,Any}("freq" => 110, "sustain" => 2.5, "cutoff" => 800, "gain" => 0.5)
     @test Ressac._dsl_params_from_text("SynthDef(\\x, { })") == Dict{String,Any}()
 end
 
@@ -143,4 +143,37 @@ end
     @test kv(Ressac.event_to_osc((pure(:rawfreq) |> n(0))(0//1, 1//1)[1]))["freq"] ≈ 261.63 atol = 0.01
     @test !("freq" in Ressac.event_to_osc((pure(:rawfreq) |> room(0.2))(0//1, 1//1)[1]).args)
     for k in (:midisynth, :hzsynth, :notesynth, :nopitch, :rawfreq); delete!(Ressac._SYNTH_REGISTRY, k); end
+end
+
+@testset "routage — lpf / hpf portent les vrais noms SuperDirt" begin
+    kv(m) = Dict(m.args[i] => m.args[i + 1] for i in 1:2:length(m.args) - 1)
+    d = kv(Ressac.event_to_osc((:bd |> lpf(400) |> hpf(100))(0//1, 1//1)[1]))
+    @test d["cutoff"] == 400 && d["hcutoff"] == 100      # SuperDirt ne connaît pas « lpf »
+    @test !haskey(d, "lpf") && !haskey(d, "hpf")
+    @test cutoff === lpf && hcutoff === hpf
+    # composition : lpf garde le minimum, hpf le maximum
+    d2 = kv(Ressac.event_to_osc((:bd |> lpf(400) |> lpf(900) |> hpf(100) |> hpf(50))(0//1, 1//1)[1]))
+    @test d2["cutoff"] == 400 && d2["hcutoff"] == 100
+end
+
+@testset "synths DSL — les paramètres implicites comptent (note + durée)" begin
+    @test Ressac.SynthDSL.effective_params(NamedTuple()) == (freq = 220, sustain = 0.5, gain = 0.5)
+    @test Ressac.SynthDSL.effective_params((freq = 110, auto_env = false)) ==
+          (freq = 110, sustain = 0.5, gain = 0.5)
+    # un @synth sans liste de paramètres répond quand même à n et à la durée
+    @test Ressac._dsl_params_from_text("@synth :x saw(:freq)") ==
+          Dict{String,Any}("freq" => 220, "sustain" => 0.5, "gain" => 0.5)
+    @test Ressac._dsl_params_from_text("@synth :x (freq=50, sustain=2) saw(:freq)")["sustain"] == 2
+    @test isempty(Ressac._dsl_params_from_text("SynthDef(\\x, {})"))
+end
+
+@testset "fast / slow / hurry acceptent un facteur patterné" begin
+    st(p, a, b) = [ev.start for ev in sort(p(a // 1, b // 1); by = e -> e.start)]
+    @test st("bd*2" |> fast("<1 2>"), 0, 1) == [0//1, 1//2]
+    @test st("bd*2" |> fast("<1 2>"), 1, 2) == [1//1, 5//4, 3//2, 7//4]
+    @test st(p"bd*4" |> slow("<1 2>"), 1, 2) == [1//1, 3//2]
+    @test length(st(p"bd*2" |> hurry("<1 2>"), 1, 2)) == 4
+    @test [ev.value[:speed] for ev in (p"bd" |> hurry("<1 2>"))(1//1, 2//1)] == [2, 2]
+    @test st(p"bd*2" |> fast(p"<1 2>"), 1, 2) == [1//1, 5//4, 3//2, 7//4]
+    @test st(p"bd*2" |> fast("0"), 0, 1) == Rational{Int64}[]      # facteur nul : silence
 end

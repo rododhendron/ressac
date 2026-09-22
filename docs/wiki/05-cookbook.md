@@ -84,7 +84,7 @@ Les valeurs `"<...>"` avancent d'un pas par cycle :
 lent :
 
 ```julia
-@d1 :supersaw |> set(:cutoff, "<400 800 1200 2000 1200 800>" |> slow(2))
+@d1 :supersaw |> lpf("<400 800 1200 2000 1200 800>" |> slow(2))
 ```
 
 ## Le chaos comme modulation
@@ -101,8 +101,11 @@ Chacun renvoie un `Pattern{Float64}` à mettre dans `set(...)` comme
 @d1 :acid303 |> n("0 3 5 7") |>
    set(:cutoff, Chaos.lorenz(axis=:x) |> range_pat(400, 4000))
 
-# Carte de Hénon qui glitche la vitesse à chaque pas
+# Carte de Hénon sur la vitesse de LECTURE des samples (hauteur + durée)
 @d2 "bd hh sn hh" |> set(:speed, Chaos.henon() |> range_pat(0.8, 1.4))
+
+# …et sur la vitesse du RYTHME : un facteur par cycle pour `fast`
+@d3 "bd hh sn hh" |> fast(Chaos.henon() |> segment(1) |> range_pat(1, 3) |> quantise)
 
 # Logistique au bord du chaos sur le pan
 @d3 :supersaw |> n("0 3 7 10") |>

@@ -177,7 +177,7 @@ export compress, compressThreshold, compressRatio
 # SuperDirt param helpers (auto-generated in controls.jl):
 export freq
 export attack, release, hold, sustain, legato
-export cutoff, resonance, bandq, bandf, hcutoff, hresonance
+export cutoff, resonance, bandq, bandf, hcutoff, hresonance   # cutoff = lpf, hcutoff = hpf
 export crush, coarse
 export accelerate, vibrato, tremolorate, tremolodepth, phaserrate, phaserdepth
 export delaytime, delayfeedback

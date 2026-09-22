@@ -112,7 +112,7 @@ livedoc les montre dès que le curseur est dans l'appel.
 - `s` (`sound`) `n` `note` (`up`) `gain` `speed` `pan` `degree`
 - `begin_` `end_` `unit` `cut` `orbit` `nudge` `loop` `squiz` `midinote`
   `channel` `dry`
-- `lpf` `hpf` `cutoff` `resonance` `bandq` `bandf`
+- `lpf` (= `cutoff`) `hpf` (= `hcutoff`) `resonance` `hresonance` `bandq` `bandf`
 - `room` `delay` `delaytime` `delayfeedback`
 - `attack` `release` `hold` `sustain` `legato`
 - `shape` `crush` `coarse` `vowel`
@@ -168,6 +168,37 @@ notes d'un accord comme une main sur un piano.
 @d1 :pad |> n("c'maj7") |> arp("converge") |> fast(2)
 @d1 :pad |> n("c'maj") |> rolled
 ```
+
+## `n` et `note` ne font pas la même chose
+
+Comme dans Tidal :
+
+- `n` choisit **quoi** jouer. Sur un sample c'est la variante (`n(3)`
+  équivaut à `sn:3`) ; sur un synth c'est la note en demi-tons.
+- `note` (alias `up`) **transpose** toujours en demi-tons. Sur un sample
+  SuperDirt le fait en changeant la vitesse de lecture.
+
+Donc `:cb |> n("0 3 7")` prend trois variantes de cowbell, alors que
+`:cb |> note("0 3 7")` joue la même cowbell à trois hauteurs.
+
+Un synth utilisateur ne reçoit la note que s'il déclare un paramètre de
+hauteur (`freq` en général). Le titre de sa pane le dit :
+`SYNTH · monsynth · hauteur freq · durée sustain`. Sans `sustain`
+déclaré, sa note ne s'arrête jamais toute seule — c'est ce qui laisse
+une voix suspendue après un `:mute`.
+
+## Rythme euclidien sur des notes
+
+Les deux écritures marchent :
+
+```julia
+@d1 :pad |> n("0 3 7") |> euclid(3, 8)     # la mélodie sur 3-sur-8
+@d1 :pad |> n("0 3 7 12") |> structPat("1 0 1 1")   # masque explicite
+@d1 "pad(3,8)" |> n("0 3 7")               # rythme dans la mini-notation
+```
+
+`euclid(k, n)` prend la structure euclidienne et y verse les valeurs du
+pattern ; `euclidInv` joue les pas vides, `euclidOff(k, n, r)` tourne.
 
 ## Slots
 

@@ -425,6 +425,10 @@ _register_literal!(m -> _open_wiki!(m),
 _register_regex!(r"^(?:wiki|docs)\s+(.+)$", (m, mt) -> _open_wiki!(m; page = String(mt.captures[1])))
 _register_literal!(m -> _open_browser!(m),           "browse", "b")
 _register_literal!(m -> _open_synth_library!(m),     "synthlib", "synth-library", "lib")
+_register_literal!(m -> _push_app_log!(m,
+        "[INFO] :add <nom> — installe une recette de la librairie (Espace L pour la liste)"),
+    "add")
+_register_regex!(r"^add\s+([\w-]+)$", (m, mt) -> _add_synth_from_library!(m, mt.captures[1]))
 _register_literal!(m -> _open_mixer!(m),             "mixer", "mix")
 _register_literal!(m -> _open_snippets!(m),          "snip", "snippets", "snippet")
 _register_literal!(m -> _open_sccode!(m),            "sccode", "sc")

@@ -120,11 +120,21 @@ function _instantiate_synth_entry!(m::RessacApp, entry::_SynthLibEntry)
         _open_synth_tab!(m, entry.name)
         return
     end
+    path, final_name = _write_library_synth(entry)
+    _open_synth_tab!(m, final_name)
+    _push_app_log!(m, "[INFO] librairie : $final_name créé depuis « $(entry.name) » [$( entry.mode )]")
+end
+
+"""
+    _write_library_synth(entry) -> (path, final_name)
+
+Copie une recette de la librairie dans `plugins/user-synths/`, en
+renommant si un fichier du même nom existe déjà.
+"""
+function _write_library_synth(entry::_SynthLibEntry)
     name = entry.name
     dir = joinpath(pwd(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
-    # Disambiguate the destination filename (with the mode's extension)
-    # so an existing edit isn't clobbered.
     ext = entry.mode === :dsl ? ".jl" : ".scd"
     target = joinpath(dir, "$name$ext")
     n = 1
@@ -141,8 +151,36 @@ function _instantiate_synth_entry!(m::RessacApp, entry::_SynthLibEntry)
         replace(entry.source, "SynthDef(\\$(entry.name)" => "SynthDef(\\$(final_name)")
     end
     write(target, src)
-    _open_synth_tab!(m, final_name)
-    _push_app_log!(m, "[INFO] librairie : $final_name créé depuis « $(entry.name) » [$( entry.mode )]")
+    return (target, final_name)
+end
+
+"""
+    _add_synth_from_library!(m, name) -> Bool
+
+`:add <nom>` — installe une recette de la librairie sans ouvrir de pane :
+le fichier est écrit dans `plugins/user-synths/`, compilé côté
+SuperCollider et enregistré, donc `@d1 :<nom>` le joue tout de suite.
+"""
+function _add_synth_from_library!(m::RessacApp, name::AbstractString)
+    nm = String(strip(name))
+    if synth_info(Symbol(nm)) !== nothing
+        _push_app_log!(m, "[INFO] « $nm » est déjà disponible — @d1 :$nm le joue")
+        return true
+    end
+    entry = _synthlib_builtin_entry(nm)
+    if entry === nothing
+        _push_app_log!(m, "[WARN] :add — pas de recette « $nm » dans la librairie (Espace L pour la parcourir)")
+        return false
+    end
+    path, final_name = _write_library_synth(entry)
+    sched = _LIVE_SCHEDULER[]
+    if sched === nothing
+        _push_app_log!(m, "[WARN] :add — pas de session audio, $final_name est écrit mais pas chargé")
+        return false
+    end
+    _load_synth_file!(sched, "user-synths", path)
+    _push_app_log!(m, "[INFO] $final_name installé — @d1 :$final_name le joue · :synth $final_name pour l'éditer")
+    return true
 end
 
 function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)

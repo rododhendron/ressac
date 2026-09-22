@@ -87,6 +87,39 @@ pattern as the right-hand arg under Julia's native `|>`.
 fast(n::Real) = x -> fast(n, _as_pattern(x))
 
 """
+    fast(facteurs, p) / p |> fast(facteurs)
+
+Facteur patterné, comme Tidal : `fast("<1 2 4>")` change de vitesse à
+chaque cycle. Le facteur est lu au début de chaque cycle. Même chose
+pour `slow` et `hurry`.
+"""
+fast(np::Pattern, p::Pattern) = _per_cycle_factor(fast, np, p)
+fast(np::Pattern) = x -> fast(np, _as_pattern(x))
+fast(np::AbstractString) = x -> fast(parse_minino(String(np)), _as_pattern(x))
+fast(np::AbstractString, p) = fast(parse_minino(String(np)), _as_pattern(p))
+
+# Applique `f(facteur, p)` cycle par cycle, le facteur venant d'un pattern.
+function _per_cycle_factor(f, np::Pattern, p::Pattern)
+    # `hurry` renvoie un ControlPattern même sur un Pattern{Symbol} :
+    # on prend le type de sortie sur un essai à facteur 1.
+    T = typeof(f(1, p)).parameters[1]
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            a = max(Rational{Int64}(cyc), s); b = min(Rational{Int64}(cyc + 1), e)
+            a < b || continue
+            v = _value_at(np, Rational{Int64}(cyc))
+            v === nothing && continue
+            r = _resolve_value(v)
+            (r isa Real && r > 0) || continue
+            append!(out, f(r, p)(a, b))
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+
+"""
     slow(n, p) -> Pattern{T}
 
 Dilate time by factor `n`. Equivalent to `fast(1/n, p)`.
@@ -102,6 +135,10 @@ end
 Curried form: `slow(n)(p) == slow(n, p)`.
 """
 slow(n::Real) = x -> slow(n, _as_pattern(x))
+slow(np::Pattern, p::Pattern) = _per_cycle_factor(slow, np, p)
+slow(np::Pattern) = x -> slow(np, _as_pattern(x))
+slow(np::AbstractString) = x -> slow(parse_minino(String(np)), _as_pattern(x))
+slow(np::AbstractString, p) = slow(parse_minino(String(np)), _as_pattern(p))
 
 """
     density(n, p)
@@ -965,6 +1002,9 @@ rot(n::Int) = p -> rot(n, _as_pattern(p))
 """
 hurry(n::Real, p::Pattern) = fast(n, p) |> speed(n)
 hurry(n::Real) = p -> hurry(n, _as_pattern(p))
+hurry(np::Pattern, p::Pattern) = _per_cycle_factor(hurry, np, p)
+hurry(np::Pattern) = p -> hurry(np, _as_pattern(p))
+hurry(np::AbstractString) = p -> hurry(parse_minino(String(np)), _as_pattern(p))
 
 # Le morceau `src` (0-based, sur n) du cycle `cyc` de p, joué au morceau `dst`.
 function _slice_moved(p::Pattern{T}, cyc::Int, src::Int, dst::Int, n::Int, out::Vector{Event{T}}, s, e) where {T}

@@ -138,19 +138,19 @@ using Ressac
     @testset "lpf composes via min (most restrictive cutoff wins)" begin
         p = pure(:bd) |> Ressac.lpf(2000) |> Ressac.lpf(500)
         evs = p(0//1, 1//1)
-        @test evs[1].value[:lpf] == 500
+        @test evs[1].value[:cutoff] == 500          # `lpf` écrit la clé SuperDirt `cutoff`
     end
 
     @testset "lpf first write just sets" begin
         p = pure(:bd) |> Ressac.lpf(2000)
         evs = p(0//1, 1//1)
-        @test evs[1].value[:lpf] == 2000
+        @test evs[1].value[:cutoff] == 2000
     end
 
     @testset "hpf composes via max" begin
         p = pure(:bd) |> Ressac.hpf(100) |> Ressac.hpf(500)
         evs = p(0//1, 1//1)
-        @test evs[1].value[:hpf] == 500
+        @test evs[1].value[:hcutoff] == 500
     end
 
     @testset "speed composes via multiplication" begin
