@@ -89,6 +89,7 @@ include("session_config.jl")     # RessacConfig, _load_ressac_config!
 include("session_themes.jl")     # _apply_theme!, palette switching
 include("content_sccode.jl")     # sccode.org HTTP client
 include("content_wiki.jl")       # docs/wiki/*.md loader
+include("pane_wiki.jl")          # pane wiki (docs/wiki à côté des patterns)
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────

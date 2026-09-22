@@ -119,15 +119,26 @@ inserted and we stay in normal mode (no nav needed).
 """
 function _expand_snippet!(m::RessacApp, ed::TK.CodeEditor, template::AbstractString)
     text, ph_offsets = _parse_snippet_template(template)
-    # Insert text at cursor on the current row.
     row = ed.cursor_row
     col = ed.cursor_col
     1 <= row <= length(ed.lines) || return
-    line = String(ed.lines[row])
-    new_line = line[1:col] * text * line[col+1:end]
-    txt = TK.text(ed)
-    lines = collect(split(txt, '\n'; keepempty = true))
-    lines[row] = new_line
+    lines = collect(String, split(TK.text(ed), '\n'; keepempty = true))
+    kind = _snippet_kind(template)
+    if kind === :chain && !isempty(strip(lines[row]))
+        # Maillon `|> …` : en fin de ligne du bloc (après ses lignes `|>`).
+        row = _block_end_row(lines, row)
+        base = rstrip(lines[row])
+        lines[row] = base * " " * text
+        col = length(base) + 1
+    elseif kind === :block && !isempty(strip(lines[row]))
+        # Ligne complète `@dN …` : sur une nouvelle ligne sous le bloc.
+        row = _block_end_row(lines, row) + 1
+        insert!(lines, row, text)
+        col = 0
+    else
+        line = lines[row]
+        lines[row] = _take_chars(line, col) * text * _drop_chars(line, col)
+    end
     TK.set_text!(ed, join(lines, '\n'))
     ed.cursor_row = row
     if isempty(ph_offsets)
@@ -143,6 +154,50 @@ function _expand_snippet!(m::RessacApp, ed::TK.CodeEditor, template::AbstractStr
     # On reste en mode NORMAL : Tab / Maj-Tab sautent entre les trous, `i`
     # remplit, `u` annule tout de suite si le snippet ne convient pas.
     ed.mode = :normal
+end
+
+# Nature d'un modèle : maillon de chaîne, ligne complète, ou fragment.
+_snippet_kind(tpl::AbstractString) =
+    startswith(tpl, "|>") ? :chain : startswith(tpl, "@d") ? :block : :inline
+
+# Dernière ligne du bloc commencé en `row` : les lignes `|>` qui suivent.
+function _block_end_row(lines::Vector{String}, row::Int)
+    r = row
+    while r < length(lines) && startswith(lstrip(lines[r + 1]), "|>")
+        r += 1
+    end
+    return r
+end
+
+_take_chars(s::AbstractString, n::Int) = String(collect(s)[1:min(n, length(s))])
+_drop_chars(s::AbstractString, n::Int) = String(collect(s)[min(n, length(s)) + 1:end])
+
+"""
+    _next_free_slot(ed) -> Int
+
+Premier numéro `@dN` absent du buffer (lignes commentées comprises).
+"""
+function _next_free_slot(ed::TK.CodeEditor)
+    used = Set{Int}()
+    for l in ed.lines
+        mt = match(r"^\s*(?:#+\s*)?@d(\d+)\b", String(l))
+        mt === nothing || push!(used, parse(Int, mt.captures[1]))
+    end
+    n = 1
+    while n in used; n += 1; end
+    return n
+end
+
+"""
+    _prefill_slot(tpl, ed) -> String
+
+`@d\$1 …` devient `@d3 …` avec le premier slot libre, les autres trous
+sont renumérotés : le curseur tombe directement dans le pattern.
+"""
+function _prefill_slot(tpl::AbstractString, ed::TK.CodeEditor)
+    occursin("@d\$1", tpl) || return String(tpl)
+    out = replace(tpl, "@d\$1" => "@d$(_next_free_slot(ed))")
+    return replace(out, r"\$(\d)" => x -> "\$" * string(parse(Int, x[2:end]) - 1))
 end
 
 """

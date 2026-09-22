@@ -16,29 +16,71 @@ function render!(p::DocPane, area, buf)
     _render_pane_block_simple!(rect, title_str, buf)
     inner = _inner_rect_simple(rect)
     inner.height < 1 && return
-    entry = lookup_doc(p.name)
-    lines = if entry === nothing
-        ["(aucune entrée pour « $(p.name) »)"]
-    else
-        out = String[entry.name, "", entry.short, ""]
-        isempty(entry.kwargs) || push!(out, "kwargs: " * join(entry.kwargs, ", "))
-        if !isempty(entry.examples)
-            push!(out, "", "examples:")
-            for ex in entry.examples
-                push!(out, "  " * ex)
-            end
-        end
-        isempty(entry.body) || (push!(out, ""); append!(out, split(entry.body, '\n')))
-        out
-    end
+    lines = _doc_pane_lines(p.name, inner.width)
     first_idx = clamp(1 + p.scroll, 1, max(1, length(lines)))
-    for (offset, line) in enumerate(@view lines[first_idx:end])
+    for (offset, (line, style)) in enumerate(@view lines[first_idx:end])
         screen_y = inner.y + offset - 1
         screen_y >= inner.y + inner.height && break
-        chunk = first(String(line), inner.width)
-        TK.set_string!(buf, inner.x, screen_y, chunk, TK.tstyle(:text))
+        TK.set_string!(buf, inner.x, screen_y, first(line, inner.width), style)
     end
     return nothing
+end
+
+# Lignes (texte, style) de la fiche, repliées à `width`.
+function _doc_pane_lines(name::String, width::Int)
+    out = Tuple{String,TK.Style}[]
+    entry = isempty(name) ? nothing : lookup_doc(name)
+    if entry === nothing
+        desc = isempty(name) ? nothing : _lookup_livedoc(name)
+        if desc === nothing
+            for l in _wrap_text(isempty(name) ? "K sur un mot, ou :doc <nom>, affiche sa fiche ici." :
+                                "(aucune entrée pour « $name »)", width)
+                push!(out, (l, TK.tstyle(:text_dim)))
+            end
+        else
+            push!(out, (name, TK.tstyle(:accent, bold = true)))
+            for l in _wrap_text(String(desc), width); push!(out, (l, TK.tstyle(:text))); end
+        end
+        return out
+    end
+    push!(out, (entry.name, TK.tstyle(:accent, bold = true)))
+    for l in _wrap_text(entry.short, width); push!(out, (l, TK.tstyle(:text))); end
+    isempty(entry.kwargs) || push!(out, ("kwargs : " * join(entry.kwargs, ", "), TK.tstyle(:text_dim)))
+    if !isempty(entry.examples)
+        push!(out, ("", TK.tstyle(:text)))
+        push!(out, ("exemples", TK.tstyle(:title, bold = true)))
+        for ex in entry.examples
+            for l in _wrap_text("  " * ex, width); push!(out, (l, TK.tstyle(:text_bright))); end
+        end
+    end
+    body = strip(entry.body)
+    if !isempty(body) && body != strip(entry.short) && !endswith(body, strip(entry.short))
+        push!(out, ("", TK.tstyle(:text)))
+        for raw in split(body, '\n')
+            l = String(raw)
+            startswith(l, "# ") && continue          # le titre est déjà affiché
+            for w in _wrap_text(l, width); push!(out, (w, TK.tstyle(:text))); end
+        end
+    end
+    return out
+end
+
+# Repli d'une ligne sur des mots, largeur `width` (≥ 1).
+function _wrap_text(line::AbstractString, width::Int)
+    width = max(1, width)
+    words = split(line, ' '; keepempty = true)
+    out = String[]
+    cur = ""
+    for w in words
+        cand = isempty(cur) ? String(w) : cur * " " * w
+        if textwidth(cand) <= width || isempty(cur)
+            cur = cand
+        else
+            push!(out, cur); cur = String(w)
+        end
+    end
+    push!(out, cur)
+    return out
 end
 
 handle_key!(p::DocPane, evt) = evt isa TK.KeyEvent && dispatch!(((:doc, p),), evt)

@@ -290,13 +290,15 @@ end
 @testset "défilement maintenu — key_repeat fait défiler le wiki, l'aide, le journal" begin
     app, tb, frame = _br_app()
     _bex(app, "wiki")
-    @test app.modal === :wiki
+    @test app.modal === :none
+    wp = Ressac._focused_pane_impl(app)
+    @test wp isa Ressac.WikiPane                                # le wiki est une pane
     Tachikoma.update!(app, Tachikoma.KeyEvent(:down, Tachikoma.key_repeat))
     Tachikoma.update!(app, Tachikoma.KeyEvent(:down, Tachikoma.key_repeat))
-    @test app.wiki_scroll == 2
+    @test wp.scroll == 2
     Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'k', Tachikoma.key_repeat))
-    @test app.wiki_scroll == 1
-    _bkey(app, :escape)
+    @test wp.scroll == 1
+    _bex(app, "q")                                              # ferme la pane wiki
     _bkey(app, '?')
     Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'j', Tachikoma.key_repeat))
     @test app.modal_scroll == 1

@@ -105,6 +105,8 @@ bind!(:editor, ["i", "a", "o", "O"], "insérer (avant / après / ligne dessous /
 bind!(:editor, "Esc", "retour au mode normal"; group = :edit, hint = false)
 bind!(:editor, ["h", "j", "k", "l"], "déplacer le curseur (ou flèches)"; group = :nav, hint = false)
 bind!(:editor, ["w", "b", "e"], "mot suivant / précédent / fin de mot"; group = :nav, hint = false)
+bind!(:patterns, "K", "doc du mot sous le curseur (pane DOC)"; short = "doc", group = :help,
+      when = _km_patterns, action = _doc_under_cursor!)
 bind!(:editor, ["W", "B", "E"], "MOT (séparé par des espaces)"; group = :nav, hint = false)
 bind!(:editor, ["0", "\$"], "début / fin de ligne"; group = :nav, hint = false)
 bind!(:editor, ["g g", "G"], "début / fin du buffer"; group = :nav, hint = false)
@@ -144,6 +146,8 @@ scope!(:synth, "Pane synth")
 bind!(:synth, ["t", "T", "Space"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
       repeat = true, when = _km_synth,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
+bind!(:synth, "K", "doc du mot sous le curseur (pane DOC)"; short = "doc", group = :help,
+      when = _km_synth, action = _doc_under_cursor!)
 bind!(:synth, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
       group = :file, when = _km_synth, action = _use_current_synth_in_pattern!)
 bind!(:synth, "g t", "synth suivant"; group = :nav, hint = false,
@@ -171,7 +175,7 @@ for (c, _) in _LEADER_LABELS
     else
         tpl = _LEADER_SNIPPETS[c]
         bind!(:leader, "Space $c", label; group = :edit,
-              action = m -> _expand_snippet!(m, _km_ed(m), tpl))
+              action = m -> _expand_snippet!(m, _km_ed(m), _prefill_slot(tpl, _km_ed(m))))
     end
 end
 

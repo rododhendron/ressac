@@ -332,6 +332,8 @@ const _GHOST_COMBINATORS = String[
     "shape", "cutoff", "resonance", "octave", "set", "degree", "every",
     "rev", "mask", "gate", "stack", "cat", "speed", "attack", "release",
     "sustain", "hold", "legato",
+    "jux", "off", "stut", "arp", "euclid", "striate", "chopp", "sometimes",
+    "degradeBy", "hurry", "note", "s", "add", "rolled", "swingBy", "iter", "chunk",
 ]
 
 const _GHOST_SET_PARAMS = String[

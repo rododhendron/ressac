@@ -22,10 +22,20 @@ Scan `docs/wiki/*.md` (project-relative), sort alphabetically by
 filename (so `01-intro.md` comes first), and parse each into a page.
 The title is the first `# H1` line; everything below it is body.
 """
+# docs/wiki du paquet (quel que soit le répertoire courant), sinon celui
+# du répertoire courant, sinon rien.
+function _wiki_dir()
+    for base in (dirname(@__DIR__), pwd())
+        d = joinpath(base, "docs", "wiki")
+        isdir(d) && return d
+    end
+    return nothing
+end
+
 function _load_wiki_pages()
     out = _WikiPage[]
-    dir = joinpath(pwd(), "docs", "wiki")
-    isdir(dir) || return out
+    dir = _wiki_dir()
+    dir === nothing && return out
     for f in sort!(readdir(dir))
         endswith(f, ".md") || continue
         path = joinpath(dir, f)

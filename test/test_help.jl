@@ -408,21 +408,24 @@ end
 @testset "wiki — une ligne de bloc de code reste stylée quand la clôture est hors écran" begin
     app, tb, frame = _help_app()
     _hex(app, "wiki")
+    wp = Ressac._focused_pane_impl(app)
+    @test wp isa Ressac.WikiPane
     # une page avec un bloc de code (l'intro n'en a plus)
-    pi = findfirst(pg -> any(l -> startswith(strip(l), "```"), pg.lines), app.wiki_pages)
+    pi = findfirst(pg -> any(l -> startswith(strip(l), "```"), pg.lines), wp.pages)
     @test pi !== nothing
-    app.wiki_idx = pi
-    page = app.wiki_pages[pi]
+    wp.idx = pi
+    page = wp.pages[pi]
     fence = findfirst(l -> startswith(strip(l), "```"), page.lines)
-    app.wiki_scroll = fence                                  # 1re ligne visible = dans le bloc
+    wp.scroll = fence                                        # 1re ligne visible = dans le bloc
     _screen(app, tb, frame)
     rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
-    y = findfirst(r -> occursin("WIKI ·", r), rows) + 1
-    # colonnes des « │ » : bordure de pane, bord du modal, séparateur TOC, …
-    bars = [i for i in 1:120 if _cell(tb, i, y).char == '│']
-    @test length(bars) >= 3
-    x = bars[3] + 2                                          # début de la colonne contenu
-    xs = [i for i in x:min(bars[4] - 1, 120) if _cell(tb, i, y).char != ' ']
+    ty = findfirst(r -> occursin("WIKI ·", r), rows)
+    y = ty + 1
+    # la pane wiki : de son « ╭ » (le dernier de la ligne de titre) à son « ╮ »
+    x0 = length(collect(rows[ty][1:prevind(rows[ty], findlast("╭", rows[ty]).start)])) + 1
+    x1 = length(collect(rows[ty][1:prevind(rows[ty], findlast("╮", rows[ty]).start)])) + 1
+    x = x0 + 1                                               # début de la colonne contenu
+    xs = [i for i in x:min(x1 - 1, 120) if _cell(tb, i, y).char != ' ']
     @test !isempty(xs)
     @test _cell(tb, xs[1], y).style.fg == Tachikoma.tstyle(:primary).fg
     _hkey(app, :escape)
@@ -449,18 +452,20 @@ end
     _hkey(app, ' '); _hkey(app, 'd')
     @test ed.mode === :normal
     @test app.placeholder_active && app.placeholder_idx == 1
-    @test occursin("@d", Tachikoma.text(ed))
-    c1 = ed.cursor_col
-    _hkey(app, :tab)                                   # trou suivant, toujours en normal
-    @test app.placeholder_idx == 2 && ed.cursor_col > c1 && ed.mode === :normal
-    _hkey(app, :backtab)
-    @test app.placeholder_idx == 1
+    @test occursin("@d1 p\"\"", Tachikoma.text(ed))            # slot pré-rempli, curseur dans le pattern
     _hkey(app, 'i')                                    # remplir
     @test ed.mode === :insert
-    _hkey(app, '3')
-    @test occursin("@d3", Tachikoma.text(ed))
+    _hkey(app, 'b'); _hkey(app, 'd')
+    @test occursin("@d1 p\"bd\"", Tachikoma.text(ed))
     _hkey(app, :escape)
     @test ed.mode === :normal && app.placeholder_active
     _hkey(app, :escape)                                # sort des trous
     @test !app.placeholder_active
+    _hkey(app, ' '); _hkey(app, 'e')                   # every : deux trous, Tab / Maj-Tab
+    @test app.placeholder_active && app.placeholder_idx == 1
+    c1 = ed.cursor_col
+    _hkey(app, :tab)
+    @test app.placeholder_idx == 2 && ed.cursor_col > c1 && ed.mode === :normal
+    _hkey(app, :backtab)
+    @test app.placeholder_idx == 1
 end

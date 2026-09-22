@@ -179,8 +179,19 @@ cheat_pipes, helpers_tour.
 ## Modèles Espace-leader
 
 `Espace` en mode normal, puis une lettre : un modèle avec des trous
-s'insère au curseur. Tab passe d'un champ à l'autre. Le popup which-key
-liste les lettres possibles.
+s'insère. Tab passe d'un champ à l'autre, `i` remplit, `u` annule. Le
+popup which-key liste les lettres possibles.
+
+Où ça atterrit : un maillon `|> …` va **en fin de ligne** du bloc courant
+(après ses lignes `|>`), une ligne complète `@dN …` va **sous le bloc**,
+avec le premier numéro de slot libre déjà rempli ; un fragment
+(`rev`, `bd(3,8)`) s'insère au curseur. Sur une ligne vide, tout
+s'insère sur place.
+
+Pour se guider : `K` sur un mot ouvre sa fiche dans la pane DOC à côté
+(`:doc gain` aussi), `:wiki patterns` ouvre cette page en pane, la barre
+du bas suggère quoi faire sur une ligne vide ou après un `|>`, et `:e`
+signale un nom de son inconnu.
 
 | Touche      | Insère                                        |
 |-------------|-----------------------------------------------|

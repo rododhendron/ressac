@@ -301,7 +301,7 @@ end
 @testset "Esc closes any open modal back to :none" begin
     app, _ = _new_app()
     Ressac._active_editor(app).mode = :normal
-    for kind in (:help, :browse, :synth_library, :snippets, :wiki, :mixer)
+    for kind in (:help, :browse, :synth_library, :snippets, :mixer)
         app.modal = kind
         Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
         @test app.modal === :none
@@ -747,11 +747,10 @@ end
         Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
         @test app.modal === :none
     end
-    # :wiki only opens when docs/wiki/ is reachable from pwd — assert
-    # it dispatches cleanly without crashing instead of requiring the
-    # modal to flip (test runs from `pwd()` which may lack the dir).
+    # :wiki ouvre une pane (plus un modal) : jamais de modal, pas de crash
+    # même si docs/wiki/ n'est pas accessible depuis pwd().
     _exec_ex_command!(app, "wiki")
-    @test app.modal === :wiki || app.modal === :none
+    @test app.modal === :none
 end
 
 @testset ":guide + :tutorial set modal to help/tutorial" begin

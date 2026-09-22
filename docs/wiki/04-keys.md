@@ -91,6 +91,12 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 
 ## Pane patterns
 
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `K` | doc du mot sous le curseur (pane DOC) |
+
 **Évaluer**
 
 | Touche | Action |
@@ -176,6 +182,12 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | Touche | Action |
 |---|---|
 | `t / T / Space` | tester le synth (maintenir = rafale) |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `K` | doc du mot sous le curseur (pane DOC) |
 
 **Fichiers**
 
@@ -442,6 +454,21 @@ Lecture d'une carte :
 | `j / ↓` | descendre |
 | `k / ↑` | remonter |
 
+## Wiki (pane)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | défiler |
+| `k / ↑` | remonter |
+| `n / ] / →` | page suivante |
+| `p / [ / ←` | page précédente |
+| `d` | 10 lignes plus bas |
+| `u` | 10 lignes plus haut |
+| `g / G` | début / fin de page |
+| `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
+
 ## Gamme (tuning)
 
 **Vues**
@@ -590,22 +617,6 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `?` | aide |
-
-## Wiki
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / ↓` | défiler |
-| `k / ↑` | remonter |
-| `n / ] / →` | page suivante |
-| `p / [ / ←` | page précédente |
-| `d` | 10 lignes plus bas |
-| `u` | 10 lignes plus haut |
-| `g / G` | début / fin de page |
-| `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
-| `Esc / q` | fermer |
 
 ## Mixer
 

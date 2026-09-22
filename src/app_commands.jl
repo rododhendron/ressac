@@ -422,6 +422,7 @@ _register_literal!(m -> (m.modal = :dsl_guide; m.modal_scroll = 0),
                    "dsl", "dsl-guide", "synth-dsl")
 _register_literal!(m -> _open_wiki!(m),
                    "wiki", "docs", "doc-wiki")
+_register_regex!(r"^(?:wiki|docs)\s+(.+)$", (m, mt) -> _open_wiki!(m; page = String(mt.captures[1])))
 _register_literal!(m -> _open_browser!(m),           "browse", "b")
 _register_literal!(m -> _open_synth_library!(m),     "synthlib", "synth-library", "lib")
 _register_literal!(m -> _open_mixer!(m),             "mixer", "mix")
@@ -1060,15 +1061,62 @@ function _doc_command!(m::RessacApp, name::AbstractString)
         desc = _lookup_livedoc(name)
         if desc === nothing
             _push_app_log!(m, "[WARN] :doc — aucune entrée pour « $name »")
-            return
+            return false
         end
         _push_app_log!(m, "[doc] $name — $desc")
-        return
+        _show_doc_pane!(m, String(name))
+        return true
     end
     _push_app_log!(m, "[doc] $name — $(entry.short)")
-    isempty(entry.examples) && return
-    _push_app_log!(m, "[doc]   exemples :")
-    for ex in entry.examples
-        _push_app_log!(m, "[doc]     $ex")
+    _show_doc_pane!(m, String(name))
+    return true
+end
+
+"""
+    _show_doc_pane!(m, name)
+
+Affiche la fiche `name` dans la pane DOC du workspace courant (créée à
+côté si besoin) sans voler le focus à l'éditeur.
+"""
+function _show_doc_pane!(m::RessacApp, name::String)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return nothing
+    pane = _find_pane(m, DocPane)
+    if pane === nothing
+        keep = ws.focused_pane
+        pane = _place_pane!(m, :doc, Dict{String,Any}("ref" => name))
+        pane isa DocPane || return nothing
+        ws.focused_pane = keep
+    else
+        pane.name = name
+        pane.scroll = 0
     end
+    return pane
+end
+
+"""
+    _doc_under_cursor!(m)
+
+`K` — la fiche du mot sous le curseur (ou de l'appel qui l'englobe)
+dans la pane DOC.
+"""
+function _doc_under_cursor!(m::RessacApp)
+    ed = _active_editor(m)
+    ed === nothing && return
+    1 <= ed.cursor_row <= length(ed.lines) || return
+    chars = ed.lines[ed.cursor_row]
+    if isempty(chars)
+        _push_app_log!(m, "[INFO] K — pose le curseur sur un mot (gain, every, bd…) ; :doc <nom> marche aussi")
+        return
+    end
+    col = clamp(ed.cursor_col + 1, 1, length(chars))
+    word = _word_under_cursor_chars(chars, col)
+    if isempty(word) || (lookup_doc(String(word)) === nothing && _lookup_livedoc(word) === nothing)
+        word = _enclosing_call(chars, col)
+    end
+    if isempty(word)
+        _push_app_log!(m, "[INFO] K — rien de documenté sous le curseur")
+        return
+    end
+    _doc_command!(m, String(word))
 end

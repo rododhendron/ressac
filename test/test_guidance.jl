@@ -1,0 +1,172 @@
+# Guidage de la création : pane wiki, pane doc (:doc, K), placement des
+# snippets Espace, slot pré-rempli, indices de la barre, sons inconnus.
+using Test
+using Ressac
+using Tachikoma
+
+if !@isdefined(_GdMock)
+    mutable struct _GdMock
+        sent::Vector{Vector{UInt8}}
+    end
+    _GdMock() = _GdMock(Vector{UInt8}[])
+    Ressac.send_osc(c::_GdMock, bytes::Vector{UInt8}) = push!(c.sent, bytes)
+end
+
+function _gd_app()
+    sched = Ressac.Scheduler(_GdMock(); cps = 0.5)
+    app = Ressac.RessacApp(; scheduler = sched)
+    tb = Tachikoma.TestBackend(160, 40)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 160, 40),
+                            Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    Tachikoma.view(app, frame)
+    Ressac._PANE_MODE.active = false
+    Ressac._active_editor(app).mode = :normal
+    return app, tb, frame
+end
+_gdkey(app, c::Char) = Tachikoma.update!(app, Tachikoma.KeyEvent(c))
+_gdkey(app, s::Symbol) = Tachikoma.update!(app, Tachikoma.KeyEvent(s))
+_gdex(app, cmd) = (_gdkey(app, ':'); foreach(c -> _gdkey(app, c), cmd); _gdkey(app, :enter))
+function _gdscreen(app, tb, frame)
+    Tachikoma.reset!(tb.buf); Tachikoma.view(app, frame)
+    join((Tachikoma.row_text(tb, y) for y in 1:40), "\n")
+end
+_gdpanes(app, T) = [t for leaf in Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree) for t in leaf.tabs if t isa T]
+
+@testset "wiki en pane — :wiki, :wiki <page>, navigation, :q" begin
+    app, tb, frame = _gd_app()
+    _gdex(app, "wiki")
+    @test app.modal === :none
+    wp = Ressac._focused_pane_impl(app)
+    @test wp isa Ressac.WikiPane && !isempty(wp.pages)
+    @test length(_gdpanes(app, Ressac.EditorPane)) == 1            # les patterns sont toujours là
+    scr = _gdscreen(app, tb, frame)
+    @test occursin("WIKI · 1/", scr) && occursin("PATTERNS", scr)
+    n0 = wp.idx
+    _gdkey(app, 'n'); @test wp.idx == n0 + 1
+    _gdkey(app, 'p'); @test wp.idx == n0
+    _gdkey(app, 'j'); _gdkey(app, 'j'); @test wp.scroll == 2
+    _gdkey(app, 'G'); @test wp.scroll == Ressac._wiki_last(wp)
+    _gdkey(app, 'g'); @test wp.scroll == 0
+    # :wiki tidal → la page dont le titre contient « tidal », sans doublon de pane
+    _gdex(app, "wiki tidal")
+    @test length(_gdpanes(app, Ressac.WikiPane)) == 1
+    @test occursin("tidal", lowercase(wp.pages[wp.idx].title))
+    _gdex(app, "wiki 2"); @test wp.idx == 2
+    _gdex(app, "wiki zzz-inconnue"); @test occursin("pas de page", app.logs[end])
+    @test Ressac._wiki_goto!(wp, "") == false
+    _gdex(app, "q")                                                 # ferme la pane wiki
+    @test isempty(_gdpanes(app, Ressac.WikiPane)) && !app.quit
+    # le scope :wiki est dans l'aide, le modal a disparu
+    @test :wiki in Ressac._PANE_SCOPES && !haskey(Ressac._MODAL_SCOPES, :wiki)
+end
+
+@testset "doc en pane — :doc et K sans voler le focus" begin
+    # les fiches du plugin core (headless : pas de découverte de plugins)
+    Ressac._handle_docs(joinpath(@__DIR__, "..", "plugins", "core"), Dict("dir" => "docs"), "core")
+    app, tb, frame = _gd_app()
+    ed = Ressac._active_editor(app)
+    ws = Ressac.current_workspace(app.workspaces)
+    focus0 = ws.focused_pane
+    _gdex(app, "doc gain")
+    dp = _gdpanes(app, Ressac.DocPane)
+    @test length(dp) == 1 && dp[1].name == "gain"
+    @test ws.focused_pane == focus0                                 # l'éditeur garde le focus
+    @test occursin("[doc] gain", app.logs[end])
+    scr = _gdscreen(app, tb, frame)
+    @test occursin("DOC · gain", scr) && occursin("exemples", scr)
+    # K sur un mot : la même pane change de fiche
+    Tachikoma.set_text!(ed, "@d1 p\"bd hh\" |> every(4, rev) |> lpf(800)")
+    ed.cursor_row = 1; ed.cursor_col = 20                           # sur « every »
+    _gdkey(app, 'K')
+    @test length(_gdpanes(app, Ressac.DocPane)) == 1 && dp[1].name == "every"
+    ed.cursor_col = 22                                              # sur « 4 » → appel englobant every
+    _gdkey(app, 'K')
+    @test dp[1].name == "every"
+    ed.cursor_col = 36                                              # sur « lpf »
+    _gdkey(app, 'K')
+    @test dp[1].name == "lpf"
+    Tachikoma.set_text!(ed, ""); ed.cursor_row = 1; ed.cursor_col = 0
+    _gdkey(app, 'K')
+    @test occursin("pose le curseur", app.logs[end])
+    _gdex(app, "doc zzzinconnu")
+    @test occursin("aucune entrée", app.logs[end])
+    @test Ressac._wrap_text("un deux trois quatre", 9) == ["un deux", "trois", "quatre"]
+    @test Ressac._wrap_text("", 5) == [""]
+end
+
+@testset "snippets Espace — placement en fin de bloc / sous le bloc, slot pré-rempli" begin
+    app, tb, frame = _gd_app()
+    ed = Ressac._active_editor(app)
+    # maillon |> : en fin de ligne, même curseur au début
+    Tachikoma.set_text!(ed, "@d1 p\"bd hh\"\n  |> gain(0.8)\n\n@d3 p\"sn\"")
+    ed.cursor_row = 1; ed.cursor_col = 0
+    _gdkey(app, ' '); _gdkey(app, 'l')
+    lines = split(Tachikoma.text(ed), '\n')
+    @test lines[2] == "  |> gain(0.8) |> lpf()"                     # fin du bloc (ligne |> suivante)
+    @test ed.cursor_row == 2 && app.placeholder_active
+    @test ed.cursor_col == length("  |> gain(0.8) |> lpf(")
+    _gdkey(app, :escape)
+    # ligne complète @dN : sous le bloc, slot libre = 2
+    ed.cursor_row = 1; ed.cursor_col = 3
+    @test Ressac._next_free_slot(ed) == 2
+    _gdkey(app, ' '); _gdkey(app, 'd')
+    lines = split(Tachikoma.text(ed), '\n')
+    @test lines[3] == "@d2 p\"\"" && ed.cursor_row == 3
+    @test ed.cursor_col == length("@d2 p\"") && app.placeholder_idx == 1
+    _gdkey(app, :escape)
+    # ligne vide : sur place ; commentée compte comme occupée
+    Tachikoma.set_text!(ed, "# @d1 p\"bd\"\n")
+    ed.cursor_row = 2; ed.cursor_col = 0
+    _gdkey(app, ' '); _gdkey(app, 'd')
+    @test split(Tachikoma.text(ed), '\n')[2] == "@d2 p\"\""
+    _gdkey(app, :escape)
+    # fragment : au curseur
+    Tachikoma.set_text!(ed, "@d1 p\"bd \""); ed.cursor_row = 1; ed.cursor_col = 9
+    _gdkey(app, ' '); _gdkey(app, 'E')
+    @test startswith(Tachikoma.text(ed), "@d1 p\"bd (,)\"")
+    _gdkey(app, :escape)
+    # jersey : slot pré-rempli et le trou restant sur gain
+    Tachikoma.set_text!(ed, ""); ed.cursor_row = 1; ed.cursor_col = 0
+    _gdkey(app, ' '); _gdkey(app, 'J')
+    @test Tachikoma.text(ed) == "@d1 p\"bd(3,8)\" |> gain()"
+    @test length(app.placeholder_cols) == 1 && ed.cursor_col == length("@d1 p\"bd(3,8)\" |> gain(")
+    @test Ressac._prefill_slot("|> gain(\$1)", ed) == "|> gain(\$1)"
+    @test Ressac._snippet_kind("|> x") === :chain && Ressac._snippet_kind("@d\$1") === :block &&
+          Ressac._snippet_kind("rev") === :inline
+end
+
+@testset "indices de création dans la barre du bas" begin
+    app, tb, frame = _gd_app()
+    ed = Ressac._active_editor(app)
+    Tachikoma.set_text!(ed, "@d1 p\"bd\"\n"); ed.cursor_row = 2; ed.cursor_col = 0
+    @test occursin("vide :", Ressac._creation_hint(app))
+    @test occursin("Espace d slot", _gdscreen(app, tb, frame))
+    ed.cursor_row = 1; ed.cursor_col = 1
+    @test Ressac._creation_hint(app) === nothing
+    Tachikoma.set_text!(ed, "@d1 p\"bd\" |>"); ed.cursor_row = 1; ed.cursor_col = 12
+    @test Ressac._creation_hint(app) === nothing                    # en normal : rien
+    ed.mode = :insert
+    @test occursin("|> gain", Ressac._creation_hint(app))
+    ed.mode = :normal
+end
+
+@testset "sons inconnus signalés à l'évaluation" begin
+    @test Ressac._unknown_sounds(String[]) == String[]
+    Ressac.register_sample!(Ressac.SampleEntry(:gdkick, "test", "", String[], Dict{String,Any}()))
+    try
+        @test Ressac._unknown_sounds(["@d1 p\"gdkick zzz:2 ~ _\"", "@d2 :x |> s(\"gdkick yyy\")"]) == ["zzz", "yyy"]
+        @test Ressac._unknown_sounds(["@d1 :pad |> n(\"c e g\")"]) == String[]      # les notes ne sont pas des sons
+        app, tb, frame = _gd_app()
+        old = Ressac._LIVE_SCHEDULER[]
+        Ressac._LIVE_SCHEDULER[] = app.scheduler
+        try
+            Tachikoma.set_text!(Ressac._active_editor(app), "@d1 p\"gdkick zzz\"")
+            _gdkey(app, 'e')
+            @test any(l -> occursin("son inconnu : « zzz »", l), app.logs)
+        finally
+            Ressac._LIVE_SCHEDULER[] = old
+        end
+    finally
+        delete!(Ressac._SAMPLE_REGISTRY, :gdkick)
+    end
+end

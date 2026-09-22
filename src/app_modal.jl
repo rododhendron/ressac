@@ -216,9 +216,6 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif m.modal === :snippets
         _handle_snippets_key!(m, evt)
         return
-    elseif m.modal === :wiki
-        _handle_wiki_key!(m, evt)
-        return
     elseif m.modal === :mixer
         _handle_mixer_key!(m, evt)
         return
@@ -231,7 +228,7 @@ end
 # ── Scopes des modaux ─────────────────────────────────────────────
 const _MODAL_SCOPES = Dict{Symbol,Symbol}(
     :browse => :modal_browse, :synth_library => :modal_lib, :sccode => :modal_sccode,
-    :snippets => :modal_snippets, :wiki => :modal_wiki, :mixer => :modal_mixer,
+    :snippets => :modal_snippets, :mixer => :modal_mixer,
     :help => :modal_help,
 )
 """
@@ -445,9 +442,9 @@ end
 # Ordre canonique des sections en mode « tout ».
 const _HELP_ALL_SCOPES = Symbol[
     :global, :editor, :patterns, :leader, :placeholder, :synth, :visual, :insert, :pane_mode,
-    :explorer, :waveform, :sculpt, :log, :doc, :tuning, :tap, :piano,
+    :explorer, :waveform, :sculpt, :log, :doc, :wiki, :tuning, :tap, :piano,
     :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets,
-    :modal_wiki, :modal_mixer, :modal_sccode,
+    :modal_mixer, :modal_sccode,
 ]
 
 """
@@ -469,7 +466,7 @@ function _help_scopes(m::RessacApp)
 end
 
 # Scopes dont la cible des prédicats est une PANE (pas l'app).
-const _PANE_SCOPES = (:explorer, :waveform, :sculpt, :log, :doc, :tuning)
+const _PANE_SCOPES = (:explorer, :waveform, :sculpt, :log, :doc, :wiki, :tuning)
 
 # Cible des prédicats `when` d'un scope : la pane focalisée pour son
 # propre scope, l'app pour les scopes app ; un scope de pane non

@@ -230,8 +230,8 @@
         app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
         app.synthlib_cursor = 7
         app.modal_scroll = 42
-        Ressac._open_modal!(app, :wiki, nothing)
-        @test app.modal === :wiki
+        Ressac._open_modal!(app, :snippets, nothing)
+        @test app.modal === :snippets
         @test app.modal_scroll == 0
         @test app.synthlib_cursor == 7   # untouched
     end

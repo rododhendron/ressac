@@ -80,9 +80,6 @@ non-empty), and the focus toggle for keystroke routing.
     # Wiki state (only meaningful when modal === :wiki). Pages re-read
     # at every :wiki so editing a .md file in docs/wiki/ takes effect
     # without restarting.
-    wiki_pages::Vector{_WikiPage} = _WikiPage[]
-    wiki_idx::Int                = 1
-    wiki_scroll::Int             = 0
     # Vim-style `.` repeat. We capture the text typed during the last
     # i/a/o-insert session and re-type it on `.` press.
     vim_in_insert::Bool          = false

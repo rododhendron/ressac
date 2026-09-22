@@ -4,6 +4,27 @@
 # _push_app_log!.
 
 """
+    _creation_hint(m) -> Union{Nothing,String}
+
+Indice de création affiché à la place de la livedoc quand le curseur
+est sur une ligne vide de la pane patterns, ou juste après un `|>`.
+"""
+function _creation_hint(m::RessacApp)
+    _focused_role(m) === :patterns || return nothing
+    ed = _active_editor(m)
+    ed === nothing && return nothing
+    1 <= ed.cursor_row <= length(ed.lines) || return nothing
+    line = String(ed.lines[ed.cursor_row])
+    if isempty(strip(line))
+        return "✎ vide : Espace d slot · Espace I snippets · K doc"
+    end
+    if endswith(rstrip(line), "|>") && ed.mode === :insert
+        return "✎ |> gain(0.8) · lpf(800) · fast(2) · every(4, rev) · Tab complète"
+    end
+    return nothing
+end
+
+"""
     _livedoc_under_cursor(m) -> Union{Nothing,Tuple{String,String}}
 
 (mot, doc) du mot sous le curseur de l'éditeur actif s'il est documenté
@@ -366,8 +387,6 @@ function TK.view(m::RessacApp, f::TK.Frame)
             _render_sccode_modal!(m, marea, buf)
         elseif m.modal === :snippets
             _render_snippets_modal!(m, marea, buf)
-        elseif m.modal === :wiki
-            _render_wiki_modal!(m, marea, buf)
         elseif m.modal === :mixer
             _render_mixer_modal!(m, marea, buf)
         elseif m.modal === :help
@@ -547,11 +566,11 @@ const _MODE_LABELS_FR = Dict{Symbol,String}(
 )
 const _PANE_LABELS_FR = Dict{Symbol,String}(
     :explorer => "EXPLORER", :waveform => "ONDE", :sculpt => "SCULPT",
-    :log => "JOURNAL", :doc => "DOC", :tuning => "GAMME",
+    :log => "JOURNAL", :doc => "DOC", :wiki => "WIKI", :tuning => "GAMME",
 )
 const _MODAL_LABELS_FR = Dict{Symbol,String}(
     :modal_help => "AIDE", :modal_text => "TEXTE", :modal_browse => "SONS",
-    :modal_lib => "LIBRAIRIE", :modal_snippets => "SNIPPETS", :modal_wiki => "WIKI",
+    :modal_lib => "LIBRAIRIE", :modal_snippets => "SNIPPETS",
     :modal_mixer => "MIXER", :modal_sccode => "SCCODE",
 )
 
@@ -692,7 +711,12 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         TK.set_string!(buf, right, area.y, ":", key_style)
         TK.set_string!(buf, right + 1, area.y, " commande  ", txt_style)
         push!(m._keybar_hits, (right, right + textwidth(cmd), () -> enter!(m.command_line, :command)))
-    elseif (ld = _livedoc_under_cursor(m)) !== nothing
+    elseif (ld = _livedoc_under_cursor(m)) === nothing && (hint = _creation_hint(m)) !== nothing
+        txt = first(hint, area.width ÷ 3)
+        right -= textwidth(txt) + 3
+        TK.set_string!(buf, right, area.y, txt, txt_style)
+        TK.set_string!(buf, right + textwidth(txt), area.y, "   ", txt_style)
+    elseif ld !== nothing
         word, doc = ld
         maxw = area.width ÷ 2
         txt = first("✎ " * word * " — " * doc, maxw)

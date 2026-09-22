@@ -56,6 +56,8 @@ function _reload_core_pane_kinds()
         path = joinpath(@__DIR__, "..", "src", f)
         isfile(path) && Base.include(Ressac, path)
     end
+    # Le wiki n'est pas ré-inclus (ses bind! doubleraient) : juste le kind.
+    Ressac.register_pane_kind!(:wiki, Ressac._wiki_pane_ctor)
 end
 
 @testset "pane_editor — :editor kind" begin

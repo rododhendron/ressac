@@ -356,6 +356,40 @@ function _eval_pattern_blocks!(m::RessacApp, target)
     m.eval_flash_ts   = time()
     suffix = err > 0 ? " ($err failed)" : ""
     _push_app_log!(m, "[INFO] :e — $ok bloc$(ok == 1 ? "" : "s") évalué$(ok == 1 ? "" : "s")$suffix")
+    _warn_unknown_sounds!(m, [get(blocks, slot, "") for slot in ok_slots])
+end
+
+"""
+    _unknown_sounds(srcs) -> Vector{String}
+
+Noms de sons cités dans les blocs (`@dN "…"`, `s("…")`) qui ne sont ni
+un sample, ni un instrument, ni un synth connu. Vide quand aucun
+registre n'est chargé (pas de session).
+"""
+function _unknown_sounds(srcs::AbstractVector{<:AbstractString})
+    known = Set{String}()
+    for reg in (_SAMPLE_REGISTRY, _INSTRUMENT_REGISTRY, _SYNTH_REGISTRY)
+        for k in keys(reg); push!(known, String(k)); end
+    end
+    isempty(known) && return String[]
+    out = String[]
+    for src in srcs
+        for mt in eachmatch(r"(?:@d\d+\s+|\bs(?:ound)?\s*\(?\s*)p?\"([^\"]*)\"", src)
+            for tok in eachmatch(r"[A-Za-z][A-Za-z0-9_]*", mt.captures[1])
+                name = tok.match
+                (name in known || resolve_synth_name(Symbol(name)) != Symbol(name)) && continue
+                name in out || push!(out, name)
+            end
+        end
+    end
+    return out
+end
+
+function _warn_unknown_sounds!(m::RessacApp, srcs::AbstractVector{<:AbstractString})
+    unknown = _unknown_sounds(srcs)
+    isempty(unknown) && return
+    _push_app_log!(m, "[WARN] son inconnu : " * join(("« $u »" for u in unknown), ", ") *
+                      " — :browse ou Espace b pour la liste, :samples pour les banques")
 end
 
 """
@@ -492,6 +526,7 @@ function _eval_current_line!(m::RessacApp)
         result = Core.eval(Main, ex)
         rstr = sprint(io -> show(IOContext(io, :limit=>true, :displaysize=>(1, 60)), result))
         _push_app_log!(m, "[INFO] éval ⇒ $rstr")
+        _warn_unknown_sounds!(m, [block])
         # Cascade: if this eval rebound any top-level names, sweep the
         # buffer for `@dN` blocks that reference them and re-eval, so the
         # slots pick up the new value. Single-level (no recursive cascade).
