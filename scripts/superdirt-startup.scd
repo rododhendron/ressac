@@ -190,6 +190,15 @@ s.waitForBoot({
     OSCdef(\ressacEvalAndPlay, { |msg|
         var name = msg[1].asString.asSymbol;
         var src  = msg[2].asString;
+        // Paires optionnelles après la source : la note d'audition de
+        // Ressac (`:note c4` → freq / midinote du SynthDef).
+        var extra = List.new;
+        var i = 3;
+        while ({ i + 1 < msg.size }) {
+            extra.add(msg[i].asString.asSymbol);
+            extra.add(msg[i+1]);
+            i = i + 2;
+        };
         ("[ressac] evalAndPlay (raw) " ++ name ++ " (" ++ src.size.asString ++ " chars)").postln;
         Routine {
             var ok = true;
@@ -207,7 +216,7 @@ s.waitForBoot({
             };
             if(ok) {
                 if(~ressacTestSynth.notNil) { ~ressacTestSynth.free };
-                ~ressacTestSynth = Synth(name, [\out, 0]);
+                ~ressacTestSynth = Synth(name, [\out, 0] ++ extra.asArray);
             };
         }.play(AppClock);
     }, '/ressac/evalAndPlay');

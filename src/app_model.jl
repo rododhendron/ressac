@@ -254,6 +254,8 @@ non-empty), and the focus toggle for keystroke routing.
     piano_octave::Int                    = 4               # MIDI octave (4 ≈ A4 = 440Hz region)
     piano_events::Vector{Tuple{Float64,Int}} = Tuple{Float64,Int}[]
     piano_steps::Int                     = 16
+    # Note d'audition pour T (demi-tons, 0 = do 5) ; nothing = défauts du SynthDef.
+    test_note::Union{Nothing,Int}        = nothing
     # Ghost autocomplete — a faded suggestion that follows the cursor in
     # insert mode. Tab accepts it (and bumps its usage count in the
     # global ranking). Computed on every insert keystroke from the

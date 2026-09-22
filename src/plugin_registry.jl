@@ -392,6 +392,8 @@ end
 # once at session start — surprise "claquement" before the user
 # touched any key.
 const _INSTALLING_SYNTH = Ref{Bool}(false)
+# Paires clé/valeur ajoutées au /ressac/evalAndPlay du prochain T (note d'audition).
+const _AUDITION_ARGS = Ref{Vector{Any}}(Any[])
 
 const _INSTRUMENT_REGISTRY = Dict{Symbol,InstrumentEntry}()
 const _SYNTH_REGISTRY      = Dict{Symbol,SynthEntry}()

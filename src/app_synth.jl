@@ -282,6 +282,7 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
     sched === nothing && return
     tab = _current_synth_tab(m)
     src = TK.text(tab.code_editor)
+    extra = _audition_args(m, tab, src)
     if tab.synth_mode === :dsl
         # DSL mode: realign the @synth name to the tab name (same
         # contract as SC mode's SynthDef name), then eval the buffer
@@ -293,8 +294,13 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
             # (saw, sin_osc, rlpf, …) resolve. Main only has the Pattern
             # signal variants of the colliding names (saw, tri, square).
             # _dsl_preprocess joins leading-`|>` continuation lines.
-            Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(src)))
-            _push_app_log!(m, "[INFO] T — test de $(tab.name) (DSL → SC compilé)")
+            _AUDITION_ARGS[] = extra
+            try
+                Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(src)))
+            finally
+                _AUDITION_ARGS[] = Any[]
+            end
+            _push_app_log!(m, "[INFO] T — test de $(tab.name) (DSL → SC compilé)$(_audition_note_suffix(m, extra))")
         catch err
             _push_app_log!(m, "[ERROR] éval DSL : $(sprint(showerror, err))")
         end
@@ -302,9 +308,96 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
         # SC raw mode (legacy): ship the buffer verbatim.
         src = _align_synthdef_name(src, tab.name)
         send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay",
-                                              Any[tab.name, src])))
-        _push_app_log!(m, "[INFO] T — test de $(tab.name) (SC brut)")
+                                              Any[tab.name, src, extra...])))
+        _push_app_log!(m, "[INFO] T — test de $(tab.name) (SC brut)$(_audition_note_suffix(m, extra))")
     end
+end
+
+# ── Hauteur d'un synth (pane + note d'audition) ─────────────────────
+
+"""
+    _synth_pitch_info(tab) -> (pitch, sustain, params)
+
+Ce que le SynthDef du buffer sait faire : `pitch` est la clé qui reçoit
+la hauteur (`:freq`, `:midinote`, une clé déclarée par `pitch = …` dans
+les métadonnées) ou `nothing` ; `sustain` dit si la durée est pilotable.
+Lu dans le texte du buffer (pas besoin d'avoir sauvé), complété par le
+registre pour `pitch`.
+"""
+function _synth_pitch_info(tab::EditorBuffer)
+    src = TK.text(tab.code_editor)
+    params = if tab.synth_mode === :dsl
+        _dsl_params_from_text(src)
+    else
+        defs = _sc_params_from_text(src)
+        isempty(defs) ? Dict{String,Any}() : first(values(defs))
+    end
+    entry = synth_info(Symbol(tab.name))
+    explicit = entry === nothing ? nothing : get(entry.metadata, "pitch", nothing)
+    pitch = explicit isa AbstractString && !isempty(explicit) ? Symbol(explicit) :
+            haskey(params, "freq") ? :freq : nothing
+    return (pitch = pitch, sustain = haskey(params, "sustain"), params = params)
+end
+
+# Suffixe du titre de la pane : « hauteur freq · durée sustain » / « sans hauteur ».
+function _synth_title_suffix(tab::EditorBuffer)
+    info = _synth_pitch_info(tab)
+    h = info.pitch === nothing ? "sans hauteur" : "hauteur $(info.pitch)"
+    d = info.sustain ? " · durée sustain" : ""
+    return h * d
+end
+
+const _NOTE_NAMES = ("c", "cs", "d", "ds", "e", "f", "fs", "g", "gs", "a", "as", "b")
+# Nom Tidal d'une note en demi-tons (0 = c5) : -12 → c4, 7 → g5.
+_note_name(n::Int) = _NOTE_NAMES[mod(n, 12) + 1] * string(5 + fld(n, 12))
+
+# Paires clé/valeur pour jouer le synth du buffer à la note d'audition.
+function _audition_args(m::RessacApp, tab::EditorBuffer, src::AbstractString)
+    m.test_note === nothing && return Any[]
+    info = _synth_pitch_info(tab)
+    info.pitch === nothing && return Any[]
+    note = m.test_note
+    midi = note + 60
+    val = info.pitch === :midinote ? Float64(midi) :
+          info.pitch === :note     ? Float64(note) :
+          440.0 * 2.0^((midi - 69) / 12)
+    return Any[String(info.pitch), Float32(val)]
+end
+
+function _audition_note_suffix(m::RessacApp, extra::Vector{Any})
+    m.test_note === nothing && return ""
+    isempty(extra) && return " — sans hauteur connue, note $(_note_name(m.test_note)) ignorée"
+    return " — note $(_note_name(m.test_note)) ($(extra[1]) = $(round(extra[2]; digits = 2)))"
+end
+
+"""
+    _set_test_note!(m, arg)
+
+`:note` — note d'audition de T. `:note c4`, `:note 7`, `:note off`,
+`:note` seul affiche la note courante.
+"""
+function _set_test_note!(m::RessacApp, arg::AbstractString)
+    a = strip(arg)
+    if isempty(a)
+        _push_app_log!(m, m.test_note === nothing ?
+            "[INFO] T joue les défauts du SynthDef — :note c4 / :note 7 pour fixer une note" :
+            "[INFO] note d'audition : $(_note_name(m.test_note)) ($(m.test_note)) — :note off pour revenir aux défauts")
+        return
+    end
+    if a in ("off", "none", "défaut", "default")
+        m.test_note = nothing
+        _push_app_log!(m, "[INFO] T joue à nouveau les défauts du SynthDef")
+        return
+    end
+    v = tryparse(Int, a)
+    v === nothing && (v = _note_number(a))
+    if v === nothing
+        _push_app_log!(m, "[ERROR] :note — attendu un nombre de demi-tons (0 = do 5) ou un nom (c4, fs5, a3)")
+        return
+    end
+    m.test_note = Int(v)
+    _push_app_log!(m, "[INFO] note d'audition : $(_note_name(m.test_note)) ($(m.test_note)) — T la joue")
+    return
 end
 
 """

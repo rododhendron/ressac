@@ -477,6 +477,8 @@ _register_literal!(m -> _tap_start!(m; mode = :pattern),
                    "tap-strict", "tap-bar")
 _register_regex!(r"^tap-strict\s+(\w+)$",
     (m, mt) -> _tap_start!(m; sample = String(mt.captures[1]), mode = :pattern))
+_register_literal!(m -> _set_test_note!(m, ""),      "note")
+_register_regex!(r"^note\s+(\S+)$", (m, mt) -> _set_test_note!(m, mt.captures[1]))
 _register_literal!(m -> _piano_start!(m),            "piano")
 _register_literal!(m -> _piano_start!(m; record = true),
                    "piano-rec", "piano-record")

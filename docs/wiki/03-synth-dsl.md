@@ -14,6 +14,11 @@ pas de `using` nécessaire.
 > deviennent ses paramètres. Si la hauteur ne s'appelle pas `freq`,
 > déclare-la dans `plugin.toml` : `[synths.monsynth] pitch = "midinote"`
 > (ou `"note"`, ou n'importe quelle clé en hertz).
+>
+> Le titre de la pane le montre : `SYNTH · monsynth · hauteur freq ·
+> durée sustain`, ou `sans hauteur`. `:note c4` (ou `:note 7`, `:note
+> off`) fixe la note que `T` joue en audition ; sans `:note`, `T` joue
+> les défauts du SynthDef.
 
 ## Minimal — 3 mots
 

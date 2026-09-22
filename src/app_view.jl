@@ -468,6 +468,9 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             ("$label $(n) hit$(n == 1 ? "" : "s")",
              TK.tstyle(:warning, bold = true)))
     end
+    if m.test_note !== nothing && _synth_pane_open(m)
+        push!(state_parts, ("♪ T=$(_note_name(m.test_note))", TK.tstyle(:accent, bold = true)))
+    end
     if m.piano_active
         label = m.piano_rec ? "● PIANO REC" : "♪ PIANO"
         push!(state_parts,

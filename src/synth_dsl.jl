@@ -25,7 +25,7 @@
 
 module SynthDSL
 
-import ..Ressac: _LIVE_SCHEDULER, _INSTALLING_SYNTH,
+import ..Ressac: _LIVE_SCHEDULER, _INSTALLING_SYNTH, _AUDITION_ARGS,
                  send_osc, encode, OSCMessage,
                  register_synth!, register_synth_alias!, SynthEntry
 
@@ -720,7 +720,7 @@ function play_synth(sc_name::Symbol, sig::Sig;
     else
         send_osc(sched.osc,
                  encode(OSCMessage("/ressac/evalAndPlay",
-                                    Any[String(sc_name), src])))
+                                    Any[String(sc_name), src, _AUDITION_ARGS[]...])))
     end
     kw = Dict{Symbol,Any}(kwargs)
     declared = get(kw, :params, NamedTuple())
