@@ -15,8 +15,9 @@ vocabulaire se transposent. Les grandes différences :
 | `every 4 rev $ s "bd"`     | `every 4 rev "bd"`             |
 | `jux rev`                  | `jux rev`  ou `jux(rev)`       |
 | `degradeBy 0.3`            | `degradeBy 0.3`                |
-| `pat1 |+| pat2`            | `pat1 + pat2`                  |
-| `n "0 3" |+ n 12`          | `n("0 3") \|> add(:n, 12)`    |
+| `pat1 |+| pat2`            | `pat1 + pat2`  (structure des deux) |
+| `n "0 3" |+ n 12`          | `n("0 3") \|> add(:n, 12)`  (structure de gauche) |
+| `+|` `|-` `|*` `|/` `|%`   | `sub` `mul` en pipe, ou `+ - * / %` |
 | `every 4 (fast 2)`         | `every 4 fast(2)`              |
 
 L'écriture sans parenthèses (`n "0 3" |> s "bd" |> fast 2`) est du sucre
@@ -133,7 +134,8 @@ par Julia (mot-clé ou clash avec `Base`) : `struct` → `structPat`,
 | harmonie : `arp` `arpeggiate` `arpg` `rolled` `rolledBy` `toScale` `scale` accords `c'maj` `n "c e g"` | idem — `scale(:major)` est un contrôle |
 | signaux : `sine` `cosine` `tri` `saw` `square` `range` `rangex` `quantise` `smooth` `segment` `discretise` `run` `scan` | idem (`range_pat`, `runp`) |
 | arrangement : `ur` `weave` `weaveWith` | idem |
-| arithmétique : `|+|` `|-|` `|*|` `|/|` `|%|` ; `|+` `|*` … ; `#` | `+ - * / %` ; `add`/`sub`/`mul` en pipe ; `\|>` |
+| arithmétique : `|+|` `|-|` `|*|` `|/|` `|%|` ; `|+` `|*` … ; `#` | `+ - * / %` (structure des deux côtés) ; `add`/`sub`/`mul` en pipe (structure de gauche) ; `\|>` |
+| mini-notation : `~` `[]` `<>` `{}%` `*` `/` `!` `@` `_` `.` `..` `?` `|` `,` `(k,n,r)` `:` `'` | idem — couverture complète |
 | contrôles : `s` `sound` `n` `note` `up` `gain` `pan` `speed` `begin` `end` `unit` `cut` `orbit` `nudge` `loop` `squiz` `midinote` `channel` `dry` `legato` `sustain` `accelerate` `vowel` `cutoff` `resonance` `room` `size` `delay`… | idem (`begin_`, `end_`) ; `set(:size, x)` pour les rares absents |
 | session : `setcps` `hush` `once` `solo` `mute` `xfade` `jump` | `cps!` `:hush` `T` `:solo` `:mute` — pas de transitions |
 | `nTake` `numerals` `sec` `msec` `fix` avec fonctions d'état | pas encore |

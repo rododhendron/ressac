@@ -8,18 +8,32 @@ pour les rythmes.
 
 ```
 ~              silence à ce pas
-_              prolonge le pas précédent d'un pas
 bd             nom de sample / synth
 bd:2           la deuxième variante de bd
 [bd hh]        un groupe : subdivise un pas en plusieurs
+[bd, hh*2]     voix parallèles dans le même pas
 <bd sn cp>     alterne : un token par cycle
+bd | sn | cp   tire un token au sort à chaque cycle
 bd*4           répète dans le temps (4 coups pendant un pas)
-bd!3           répète le pas (3 copies côte à côte)
+bd*1.5         marche aussi avec des fractions
+bd/2           étire : bd est joué un cycle sur deux
+bd!3           réplique le pas : bd bd bd
+bd ! !         idem, `!` seul réplique le pas précédent
+bd@3 sn        poids : bd occupe 3 pas, sn 1
+bd _ _ sn      idem (`_` ajoute un pas au précédent)
+bd . hh hh     groupe : équivaut à [bd] [hh hh]
+0 .. 7         intervalle : 0 1 2 3 4 5 6 7
+{bd sn, hh*3}  polymètre : chaque voix garde son nombre de pas
+{bd sn cp}%4   polymètre à 4 pas par cycle
 bd(3,8)        euclidien : 3 coups répartis sur 8 pas
 bd(3,8,2)      euclidien tourné : 3-sur-8 décalé de 2 pas
+bd(<3 5>,8)    argument patterné : 3 coups un cycle, 5 le suivant
 bd?            laisse tomber à 50 % (déterministe, par hash)
 bd?0.3         probabilité personnalisée 0..1
+c'maj          accord (voir « Notes, accords et arpèges »)
 ```
+
+Les modificateurs se collent au pas : `bd*2` et non `bd *2`.
 
 Tout se combine :
 
