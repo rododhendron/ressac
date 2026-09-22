@@ -9,7 +9,11 @@ pas de `using` nécessaire.
 > SynthDef (`n`/`note`/`octave`/`midinote` → fréquence, note 0 = do 5) et
 > sa durée suit l'événement si le SynthDef déclare `sustain`. Déclare donc
 > `freq` et `sustain` dans les paramètres pour qu'un synth réponde aux
-> notes et au rythme.
+> notes et au rythme. Un `.scd` brut est lu de la même façon : ses
+> arguments (`|out = 0, freq = 110, amp = 0.5|` ou `arg freq = 440;`)
+> deviennent ses paramètres. Si la hauteur ne s'appelle pas `freq`,
+> déclare-la dans `plugin.toml` : `[synths.monsynth] pitch = "midinote"`
+> (ou `"note"`, ou n'importe quelle clé en hertz).
 
 ## Minimal — 3 mots
 

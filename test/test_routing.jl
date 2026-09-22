@@ -102,3 +102,45 @@ end
     @test isapprox([kv(x)["freq"] for x in chord], [261.63, 329.63, 392.0]; atol = 0.01)
     delete!(Ressac._SYNTH_REGISTRY, :arpdriver)
 end
+
+@testset "routage — arguments d'un SynthDef sclang lus comme params" begin
+    src = """
+    SynthDef(\\bass, { |out = 0, freq = 110, amp=0.5, gate|
+        Out.ar(out, SinOsc.ar(freq) * amp);
+    }).add;
+    SynthDef("lead", { arg freq=440, sustain = 0.25, cutoff(1200);
+        Out.ar(0, Saw.ar(freq));
+    }).add;
+    SynthDef(\\noise, { Out.ar(0, WhiteNoise.ar) }).add;
+    """
+    defs = Ressac._sc_params_from_text(src)
+    @test defs["bass"] == Dict("out" => 0, "freq" => 110, "amp" => 0.5, "gate" => nothing)
+    @test defs["lead"] == Dict("freq" => 440, "sustain" => 0.25, "cutoff" => 1200)
+    @test defs["noise"] == Dict{String,Any}()
+    @test isempty(Ressac._sc_params_from_text("// rien"))
+end
+
+@testset "routage — pitch déclaré dans les métadonnées (midinote / note / clé libre)" begin
+    kv(m) = Dict(m.args[i] => m.args[i + 1] for i in 2:2:length(m.args) - 1)
+    Ressac.register_synth!(Ressac.SynthEntry(:midisynth, "user-synths",
+        Dict{String,Any}("pitch" => "midinote", "params" => Dict{String,Any}("midinote" => 60, "sustain" => 0.2))))
+    m = Ressac.event_to_osc((pure(:midisynth) |> n("0 7"))(0//1, 1//1)[2])
+    @test m.address == "/ressac/play" && kv(m)["midinote"] == 67.0 && !haskey(kv(m), "n")
+    @test kv(Ressac.event_to_osc((pure(:midisynth) |> n(0) |> octave(4))(0//1, 1//1)[1]))["midinote"] == 48.0
+    Ressac.register_synth!(Ressac.SynthEntry(:hzsynth, "user-synths",
+        Dict{String,Any}("pitch" => "pitch_hz", "params" => Dict{String,Any}("pitch_hz" => 220))))
+    @test kv(Ressac.event_to_osc((pure(:hzsynth) |> note("a4"))(0//1, 1//1)[1]))["pitch_hz"] ≈ 220.0 atol = 0.01
+    Ressac.register_synth!(Ressac.SynthEntry(:notesynth, "user-synths",
+        Dict{String,Any}("pitch" => "note", "params" => Dict{String,Any}("note" => 0))))
+    @test kv(Ressac.event_to_osc((pure(:notesynth) |> n("e"))(0//1, 1//1)[1]))["note"] == 4.0
+    # sans freq ni pitch : n retiré, rien d'autre
+    Ressac.register_synth!(Ressac.SynthEntry(:nopitch, "user-synths",
+        Dict{String,Any}("params" => Dict{String,Any}("amp" => 0.5))))
+    @test Ressac.event_to_osc((pure(:nopitch) |> n(3))(0//1, 1//1)[1]).args == ["nopitch"]
+    # freq sans défaut numérique : la conversion marche quand même, pas d'injection
+    Ressac.register_synth!(Ressac.SynthEntry(:rawfreq, "user-synths",
+        Dict{String,Any}("params" => Dict{String,Any}("freq" => nothing))))
+    @test kv(Ressac.event_to_osc((pure(:rawfreq) |> n(0))(0//1, 1//1)[1]))["freq"] ≈ 261.63 atol = 0.01
+    @test !("freq" in Ressac.event_to_osc((pure(:rawfreq) |> room(0.2))(0//1, 1//1)[1]).args)
+    for k in (:midisynth, :hzsynth, :notesynth, :nopitch, :rawfreq); delete!(Ressac._SYNTH_REGISTRY, k); end
+end

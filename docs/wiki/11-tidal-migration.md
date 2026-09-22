@@ -78,7 +78,10 @@ a un paramètre `sustain` ; `T` (audition) garde les défauts du SynthDef.
 Un synth `@synth` joué sans effet SuperDirt part en direct vers
 SuperCollider. Ressac traduit alors `n`, `note`, `octave` et `midinote`
 en `freq` avec la convention Tidal (note 0 = do 5 = MIDI 60, `octave` 5
-par défaut), à condition que le SynthDef déclare `freq`. Avec un effet
+par défaut), à condition que le SynthDef déclare `freq` — les arguments
+d'un `.scd` sont lus au chargement, ceux d'un `@synth` à la définition.
+Si la hauteur porte un autre nom, `pitch = "midinote"` (ou `"note"`, ou
+une clé en hertz) dans `[synths.<nom>]` de `plugin.toml`. Avec un effet
 (`lpf`, `room`…), SuperDirt fait la même traduction lui-même.
 
 ### `set` pour n'importe quel paramètre

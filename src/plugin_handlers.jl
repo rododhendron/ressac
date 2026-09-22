@@ -278,6 +278,36 @@ function _looks_like_synth_source(path::AbstractString)
 end
 
 """
+    _sc_params_from_text(src) -> Dict{String,Dict{String,Any}}
+
+Arguments de chaque `SynthDef` d'une source sclang, par nom :
+`SynthDef(\\bass, { |out = 0, freq = 110, amp| … })` et la forme
+`arg freq = 440, gate = 1;` sont reconnues, ainsi que `freq(440)` (lag).
+Les défauts numériques sont gardés ; un argument sans défaut numérique
+est présent avec `nothing`.
+"""
+function _sc_params_from_text(src::AbstractString)
+    out = Dict{String,Dict{String,Any}}()
+    rx = r"SynthDef\s*\(\s*(?:\\(\w+)|\"(\w+)\")\s*,\s*\{\s*(?:\|([^|]*)\||arg\s+([^;]*);)?"
+    for m in eachmatch(rx, src)
+        name = m.captures[1] === nothing ? m.captures[2] : m.captures[1]
+        params = Dict{String,Any}()
+        arglist = m.captures[3] !== nothing ? m.captures[3] :
+                  m.captures[4] !== nothing ? m.captures[4] : ""
+        for item in split(arglist, ',')
+            mt = match(r"^\s*(\w+)\s*(?:=\s*([^\s]+)|\(\s*([^)]*)\))?\s*$", item)
+            mt === nothing && continue
+            raw = mt.captures[2] !== nothing ? mt.captures[2] :
+                  mt.captures[3] !== nothing ? mt.captures[3] : nothing
+            v = raw === nothing ? nothing : something(tryparse(Int, raw), tryparse(Float64, raw), Some(nothing))
+            params[mt.captures[1]] = v
+        end
+        out[String(name)] = params
+    end
+    return out
+end
+
+"""
     _load_synth_file!(sched, plugin_name, path)
 
 Load one SynthDef source file. Dispatches on extension:
@@ -304,14 +334,26 @@ function _load_synth_file!(sched, plugin_name, path)
             return
         end
         send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[src])))
-        # Only register if no SynthEntry already exists. The
-        # `[synths.<name>]` block in plugin.toml is the authoritative
-        # metadata source — don't shadow it with our minimal entry.
-        if synth_info(name) === nothing
-            register_synth!(SynthEntry(name, plugin_name, Dict{String,Any}(
-                "description" => "loaded from $(basename(path))",
-                "tags"        => ["user"],
-            )))
+        # Les arguments de chaque SynthDef du fichier (`|freq = 440, …|`)
+        # deviennent les "params" de l'entrée : c'est ce qui permet à
+        # `n` / `note` de piloter `freq` et à la durée de suivre l'événement
+        # sur la route directe. Le bloc `[synths.<nom>]` de plugin.toml
+        # reste la source des autres métadonnées : on ne le remplace pas,
+        # on lui ajoute les params s'il n'en a pas.
+        defs = _sc_params_from_text(src)
+        names = isempty(defs) ? [name] : [Symbol(k) for k in keys(defs)]
+        for def_name in names
+            params = get(defs, String(def_name), Dict{String,Any}())
+            existing = synth_info(def_name)
+            if existing === nothing
+                register_synth!(SynthEntry(def_name, plugin_name, Dict{String,Any}(
+                    "description" => "loaded from $(basename(path))",
+                    "tags"        => ["user"],
+                    "params"      => params,
+                )))
+            elseif !isempty(params) && !haskey(existing.metadata, "params")
+                existing.metadata["params"] = params
+            end
         end
     elseif ext == ".jl"
         # Flag the install path so `play_synth` (called by the @synth

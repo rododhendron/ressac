@@ -67,6 +67,23 @@ using Ressac
         end
     end
 
+    @testset "[synthdefs] enregistre les SynthDefs du fichier avec leurs arguments" begin
+        _with_test_scheduler() do mock, sched
+            m = Ressac.parse_manifest(joinpath(@__DIR__, "fixtures", "plugins", "withsynth"))
+            h = Ressac.get_section_handler(:synthdefs)
+            delete!(Ressac._SYNTH_REGISTRY, :bassline)
+            h(m.dir, m.sections["synthdefs"], m.name)
+            e = Ressac.synth_info(:bassline)
+            @test e !== nothing && e.plugin == "withsynth"
+            @test e.metadata["params"] == Dict("out" => 0, "freq" => 110, "amp" => 0.5)
+            # plugin tiers → SuperDirt (qui traduit n lui-même) ; en direct, n → freq
+            msg = Ressac.event_to_osc((pure(:bassline) |> n(12))(0//1, 1//1)[1])
+            @test msg.address == "/dirt/play" && "n" in msg.args
+            @test isapprox(Ressac._direct_pitch!(Dict{Symbol,Any}(:n => 12), :bassline)[:freq], 523.25; atol = 0.01)
+            delete!(Ressac._SYNTH_REGISTRY, :bassline)
+        end
+    end
+
     @testset "[synthdefs] missing file logs error" begin
         _with_test_scheduler() do mock, sched
             h = Ressac.get_section_handler(:synthdefs)

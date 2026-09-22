@@ -131,7 +131,7 @@ function _inject_user_synth_defaults!(final::AbstractDict, name::Symbol)
     params = _user_synth_params(name)
     isempty(params) && return final
     pitch_keys = (:n, :note, :freq, :degree)
-    if haskey(params, "freq") && !any(k -> haskey(final, k), pitch_keys)
+    if get(params, "freq", nothing) isa Real && !any(k -> haskey(final, k), pitch_keys)
         final[:freq] = params["freq"]
     end
     return final
@@ -165,22 +165,46 @@ ici, avec sa convention (note 0 = do 5 = MIDI 60, `octave` 5 par défaut,
 sont retirées, sauf celles que le SynthDef déclare lui-même.
 """
 function _direct_pitch!(final::AbstractDict, sc_target::Symbol)
+    target = _pitch_target(sc_target)
     params = _user_synth_params(sc_target)
-    haskey(params, "freq") || return final
     pitch_keys = (:midinote, :note, :n, :octave)
-    if !haskey(final, :freq) && any(k -> haskey(final, k), pitch_keys)
-        midi = _resolve_value(get(final, :midinote, nothing))
-        if !(midi isa Real)
-            note = _resolve_value(get(final, :note, get(final, :n, 0)))
-            octave = _resolve_value(get(final, :octave, 5))
-            midi = (note isa Real ? note : 0) + 12 * (octave isa Real ? octave : 5)
+    if target === nothing
+        # Pas de hauteur : on retire n / note / … si l'on connaît les
+        # paramètres du synth (un SynthDef inconnu reçoit tout tel quel).
+        isempty(params) && return final
+        for k in pitch_keys
+            haskey(params, String(k)) || delete!(final, k)
         end
-        final[:freq] = 440.0 * 2.0^((Float64(midi) - 69) / 12)
+        return final
+    end
+    if !haskey(final, target) && any(k -> haskey(final, k), pitch_keys)
+        midi = _resolve_value(get(final, :midinote, nothing))
+        note = _resolve_value(get(final, :note, get(final, :n, 0)))
+        note isa Real || (note = 0)
+        if !(midi isa Real)
+            octave = _resolve_value(get(final, :octave, 5))
+            midi = note + 12 * (octave isa Real ? octave : 5)
+        end
+        final[target] = target === :midinote ? Float64(midi) :
+                        target === :note     ? Float64(note) :
+                        440.0 * 2.0^((Float64(midi) - 69) / 12)
     end
     for k in pitch_keys
+        k === target && continue
         haskey(params, String(k)) || delete!(final, k)
     end
     return final
+end
+
+# Paramètre qui reçoit la hauteur : `pitch = "…"` dans les métadonnées
+# (`[synths.<nom>]` de plugin.toml), sinon `freq` si le SynthDef le
+# déclare, sinon rien (le synth n'a pas de hauteur).
+function _pitch_target(sc_target::Symbol)
+    e = synth_info(sc_target)
+    e === nothing && return nothing
+    explicit = get(e.metadata, "pitch", nothing)
+    explicit isa AbstractString && !isempty(explicit) && return Symbol(explicit)
+    return haskey(_user_synth_params(sc_target), "freq") ? :freq : nothing
 end
 
 # Synth utilisateur joué en direct (/ressac/play) : la durée suit
