@@ -111,7 +111,7 @@ const _COMMAND_NAMES = [
     "synth", "back", "reload", "save-synth", "save-synth-as",
     "swap", "test", "test-raw", "synth-guide", "scope",
     "sculpt",
-    "w", "close", "tabs", "tabnext", "tabprev", "keep", "recall", "pats", "vary", "palette", "panic", "scales", "chords", "themes", "clash", "add", "note", "log", "play", "design", "explore", "zoom",
+    "w", "close", "tabs", "tabnext", "tabprev", "keep", "recall", "pats", "vary", "palette", "panic", "scales", "chords", "themes", "clash", "notes", "inline", "add", "note", "log", "play", "design", "explore", "zoom",
 ]
 
 const _COMBINATOR_NAMES = [
@@ -134,7 +134,7 @@ const _COMBINATOR_NAMES = [
     "ramp", "expramp", "curve", "fib", "primes_n", "harmonics", "logistic_map",
     "euclid_steps", "ratio_to_cents", "cents_to_ratio", "midi_to_hz", "hz_to_midi",
     "semitones", "patvals", "tomini", "pat", "geom", "slowcat", "fastcat",
-    "duck", "avoid", "band", "slot_band", "fan", "declash",
+    "duck", "avoid", "band", "slot_band", "fan", "declash", "slot",
     "choose", "chunk", "cosine", "degrade", "degradeBy", "early", "late", "firstOf", "lastOf",
     "iter", "iterBack", "jux", "juxBy", "off", "often", "rarely", "sometimes", "sometimesBy",
     "palindrome", "ply", "nrun", "runp", "seq", "structPat", "perlin", "rand_pat", "range_pat",

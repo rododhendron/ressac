@@ -481,6 +481,17 @@ Lecture d'une carte :
 | `g / G` | début / fin de page |
 | `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
 
+## Visualiseur de notes
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `+ / l / →` | fenêtre plus large |
+| `- / h / ←` | fenêtre plus étroite |
+| `j / ↓` | moins de couloirs de percussion |
+| `k / ↑` | plus de couloirs de percussion |
+
 ## Gamme (tuning)
 
 **Vues**

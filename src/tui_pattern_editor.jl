@@ -111,6 +111,93 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
 end
 
 """
+    _render_inline_preview!(m, rect, buf)
+
+Écrit en bout de ligne, en gris, ce que le slot JOUE vraiment — pas ce
+qui est écrit. Quand les notes viennent d'une fonction (`n(fib(5))`,
+`scale`, une variable), la source ne les montre pas ; l'aperçu, si.
+
+Hauteurs s'il y en a (`0 4 7 12`), sinon la grille des attaques
+(`x·x·x·x·`). Lu sur le pattern installé dans le scheduler, donc il
+suit l'évaluation et se met à jour dès qu'on réévalue.
+
+Coupé par `:inline`.
+"""
+function _render_inline_preview!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
+    m.inline_preview || return
+    sched = m.scheduler
+    isempty(sched.patterns) && return
+    ed = _active_editor(m)
+    ed === nothing && return
+    has_block = ed.block !== nothing
+    inset_top = has_block ? 1 : 0
+    inset_left = has_block ? 1 : 0
+    gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0
+    body_h = rect.height - inset_top - (has_block ? 1 : 0)
+    first_row = ed.scroll_offset + 1
+    last_row  = min(length(ed.lines), first_row + body_h - 1)
+    cyc = floor(Int, (time() - sched.t_start) * sched.cps)
+    for i in first_row:last_row
+        line_chars = ed.lines[i]
+        # Détection propre : une ligne `@dN …` suffit, même si son corps
+        # n'est pas de la mini-notation (`n(fib(5))`, une variable…).
+        mt = match(r"^\s*@d(\d+)\b", String(line_chars))
+        mt === nothing && continue
+        slot = Symbol("d", mt.captures[1])
+        pat = get(sched.patterns, slot, nothing)
+        pat === nothing && continue
+        # Place disponible à droite du texte de la ligne.
+        text_end = rect.x + inset_left + gw + length(line_chars) - ed_h_scroll(ed)
+        avail = (rect.x + rect.width - (has_block ? 1 : 0)) - text_end - 2
+        avail >= 10 || continue
+        txt = _inline_preview_text(m, slot, pat, cyc, min(avail, 34))
+        isempty(txt) && continue
+        screen_row = rect.y + inset_top + (i - 1 - ed.scroll_offset)
+        TK.set_string!(buf, text_end + 2, screen_row, txt, TK.tstyle(:text_dim))
+    end
+end
+
+# Résumé d'un cycle, mémorisé par (slot, cycle, largeur) : recalculer à
+# chaque image coûterait une requête de pattern par ligne visible.
+function _inline_preview_text(m::RessacApp, slot::Symbol, pat, cyc::Int, width::Int)
+    key = (slot, cyc, width)
+    cached = get(m.inline_cache, slot, nothing)
+    cached !== nothing && cached[1] == key && return cached[2]
+    txt = try
+        evs = Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+        _preview_of(evs, width)
+    catch
+        ""
+    end
+    m.inline_cache[slot] = (key, txt)
+    return txt
+end
+
+function _preview_of(evs, width::Int)
+    isempty(evs) && return ""
+    notes = Union{Nothing,Float64}[_note_row(ev.value) for ev in evs]
+    if any(!isnothing, notes) && count(!isnothing, notes) >= length(notes) ÷ 2
+        # Des hauteurs : on les donne en demi-tons depuis do 5.
+        parts = String[]
+        for v in notes
+            v === nothing && continue
+            push!(parts, string(round(Int, v - 60)))
+        end
+        txt = "♪ " * join(parts, " ")
+        return first(txt, width)
+    end
+    # Sinon la grille des attaques, à la résolution qui tient.
+    steps = width >= 20 ? 16 : 8
+    grid = fill('·', steps)
+    for ev in evs
+        pos = Float64(ev.start - floor(ev.start))
+        k = clamp(floor(Int, pos * steps) + 1, 1, steps)
+        grid[k] = 'x'
+    end
+    return "▏" * String(grid)
+end
+
+"""
     _playhead_parse(line_chars) -> Union{Nothing, NamedTuple}
 
 Run the @dN regex + body token-split once per (changed) line. The

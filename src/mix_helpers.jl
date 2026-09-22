@@ -316,3 +316,35 @@ function _bands_overlap(hi_a, lo_a, hi_b, lo_b)
     b2 = lo_b === nothing ? 22050.0 : lo_b
     return max(a1, b1) < min(a2, b2)
 end
+
+# ── Renvoyer à un slot plutôt qu'à un motif ────────────────────────
+
+"""
+    slot(n) -> Pattern
+
+Le pattern qui joue actuellement sur `dN`, lu à chaque requête. Plutôt
+que de recopier le rythme d'une voix pour s'en servir ailleurs, on la
+désigne :
+
+```julia
+@d1 "bd(3,8)"
+@d2 :bass |> duck(slot(1))        # suit d1, même si on édite d1 ensuite
+@d3 "hh*8" |> avoid(slot(1))
+@d4 slot(1) |> fast(2) |> speed(2)   # rejouer d1 autrement
+```
+
+Accepte `slot(1)`, `slot(:d1)` ou `slot("d1")`. Si le slot est vide, le
+pattern est silencieux — il se remplit tout seul dès que le slot joue.
+"""
+slot(n::Integer) = slot(Symbol("d", n))
+slot(name::AbstractString) = slot(Symbol(startswith(String(name), "d") ? String(name) : "d" * String(name)))
+function slot(name::Symbol)
+    Pattern{Any}((s::Rational, e::Rational) -> begin
+        sched = _LIVE_SCHEDULER[]
+        sched === nothing && return Event{Any}[]
+        p = get(sched.patterns, name, nothing)
+        p === nothing && return Event{Any}[]
+        return Event{Any}[Event{Any}(ev.start, ev.stop, ev.value)
+                          for ev in Base.invokelatest(p, s, e)]
+    end)
+end

@@ -497,7 +497,7 @@ end
 # Ordre canonique des sections en mode « tout ».
 const _HELP_ALL_SCOPES = Symbol[
     :global, :editor, :patterns, :leader, :placeholder, :synth, :visual, :insert, :pane_mode,
-    :explorer, :waveform, :sculpt, :log, :doc, :wiki, :tuning, :tap, :piano,
+    :explorer, :waveform, :sculpt, :log, :doc, :wiki, :notes, :tuning, :tap, :piano,
     :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets, :modal_patterns,
     :modal_evolve, :modal_palette,
     :modal_mixer, :modal_sccode,
@@ -522,7 +522,7 @@ function _help_scopes(m::RessacApp)
 end
 
 # Scopes dont la cible des prédicats est une PANE (pas l'app).
-const _PANE_SCOPES = (:explorer, :waveform, :sculpt, :log, :doc, :wiki, :tuning)
+const _PANE_SCOPES = (:explorer, :waveform, :sculpt, :log, :doc, :wiki, :notes, :tuning)
 
 # Cible des prédicats `when` d'un scope : la pane focalisée pour son
 # propre scope, l'app pour les scopes app ; un scope de pane non

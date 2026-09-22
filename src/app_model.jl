@@ -131,6 +131,9 @@ non-empty), and the focus toggle for keystroke routing.
     # of garbage we don't produce. Pruned each render to the visible
     # window so it stays bounded.
     playhead_cache::Dict{Int,Tuple{UInt64,Any}} = Dict{Int,Tuple{UInt64,Any}}()
+    # Aperçu en bout de ligne de ce que chaque slot joue vraiment.
+    inline_preview::Bool = true
+    inline_cache::Dict{Symbol,Tuple{Any,String}} = Dict{Symbol,Tuple{Any,String}}()
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).

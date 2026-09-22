@@ -379,6 +379,17 @@ voix = declash([p"bd*4", :bass |> n("0 3"), :pad, "hh*8"]; duck_first = 1)
 @d4 voix[4]
 ```
 
+**Désigner une voix plutôt que recopier son rythme.** `slot(1)` est le
+pattern qui joue sur `d1`, lu en direct : éditer `d1` change aussi ce qui
+en dépend.
+
+```julia
+@d1 "bd(3,8)"
+@d2 :bass |> duck(slot(1))
+@d3 "hh*8" |> avoid(slot(1))
+@d4 slot(1) |> fast(2) |> speed(2)
+```
+
 **Savoir ce qui se cogne.** `:clash` regarde les slots qui jouent et dit
 quelles paires frappent ensemble, lesquelles partagent une bande, et
 quoi essayer.

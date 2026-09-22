@@ -349,6 +349,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
         _render_eval_flash!(m, _focused_editor_rect(m), buf)
         _render_visual_selection!(m, _focused_editor_rect(m), buf)
         _render_playhead!(m, _focused_editor_rect(m), buf)
+        _render_inline_preview!(m, _focused_editor_rect(m), buf)
     end
     _load_ghost_usage!()
     if _focused_editor_rect(m) !== nothing
@@ -577,7 +578,7 @@ const _MODE_LABELS_FR = Dict{Symbol,String}(
 )
 const _PANE_LABELS_FR = Dict{Symbol,String}(
     :explorer => "EXPLORER", :waveform => "ONDE", :sculpt => "SCULPT",
-    :log => "JOURNAL", :doc => "DOC", :wiki => "WIKI", :tuning => "GAMME",
+    :log => "JOURNAL", :doc => "DOC", :wiki => "WIKI", :notes => "NOTES", :tuning => "GAMME",
 )
 const _MODAL_LABELS_FR = Dict{Symbol,String}(
     :modal_help => "AIDE", :modal_text => "TEXTE", :modal_browse => "SONS",

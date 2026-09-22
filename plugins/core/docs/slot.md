@@ -1,10 +1,10 @@
 +++
-examples = []
+examples = ["@d2 :bass |> duck(slot(1))", "@d3 \"hh*8\" |> avoid(slot(1))", "@d4 slot(1) |> fast(2)"]
 name = "slot"
-short = "Un canal de pattern nommé (:d1 à :d64). Le scheduler interroge chaque slot à chaque cycle et envoie ses événements en OSC."
-tags = []
+short = "Le pattern qui joue sur dN, lu en direct : on désigne une voix au lieu de recopier son rythme."
+tags = ["mix"]
 +++
 
 # slot
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Le pattern qui joue sur dN, lu en direct : on désigne une voix au lieu de recopier son rythme.

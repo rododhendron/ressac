@@ -93,6 +93,7 @@ include("session_themes.jl")     # _apply_theme!, palette switching
 include("content_sccode.jl")     # sccode.org HTTP client
 include("content_wiki.jl")       # docs/wiki/*.md loader
 include("pane_wiki.jl")          # pane wiki (docs/wiki à côté des patterns)
+include("pane_notes.jl")         # visualiseur de notes (piano-roll défilant)
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
@@ -167,6 +168,7 @@ export fib, primes_n, harmonics, logistic_map, euclid_steps
 export ratio_to_cents, cents_to_ratio, midi_to_hz, hz_to_midi, semitones
 export patvals, tomini, pat
 export duck, avoid, band, slot_band, fan, declash, clashes
+export slot
 export range_pat, rand_pat
 export parse_minino, @p_str
 export OSCMessage, OSCBundle, OSCClient, encode, send_osc

@@ -404,6 +404,25 @@ _register_literal!(m -> _push_app_log!(m,
     "audio-in")
 
 """
+    _open_notes_pane!(m)
+
+`:notes` — ouvre (ou focalise) le visualiseur de notes à côté des
+patterns.
+"""
+function _open_notes_pane!(m::RessacApp)
+    pane = _find_pane(m, NotesPane)
+    if pane === nothing
+        pane = _place_pane!(m, :notes, Dict{String,Any}())
+        pane isa NotesPane || return
+        _focus_pane!(m, pane)
+        _push_app_log!(m, "[INFO] notes — + / − élargit ou resserre la fenêtre · Ctrl-w z zoome · :q ferme")
+    else
+        _focus_pane!(m, pane)
+    end
+    return
+end
+
+"""
     _clash_report!(m)
 
 `:clash` — ce qui se cogne dans les slots qui jouent : attaques
@@ -484,6 +503,11 @@ _register_literal!(m -> _open_patterns_modal!(m),    "pats", "patterns", "patlib
 _register_literal!(m -> _open_evolve_modal!(m),      "vary", "variations", "evolve")
 _register_literal!(m -> _open_palette!(m),           "palette", "p")
 _register_literal!(m -> _clash_report!(m),           "clash", "clashes", "collisions")
+_register_literal!(m -> _open_notes_pane!(m),        "notes", "roll", "piano-roll")
+_register_literal!(m -> (m.inline_preview = !m.inline_preview;
+        _push_app_log!(m, "[INFO] aperçu en bout de ligne " *
+                          (m.inline_preview ? "activé" : "coupé"))),
+    "inline", "preview")
 # Patterns rangés — verbes distincts de :save / :load, qui appartiennent
 # déjà aux sessions (un workspace entier, pas un bloc).
 _register_literal!(m -> _push_app_log!(m,

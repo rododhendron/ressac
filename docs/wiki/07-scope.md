@@ -47,3 +47,43 @@ de repli à 4 Hz garde le panneau vivant.
 4. Le rendu du type actif lit ces globals.
 
 Ajouter un scope = un `SynthDef` SC, un relais `OSCFunc`, un rendu Julia.
+
+## Voir les notes défiler
+
+`:notes` ouvre un visualiseur à côté des patterns : le temps va de
+gauche à droite, la hauteur monte, une couleur par slot. La barre
+verticale est l'instant courant — à gauche ce qui vient d'être joué, à
+droite ce qui va l'être. Éditer un slot se voit immédiatement, y compris
+dans le futur proche, puisque la pane interroge les patterns au lieu de
+garder un historique.
+
+Les sons sans hauteur (percussions) ont leurs propres couloirs en bas,
+un par nom, avec le nom écrit à droite. Les notes viennent de `note`,
+`n` ou `freq`.
+
+```
++ / −     élargir ou resserrer la fenêtre de temps
+k / j     plus ou moins de couloirs de percussion
+Ctrl-w z  zoomer la pane
+```
+
+## L'éditeur montre ce qui joue
+
+Deux choses se passent dans la pane patterns pendant que ça tourne.
+
+Le **jeton en cours** est surligné sur chaque ligne `@dN` de
+mini-notation, et le `@dN` d'une ligne active est en couleur : on voit
+d'un coup d'œil où en est le cycle et quelles lignes sonnent.
+
+L'**aperçu en bout de ligne** montre ce que le slot joue vraiment, pas
+ce qui est écrit. C'est utile quand les notes viennent d'une fonction :
+
+```
+@d2 :pad |> n(fib(5))                     ♪ 1 1 2 3 5
+@d3 :pad |> n("0 2 4") |> scale(:minor)   ♪ 0 3 7
+@d1 p"bd(3,8)"                            ▏x·····x·····x···
+```
+
+Les hauteurs sont en demi-tons depuis do 5. Sans hauteur, c'est la
+grille des attaques. L'aperçu se met à jour à chaque évaluation, et
+`:inline` le coupe.
