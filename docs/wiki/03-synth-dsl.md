@@ -139,6 +139,45 @@ fréquences de notes.
 | `gbman`        | carte Gingerbreadman — 2D conservative             |
 | `cusp`         | catastrophe fronce                                 |
 
+### Pourquoi une note ne s'entend pas sur un synth chaotique
+
+Un `@synth` bâti sur `henon`, `latoo` ou `logistic` reçoit bien la note :
+`freq` est déclaré, donc `n("0 12")` la convertit en fréquence et
+l'envoie. Mais `freq` est la **vitesse d'itération** de la carte, pas
+celle d'un oscillateur périodique. Réglée en plein chaos, la carte ne se
+répète jamais : le spectre est large, il n'y a pas de fondamentale, et la
+note change la texture plutôt que la hauteur.
+
+Pour entendre une hauteur, il faut ramener la carte dans une **fenêtre
+périodique**. Sur Hénon, c'est le paramètre `a` qui décide (avec
+`b = 0.3`) :
+
+| `a`  | comportement | hauteur perçue |
+|------|--------------|----------------|
+| 1.0  | période 4    | `freq` (la note nominale) |
+| 1.05 | période 8    | une octave plus bas |
+| 1.25 | période 7    | ≈ une quinte plus bas |
+| 1.1 · 1.2 · 1.4 | chaos | aucune |
+
+`chaoglitch` itère à `:freq * 4`, donc avec `a = 1.0` (période 4) la
+forme d'onde se répète exactement `freq` fois par seconde : la note tombe
+juste.
+
+```julia
+@d1 :chaoglitch |> n("0 3 7 12")                 # texture, pas de hauteur
+@d1 :chaoglitch |> n("0 3 7 12") |> set(:a, 1.0) # la mélodie s'entend
+@d1 :chaoglitch |> n("0 3 7") |> set(:a, "<1.0 1.05 1.4>")  # va et vient
+```
+
+Deux réglages aident encore. Un filtre fixe masque le mouvement :
+remplacer `rlpf(2200, 0.4)` par `rlpf(:freq * 6, 0.4)` dans la recette
+fait suivre le spectre à la note. Et un `sustain` plus long laisse le
+temps d'entendre la périodicité.
+
+La même idée vaut pour les autres cartes : `logistic` est périodique
+sous `paramA ≈ 3.57`, `lincong` est réputé le plus facile à accorder,
+`latoo` reste bruité quoi qu'on fasse.
+
 Chacun enveloppe la variante **-L** (interpolation linéaire). Pour les
 versions brutes ou cubiques, l'échappatoire `ugen()` :
 
