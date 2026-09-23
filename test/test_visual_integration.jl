@@ -20,6 +20,23 @@ end
 const _VIS_W = 120
 const _VIS_H = 35
 
+# La disposition PLAY par défaut ouvre wiki + doc à droite (voir
+# `_play_side_panes!`). Les tests de mécanique de panes (split, fermeture,
+# zoom, comptage) veulent un point de départ à une seule pane : on replie
+# l'arbre sur l'éditeur, explicitement, sans état global partagé.
+function _only_patterns!(app)
+    ws = Ressac.current_workspace(app.workspaces)
+    ws === nothing && return app
+    for leaf in Ressac._all_leaves(ws.tree)
+        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
+            ws.tree = leaf
+            ws.focused_pane = leaf.id
+            break
+        end
+    end
+    return app
+end
+
 function _vis_app()
     mock = MockOSCClient()
     sched = Ressac.Scheduler(mock; cps = 0.5)
@@ -33,6 +50,7 @@ function _vis_app()
     # instead of no-op'ing on an empty manager.
     Tachikoma.view(app, frame)
     Ressac._PANE_MODE.active = false
+    _only_patterns!(app)
     return app, tb, frame
 end
 

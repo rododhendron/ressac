@@ -1211,22 +1211,61 @@ end
 dans la pane DOC.
 """
 function _doc_under_cursor!(m::RessacApp)
-    ed = _active_editor(m)
-    ed === nothing && return
-    1 <= ed.cursor_row <= length(ed.lines) || return
-    chars = ed.lines[ed.cursor_row]
-    if isempty(chars)
+    word = _doc_target_under_cursor(m)
+    if isempty(word)
         _push_app_log!(m, "[INFO] K — pose le curseur sur un mot (gain, every, bd…) ; :doc <nom> marche aussi")
         return
     end
+    _doc_command!(m, word)
+end
+
+"""
+    _doc_target_under_cursor(m) -> String
+
+Ce que la doc doit montrer pour la position du curseur : le mot s'il est
+documenté ou s'il nomme un son, sinon l'appel qui l'englobe. `""` quand
+il n'y a rien à montrer.
+"""
+function _doc_target_under_cursor(m::RessacApp)
+    ed = _active_editor(m)
+    ed === nothing && return ""
+    1 <= ed.cursor_row <= length(ed.lines) || return ""
+    chars = ed.lines[ed.cursor_row]
+    isempty(chars) && return ""
     col = clamp(ed.cursor_col + 1, 1, length(chars))
     word = _word_under_cursor_chars(chars, col)
-    if isempty(word) || (lookup_doc(String(word)) === nothing && _lookup_livedoc(word) === nothing)
-        word = _enclosing_call(chars, col)
+    known(w) = !isempty(w) && (lookup_doc(String(w)) !== nothing ||
+                               _lookup_livedoc(w) !== nothing ||
+                               synth_info(Symbol(w)) !== nothing ||
+                               sample_info(Symbol(w)) !== nothing ||
+                               instrument_info(Symbol(w)) !== nothing)
+    known(word) && return String(word)
+    encl = _enclosing_call(chars, col)
+    known(encl) && return String(encl)
+    return ""
+end
+
+"""
+    _update_live_doc!(m)
+
+Met à jour les panes DOC en mode « suit le curseur ». On ne vide jamais
+la fiche affichée : sans cible sous le curseur, la dernière reste, ce qui
+évite le clignotement en se déplaçant dans une ligne.
+"""
+function _update_live_doc!(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    target = ""
+    found = false
+    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+        tab isa DocPane && tab.follow || continue
+        if !found
+            target = _doc_target_under_cursor(m)
+            found = true
+        end
+        (isempty(target) || tab.name == target) && continue
+        tab.name = target
+        tab.scroll = 0
     end
-    if isempty(word)
-        _push_app_log!(m, "[INFO] K — rien de documenté sous le curseur")
-        return
-    end
-    _doc_command!(m, String(word))
+    return
 end

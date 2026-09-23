@@ -312,6 +312,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
             end
         end
     end
+    _update_live_doc!(m)
     buf = f.buffer
 
     area = f.area

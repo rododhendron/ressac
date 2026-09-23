@@ -196,8 +196,11 @@ end
     @testset "serialize captures the ref name" begin
         dp = Ressac._pane_new(:doc, Dict{String,Any}("ref" => "SinOsc"))
         @test Ressac.serialize(dp) == Dict{String,Any}(
-            "name" => "SinOsc", "scroll" => 0,
+            "name" => "SinOsc", "scroll" => 0, "follow" => false, "ref" => "SinOsc",
         )
+        # le mode « suit le curseur » est sérialisé lui aussi
+        live = Ressac._pane_new(:doc, Dict{String,Any}("follow" => true))
+        @test Ressac.serialize(live)["follow"] == true
     end
 
     @testset "render! shows fallback for unknown ref" begin

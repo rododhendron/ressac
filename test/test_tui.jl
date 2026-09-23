@@ -7,6 +7,21 @@ import Tachikoma
 # (live API helpers without an active session) is independent of any
 # UI model and belongs in the live_api regression set.
 
+# La disposition PLAY par défaut ouvre wiki + doc à droite. Les tests de
+# mécanique de panes repartent d'une seule pane, explicitement.
+function _only_patterns!(app)
+    ws = Ressac.current_workspace(app.workspaces)
+    ws === nothing && return app
+    for leaf in Ressac._all_leaves(ws.tree)
+        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
+            ws.tree = leaf
+            ws.focused_pane = leaf.id
+            break
+        end
+    end
+    return app
+end
+
 @testset "live API errors without an active session" begin
     Ressac._LIVE_SCHEDULER[] = nothing
     @test_throws ErrorException d!(:d1, pure(:bd))
@@ -30,6 +45,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     @test length(app.workspaces.workspaces) == 3
     @test app.workspaces.current_idx == 1
     ws = Ressac.current_workspace(app.workspaces)
@@ -40,6 +56,7 @@ end
 
     # Idempotent — calling again doesn't create another workspace.
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     @test length(app.workspaces.workspaces) == 3
 end
 
@@ -83,6 +100,7 @@ end
     # First view triggers _ensure_default_workspace! and binds the
     # workspace's default EditorPane to Ressac._active_editor(m).
     Tachikoma.view(app, frame)
+    _only_patterns!(app)
     ws = Ressac.current_workspace(app.workspaces)
     @test ws !== nothing
     leaf = ws.tree
@@ -100,6 +118,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     Ressac.create_workspace!(app.workspaces, "live")
     Ressac.create_workspace!(app.workspaces, "synth")
     Ressac._PANE_MODE.active = false
@@ -122,6 +141,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
     # Enter pane mode
@@ -145,6 +165,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     Ressac._active_editor(app).mode = :normal
 
     Ressac._PANE_MODE.active = true
@@ -161,6 +182,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     # Split into a log pane; focus moves to the new leaf.
     Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
     ws = Ressac.current_workspace(app.workspaces)
@@ -180,6 +202,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     ws = Ressac.current_workspace(app.workspaces)
     # Focused pane is the default editor (Ressac._active_editor(m)).
     @test ws.focused_pane == ws.tree.id
@@ -218,6 +241,8 @@ end
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
+    Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)                    # :q ferme une pane s'il y en a plusieurs
     Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
     # Enter and exit pane mode to make sure no residual state lingers.
@@ -236,6 +261,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     # Split so we save a non-trivial tree.
     Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
     n_before = length(collect(Ressac._all_leaves(
@@ -248,6 +274,7 @@ end
     empty!(app.workspaces.workspaces)
     app.workspaces.current_idx = 0
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     @test length(collect(Ressac._all_leaves(
         Ressac.current_workspace(app.workspaces).tree))) == 1
     # Load restores the split.
@@ -285,6 +312,7 @@ end
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     @test Ressac._global_log_tail_height(app) == 5      # 3 lignes + 2 bordures
     Ressac._cycle_log_tail!(app)
     @test Ressac._global_log_tail_height(app) == 12     # 10 lignes

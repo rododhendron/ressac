@@ -19,6 +19,23 @@ end
 # Boots a fresh app + paints one frame so view-side state
 # (_last_ws_area, focus flags, m.layout_patterns) is populated. Most
 # integration tests want the post-first-frame world.
+# La disposition PLAY par défaut ouvre wiki + doc à droite (voir
+# `_play_side_panes!`). Les tests de mécanique de panes (split, fermeture,
+# zoom, comptage) veulent un point de départ à une seule pane : on replie
+# l'arbre sur l'éditeur, explicitement, sans état global partagé.
+function _only_patterns!(app)
+    ws = Ressac.current_workspace(app.workspaces)
+    ws === nothing && return app
+    for leaf in Ressac._all_leaves(ws.tree)
+        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
+            ws.tree = leaf
+            ws.focused_pane = leaf.id
+            break
+        end
+    end
+    return app
+end
+
 function _new_app()
     mock = MockOSCClient()
     sched = Ressac.Scheduler(mock; cps = 0.5)
@@ -28,6 +45,7 @@ function _new_app()
                             Tachikoma.GraphicsRegion[],
                             Tachikoma.PixelSnapshot[])
     Tachikoma.view(app, frame)
+    _only_patterns!(app)
     Ressac._PANE_MODE.active = false
     return app, frame
 end
@@ -576,6 +594,7 @@ end
     empty!(app.workspaces.workspaces)
     app.workspaces.current_idx = 0
     Ressac._ensure_default_workspace!(app)
+    _only_patterns!(app)
     @test length(collect(Ressac._all_leaves(
         Ressac.current_workspace(app.workspaces).tree))) == 1
     _exec_ex_command!(app, "layout load $name")

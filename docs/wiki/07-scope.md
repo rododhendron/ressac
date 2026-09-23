@@ -48,6 +48,17 @@ de repli à 4 Hz garde le panneau vivant.
 
 Ajouter un scope = un `SynthDef` SC, un relais `OSCFunc`, un rendu Julia.
 
+## La doc vivante
+
+La pane en bas à droite de PLAY suit le curseur : elle montre la fiche de
+ce qui est dessous, comme les live docs de Pluto. Une fonction donne sa
+description et ses exemples ; un son donne ce qu'il est, ses variantes ou
+ses paramètres, une ligne d'usage, et sa source si c'est un synth.
+
+Un nom de son passe avant une fiche de fonction : dans un buffer de
+patterns, `bd` est un son. `f` fige la pane, `f` de nouveau la remet à
+suivre. `K` et `:doc <nom>` visent la même pane.
+
 ## Le bandeau des slots
 
 Au-dessus des panes, une ligne par slot chargé : son nom dans sa

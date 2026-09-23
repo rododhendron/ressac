@@ -465,6 +465,7 @@ Lecture d'une carte :
 | `d / PgDn` | page suivante |
 | `u / PgUp` | page précédente |
 | `g` | début |
+| `f` | suivre le curseur ou figer |
 
 ## Wiki (pane)
 

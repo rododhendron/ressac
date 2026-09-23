@@ -6,6 +6,24 @@ des **synths** (un DSL Julia compilé en SC), et la session en cours fait
 du son à travers SuperDirt.
 
 
+
+## L'écran de jeu
+
+PLAY s'ouvre sur trois panes :
+
+- **les patterns à gauche**, sur les deux tiers de la largeur ;
+- **le wiki en haut à droite**, sur les trois cinquièmes de la hauteur ;
+- **la doc vivante en bas à droite**, qui suit le curseur.
+
+La doc vivante montre ce qui est sous le curseur, sans rien demander. Sur
+une fonction, sa description et ses exemples. Sur un son, ce qu'il est,
+ses variantes ou ses paramètres, une ligne d'usage prête à copier, et sa
+source quand c'est un synth. Quand le curseur n'est sur rien de connu, la
+dernière fiche reste plutôt que de clignoter.
+
+`f` dans la pane doc la fige ou la remet à suivre. `Ctrl-w z` zoome
+n'importe quelle pane, `:q` en ferme une.
+
 ## Tout retrouver : Ctrl-p
 
 `Ctrl-p` ouvre la palette. On tape, elle filtre, `Entrée` fait ce qu'il

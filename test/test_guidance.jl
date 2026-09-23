@@ -12,6 +12,23 @@ if !@isdefined(_GdMock)
     Ressac.send_osc(c::_GdMock, bytes::Vector{UInt8}) = push!(c.sent, bytes)
 end
 
+# La disposition PLAY par défaut ouvre wiki + doc à droite (voir
+# `_play_side_panes!`). Les tests de mécanique de panes (split, fermeture,
+# zoom, comptage) veulent un point de départ à une seule pane : on replie
+# l'arbre sur l'éditeur, explicitement, sans état global partagé.
+function _only_patterns!(app)
+    ws = Ressac.current_workspace(app.workspaces)
+    ws === nothing && return app
+    for leaf in Ressac._all_leaves(ws.tree)
+        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
+            ws.tree = leaf
+            ws.focused_pane = leaf.id
+            break
+        end
+    end
+    return app
+end
+
 function _gd_app()
     sched = Ressac.Scheduler(_GdMock(); cps = 0.5)
     app = Ressac.RessacApp(; scheduler = sched)
@@ -19,6 +36,7 @@ function _gd_app()
     frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 160, 40),
                             Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
     Tachikoma.view(app, frame)
+    _only_patterns!(app)
     Ressac._PANE_MODE.active = false
     Ressac._active_editor(app).mode = :normal
     return app, tb, frame

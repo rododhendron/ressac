@@ -478,7 +478,7 @@ function _ensure_default_workspace!(m::RessacApp)
     _APP_LOG[] = m.logs
     ws = current_workspace(m.workspaces)
     ws === nothing && return
-    _fill_workspace!(ws)
+    _fill_workspace!(ws, m.workspaces)
     return
 end
 
@@ -505,7 +505,7 @@ PLAY (ou sans nom) → éditeur patterns avec le buffer de démarrage ;
 DESIGN → pane synth « sketch » (starter DSL) ; EXPLORE → explorateur.
 No-op si le workspace a déjà du contenu (chemin :layout load).
 """
-function _fill_workspace!(ws::Workspace)
+function _fill_workspace!(ws::Workspace, wm = nothing)
     leaf = ws.tree
     (leaf isa PaneLeaf && isempty(leaf.tabs)) || return
     if ws.name == "DESIGN"
@@ -521,9 +521,35 @@ function _fill_workspace!(ws::Workspace)
         ep = _pane_new(:editor, Dict{String,Any}())
         TK.set_text!(ep.tabs[1].code_editor, _STARTER_BUFFER)
         push!(leaf.tabs, ep)
+        leaf.current_tab = 1
+        ws.focused_pane = leaf.id
+        _play_side_panes!(ws, wm)
+        return
     end
     leaf.current_tab = 1
     ws.focused_pane = leaf.id
+    return
+end
+
+"""
+    _play_side_panes!(ws, wm)
+
+La colonne de droite de PLAY : le wiki en haut, la doc vivante en bas.
+Les patterns gardent les deux tiers de la largeur. Sans gestionnaire
+(appel hors app) on ne fait rien : les identifiants de pane viennent de
+lui.
+"""
+function _play_side_panes!(ws::Workspace, wm)
+    wm === nothing && return
+    root = ws.tree
+    root isa PaneLeaf || return
+    wiki = PaneLeaf(wm.next_pane_id, PaneImpl[_pane_new(:wiki, Dict{String,Any}())], 1)
+    wm.next_pane_id += 1
+    doc = PaneLeaf(wm.next_pane_id, PaneImpl[_pane_new(:doc, Dict{String,Any}("follow" => true))], 1)
+    wm.next_pane_id += 1
+    side = Container(:v, LayoutNode[wiki, doc], [0.6, 0.4])
+    ws.tree = Container(:h, LayoutNode[root, side], [2 / 3, 1 / 3])
+    ws.focused_pane = root.id
     return
 end
 
@@ -543,7 +569,7 @@ function _switch_workspace_named!(m::RessacApp, name::AbstractString)
         cmd_workspace_switch!(wm, idx)
     end
     ws = current_workspace(wm)
-    ws === nothing || _fill_workspace!(ws)
+    ws === nothing || _fill_workspace!(ws, wm)
     return true
 end
 

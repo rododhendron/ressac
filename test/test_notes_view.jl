@@ -201,3 +201,69 @@ end
         Ressac._LIVE_SCHEDULER[] = old
     end
 end
+
+@testset "disposition PLAY — patterns 2/3, wiki en haut, doc vivante en bas" begin
+    app, tb, frame = _nv_app(; w = 130, h = 30)
+    ws = Ressac.current_workspace(app.workspaces)
+    # l'arbre : patterns | (wiki / doc)
+    @test ws.tree isa Ressac.Container && ws.tree.direction === :h
+    @test ws.tree.ratios ≈ [2/3, 1/3]
+    left, right = ws.tree.children
+    @test left isa Ressac.PaneLeaf && left.tabs[1] isa Ressac.EditorPane
+    @test right isa Ressac.Container && right.direction === :v
+    @test right.ratios ≈ [0.6, 0.4]
+    @test right.children[1].tabs[1] isa Ressac.WikiPane
+    docp = right.children[2].tabs[1]
+    @test docp isa Ressac.DocPane && docp.follow
+    # le focus reste sur les patterns
+    @test ws.focused_pane == left.id
+    scr = _nv_screen(app, tb, frame, 30)
+    @test occursin("PATTERNS", scr) && occursin("WIKI", scr) && occursin("DOC ✦", scr)
+
+    old = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    Ressac._handle_docs(joinpath(@__DIR__, "..", "plugins", "core"), Dict("dir" => "docs"), "core")
+    Ressac.register_sample!(Ressac.SampleEntry(:nvkick, "test", "/x", ["a.wav", "b.wav"],
+                                               Dict{String,Any}("tags" => ["kick"])))
+    Ressac.register_synth!(Ressac.SynthEntry(:nvsyn, "user-synths",
+        Dict{String,Any}("description" => "un synth d'essai", "tags" => ["essai"],
+                         "params" => Dict{String,Any}("freq" => 220, "sustain" => 0.3))))
+    try
+        ed = Ressac._active_editor(app)
+        Tachikoma.set_text!(ed, "@d1 \"nvkick*4\" |> gain(0.8)\n@d2 :nvsyn |> n(\"0 3\")")
+        # un son : sa fiche, ses variantes, un exemple d'usage
+        ed.cursor_row = 1; ed.cursor_col = 6
+        scr = _nv_screen(app, tb, frame, 30)
+        @test docp.name == "nvkick"
+        @test occursin("[sample]", scr) && occursin("2 variantes", scr) && occursin("[kick]", scr)
+        # une fonction : sa doc
+        ed.cursor_row = 1; ed.cursor_col = 18
+        scr = _nv_screen(app, tb, frame, 30)
+        @test docp.name == "gain"
+        @test occursin("Multiplicateur", scr)
+        # un synth : description, params, usage
+        ed.cursor_row = 2; ed.cursor_col = 6
+        scr = _nv_screen(app, tb, frame, 30)
+        @test docp.name == "nvsyn"
+        @test occursin("[synth]", scr) && occursin("un synth d'essai", scr)
+        @test occursin("freq=220", scr) || occursin("sustain=0.3", scr)
+        # sur rien de documenté, la dernière fiche reste (pas de clignotement)
+        ed.cursor_row = 2; ed.cursor_col = 0
+        _nv_screen(app, tb, frame, 30)
+        @test docp.name == "nvsyn"
+        # `f` fige la pane, elle cesse de suivre
+        docp.follow = false
+        ed.cursor_row = 1; ed.cursor_col = 6
+        _nv_screen(app, tb, frame, 30)
+        @test docp.name == "nvsyn"
+        docp.follow = true
+        # la fiche d'un son l'emporte sur une fiche de fonction homonyme
+        @test Ressac._sound_card("nvkick", 40) !== nothing
+        @test Ressac._sound_card("gain", 40) === nothing
+        @test Ressac._sound_card("zzz-inconnu", 40) === nothing
+    finally
+        delete!(Ressac._SAMPLE_REGISTRY, :nvkick)
+        delete!(Ressac._SYNTH_REGISTRY, :nvsyn)
+        Ressac._LIVE_SCHEDULER[] = old
+    end
+end
