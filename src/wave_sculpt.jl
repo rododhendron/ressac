@@ -100,7 +100,7 @@ knob_set_value(kb::Knob, v::Float64) =
 # globaux forment leur propre groupe.
 const _ROLE_LABELS = Dict{Symbol,String}(
     :source => "source", :filter => "filtre", :math => "mix",
-    :env => "enveloppe", :mod => "modulation")
+    :env => "enveloppe", :mod => "modulation", :fx => "effet", :space => "espace")
 
 function knob_group(g::Genome, kb::Knob)
     kb.kind === :control && return "global"

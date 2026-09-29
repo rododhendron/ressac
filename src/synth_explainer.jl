@@ -44,6 +44,48 @@ const _UGEN_DESC = Dict{Symbol,String}(
     :SinOscKR => "LFO sinus, modulation douce",
     :LFPulseKR => "LFO carré, modulation rythmique",
     :FbIn => "retour (feedback) : auto-entretenu, peut larsener",
+    # palette du DSL écrit à la main
+    :BrownNoise => "bruit brun, grondement sourd",
+    :GrayNoise => "bruit gris, souffle équilibré à l'oreille",
+    :ClipNoise => "bruit binaire, dur et plein",
+    :Dust2 => "impulsions aléatoires bipolaires, crépitement",
+    :Klang => "banque de sinus fixes, timbre de cloche",
+    :Raw => "bloc SuperCollider écrit à la main (non analysé)",
+    :Line => "rampe linéaire : la valeur glisse d'un point à l'autre",
+    :XLine => "rampe exponentielle : glissement régulier à l'oreille",
+    :Lag => "lissage : les changements arrivent en douceur",
+    :Lag2 => "lissage doublé, plus rond", :Lag3 => "lissage triple, très rond",
+    :EnvGen => "enveloppe appliquée : le son a un début et une fin",
+    :EnvPerc => "enveloppe percussive : attaque puis extinction",
+    :EnvLinen => "enveloppe trapèze : attaque, tenue, relâchement",
+    :EnvAsr => "enveloppe tenue tant que la note dure",
+    :EnvAdsr => "enveloppe ADSR classique",
+    :Decay => "queue exponentielle sur chaque impulsion",
+    :Decay2 => "attaque puis queue exponentielle sur chaque impulsion",
+    :BRF => "coupe-bande : creuse une zone de fréquences",
+    :RHPF => "passe-haut résonnant : éclaircit, peut siffler",
+    :LeakDC => "retire la composante continue (recentre)",
+    :Median => "filtre médian : gomme les clics",
+    :BLowPass => "passe-bas biquad, pente douce et propre",
+    :BHiPass => "passe-haut biquad, propre",
+    :BPeakEQ => "égaliseur : creuse ou bosse une bande",
+    :BLowShelf => "shelf grave : plus ou moins de bas",
+    :BHiShelf => "shelf aigu : plus ou moins de brillance",
+    :DelayN => "délai simple, écho sec", :DelayL => "délai simple (interpolé), écho",
+    :DelayC => "délai simple (cubique), écho propre",
+    :CombN => "filtre peigne : échos répétés, métallique", :CombL => "filtre peigne interpolé : échos, métallique",
+    :AllpassN => "passe-tout : diffusion, épaississement", :AllpassL => "passe-tout interpolé : diffusion",
+    :GVerb => "grande réverbe : salle, halo",
+    :Pan2 => "position stéréo", :LinPan2 => "position stéréo (linéaire)",
+    :Balance2 => "balance entre deux voies", :Rotate2 => "rotation du champ stéréo",
+    :Splay => "étalement stéréo de plusieurs voies",
+    :Softclip => "écrêtage doux : chaleur, compression légère",
+    :Cubed => "cube : distorsion douce et symétrique",
+    :Fold => "repliement : distorsion riche", :Wrap => "enroulement : distorsion dure, aliasée",
+    :Clip => "écrêtage : distorsion franche",
+    :Decimator => "réduction de fréquence et de bits : lo-fi",
+    :Div => "division de deux signaux", :Midicps => "note MIDI → fréquence", :Cpsmidi => "fréquence → note MIDI",
+    :K2A => "contrôle passé en audio", :DC => "valeur constante",
 )
 for nm in (:LorenzL, :HenonL, :LatoocarfianL, :CuspL, :QuadL, :GbmanL, :StandardL, :FBSineL)
     _UGEN_DESC[nm] = "générateur chaotique ($nm), instable, texture métallique/bruitée"
@@ -53,9 +95,10 @@ const _CHAOS_UGENS = Set{Symbol}((:LorenzL, :HenonL, :LatoocarfianL, :CuspL, :Qu
                                   :GbmanL, :StandardL, :FBSineL, :Logistic, :Crackle))
 
 # ── Analyse fonctionnelle (groupes acoustiques) ────────────────────
-const _EFFECT_UGENS     = Set{Symbol}((:FreeVerb, :CombC, :AllpassC))
+const _EFFECT_UGENS     = Set{Symbol}((:FreeVerb, :CombC, :AllpassC, :GVerb, :CombN, :CombL,
+                                       :AllpassN, :AllpassL, :DelayN, :DelayL, :DelayC))
 const _RESONATOR_UGENS  = Set{Symbol}((:Ringz, :Formlet, :Resonz))
-const _SATURATION_UGENS = Set{Symbol}((:Tanh, :Clip2, :Fold2, :Round))
+const _SATURATION_UGENS = Set{Symbol}((:Tanh, :Clip2, :Fold2, :Round, :Softclip, :Cubed, :Fold, :Wrap, :Clip, :Decimator))
 
 # Rôle FONCTIONNEL (plus parlant que le role du catalogue) pour la narration.
 function _func_role(u::Symbol)
@@ -70,6 +113,9 @@ function _func_role(u::Symbol)
     spec.role === :filter && return :corps
     spec.role === :mod && return :mouvement
     spec.role === :math && return :mélange
+    spec.role === :env && return :enveloppe
+    spec.role === :fx && return :espace
+    spec.role === :space && return :espace
     return :autre
 end
 

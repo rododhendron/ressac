@@ -235,8 +235,8 @@ end
             _bkey(app, 'j')
             @test sp.focus == f0 + 1
             # </> défile l'explication
-            _bkey(app, '>'); @test sp.explain_scroll == 1
-            _bkey(app, '<'); @test sp.explain_scroll == 0
+            _bkey(app, '>'); @test sp.explain_view.offset == 1
+            _bkey(app, '<'); @test sp.explain_view.offset == 0
             # :w <nom> sauve le sculpt (fichier avec génome embarqué)
             _bex(app, "w scusave")
             path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")

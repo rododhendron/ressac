@@ -37,7 +37,8 @@ mutable struct WaveformPane <: PaneImpl
     audition::AuditionState
     lock::ReentrantLock
     explain_lines::Vector{String}   # prose de l'explainer (rafraîchie à chaque édit structurel)
-    explain_scroll::Int
+    explain_view::TK.ScrollPane     # la prose repliée et stylée, défilable (</>, molette)
+    explain_w::Int                  # largeur pour laquelle explain_view a été construite (0 = à refaire)
 end
 
 # Constructeur de compatibilité 7-args (anciens appels + tests viewer).
@@ -45,7 +46,7 @@ WaveformPane(samples, sr, vs, vl, label, genome, last_rect) =
     WaveformPane(samples, sr, vs, vl, label, genome, last_rect,
                  false, Knob[], 1, false, "", false, Int[], Float64[], zeros(0, 0),
                  KnobSignatures(), Float64[], 0, 0, 0, false, false,
-                 nothing, AuditionState(1), ReentrantLock(), String[], 0)
+                 nothing, AuditionState(1), ReentrantLock(), String[], _scrollpane(), 0)
 
 # Seam de rendu : par défaut le rendu NRT, surchargeable en test (sync, mock).
 const _WAVE_RENDER = Ref{Function}(render_genome_audio)
@@ -107,8 +108,47 @@ end
 # Prose « pourquoi ça sonne comme ça » du génome courant.
 function _sculpt_refresh_explain!(p::WaveformPane)
     p.explain_lines = p.genome === nothing ? String[] : explain_genome(p.genome)
-    p.explain_scroll = 0
+    p.explain_w = 0                            # le contenu du ScrollPane sera refait au prochain rendu
+    _scroll_top!(p.explain_view)
     return
+end
+
+"""
+    _explain_spans(lines, width) -> Vector{Vector{Span}}
+
+La prose de l'explainer mise en forme pour `width` colonnes : titres de
+section en évidence, puces et flèches en accent avec retrait suspendu,
+tout replié plutôt que rogné.
+"""
+function _explain_spans(lines::Vector{String}, width::Int)
+    out = Vector{TK.Span}[]
+    for line in lines
+        t = rstrip(line)
+        if isempty(t)
+            push!(out, TK.Span[])
+        elseif !startswith(t, " ") && !any(islowercase, t)
+            append!(out, _md_wrap(TK.Span[TK.Span(t, TK.tstyle(:title, bold = true))], width))
+        elseif (m = match(r"^(\s*)(•|←|→|↳)\s*(.*)$", t)) !== nothing
+            pre = m.captures[1] * m.captures[2] * " "
+            body = String(m.captures[3])
+            spans = TK.Span[TK.Span(pre, TK.tstyle(:accent, bold = true))]
+            # « [rôle] Nom — description » : le rôle et le nom ressortent
+            if (r = match(r"^(\[[^\]]+\])\s*([^—]+?)(\s+—\s+.*)?$", body)) !== nothing
+                push!(spans, TK.Span(r.captures[1] * " ", TK.tstyle(:secondary, bold = true)))
+                push!(spans, TK.Span(r.captures[2], TK.tstyle(:text_bright, bold = true)))
+                r.captures[3] === nothing || push!(spans, TK.Span(r.captures[3], TK.tstyle(:text)))
+            else
+                push!(spans, TK.Span(body, TK.tstyle(:text)))
+            end
+            append!(out, _md_wrap(spans, width; indent = textwidth(pre)))
+        elseif startswith(t, "  ") && occursin("→", t)
+            append!(out, _md_wrap(TK.Span[TK.Span(t, TK.tstyle(:text_bright))], width; indent = 2))
+        else
+            ind = length(t) - length(lstrip(t))
+            append!(out, _md_wrap(TK.Span[TK.Span(t, TK.tstyle(:text))], width; indent = ind))
+        end
+    end
+    return out
 end
 
 # Recalcule quartiers + force depuis (graphe × signatures). NE déplace rien.
@@ -354,13 +394,13 @@ end
 # version affichée → indicateur « ↻ » (feedback : l'onde va se rafraîchir).
 _sculpt_busy(p::WaveformPane) = p.req_version > p.rendered_version
 
-# ‹RLPF 2/5› pour un knob-nœud : l'UGen porteur + sa position dans le cycle
-# de rôle. Rend VISIBLE ce que o/O/n changent. "" pour un knob global.
+# ‹RLPF · 2/5 o›  pour un knob-nœud : l'UGen porteur et sa position parmi
+# les UGens du même rôle — ce que `o` / `O` font tourner. "" pour un knob global.
 function _sculpt_ugen_tag(p::WaveformPane, kb::Knob)
     kb.kind === :node || return ""
     (u, i, tot) = ugen_role_position(p.genome, kb.node_id)
     u === nothing && return ""
-    return tot > 1 ? "  ‹$(u) $(i)/$(tot)›" : "  ‹$(u)›"
+    return tot > 1 ? "  ‹$(u) · $(i)/$(tot) o›" : "  ‹$(u)›"
 end
 
 # Bande de knobs : nom + valeur du focalisé (+ UGen porteur), indicateur de
@@ -445,6 +485,11 @@ end
 # Molette = zoom VERS LE POINTEUR (l'échantillon sous le curseur reste fixe).
 function handle_mouse!(p::WaveformPane, evt)
     evt isa TK.MouseEvent || return false
+    # La molette au-dessus de l'explication la fait défiler.
+    if p.sculpt && p.explain_view.last_area.width > 0 &&
+       Base.contains(p.explain_view.last_area, evt.x, evt.y)
+        return TK.handle_mouse!(p.explain_view, evt)
+    end
     (x, _, w, _) = p.last_rect
     length(p.samples) == 0 && return false
     f = w <= 1 ? 0.5 : clamp((evt.x - x) / (w - 1), 0.0, 1.0)
@@ -598,22 +643,20 @@ function _render_sculpt_knobs!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
     end
 end
 
-# Prose de l'explainer (défilable via </>).
+# Prose de l'explainer dans son ScrollPane (défilable via </> et la molette).
 function _render_sculpt_explain!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
-    lines = p.explain_lines
-    isempty(lines) && return
-    start = clamp(p.explain_scroll + 1, 1, max(1, length(lines)))
-    for i in 0:(area.height - 1)
-        idx = start + i
-        idx > length(lines) && break
-        TK.set_string!(buf, area.x, area.y + i, first(lines[idx], area.width), TK.tstyle(:text))
+    isempty(p.explain_lines) && return
+    (area.width < 8 || area.height < 1) && return
+    w = area.width - 1                         # une colonne pour la barre
+    if p.explain_w != w
+        TK.set_content!(p.explain_view, _explain_spans(p.explain_lines, w))
+        p.explain_w = w
     end
+    TK.render(p.explain_view, area, buf)
 end
 
 bind!(:sculpt, [">", "<"], "défiler l'explication"; short = "explication", group = :view,
       hint = false, when = _sc_has,
-      action = (p, evt) -> (p.explain_scroll = evt.char == '>' ?
-          min(p.explain_scroll + 1, max(0, length(p.explain_lines) - 1)) :
-          max(0, p.explain_scroll - 1)))
+      action = (p, evt) -> _scroll!(p.explain_view, evt.char == '>' ? :down : :up))
 bind!(:sculpt, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
       group = :file, when = _sc_has, action = p -> (_SCULPT_USE_REQUEST[] = p))

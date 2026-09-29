@@ -173,6 +173,70 @@ function _install_builtin_ugens!()
     register_ugen!(UGenSpec(:LFPulseKR, [:kr], [sig(:freq, 4, 0.05, 30),
                                                sca(:iphase, 0, 0, 1),
                                                sca(:width, 0.5, 0.01, 0.99)], :mod))
+
+    # ── Palette du DSL écrit à la main ─────────────────────────────
+    # Tout ce que les wrappers de SynthDSL produisent (synth_dsl.jl) doit
+    # se sculpter avec des knobs nommés et s'expliquer avec un rôle. Les
+    # rôles :env (enveloppes, rampes), :fx (délais, réverbes) et :space
+    # (panoramique) sont hors de la palette de mutation de l'explorateur,
+    # qui ne tire que dans :source / :filter / :math / :mod.
+    # sources
+    register_ugen!(UGenSpec(:BrownNoise, [:ar], SlotSpec[], :source))
+    register_ugen!(UGenSpec(:GrayNoise,  [:ar], SlotSpec[], :source))
+    register_ugen!(UGenSpec(:ClipNoise,  [:ar], SlotSpec[], :source))
+    register_ugen!(UGenSpec(:Dust2,      [:ar], [sig(:density, 4, 0.1, 200)], :source))
+    register_ugen!(UGenSpec(:Klang,      [:ar], [sca(:specs, 0, 0, 0), sca(:freqscale, 1, 0.1, 4), sca(:freqoffset, 0, 0, 1000)], :source))
+    register_ugen!(UGenSpec(:Raw,        [:ar], SlotSpec[], :source))        # bloc SC opaque `{ … }`
+    # enveloppes, rampes, lissages
+    register_ugen!(UGenSpec(:Line,     [:kr, :ar], [sca(:start, 0, -20000, 20000), sca(:end, 1, -20000, 20000), sig(:dur, 1, 0.001, 30)], :env))
+    register_ugen!(UGenSpec(:XLine,    [:kr, :ar], [sca(:start, 1, 0.001, 20000), sca(:end, 2, 0.001, 20000), sig(:dur, 1, 0.001, 30)], :env))
+    register_ugen!(UGenSpec(:Lag,      [:kr, :ar], [aud(:in), sca(:time, 0.1, 0, 5)], :env))
+    register_ugen!(UGenSpec(:Lag2,     [:kr, :ar], [aud(:in), sca(:time, 0.1, 0, 5)], :env))
+    register_ugen!(UGenSpec(:Lag3,     [:kr, :ar], [aud(:in), sca(:time, 0.1, 0, 5)], :env))
+    register_ugen!(UGenSpec(:EnvGen,   [:kr, :ar], [sig(:env, 0, 0, 0), sig(:gate, 1, 0, 1)], :env))
+    register_ugen!(UGenSpec(:EnvPerc,  [:kr], [sca(:attack, 0.01, 0.0005, 5), sca(:release, 1, 0.005, 20), sca(:level, 1, 0, 2), sca(:curve, -4, -12, 12)], :env))
+    register_ugen!(UGenSpec(:EnvLinen, [:kr], [sca(:attack, 0.01, 0.0005, 5), sca(:sustain, 1, 0.005, 30), sca(:release, 1, 0.005, 20), sca(:level, 1, 0, 2), sca(:curve, 0, -12, 12)], :env))
+    register_ugen!(UGenSpec(:EnvAsr,   [:kr], [sca(:attack, 0.01, 0.0005, 5), sca(:level, 1, 0, 2), sca(:release, 1, 0.005, 20), sca(:curve, -4, -12, 12)], :env))
+    register_ugen!(UGenSpec(:EnvAdsr,  [:kr], [sca(:attack, 0.01, 0.0005, 5), sca(:decay, 0.3, 0.005, 10), sca(:sustain, 0.5, 0, 1), sca(:release, 1, 0.005, 20), sca(:level, 1, 0, 2), sca(:curve, -4, -12, 12)], :env))
+    register_ugen!(UGenSpec(:Decay,    [:ar, :kr], [aud(:in), sca(:decay, 1, 0.01, 10)], :env))
+    register_ugen!(UGenSpec(:Decay2,   [:ar, :kr], [aud(:in), sca(:attack, 0.01, 0.001, 5), sca(:decay, 1, 0.01, 10)], :env))
+    # filtres
+    register_ugen!(UGenSpec(:BRF,      [:ar], [aud(:in), sig(:freq, 800, 40, 12000), sca(:rq, 0.5, 0.05, 4)], :filter))
+    register_ugen!(UGenSpec(:RHPF,     [:ar], [aud(:in), sig(:freq, 800, 40, 12000), sca(:rq, 0.5, 0.05, 4)], :filter))
+    register_ugen!(UGenSpec(:LeakDC,   [:ar], [aud(:in), sca(:coef, 0.995, 0.9, 0.9999)], :filter))
+    register_ugen!(UGenSpec(:Median,   [:ar], [sca(:length, 3, 1, 31), aud(:in)], :filter))
+    register_ugen!(UGenSpec(:BLowPass, [:ar], [aud(:in), sig(:freq, 1200, 40, 18000), sca(:rq, 0.7, 0.05, 4)], :filter))
+    register_ugen!(UGenSpec(:BHiPass,  [:ar], [aud(:in), sig(:freq, 400, 40, 18000), sca(:rq, 0.7, 0.05, 4)], :filter))
+    register_ugen!(UGenSpec(:BPeakEQ,  [:ar], [aud(:in), sig(:freq, 1200, 40, 18000), sca(:rq, 0.7, 0.05, 4), sca(:db, 0, -24, 24)], :filter))
+    register_ugen!(UGenSpec(:BLowShelf, [:ar], [aud(:in), sig(:freq, 300, 40, 18000), sca(:rs, 0.7, 0.05, 4), sca(:db, 0, -24, 24)], :filter))
+    register_ugen!(UGenSpec(:BHiShelf, [:ar], [aud(:in), sig(:freq, 4000, 40, 18000), sca(:rs, 0.7, 0.05, 4), sca(:db, 0, -24, 24)], :filter))
+    # délais, réverbes, modulations d'effet
+    register_ugen!(UGenSpec(:DelayN,   [:ar], [aud(:in), sca(:maxdelay, 1, 0.01, 5), sig(:delay, 0.2, 0.0001, 5)], :fx))
+    register_ugen!(UGenSpec(:DelayL,   [:ar], [aud(:in), sca(:maxdelay, 1, 0.01, 5), sig(:delay, 0.2, 0.0001, 5)], :fx))
+    register_ugen!(UGenSpec(:DelayC,   [:ar], [aud(:in), sca(:maxdelay, 1, 0.01, 5), sig(:delay, 0.2, 0.0001, 5)], :fx))
+    register_ugen!(UGenSpec(:CombN,    [:ar], [aud(:in), sca(:maxdelay, 1, 0.01, 5), sig(:delay, 0.2, 0.0001, 5), sca(:decay, 1, 0.01, 20)], :fx))
+    register_ugen!(UGenSpec(:CombL,    [:ar], [aud(:in), sca(:maxdelay, 1, 0.01, 5), sig(:delay, 0.2, 0.0001, 5), sca(:decay, 1, 0.01, 20)], :fx))
+    register_ugen!(UGenSpec(:AllpassN, [:ar], [aud(:in), sca(:maxdelay, 1, 0.01, 5), sig(:delay, 0.05, 0.0001, 5), sca(:decay, 1, 0.01, 20)], :fx))
+    register_ugen!(UGenSpec(:AllpassL, [:ar], [aud(:in), sca(:maxdelay, 1, 0.01, 5), sig(:delay, 0.05, 0.0001, 5), sca(:decay, 1, 0.01, 20)], :fx))
+    register_ugen!(UGenSpec(:GVerb,    [:ar], [aud(:in), sca(:roomsize, 10, 1, 300), sca(:revtime, 3, 0.1, 100), sca(:damping, 0.5, 0, 1), sca(:inputbw, 0.5, 0, 1), sca(:spread, 15, 0, 43), sca(:drylevel, 1, 0, 1), sca(:earlyreflevel, 0.7, 0, 1), sca(:taillevel, 0.5, 0, 1)], :fx))
+    # espace
+    register_ugen!(UGenSpec(:Pan2,     [:ar], [aud(:in), sig(:pos, 0, -1, 1), sca(:level, 1, 0, 2)], :space))
+    register_ugen!(UGenSpec(:LinPan2,  [:ar], [aud(:in), sig(:pos, 0, -1, 1), sca(:level, 1, 0, 2)], :space))
+    register_ugen!(UGenSpec(:Balance2, [:ar], [aud(:left), aud(:right), sig(:pos, 0, -1, 1), sca(:level, 1, 0, 2)], :space))
+    register_ugen!(UGenSpec(:Rotate2,  [:ar], [aud(:x), aud(:y), sig(:pos, 0, -1, 1)], :space))
+    register_ugen!(UGenSpec(:Splay,    [:ar], [aud(:in), sca(:spread, 1, 0, 1), sca(:level, 1, 0, 2), sca(:center, 0, -1, 1)], :space))
+    # mise en forme, maths
+    register_ugen!(UGenSpec(:Softclip, [:ar, :kr], [sig(:in, 0, -1, 1)], :math))
+    register_ugen!(UGenSpec(:Cubed,    [:ar, :kr], [sig(:in, 0, -1, 1)], :math))
+    register_ugen!(UGenSpec(:Fold,     [:ar, :kr], [sig(:in, 0, -1, 1), sca(:lo, -1, -2, 0), sca(:hi, 1, 0, 2)], :math))
+    register_ugen!(UGenSpec(:Wrap,     [:ar, :kr], [sig(:in, 0, -1, 1), sca(:lo, -1, -2, 0), sca(:hi, 1, 0, 2)], :math))
+    register_ugen!(UGenSpec(:Clip,     [:ar, :kr], [sig(:in, 0, -1, 1), sca(:lo, -1, -2, 0), sca(:hi, 1, 0, 2)], :math))
+    register_ugen!(UGenSpec(:Decimator, [:ar], [aud(:in), sca(:rate, 44100, 1000, 48000), sca(:bits, 24, 1, 24)], :math))
+    register_ugen!(UGenSpec(:Div,      [:ar, :kr], [sig(:a, 0, -1, 1), sig(:b, 1, -1, 1)], :math))
+    register_ugen!(UGenSpec(:Midicps,  [:ar, :kr], [sig(:in, 60, 0, 127)], :math))
+    register_ugen!(UGenSpec(:Cpsmidi,  [:ar, :kr], [sig(:in, 220, 20, 20000)], :math))
+    register_ugen!(UGenSpec(:K2A,      [:ar], [sig(:in, 0, -1, 1)], :math))
+    register_ugen!(UGenSpec(:DC,       [:ar, :kr], [sca(:in, 0, -1, 1)], :math))
     return nothing
 end
 _install_builtin_ugens!()
@@ -184,7 +248,8 @@ _install_builtin_ugens!()
 # modulation presque rien → on favorise la richesse PAR MODULATION
 # plutôt que par empilement de sources.
 const _ROLE_COST = Dict{Symbol,Float64}(
-    :source => 3.0, :filter => 2.0, :math => 1.0, :mod => 0.5, :env => 0.5)
+    :source => 3.0, :filter => 2.0, :math => 1.0, :mod => 0.5, :env => 0.5,
+    :fx => 3.0, :space => 1.0)
 
 # Surcharges par UGen : les briques lourdes (DSP/perception) coûtent plus.
 const _UGEN_COST = Dict{Symbol,Float64}(
