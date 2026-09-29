@@ -210,96 +210,39 @@
         @test Ressac._orbit_peak(:d1) ≈ 0.7f0
     end
 
-    # ── app.jl — _open_modal! ──
-    @testset "_open_modal! sets modal + resets cursor + scroll" begin
+    # ── app_modal.jl — _open_modal! ──
+    @testset "_open_modal! pose la modale et remet les défilements en haut" begin
         mock = MockOSCClient()
         app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
         app.modal = :none
-        app.mixer_cursor = 7
         app.modal_scroll = 42
-        Ressac._open_modal!(app, :mixer, :mixer_cursor)
-        @test app.modal === :mixer
-        @test app.mixer_cursor == 1
-        @test app.modal_scroll == 0
-    end
-
-    @testset "_open_modal! without cursor field — scroll-only modals" begin
-        # Wiki uses its own scroll fields; cursor_field=nothing leaves
-        # all per-modal state alone, only modal + modal_scroll change.
-        mock = MockOSCClient()
-        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
-        app.mixer_cursor = 7
-        app.modal_scroll = 42
-        Ressac._open_modal!(app, :snippets, nothing)
+        app.modal_view.offset = 7
+        app.browser_cursor = 5                     # l'état propre d'une modale n'est pas touché
+        Ressac._open_modal!(app, :snippets)
         @test app.modal === :snippets
-        @test app.modal_scroll == 0
-        @test app.mixer_cursor == 7   # untouched
+        @test app.modal_scroll == 0 && app.modal_view.offset == 0
+        @test app.browser_cursor == 5
     end
 
-    # ── app.jl — _modal_cursor_nav! / _modal_close_key! ──
-    @testset "_modal_cursor_nav! handles j/k bounds correctly" begin
-        TK   = Ressac.TK
+    @testset "mixer — la table suit les slots, la sélection est bornée" begin
         mock = MockOSCClient()
         app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
-        kp   = TK.key_press
-        app.mixer_cursor = 1
-        # j moves down, clamped to n.
-        @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', kp), :mixer_cursor, 3) == true
-        @test app.mixer_cursor == 2
-        @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', kp), :mixer_cursor, 3) == true
-        @test app.mixer_cursor == 3
-        # j at n stays at n.
-        Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', kp), :mixer_cursor, 3)
-        @test app.mixer_cursor == 3
-        # k decrements, clamped to 1.
-        @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'k', kp), :mixer_cursor, 3) == true
-        @test app.mixer_cursor == 2
-        # :down / :up also work.
-        @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:down, '\0', kp), :mixer_cursor, 3) == true
-        @test app.mixer_cursor == 3
-        @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:up, '\0', kp), :mixer_cursor, 3) == true
-        @test app.mixer_cursor == 2
-        # Non-nav key not consumed.
-        @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'x', kp), :mixer_cursor, 3) == false
+        @test isempty(Ressac._mixer_sync!(app)) && app.mixer_table.selected == 0
+        Ressac.set_pattern!(app.scheduler, :d1, Ressac.pat("bd"))
+        Ressac.set_pattern!(app.scheduler, :d3, Ressac.pat("hh") |> Ressac.gain(0.5))
+        slots = Ressac._mixer_sync!(app)
+        @test slots == [:d1, :d3] && app.mixer_table.selected == 1
+        @test [String(c.name) for c in app.mixer_table.columns] == ["SLOT", "ACTIVITÉ", "ÉTAT", "GAIN", "SOURCE"]
+        @test app.mixer_table.columns[4].values == ["-", "0.5"]
+        @test app.mixer_table.columns[5].values == ["bd", "hh"]
+        Ressac._list_nav!(app.mixer_table, :down); @test Ressac._mixer_cur(app) === :d3
+        Ressac._list_nav!(app.mixer_table, :down); @test Ressac._mixer_cur(app) === :d1   # boucle
+        app.mixer_table.selected = 2
+        Ressac.unset_pattern!(app.scheduler, :d3)
+        @test Ressac._mixer_sync!(app) == [:d1] && app.mixer_table.selected == 1
     end
 
-    @testset "_modal_cursor_nav! — empty list cursor stays at 1" begin
-        TK = Ressac.TK
-        mock = MockOSCClient()
-        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
-        app.mixer_cursor = 1
-        Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', TK.key_press), :mixer_cursor, 0)
-        @test app.mixer_cursor == 1
-    end
 
-    @testset "_modal_close_key! — Esc or q closes" begin
-        TK = Ressac.TK
-        kp = TK.key_press
-        mock = MockOSCClient()
-        app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
-        app.modal = :synth_library
-        @test Ressac._modal_close_key!(app,
-            TK.KeyEvent(:escape, '\0', kp)) == true
-        @test app.modal === :none
-        # q does the same.
-        app.modal = :synth_library
-        @test Ressac._modal_close_key!(app,
-            TK.KeyEvent(:char, 'q', kp)) == true
-        @test app.modal === :none
-        # Anything else: false, modal preserved.
-        app.modal = :synth_library
-        @test Ressac._modal_close_key!(app,
-            TK.KeyEvent(:char, 'x', kp)) == false
-        @test app.modal === :synth_library
-    end
 
     # ── autocomplete.jl — completion picker state ──
     @testset "ex-command Tab cycles + picks up via picker" begin

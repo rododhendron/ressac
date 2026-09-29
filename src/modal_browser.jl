@@ -60,7 +60,8 @@ function _synth_summary(e::SynthEntry)
 end
 
 function _open_browser!(m::RessacApp)
-    _open_modal!(m, :browse, :browser_cursor)
+    _open_modal!(m, :browse)
+    m.browser_cursor = 1
     TK.set_text!(m.browser_search, ""); m.browser_search.focused = false
     m.browser_filter = :all
 end

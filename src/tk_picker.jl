@@ -159,8 +159,57 @@ end
 # Souris : un clic sélectionne la ligne, la molette fait défiler la liste.
 _picker_mouse!(pk::Picker, evt::TK.MouseEvent) = TK.handle_mouse!(pk.list, evt)
 
-# Un clic sur la ligne déjà sélectionnée ? (pour « clic = choisir »)
-_picker_click_hits_selected(pk::Picker, evt::TK.MouseEvent) =
-    evt.button === TK.mouse_left && evt.action === TK.mouse_press &&
-    pk.list.offset + (evt.y - pk.list.last_area.y + 1) == pk.list.selected &&
-    Base.contains(pk.list.last_area, evt.x, evt.y)
+# ── Listes : ce qui vaut pour une SelectableList comme pour une DataTable ──
+
+# Un clic gauche sur la ligne déjà sélectionnée ? (pour « clic = choisir »)
+function _list_click_hits_selected(lst::TK.SelectableList, evt::TK.MouseEvent)
+    evt.button === TK.mouse_left && evt.action === TK.mouse_press || return false
+    Base.contains(lst.last_area, evt.x, evt.y) || return false
+    return lst.offset + (evt.y - lst.last_area.y + 1) == lst.selected
+end
+function _list_click_hits_selected(dt::TK.DataTable, evt::TK.MouseEvent)
+    evt.button === TK.mouse_left && evt.action === TK.mouse_press || return false
+    a = dt.last_content_area
+    Base.contains(a, evt.x, evt.y) || return false
+    return dt.offset + (evt.y - (a.y + 2) + 1) == dt.selected      # en-tête + filet
+end
+_picker_click_hits_selected(pk::Picker, evt::TK.MouseEvent) = _list_click_hits_selected(pk.list, evt)
+
+# Navigation au clavier comme la touche Tachikoma correspondante.
+_list_nav!(lst, key::Symbol) = (TK.handle_key!(lst, TK.KeyEvent(key)); nothing)
+
+"""
+    _mixer_table() -> Tachikoma.DataTable
+
+La table du mixer : une ligne par slot, colonnes remplies à chaque rendu.
+"""
+_mixer_table() = TK.DataTable(TK.DataColumn[]; selected = 1, show_scrollbar = true,
+                              header_style = TK.tstyle(:text_dim), selected_style = TK.tstyle(:accent, bold = true),
+                              alt_style = TK.tstyle(:text))
+
+"""
+    _datatable_set!(dt, columns, row_styles)
+
+Remplace les colonnes d'une DataTable en gardant sélection, défilement
+et largeurs ; la sélection est bornée sur les nouvelles lignes.
+"""
+function _datatable_set!(dt::TK.DataTable, columns::Vector{TK.DataColumn}, row_styles::Vector{TK.Style} = TK.Style[])
+    n = isempty(columns) ? 0 : maximum(length(c.values) for c in columns)
+    dt.columns = columns
+    dt.sort_perm = collect(1:n)
+    dt.row_styles = row_styles
+    dt.selected = n == 0 ? 0 : clamp(max(dt.selected, 1), 1, n)
+    length(dt.col_widths) == length(columns) || (dt.col_widths = zeros(Int, length(columns)))
+    return
+end
+
+# Position (x, y) de la cellule (ligne `row`, colonne `col`) au dernier rendu,
+# ou `nothing` si elle n'est pas à l'écran — pour dessiner par-dessus.
+function _datatable_cell_xy(dt::TK.DataTable, row::Int, col::Int)
+    a = dt.last_content_area
+    (a.width == 0 || length(dt.last_widths) < col) && return nothing
+    y = a.y + 2 + (row - 1 - dt.offset)
+    (y < a.y + 2 || y >= a.y + a.height) && return nothing
+    x = a.x + 1 + sum(dt.last_widths[1:col-1]; init = 0) + (col - 1)     # marge + séparateurs
+    return (x, y)
+end

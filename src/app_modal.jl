@@ -11,23 +11,29 @@ _modal_picker(m::RessacApp) =
     m.modal === :snippets      ? m.snips :
     m.modal === :sccode        ? m.sccode : nothing
 
+# La liste (SelectableList ou DataTable) de la modale ouverte, pour la souris.
+function _modal_list(m::RessacApp)
+    pk = _modal_picker(m)
+    pk === nothing || return pk.list
+    m.modal === :evolve && return m.evolve_list
+    m.modal === :mixer  && return m.mixer_table
+    return nothing
+end
+
 """
     _modal_mouse!(m, evt) -> Bool
 
-La souris dans une modale : celles qui ont un picker (palette, patterns,
-librairie, snippets, sccode) reçoivent clic et molette ; les autres
-l'ignorent pour l'instant.
+La souris dans une modale : celles qui ont une liste (picker, variations,
+mixer) reçoivent clic et molette ; les autres l'ignorent.
 """
 function _modal_mouse!(m::RessacApp, evt::TK.MouseEvent)
-    pk = _modal_picker(m)
-    if pk !== nothing
-        # Un clic sur la ligne déjà sélectionnée vaut Entrée ; sinon la liste
-        # sélectionne ou défile.
-        _picker_click_hits_selected(pk, evt) &&
-            return dispatch!(((modal_scope(m), m),), TK.KeyEvent(:enter))
-        return _picker_mouse!(pk, evt)
-    end
-    return false
+    lst = _modal_list(m)
+    lst === nothing && return false
+    # Un clic sur la ligne déjà sélectionnée vaut Entrée ; sinon la liste
+    # sélectionne ou défile.
+    _list_click_hits_selected(lst, evt) &&
+        return dispatch!(((modal_scope(m), m),), TK.KeyEvent(:enter))
+    return TK.handle_mouse!(lst, evt)
 end
 
 _modal_lines(m::RessacApp) =
@@ -294,8 +300,8 @@ défilement : guide, tutoriel, explain…). `:none` si aucun modal.
 modal_scope(m::RessacApp) = m.modal === :none ? :none : get(_MODAL_SCOPES, m.modal, :modal_text)
 
 # Entrées communes à tous les modaux (documentaires : la navigation j/k
-# et la fermeture Esc/q sont gérées par _modal_cursor_nav! /
-# _modal_close_key! ou leur variante « query-aware » dans chaque handler).
+# et la fermeture Esc/q sont gérées par la liste Tachikoma et par chaque
+# handler, qui pèle d'abord sa recherche).
 """
     _modal_hint_text(m, scope; max_width=90) -> String
 
@@ -429,61 +435,18 @@ function _scroll_to_show(cursor::Int, total::Int, body_h::Int, scroll::Int)
 end
 
 """
-    _open_modal!(m, kind, cursor_field=nothing)
+    _open_modal!(m, kind)
 
-Universal modal entry. Sets `m.modal = kind`, resets `modal_scroll`
-to 0, and (when given) resets `cursor_field` to 1. Modals with
-their own query / search / page state set those fields after calling
-this. Pass `cursor_field = nothing` for scroll-only modals (e.g. wiki).
+L'entrée commune des modales : pose `m.modal = kind` et remet en haut le
+défilement du texte (`modal_view`) et celui des modales à curseur
+(`modal_scroll`). Chaque modale remet ensuite son propre état (picker,
+liste, requête).
 """
-function _open_modal!(m::RessacApp, kind::Symbol,
-                     cursor_field::Union{Symbol,Nothing} = nothing)
+function _open_modal!(m::RessacApp, kind::Symbol)
     m.modal = kind
     m.modal_scroll = 0
     _scroll_top!(m.modal_view)
-    cursor_field === nothing || setfield!(m, cursor_field, 1)
     return nothing
-end
-
-"""
-    _modal_cursor_nav!(m, evt, cursor_field, n) -> Bool
-
-Standard list-modal cursor navigation: `j` / `:down` increments,
-`k` / `:up` decrements. Reads + writes the cursor field via Symbol
-lookup so each modal can keep its own (`browser_cursor`,
-`mixer_cursor`, …). Cursor stays clamped to `[1, max(n, 1)]`.
-
-Returns `true` iff the event was a nav key and was consumed — the
-modal's handler should early-return in that case.
-"""
-function _modal_cursor_nav!(m::RessacApp, evt::TK.KeyEvent,
-                            cursor_field::Symbol, n::Int)
-    if evt.char == 'j' || evt.key === :down
-        cur = getfield(m, cursor_field)
-        setfield!(m, cursor_field, min(cur + 1, max(n, 1)))
-        return true
-    elseif evt.char == 'k' || evt.key === :up
-        cur = getfield(m, cursor_field)
-        setfield!(m, cursor_field, max(cur - 1, 1))
-        return true
-    end
-    return false
-end
-
-"""
-    _modal_close_key!(m, evt) -> Bool
-
-Standard modal close: `Esc` or `q` closes the modal. Returns `true`
-iff the modal was closed. Modals that need query-aware Esc (clear
-the query first, close on the second Esc) should NOT call this and
-handle Esc themselves.
-"""
-function _modal_close_key!(m::RessacApp, evt::TK.KeyEvent)
-    if evt.key === :escape || evt.char == 'q'
-        m.modal = :none
-        return true
-    end
-    return false
 end
 
 # ── Aide `?` — générée depuis le registre ─────────────────────────

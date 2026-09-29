@@ -121,7 +121,7 @@ non-empty), and the focus toggle for keystroke routing.
     eval_flash_rows::Vector{Int} = Int[]
     eval_flash_ts::Float64       = 0.0
     # Mixer modal state — cursor for j/k navigation among active slots.
-    mixer_cursor::Int            = 1
+    mixer_table::TK.DataTable    = _mixer_table()   # une ligne par slot (tk_picker.jl : _list_*)
     # Playhead parse cache: per-row (line_hash, parsed-NamedTuple-or-nothing).
     # Skips the regex + body split when a line hasn't changed between
     # frames — at 120 fps with 40 visible lines that's ~5000 alloc/sec
@@ -157,7 +157,7 @@ non-empty), and the focus toggle for keystroke routing.
     evolve_seed::String          = ""
     evolve_items::Vector{String} = String[]
     evolve_locked::Vector{String} = String[]
-    evolve_cursor::Int           = 1
+    evolve_list::TK.SelectableList = TK.SelectableList(TK.ListItem[]; focused = true)
     evolve_gen::Int              = 1
     evolve_count::Int            = 8
     evolve_rng::Random.MersenneTwister = Random.MersenneTwister(0)

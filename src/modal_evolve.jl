@@ -14,8 +14,9 @@ function _open_evolve_modal!(m::RessacApp)
     m.evolve_seed = strip(String(seed))
     m.evolve_locked = String[]
     m.evolve_gen = 1
+    m.evolve_list.selected = 1; m.evolve_list.offset = 0
     _evolve_breed!(m)
-    _open_modal!(m, :evolve, :evolve_cursor)
+    _open_modal!(m, :evolve)
     _push_app_log!(m, "[INFO] variations — Espace écoute · l verrouille · r relance · Entrée remplace le bloc · K range")
 end
 
@@ -31,7 +32,7 @@ function _evolve_breed!(m::RessacApp)
     kept = copy(m.evolve_locked)
     fresh = evolve_patterns(seeds, max(1, m.evolve_count - length(kept)); rng = m.evolve_rng)
     m.evolve_items = vcat(kept, fresh)
-    m.evolve_cursor = clamp(m.evolve_cursor, 1, max(1, length(m.evolve_items)))
+    _evolve_sync!(m)
     if isempty(m.evolve_items)
         # Aucune variante n'a survécu à la validation : c'est presque
         # toujours que le bloc de départ lui-même ne s'évalue pas.
@@ -42,10 +43,20 @@ function _evolve_breed!(m::RessacApp)
     return m.evolve_items
 end
 
-_evolve_cur(m::RessacApp) =
-    1 <= m.evolve_cursor <= length(m.evolve_items) ? m.evolve_items[m.evolve_cursor] : nothing
-
 _evolve_is_locked(m::RessacApp, code::AbstractString) = code in m.evolve_locked
+
+# Pose les candidats dans la liste : cadenas et vert pour les verrouillés.
+function _evolve_sync!(m::RessacApp)
+    lst = m.evolve_list
+    lst.items = [TK.ListItem((_evolve_is_locked(m, c) ? "🔒 " : "   ") * c,
+                             _evolve_is_locked(m, c) ? TK.tstyle(:success) : TK.tstyle(:text))
+                 for c in m.evolve_items]
+    lst.selected = clamp(lst.selected, 1, max(1, length(m.evolve_items)))
+    return
+end
+
+_evolve_cur(m::RessacApp) =
+    (i = m.evolve_list.selected; 1 <= i <= length(m.evolve_items) ? m.evolve_items[i] : nothing)
 
 function _evolve_toggle_lock!(m::RessacApp)
     code = _evolve_cur(m)
@@ -55,6 +66,7 @@ function _evolve_toggle_lock!(m::RessacApp)
     else
         push!(m.evolve_locked, code)
     end
+    _evolve_sync!(m)
 end
 
 # Joue le candidat sur un slot d'écoute dédié, sans toucher aux slots joués.
@@ -144,21 +156,8 @@ function _render_evolve_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                    TK.tstyle(:text_dim))
     TK.set_string!(buf, inner.x + inner.width - textwidth(lock_txt), inner.y,
                    lock_txt, TK.tstyle(:text_dim))
-    body_y = inner.y + 2
-    body_h = inner.height - 2
-    m.modal_scroll = _scroll_to_show(m.evolve_cursor, n, body_h, m.modal_scroll)
-    for i in 1:body_h
-        idx = m.modal_scroll + i
-        idx > n && break
-        code = items[idx]
-        sel = idx == m.evolve_cursor
-        mark = _evolve_is_locked(m, code) ? "🔒" : (sel ? "▶ " : "  ")
-        line = "$(mark) $(code)"
-        style = sel ? TK.tstyle(:accent, bold = true) :
-                _evolve_is_locked(m, code) ? TK.tstyle(:success) : TK.tstyle(:text)
-        TK.set_string!(buf, inner.x, body_y + i - 1,
-                       first(rpad(line, inner.width), inner.width), style)
-    end
+    _evolve_sync!(m)
+    TK.render(m.evolve_list, TK.Rect(inner.x, inner.y + 2, inner.width, inner.height - 2), buf)
 end
 
 # ── Registre de touches ────────────────────────────────────────────
@@ -176,11 +175,11 @@ bind!(:modal_evolve, "s", "ranger dans la bibliothèque"; short = "ranger", grou
 bind!(:modal_evolve, "x", "couper l'écoute"; group = :audio, hint = false,
       action = m -> _evolve_stop_preview!(m))
 bind!(:modal_evolve, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.evolve_cursor = min(m.evolve_cursor + 15, max(1, length(m.evolve_items)))))
+      action = m -> _list_nav!(m.evolve_list, :pagedown))
 bind!(:modal_evolve, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.evolve_cursor = max(1, m.evolve_cursor - 15)))
+      action = m -> _list_nav!(m.evolve_list, :pageup))
 bind!(:modal_evolve, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.evolve_cursor = min(m.evolve_cursor + 1, max(1, length(m.evolve_items)))))
+      action = m -> _list_nav!(m.evolve_list, :down))
 bind!(:modal_evolve, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.evolve_cursor = max(1, m.evolve_cursor - 1)))
-_bind_modal_common!(:modal_evolve)
+      action = m -> _list_nav!(m.evolve_list, :up))
+_bind_modal_common!(:modal_evolve; nav = false)

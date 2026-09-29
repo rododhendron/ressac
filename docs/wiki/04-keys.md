@@ -721,7 +721,6 @@ Lecture d'une carte :
 | `PgUp / Ctrl-u` | page précédente |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
-| `j / k / ↓ / ↑` | naviguer |
 | `Esc / q` | fermer |
 
 **Aide**
@@ -771,7 +770,8 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `j / k / ↓ / ↑` | naviguer |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
 | `Esc / q` | fermer |
 
 **Aide**

@@ -193,7 +193,7 @@ end
                 _plkey(app, 'x')
                 @test !haskey(app.scheduler.patterns, Symbol("d", Ressac._EVOLVE_SLOT))
                 # verrouillage puis relance : les verrouillées restent en tête
-                app.evolve_cursor = 2
+                app.evolve_list.selected = 2
                 kept = app.evolve_items[2]
                 _plkey(app, 'l')
                 @test app.evolve_locked == [kept]
@@ -201,7 +201,7 @@ end
                 @test app.evolve_gen == 2
                 @test app.evolve_items[1] == kept
                 @test length(app.evolve_items) == app.evolve_count
-                app.evolve_cursor = 1
+                app.evolve_list.selected = 1
                 _plkey(app, 'l'); @test isempty(app.evolve_locked)   # relâche
                 _plkey(app, 'l'); @test app.evolve_locked == [kept]  # reverrouille
                 # ranger dans la bibliothèque
@@ -209,7 +209,7 @@ end
                 @test length(list_patterns()) == 1
                 @test occursin("rangée", app.logs[end])
                 # Entrée remplace le bloc de départ et évalue
-                app.evolve_cursor = 3
+                app.evolve_list.selected = 3
                 chosen = app.evolve_items[3]
                 _plkey(app, :enter)
                 @test app.modal === :none

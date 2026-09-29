@@ -5,7 +5,8 @@
 # from `sched.last_fired_at[slot]` so the bar still shows life.
 
 function _open_mixer!(m::RessacApp)
-    _open_modal!(m, :mixer, :mixer_cursor)
+    _open_modal!(m, :mixer)
+    m.mixer_table.selected = 1; m.mixer_table.offset = 0
 end
 
 """
@@ -23,12 +24,56 @@ function _mixer_slots(m::RessacApp)
 end
 
 function _handle_mixer_key!(m::RessacApp, evt::TK.KeyEvent)
-    slots = _mixer_slots(m)
-    n = length(slots)
-    _modal_close_key!(m, evt) && return
-    _modal_cursor_nav!(m, evt, :mixer_cursor, n) && return
+    (evt.key === :escape || evt.char == 'q') && (m.modal = :none; return)
     dispatch!(((:modal_mixer, m),), evt)
     return
+end
+
+const _MIXER_BAR_W = 18
+
+"""
+    _mixer_sync!(m) -> Vector{Symbol}
+
+Remplit la table du mixer : une ligne par slot, colonnes SLOT, ACTIVITÉ
+(remplie au rendu par le vumètre), ÉTAT, GAIN, SOURCE. Les slots coupés
+sont en jaune.
+"""
+function _mixer_sync!(m::RessacApp)
+    slots = _mixer_slots(m)
+    states = String[]; gains = String[]; sources = String[]; styles = TK.Style[]
+    for slot in slots
+        muted = haskey(_APP_MUTED_PATTERNS, slot)
+        push!(states, muted ? "MUTED" : "PLAY")
+        push!(styles, muted ? TK.tstyle(:warning) : TK.tstyle(:text))
+        # Le gain et la source : le premier événement du cycle 0, s'il en a.
+        pat = muted ? get(_APP_MUTED_PATTERNS, slot, nothing) : pattern_get(m.scheduler, slot)
+        gain_str = "-"; source_str = "—"
+        if pat !== nothing
+            try
+                evs = pat(0//1, 1//1)
+                if !isempty(evs)
+                    v = evs[1].value
+                    if v isa Dict
+                        haskey(v, :gain) && (gain_str = string(round(Float64(v[:gain]); digits = 2)))
+                        haskey(v, :s) && (source_str = String(v[:s]))
+                    elseif v isa Symbol
+                        source_str = String(v)
+                    end
+                end
+            catch
+            end
+        end
+        push!(gains, gain_str); push!(sources, source_str)
+    end
+    cols = TK.DataColumn[
+        TK.DataColumn("SLOT", Any["@" * String(s) for s in slots]; width = 6),
+        TK.DataColumn("ACTIVITÉ", Any[" " ^ (_MIXER_BAR_W + 1) for _ in slots]; width = _MIXER_BAR_W + 1),
+        TK.DataColumn("ÉTAT", Any[states...]; width = 6),
+        TK.DataColumn("GAIN", Any[gains...]; width = 5, align = TK.col_right),
+        TK.DataColumn("SOURCE", Any[sources...]),
+    ]
+    _datatable_set!(m.mixer_table, cols, styles)
+    return slots
 end
 
 """
@@ -75,7 +120,7 @@ function _mixer_nudge_gain!(m::RessacApp, slot::Symbol, delta::Real)
 end
 
 function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    slots = _mixer_slots(m)
+    slots = _mixer_sync!(m)
     inner = _render_modal_block!(buf, area;
         title = "MIXER",
         title_right = _modal_hint_text(m, :modal_mixer),
@@ -88,91 +133,37 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             TK.tstyle(:text_dim))
         return
     end
-    # Header row.
-    TK.set_string!(buf, inner.x, inner.y,
-        first(rpad("  SLOT  ACTIVITY            STATE   GAIN  SOURCE",
-                   inner.width), inner.width),
-        TK.tstyle(:text_dim))
-    # Underline.
-    TK.set_string!(buf, inner.x, inner.y + 1,
-                   "─" ^ inner.width, TK.tstyle(:text_dim))
+    # La table (en-tête, filet, lignes, sélection, barre), puis les
+    # vumètres par-dessus la colonne ACTIVITÉ : trois zones et crête,
+    # ce qu'une cellule de texte ne sait pas dire.
+    dt = m.mixer_table
+    TK.render(dt, TK.Rect(inner.x, inner.y, inner.width, inner.height - 1), buf)
     now = time()
-    bar_w = 18
     for (i, slot) in enumerate(slots)
-        row_y = inner.y + 2 + (i - 1)
-        row_y >= inner.y + inner.height && break
-        is_cur = i == m.mixer_cursor
-        muted  = haskey(_APP_MUTED_PATTERNS, slot)
-        # Level + peak — prefer real SC RMS, fall back to event-fire
-        # decay if SC isn't sending. Both intensities run through the
-        # same perceptual scaling so the peak indicator lines up with
-        # the bar even when amplitudes are tiny.
+        xy = _datatable_cell_xy(dt, i, 2)
+        xy === nothing && continue
+        muted = haskey(_APP_MUTED_PATTERNS, slot)
+        # Niveau et crête : le RMS de SC si on l'a, sinon une décroissance
+        # depuis le dernier événement joué, pour que la barre vive quand même.
         rms  = Float64(_orbit_rms(slot))
         peak = Float64(_orbit_peak(slot))
-        intensity_rms, intensity_peak = if rms > 0
+        level, pk = if rms > 0
             (_amp_to_bar(rms), _amp_to_bar(peak))
         else
-            last_ts = get(m.scheduler.last_fired_at, slot, 0.0)
-            age = now - last_ts
+            age = now - get(m.scheduler.last_fired_at, slot, 0.0)
             fb = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
-            (fb, fb)   # no peak distinct from level in fallback mode
+            (fb, fb)
         end
-        state = muted ? "MUTED" : "PLAY "
-        # Gain estimate: query the pattern at cycle 0, peek the first
-        # event's :gain key. Falls back to 1.0 / "?" if not a ControlMap.
-        pat = muted ? get(_APP_MUTED_PATTERNS, slot, nothing) :
-                      pattern_get(m.scheduler, slot)
-        gain_str = "  -  "
-        source_str = "—"
-        if pat !== nothing
-            try
-                evs = pat(0//1, 1//1)
-                if !isempty(evs)
-                    v = evs[1].value
-                    if v isa Dict
-                        if haskey(v, :gain); gain_str = lpad(string(round(Float64(v[:gain]); digits=2)), 5) end
-                        if haskey(v, :s);    source_str = String(v[:s]) end
-                    elseif v isa Symbol
-                        source_str = String(v)
-                    end
-                end
-            catch
-            end
-        end
-        marker = is_cur ? "▶ " : "  "
-        state_style = muted ? TK.tstyle(:warning) : TK.tstyle(:success)
-        # Header row labels + slot id.
-        TK.set_string!(buf, inner.x, row_y, marker,
-                       is_cur ? TK.tstyle(:accent, bold = true) :
-                                TK.tstyle(:text))
-        TK.set_string!(buf, inner.x + 2, row_y, rpad("@" * String(slot), 6),
-                       is_cur ? TK.tstyle(:accent, bold = true) :
-                                TK.tstyle(:title))
-        # Three-zone VU bar with peak marker. Pure helper does all the
-        # colour + cell-painting in one place.
-        _render_vu_bar!(buf, inner.x + 8, row_y, bar_w,
-                       intensity_rms, intensity_peak; muted = muted)
-        # Clip indicator (red `!`) after the bar when peak ≥ 0.95.
-        clip_x = inner.x + 8 + bar_w
-        clip_glyph = (intensity_peak >= 0.95 && !muted) ? "!" : " "
-        TK.set_string!(buf, clip_x, row_y, clip_glyph,
+        _render_vu_bar!(buf, xy[1], xy[2], _MIXER_BAR_W, level, pk; muted = muted)
+        # Saturation : un `!` rouge après la barre quand la crête frôle 1.
+        TK.set_string!(buf, xy[1] + _MIXER_BAR_W, xy[2], (pk >= 0.95 && !muted) ? "!" : " ",
                        TK.tstyle(:error, bold = true))
-        TK.set_string!(buf, inner.x + 8 + bar_w + 2, row_y, state, state_style)
-        TK.set_string!(buf, inner.x + 8 + bar_w + 8, row_y, gain_str,
-                       TK.tstyle(:text))
-        src_x = inner.x + 8 + bar_w + 14
-        src_w = max(0, inner.x + inner.width - src_x)
-        TK.set_string!(buf, src_x, row_y, first(source_str, src_w),
-                       TK.tstyle(:text_dim))
     end
-    # Footer hint.
-    foot_y = inner.y + inner.height - 1
+    # Pied : d'où vient le signal.
     any_rms = any(_orbit_rms(s) > 0 for s in slots)
-    feed_note = any_rms ? "SC RMS @ 20 Hz" :
-                          "no SC RMS feed — fire-decay fallback"
-    TK.set_string!(buf, inner.x, foot_y,
-        first(rpad("$(length(slots)) slot$(length(slots) == 1 ? "" : "s") · $(feed_note)",
-                   inner.width), inner.width),
+    feed_note = any_rms ? "RMS de SC à 20 Hz" : "pas de RMS de SC — décroissance sur les événements"
+    TK.set_string!(buf, inner.x, inner.y + inner.height - 1,
+        first(rpad("$(length(slots)) slot$(length(slots) == 1 ? "" : "s") · $(feed_note)", inner.width), inner.width),
         TK.tstyle(:text_dim))
 end
 
@@ -236,7 +227,7 @@ end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
-_mixer_cur(m::RessacApp) = (s = _mixer_slots(m); 1 <= m.mixer_cursor <= length(s) ? s[m.mixer_cursor] : nothing)
+_mixer_cur(m::RessacApp) = (s = _mixer_sync!(m); i = m.mixer_table.selected; 1 <= i <= length(s) ? s[i] : nothing)
 _mixer_has_cur(m::RessacApp) = _mixer_cur(m) !== nothing
 scope!(:modal_mixer, "Mixer")
 bind!(:modal_mixer, "m", "mute / unmute"; short = "mute", group = :audio, when = _mixer_has_cur,
@@ -251,4 +242,8 @@ bind!(:modal_mixer, ["+", "-"], "gain ±0.1"; group = :edit, when = _mixer_has_c
 bind!(:modal_mixer, ["*", "/"], "gain ±0.5"; group = :edit, hint = false, when = _mixer_has_cur,
       action = (m, evt) -> _mixer_nudge_gain!(m, _mixer_cur(m), evt.char == '*' ? 0.5 : -0.5))
 bind!(:modal_mixer, ["!", "."], "panic"; group = :audio, hint = false, action = _panic!)
-_bind_modal_common!(:modal_mixer)
+bind!(:modal_mixer, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
+      action = m -> (_mixer_sync!(m); _list_nav!(m.mixer_table, :down)))
+bind!(:modal_mixer, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
+      action = m -> (_mixer_sync!(m); _list_nav!(m.mixer_table, :up)))
+_bind_modal_common!(:modal_mixer; nav = false)
