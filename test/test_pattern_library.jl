@@ -249,7 +249,7 @@ end
                 @test any(i -> i.label == "plmotif" && i.kind === :pattern, items)
                 # taper filtre, le plus court d'abord
                 for c in "plkick"; _plkey(app, c); end
-                @test app.palette_query == "plkick"
+                @test Ressac._picker_query(app.palette) == "plkick"
                 f = Ressac._palette_items(app)
                 @test !isempty(f) && f[1].label == "plkick"
                 scr = _plscreen(app, tb, frame)
@@ -269,7 +269,7 @@ end
                 # retour arrière et Échap
                 Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'p'))
                 _plkey(app, 'z'); _plkey(app, :backspace)
-                @test isempty(app.palette_query)
+                @test isempty(Ressac._picker_query(app.palette))
                 _plkey(app, :escape)
                 @test app.modal === :none
             finally

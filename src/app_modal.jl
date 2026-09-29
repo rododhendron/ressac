@@ -26,6 +26,21 @@ function _modal_click!(m::RessacApp, x::Int, y::Int)
     end
 end
 
+"""
+    _modal_mouse!(m, evt) -> Bool
+
+La souris dans une modale : la palette a son picker (clic, molette) ;
+les autres ne connaissent que le clic gauche sur une ligne.
+"""
+function _modal_mouse!(m::RessacApp, evt::TK.MouseEvent)
+    m.modal === :palette && return _palette_mouse!(m, evt)
+    if evt.action === TK.mouse_press && evt.button === TK.mouse_left
+        _modal_click!(m, evt.x, evt.y)
+        return true
+    end
+    return false
+end
+
 _modal_lines(m::RessacApp) =
     m.modal === :synth_guide ? _SYNTH_GUIDE_LINES :
     m.modal === :dsl_guide   ? _DSL_GUIDE_LINES :

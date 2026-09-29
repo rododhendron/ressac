@@ -25,11 +25,8 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
         _chrome_click!(m, evt.x, evt.y) && return
     end
-    # Modal click routing has priority.
-    if m.modal !== :none && evt.action === TK.mouse_press &&
-       evt.button === TK.mouse_left
-        _modal_click!(m, evt.x, evt.y); return
-    end
+    # Une modale ouverte prend la souris (clic, molette) avant tout le reste.
+    m.modal !== :none && _modal_mouse!(m, evt) && return
     # Wheel — context-aware. Give the pane under the cursor first dibs
     # (the explorer rates candidates on scroll); fall back to the legacy
     # wheel handler (log / editor scroll) when no pane consumes it.

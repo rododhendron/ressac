@@ -67,6 +67,7 @@ include("pane_interface.jl")
 include("workspace_manager.jl")
 include("pane_editor.jl")
 include("tk_scroll.jl")         # ScrollPane partagé : défilement, molette, barre
+include("tk_picker.jl")         # saisie de filtre + liste (TextInput + SelectableList)
 include("pane_log.jl")
 include("content_markdown.jl")  # rendu markdown partagé (wiki, fiches)
 include("pane_doc.jl")

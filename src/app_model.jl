@@ -172,8 +172,7 @@ non-empty), and the focus toggle for keystroke routing.
     evolve_gen::Int              = 1
     evolve_count::Int            = 8
     evolve_rng::Random.MersenneTwister = Random.MersenneTwister(0)
-    palette_query::String        = ""
-    palette_cursor::Int          = 1
+    palette::Picker              = _picker()       # saisie + liste de la palette (Ctrl-p)
     # `f` / `F` / `t` / `T` en attente du caractère à chercher sur la ligne,
     # et le dernier couple (motion, caractère) pour `;` et `,`.
     pending_find::Union{Nothing,Char} = nothing
