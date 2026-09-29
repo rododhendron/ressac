@@ -216,16 +216,15 @@ function _visual_apply_line!(m::RessacApp, ed::TK.CodeEditor, op::Char)
         ed.yank_buffer = [collect(line) for line in selected]
         ed.yank_is_linewise = true
         deleteat!(lines, r1:r2)
+        # `c` laisse une ligne vide à la place du bloc ; on la met dans le
+        # texte AVANT `set_text!` pour que le cache de tokens la connaisse.
+        op == 'c' && insert!(lines, clamp(r1, 1, length(lines) + 1), "")
         isempty(lines) && push!(lines, "")
         new_txt = join(lines, '\n')
         TK.set_text!(ed, new_txt)
         ed.cursor_row = clamp(r1, 1, length(ed.lines))
         ed.cursor_col = 0
-        if op == 'c'
-            insert!(ed.lines, ed.cursor_row, Char[])
-            ed.cursor_col = 0
-            ed.mode = :insert
-        end
+        op == 'c' && (ed.mode = :insert)
         _push_app_log!(m, "[INFO] V — $(length(selected)) ligne(s) $(op == 'c' ? "changée(s)" : "supprimée(s)")")
         ed === _active_editor(m) && _unschedule_removed_slots!(m, txt, new_txt)
     end

@@ -101,3 +101,39 @@ end
         @test !p.value_edit && Ressac.knob_value(p.genome, kb) ≈ 330.5
     end
 end
+
+@testset "coloration — supprimer une ligne re-colore celles qui remontent" begin
+    Ressac._install_tk_patches!()
+    ed = Tachikoma.CodeEditor(; text = "@d1 p\"bd\"\n# @d2 p\"sn\"\n@d3 p\"hh\"\n# fin\n")
+    ed.mode = :normal
+    Tachikoma._ensure_tokens!(ed)
+    kinds(row) = [t.kind for t in ed.token_cache[row]]
+    @test kinds(2) == [Tachikoma.tok_comment]
+    # dd sur la ligne commentée : la ligne 3 (`@d3`) devient la ligne 2
+    ed.cursor_row = 2
+    Tachikoma.handle_key!(ed, Tachikoma.KeyEvent('d')); Tachikoma.handle_key!(ed, Tachikoma.KeyEvent('d'))
+    @test String(ed.lines[2]) == "@d3 p\"hh\""
+    @test first(kinds(2)) == Tachikoma.tok_macro           # et non plus tok_comment
+    @test kinds(3) == [Tachikoma.tok_comment]              # `# fin` a remonté, toujours gris
+    # o ouvre une ligne sous le curseur : les lignes du dessous gardent leur couleur
+    ed.mode = :normal
+    Tachikoma.handle_key!(ed, Tachikoma.KeyEvent('o')); Tachikoma._ensure_tokens!(ed)
+    @test length(ed.token_cache) == length(ed.lines) == 5   # texte initial terminé par un saut de ligne
+    @test isempty(kinds(3)) && kinds(4) == [Tachikoma.tok_comment]
+    # sans passer par les touches : une mutation directe du texte est vue aussi
+    ed.lines[1] = collect("# muet"); Tachikoma._ensure_tokens!(ed)
+    @test kinds(1) == [Tachikoma.tok_comment]
+end
+
+@testset "coloration — V puis c dans Ressac laisse une ligne vide connue du cache" begin
+    app = _ib_app()
+    ed = Ressac._active_editor(app)
+    Tachikoma.set_text!(ed, "@d1 p\"bd\"\n# a\n# b\n@d4 p\"cp\"")
+    ed.cursor_row = 2; ed.cursor_col = 0
+    _ib_key(app, 'V'); _ib_key(app, 'j'); _ib_key(app, 'c')
+    @test ed.mode == :insert
+    @test String(ed.lines[2]) == "" && String(ed.lines[3]) == "@d4 p\"cp\""
+    Tachikoma._ensure_tokens!(ed)
+    @test length(ed.token_cache) == 3
+    @test first(ed.token_cache[3]).kind == Tachikoma.tok_macro
+end

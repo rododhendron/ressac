@@ -90,6 +90,7 @@ include("tui_scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
 # ─── Content / configuration / theming ────────────────────────────
 include("session_config.jl")     # RessacConfig, _load_ressac_config!
 include("session_themes.jl")     # _apply_theme!, palette switching
+include("tk_patches.jl")         # correctifs Tachikoma appliqués à l'exécution
 include("content_sccode.jl")     # sccode.org HTTP client
 include("content_wiki.jl")       # docs/wiki/*.md loader
 include("pane_wiki.jl")          # pane wiki (docs/wiki à côté des patterns)
@@ -715,6 +716,11 @@ function __init__()
                                 '§' => '!', '£' => '\$')
             Tachikoma._SHIFT_SYMBOL_MAP[base] = shifted
         end
+    catch
+    end
+    # Cache de tokens du CodeEditor comparé au contenu (voir tk_patches.jl).
+    try
+        _install_tk_patches!()
     catch
     end
     # Register custom themes and load config (best-effort — neither is
