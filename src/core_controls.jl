@@ -119,26 +119,92 @@ end
 
 function set(key::Symbol, pat::Pattern)
     return function (p)
-        p = _as_pattern(p)
-        lifted = _lift_to_control(p)
-        Pattern{ControlMap}((s::Rational, e::Rational) -> begin
-            evs_in  = lifted(s, e)
-            evs_val = pat(s, e)
-            out = Event{ControlMap}[]
-            for ev_in in evs_in
+        mode = _CONTROL_STRUCT[]
+        lifted = _lift_to_control(_as_pattern(p))
+        _apply_control_pattern(lifted, pat, mode) do cm, v
+            cm[key] = _resolve_value(v)
+        end
+    end
+end
+
+# ── La structure d'un contrôle à valeur pattern ──────────────────────
+# `"bd*4" |> n("0 1 2")` : qui donne le rythme ? Par défaut la GAUCHE,
+# comme le `#` de Tidal : chaque événement garde son créneau et lit la
+# valeur du contrôle à son attaque (quatre coups, n = 0 0 1 2). Une
+# exception qui garde l'idiome de Ressac : un son SANS rythme (`:bd`,
+# `"bd"` — un événement d'un cycle entier) prend le rythme du contrôle
+# (`:bd |> n("0 1 2")` fait trois coups). `sampled(f)` impose la gauche
+# même là ; `both(f)` découpe aux intersections (le `|>|` de Tidal), ce
+# que `pump` et `bend` demandent.
+const _CONTROL_STRUCT = Ref{Symbol}(:left)      # :left | :strict | :both
+
+function _with_control_struct(mode::Symbol, f)
+    old = _CONTROL_STRUCT[]
+    _CONTROL_STRUCT[] = mode
+    try
+        return f()
+    finally
+        _CONTROL_STRUCT[] = old
+    end
+end
+
+"""
+    both(f) -> (Pattern -> ControlPattern)
+
+Applique l'étape `f` avec la structure des DEUX côtés : les événements
+sont découpés aux intersections (le `|>|` de Tidal). `"bd sn" |>
+both(gain("1 0.5 1 0.5"))` fait quatre fragments.
+"""
+both(f) = p -> _with_control_struct(:both, () -> f(p))
+
+"""
+    sampled(f) -> (Pattern -> ControlPattern)
+
+Applique l'étape `f` avec la structure de gauche, strictement (le `#` de
+Tidal) : même un son sans rythme garde son unique événement, qui lit la
+valeur à son attaque.
+"""
+sampled(f) = p -> _with_control_struct(:strict, () -> f(p))
+
+# Un événement qui occupe exactement un cycle : un son sans rythme.
+_whole_cycle(ev) = ev.start == floor(ev.start) && ev.stop == ev.start + 1
+
+"""
+    _apply_control_pattern(combine!, lifted, val, mode) -> ControlPattern
+
+Pose la valeur de `val` sur chaque événement de `lifted` via
+`combine!(cm, v)` (qui mute `cm`), selon `mode` (voir `_CONTROL_STRUCT`).
+"""
+function _apply_control_pattern(combine!, lifted::ControlPattern, val::Pattern, mode::Symbol)
+    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+        out = Event{ControlMap}[]
+        evs_in = lifted(s, e)
+        evs_val = val(s, e)
+        for ev_in in evs_in
+            if mode === :both || (mode === :left && _whole_cycle(ev_in))
+                # Intersections : le rythme vient (aussi) du contrôle.
                 for ev_v in evs_val
                     a = max(ev_in.start, ev_v.start)
                     b = min(ev_in.stop,  ev_v.stop)
                     a < b || continue
-                    new_cm = copy(ev_in.value)
-                    new_cm[key] = _resolve_value(ev_v.value)
-                    push!(out, Event{ControlMap}(a, b, new_cm))
+                    cm = copy(ev_in.value); combine!(cm, ev_v.value)
+                    push!(out, Event{ControlMap}(a, b, cm))
                 end
+            else
+                # Structure de gauche : la valeur lue à l'attaque, dans le
+                # cycle de l'attaque (les requêtes rendent ce qui y commence).
+                c = Rational{Int64}(floor(Int, ev_in.start))
+                hit = val(c, c + 1)
+                i = findfirst(x -> x.start <= ev_in.start < x.stop, hit)
+                i === nothing && (i = findlast(x -> x.start <= ev_in.start, hit))
+                i === nothing && continue
+                cm = copy(ev_in.value); combine!(cm, hit[i].value)
+                push!(out, Event{ControlMap}(ev_in.start, ev_in.stop, cm))
             end
-            sort!(out, by = ev -> ev.start)
-            out
-        end)
-    end
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
 end
 
 """
@@ -172,26 +238,11 @@ function _control_op(key::Symbol, op, val)
         p isa Pattern || throw(MethodError(_control_op, (key, op, val, p)))
         lifted = _lift_to_control(p)
         if val isa Pattern
-            Pattern{ControlMap}((s::Rational, e::Rational) -> begin
-                evs_in  = lifted(s, e)
-                evs_val = val(s, e)
-                out = Event{ControlMap}[]
-                for ev_in in evs_in
-                    for ev_v in evs_val
-                        a = max(ev_in.start, ev_v.start)
-                        b = min(ev_in.stop,  ev_v.stop)
-                        a < b || continue
-                        v_resolved = resolve(ev_v.value)
-                        new_cm = copy(ev_in.value)
-                        new_cm[key] = haskey(new_cm, key) ?
-                                      op(new_cm[key], v_resolved) :
-                                      v_resolved
-                        push!(out, Event{ControlMap}(a, b, new_cm))
-                    end
-                end
-                sort!(out, by = ev -> ev.start)
-                out
-            end)
+            mode = _CONTROL_STRUCT[]
+            _apply_control_pattern(lifted, val, mode) do cm, v
+                r = resolve(v)
+                cm[key] = haskey(cm, key) ? op(cm[key], r) : r
+            end
         else
             Pattern{ControlMap}((s::Rational, e::Rational) -> begin
                 inner = lifted(s, e)
@@ -550,7 +601,7 @@ function pump(steps_per_cycle::Int = 4, depth::Real = 0.6)
             end
             out
         end)
-        gain(gain_pat)(p)
+        both(gain(gain_pat))(p)          # la pompe DÉCOUPE : structure des deux côtés
     end
 end
 

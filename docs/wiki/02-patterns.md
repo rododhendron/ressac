@@ -119,10 +119,13 @@ forme, deux opérateurs font le reste. `+` reste l'arithmétique.
 Dès qu'un pattern est présent, les autres membres peuvent être des
 chaînes ou des symboles.
 
-**Structure d'un contrôle** : `"bd*4" |> n("0 1 2")` découpe aux
-intersections (six coups, structure des deux côtés). Pour garder la
-structure de gauche — quatre coups qui lisent `n` à leur attaque, le `#`
-de Tidal — : `"bd*4" |> sampled(n("0 1 2"))`.
+**Structure d'un contrôle** : qui donne le rythme ? La gauche, comme le
+`#` de Tidal : `"bd*4" |> n("0 1 2")` fait quatre coups qui lisent `n` à
+leur attaque (0 0 1 2). Une exception garde l'idiome de Ressac : un son
+sans rythme prend le rythme du contrôle, `:bd |> n("0 1 2")` fait trois
+coups. `sampled(f)` impose la gauche même là (un seul coup) ; `both(f)`
+découpe aux intersections, le `|>|` de Tidal (six coups), ce que `pump`
+et `bend` font d'eux-mêmes.
 
 `:doc <nom>` donne la description et des exemples de chacune ; la
 livedoc les montre dès que le curseur est dans l'appel.

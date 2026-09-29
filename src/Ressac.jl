@@ -156,7 +156,7 @@ export rolled, rolledBy, brak, stut
 export fastcat, slowcat, append, slowAppend, fastAppend, overlay, timeCat, ncat
 export randcat, wrandcat, wedge, spaceOut
 export sew, stitch, euclidFull, binary, binaryN, asciip, necklace, mono
-export substruct, sampled, secs, msecs
+export substruct, sampled, both, secs, msecs
 export when, whenT, within, ifp, always, never, almostAlways, almostNever
 export somecycles, somecyclesBy, fix, unfix, contrast
 export irand, brand, brandBy, chooseBy, wchoose, wchooseBy, cycleChoose, unDegradeBy

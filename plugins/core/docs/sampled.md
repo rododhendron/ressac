@@ -1,10 +1,10 @@
 +++
-examples = ["@d1 \"bd*4\" |> sampled(n(\"0 1 2\"))    # 4 coups, n lu à l'attaque", "@d1 \"bd sn\" |> sampled(lpf(\"<400 800 1600>\"))"]
+examples = ["@d1 :bd |> sampled(n(\"0 1 2\"))    # un seul coup, n = 0 (le # strict)", "@d1 \"bd*4\" |> sampled(lpf(\"<400 800 1600>\"))"]
 name = "sampled"
-short = "Structure de gauche seule (le # de Tidal) : l'événement garde sa durée et lit le contrôle à son attaque."
+short = "Structure de gauche stricte (le # de Tidal) : même un son sans rythme garde son unique événement."
 tags = ["tidal"]
 +++
 
 # sampled
 
-Par défaut un contrôle à valeur pattern découpe les événements aux intersections (structure des deux côtés, le `|>|` de Tidal). `sampled(f)` garde la structure de **gauche** : chaque événement lit la valeur de `f` à son attaque et garde sa durée — c'est le `#` de Tidal. `"bd*4" |> sampled(n("0 1 2"))` fait quatre coups (n = 0, 0, 1, 2) là où `"bd*4" |> n("0 1 2")` en découpe six.
+Par défaut un contrôle à valeur pattern garde la structure de gauche (chaque événement lit la valeur à son attaque), **sauf** pour un son sans rythme (`:bd`, `"bd"`), qui prend le rythme du contrôle. `sampled(f)` impose la gauche même là — c'est exactement le `#` de Tidal : `:bd |> sampled(n("0 1 2"))` fait un seul coup. Voir `both` pour l'intersection.

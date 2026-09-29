@@ -20,13 +20,25 @@ _vals(p, a = 0, b = 1) = [(ev.start, ev.stop, ev.value) for ev in sort(p(a // 1,
     @test [x[3] for x in v2] == [:sn]
 end
 
-@testset "sampled — structure de gauche, valeur lue à l'attaque" begin
-    left = ("bd*4" |> sampled(n("0 1 2")))(0 // 1, 1 // 1)
+@testset "structure d'un contrôle — gauche par défaut, both, sampled" begin
+    left = ("bd*4" |> n("0 1 2"))(0 // 1, 1 // 1)                  # le défaut : le # de Tidal
     @test length(left) == 4
     @test [ev.value[:n] for ev in left] == [0, 0, 1, 2]
     @test all(ev -> ev.stop - ev.start == 1 // 4, left)
-    both = ("bd*4" |> n("0 1 2"))(0 // 1, 1 // 1)
-    @test length(both) == 6                                    # l'ancien comportement reste le défaut
+    @test length(("bd*4" |> both(n("0 1 2")))(0 // 1, 1 // 1)) == 6   # les intersections, explicitement
+    # un son sans rythme prend le rythme du contrôle ; sampled l'interdit
+    @test [ev.value[:n] for ev in (:bd |> n("0 1 2"))(0 // 1, 1 // 1)] == [0, 1, 2]
+    @test [ev.value[:n] for ev in ("bd" |> n("0 1 2"))(0 // 1, 1 // 1)] == [0, 1, 2]
+    @test length((:bd |> sampled(n("0 1 2")))(0 // 1, 1 // 1)) == 1
+    # un événement de deux cycles n'est pas « sans rythme » : gauche
+    @test length((slow(2, pure(:bd)) |> n("0 1"))(0 // 1, 2 // 1)) == 1
+    # set(key, pattern) suit la même règle ; la composition (× du gain) aussi
+    @test [ev.value[:room] for ev in ("bd*2" |> set(:room, "0.1 0.9 0.5"))(0 // 1, 1 // 1)] == [0.1, 0.9]
+    @test [ev.value[:gain] for ev in ("bd*2" |> gain(0.5) |> gain("1 0.5 1 0.5"))(0 // 1, 1 // 1)] == [0.5, 0.5]
+    # both est bien délimité : après lui, le défaut revient
+    @test Ressac._CONTROL_STRUCT[] === :left
+    # pump découpe encore (il demande both lui-même)
+    @test length(("bd sn" |> pump())(0 // 1, 1 // 1)) == 4
     # un contrôle qui alterne par cycle, lu au bon cycle
     p = "bd sn" |> sampled(lpf("<400 800>"))
     @test [ev.value[:cutoff] for ev in p(1 // 1, 2 // 1)] == [800, 800]

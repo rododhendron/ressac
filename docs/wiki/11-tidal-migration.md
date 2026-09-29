@@ -17,7 +17,8 @@ vocabulaire se transposent. Les grandes différences :
 | `degradeBy 0.3`            | `degradeBy 0.3`                |
 | `pat1 |+| pat2`            | `pat1 + pat2`  (structure des deux) |
 | `n "0 3" |+ n 12`          | `n("0 3") \|> add(:n, 12)`  (structure de gauche) |
-| `s "bd*4" # n "0 1 2"`     | `"bd*4" \|> sampled(n("0 1 2"))`  (structure de gauche, valeur lue à l'attaque) |
+| `s "bd*4" # n "0 1 2"`     | `"bd*4" \|> n("0 1 2")`  (structure de gauche, valeur lue à l'attaque) |
+| `s "bd*4" |>| n "0 1 2"`   | `"bd*4" \|> both(n("0 1 2"))`  (structure des deux côtés) |
 | `cat [a, b]` / `fastcat`   | `[a; b]` / `[a b]` — `a & b` empile, `a \| b` tire au sort |
 | `+|` `|-` `|*` `|/` `|%`   | `sub` `mul` en pipe, ou `+ - * / %` |
 | `every 4 (fast 2)`         | `every 4 fast(2)`              |
@@ -62,10 +63,13 @@ Règles de composition :
 - `gain` × · `lpf` min · `hpf` max · `speed` × · `pan` / `n` / `room` /
   `delay` / `shape` : le dernier gagne. `add(:clé, x)`, `sub`, `mul`
   pour composer explicitement (`|+`, `|-`, `|*` de Tidal).
-- Structure : un contrôle à valeur pattern (`n("0 1 2 3")`) découpe les
-  événements aux intersections — c'est le `|>|` de Tidal (structure des
-  deux côtés), pas son `#` (structure de gauche seule). C'est ce qui rend
-  `:bd |> n("0 1 2 3")` musical : quatre coups. Idem pour `+ - * /`.
+- Structure : un contrôle à valeur pattern garde la structure de gauche,
+  comme le `#` de Tidal (`"bd*4" |> n("0 1 2")` : quatre coups, n lu à
+  l'attaque). Un son sans rythme prend le rythme du contrôle, ce qui rend
+  `:bd |> n("0 1 2 3")` musical : quatre coups — en Tidal on écrirait
+  `n "0 1 2 3" # s "bd"`, qui marche aussi ici (`@d1 n "0 1 2 3" |> s "bd"`).
+  `sampled(f)` = `#` strict, `both(f)` = `|>|` (intersections). `+ - * /`
+  restent structure des deux côtés.
 
 ### Durée des notes : `delta` comme Tidal
 
@@ -136,7 +140,7 @@ par Julia (mot-clé ou clash avec `Base`) : `struct` → `structPat`,
 | harmonie : `arp` `arpeggiate` `arpg` `rolled` `rolledBy` `toScale` `scale` accords `c'maj` `n "c e g"` | idem — `scale(:major)` est un contrôle |
 | signaux : `sine` `cosine` `tri` `saw` `square` `range` `rangex` `quantise` `smooth` `segment` `discretise` `run` `scan` | idem (`range_pat`, `runp`) |
 | arrangement : `ur` `weave` `weaveWith` | idem |
-| arithmétique : `|+|` `|-|` `|*|` `|/|` `|%|` ; `|+` `|*` … ; `#` | `+ - * / %` (structure des deux côtés) ; `add`/`sub`/`mul` en pipe (structure de gauche) ; `\|>` (deux côtés) ; `sampled(f)` (structure de gauche, le `#`) |
+| arithmétique : `|+|` `|-|` `|*|` `|/|` `|%|` ; `|+` `|*` … ; `#` `|>|` | `+ - * / %` (structure des deux côtés) ; `add`/`sub`/`mul` en pipe ; `\|>` = `#` (structure de gauche) ; `both(f)` = `|>|` ; `sampled(f)` = `#` strict |
 | mini-notation : `~` `[]` `<>` `{}%` `*` `/` `!` `@` `_` `.` `..` `?` `|` `,` `(k,n,r)` `:` `'` | idem — couverture complète |
 | contrôles : `s` `sound` `n` `note` `up` `gain` `pan` `speed` `begin` `end` `unit` `cut` `orbit` `nudge` `loop` `squiz` `midinote` `channel` `dry` `legato` `sustain` `accelerate` `vowel` `cutoff` `resonance` `room` `size` `delay`… | idem (`begin_`, `end_`) ; `set(:size, x)` pour les rares absents |
 | session : `setcps` `hush` `once` `solo` `mute` `xfade` `jump` | `cps!` `:hush` `T` `:solo` `:mute` ; transitions : `:xfade [n]`, `:jump [n]`, `:now` (voir 06-modes) |

@@ -1142,40 +1142,6 @@ end
 substruct(bools) = p -> substruct(bools, p)
 
 # ---------------------------------------------------------------------------
-# sampled — la structure de GAUCHE seule (le `#` de Tidal) : chaque
-# événement du pattern garde son créneau et lit la valeur du contrôle à
-# son attaque, au lieu d'être découpé aux intersections.
-# ---------------------------------------------------------------------------
-"""
-    sampled(f) -> (Pattern -> ControlPattern)
-
-Applique l'étape `f` (un contrôle : `n("0 1 2")`, `lpf("<400 800>")`…) en
-gardant la structure de gauche : chaque événement lit la valeur à son
-attaque et garde sa durée. `"bd*4" |> sampled(n("0 1 2"))` fait quatre
-coups (n = 0, 0, 1, 2) là où `"bd*4" |> n("0 1 2")` en découpe six.
-"""
-function sampled(f)
-    return function (p0)
-        lifted = _lift_to_control(_as_pattern(p0))
-        Pattern{ControlMap}((s::Rational, e::Rational) -> begin
-            out = Event{ControlMap}[]
-            for ev in lifted(s, e)
-                # Le cycle de l'attaque, entier : les requêtes rendent les
-                # événements qui y COMMENCENT, on cherche celui qui couvre
-                # l'attaque (sinon le dernier commencé avant elle).
-                c = Rational{Int64}(floor(Int, ev.start))
-                hit = f(pure(ev.value))(c, c + 1)
-                i = findfirst(x -> x.start <= ev.start < x.stop, hit)
-                i === nothing && (i = findlast(x -> x.start <= ev.start, hit))
-                i === nothing && continue
-                push!(out, Event{ControlMap}(ev.start, ev.stop, hit[i].value))
-            end
-            out
-        end)
-    end
-end
-
-# ---------------------------------------------------------------------------
 # secs / msecs — des secondes en cycles, au tempo courant (lu à la requête,
 # donc un changement de cps est suivi).
 # ---------------------------------------------------------------------------
