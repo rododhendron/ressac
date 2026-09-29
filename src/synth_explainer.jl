@@ -460,8 +460,6 @@ end
 # pour expliquer les synths exportés AVANT l'embarquement du génome (ou
 # retouchés main). Tolérant : une expression inconnue devient une
 # constante → l'explication reste utile même imparfaite.
-_is_node_sym(s::Symbol) = occursin(r"^n\d+$", String(s))
-
 function _synth_body(expr)
     expr isa Expr || return nothing
     if expr.head === :macrocall && !isempty(expr.args) &&
@@ -482,73 +480,6 @@ function _synth_body(expr)
         b = _synth_body(a); b === nothing || return b
     end
     return nothing
-end
-
-function _dsl_arg(g::Genome, ex, nmap::Dict{Symbol,Int}, fbid::Base.RefValue{Int})
-    ex isa Number && return ConstArg(Float64(ex))
-    ex isa QuoteNode && ex.value isa Symbol && return ControlRef(ex.value)
-    if ex isa Symbol
-        _is_node_sym(ex) && haskey(nmap, ex) && return NodeRef(nmap[ex])
-        if ex === :fb
-            fbid[] == 0 && (fbid[] = add_node!(g, :FbIn, :ar, Arg[]))
-            return NodeRef(fbid[])
-        end
-        return ConstArg(0.0)
-    end
-    if ex isa Expr
-        # contrôle décalé (:freq + n) → on garde le contrôle (offset ignoré)
-        if ex.head === :call && length(ex.args) == 3 && ex.args[1] in (:+, :-) &&
-           ex.args[2] isa QuoteNode && ex.args[2].value isa Symbol && ex.args[3] isa Number
-            return ControlRef(ex.args[2].value)
-        end
-        return NodeRef(_dsl_node!(g, ex, nmap, fbid))
-    end
-    return ConstArg(0.0)
-end
-
-function _kw_rate(params::Expr)
-    for kw in params.args
-        if kw isa Expr && kw.head === :kw && kw.args[1] === :rate && kw.args[2] isa QuoteNode
-            return kw.args[2].value
-        end
-    end
-    return :ar
-end
-
-function _dsl_node!(g::Genome, ex, nmap::Dict{Symbol,Int}, fbid::Base.RefValue{Int})
-    ex isa Symbol && _is_node_sym(ex) && haskey(nmap, ex) && return nmap[ex]
-    ex isa Expr || return add_node!(g, :Silent, :ar, Arg[])
-    if ex.head === :call
-        head = ex.args[1]
-        if head === :ugen
-            name = ex.args[2] isa QuoteNode ? ex.args[2].value : :Silent
-            rate = :ar; args = Arg[]
-            for a in ex.args[3:end]
-                if a isa Expr && a.head === :parameters
-                    rate = _kw_rate(a)
-                else
-                    push!(args, _dsl_arg(g, a, nmap, fbid))
-                end
-            end
-            return add_node!(g, name, rate, args)
-        elseif head === :+
-            l = ex.args[2]
-            if l isa Expr && l.head === :call && l.args[1] === :* && length(l.args) == 3
-                return add_node!(g, :MulAdd, :ar, Arg[_dsl_arg(g, l.args[2], nmap, fbid),
-                    _dsl_arg(g, l.args[3], nmap, fbid), _dsl_arg(g, ex.args[3], nmap, fbid)])
-            end
-            return add_node!(g, :Mix, :ar, Arg[_dsl_arg(g, ex.args[2], nmap, fbid),
-                                               _dsl_arg(g, ex.args[3], nmap, fbid)])
-        elseif head === :|>
-            x = _dsl_arg(g, ex.args[2], nmap, fbid)
-            sh = ex.args[3]
-            ug = (sh isa Expr && sh.head === :call) ?
-                 (sh.args[1] === :fold2 ? :Fold2 : sh.args[1] === :clip2 ? :Clip2 :
-                  sh.args[1] === :round_q ? :Round : :Tanh) : :Tanh
-            return add_node!(g, ug, :ar, Arg[x])
-        end
-    end
-    return add_node!(g, :Silent, :ar, Arg[])
 end
 
 # Retire la chaîne de sécurité (Limiter→LeakDC→Sanitize) pour pointer la
@@ -584,25 +515,41 @@ function _apply_synth_params!(g::Genome, expr)
     end
 end
 
-"Parse notre DSL @synth (begin/feedback) en Genome best-effort, ou nothing."
+"""
+    _dsl_eval_body(body) -> Union{Nothing,SynthDSL.Sig}
+
+Évalue le corps d'un `@synth` dans `SynthDSL` — exactement ce que fait
+le DSL pour produire le son — et rend le signal final. `fb` (forme
+`feedback() do fb … end`) est lié au bus de feedback. `nothing` si le
+corps ne s'évalue pas ou ne finit pas sur un signal.
+"""
+function _dsl_eval_body(body::Expr)
+    ex = Expr(:let, Expr(:block, :(fb = $(SynthDSL).Sig("fb"))), body)
+    v = try
+        Base.invokelatest(Core.eval, SynthDSL, ex)
+    catch
+        return nothing
+    end
+    return v isa SynthDSL.Sig ? v : nothing
+end
+
+"""
+    genome_from_dsl(text) -> Union{Nothing,Genome}
+
+Le génome d'un fichier DSL `@synth` : la première `@synth` du fichier,
+son corps évalué en signal SC (voir `_dsl_eval_body`), puis remonté en
+DAG par `genome_from_sc`. Les paramètres du `@synth` deviennent les
+contrôles. Jamais d'exception : un DSL exotique donne `nothing`.
+"""
 function genome_from_dsl(text::AbstractString)
-    # La première `@synth` du fichier, quoi qu'il y ait autour (le fichier
-    # entier est analysé, pas seulement sa première expression).
     expr = SynthDSL._dsl_synth_expr(text)
     expr === nothing && return nothing
     body = _synth_body(expr)
     body === nothing && return nothing
-    g = Genome(); nmap = Dict{Symbol,Int}(); fbid = Ref(0); last = 0
-    for st in body.args
-        st isa LineNumberNode && continue
-        if st isa Expr && st.head === :(=) && st.args[1] isa Symbol
-            nmap[st.args[1]] = _dsl_node!(g, st.args[2], nmap, fbid); last = nmap[st.args[1]]
-        else
-            last = _dsl_node!(g, st, nmap, fbid)
-        end
-    end
-    last == 0 && return nothing
-    g.output_id = _unwrap_safety(g, last)
+    g = Genome()
     _apply_synth_params!(g, expr)
-    return g
+    sig = _dsl_eval_body(body)
+    sig === nothing && return nothing
+    controls = union(Set(keys(g.controls)), Set(CONTROL_EDIT_ORDER), Set([:gate, :pan, :out]))
+    return genome_from_sc(sig.code, controls; g = g)
 end
