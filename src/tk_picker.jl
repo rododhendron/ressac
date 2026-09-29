@@ -27,6 +27,43 @@ function _picker(; searching::Bool = false)
     return Picker(input, list, Any[], "", searching)
 end
 
+"""
+    _search_input() -> Tachikoma.TextInput
+
+Une saisie de recherche seule, pour une modale dont la liste n'est pas
+une colonne (la grille de sons). `focused` dit si la frappe y va.
+"""
+_search_input() = TK.TextInput(; label = "⌕ ", style = TK.tstyle(:accent, bold = true),
+                               label_style = TK.tstyle(:accent, bold = true), focused = false)
+
+# La frappe dans une saisie seule, si elle est active : mêmes règles que
+# `_picker_type!`.
+function _search_type!(input::TK.TextInput, evt::TK.KeyEvent)
+    input.focused || return false
+    if evt.key === :char
+        (evt.char != '\0' && _is_typable_ascii(evt.char)) || return false
+        return TK.handle_key!(input, evt)
+    end
+    evt.key in (:backspace, :delete, :left, :right) || return false
+    return TK.handle_key!(input, evt)
+end
+
+# La ligne de saisie seule : le TextInput (curseur si active), `right_text`
+# à droite, `hint` en grisé quand elle est inactive et vide.
+function _search_render!(input::TK.TextInput, rect::TK.Rect, buf::TK.Buffer;
+                         right_text::AbstractString = "", hint::AbstractString = "")
+    (rect.height < 1 || rect.width < 4) && return
+    rw = textwidth(right_text)
+    w = max(1, rect.width - rw - (rw > 0 ? 1 : 0))
+    if !input.focused && isempty(TK.text(input)) && !isempty(hint)
+        TK.set_string!(buf, rect.x, rect.y, first(rpad(hint, w), w), TK.tstyle(:text_dim))
+    else
+        TK.render(input, TK.Rect(rect.x, rect.y, w, 1), buf)
+    end
+    rw > 0 && TK.set_string!(buf, rect.x + rect.width - rw, rect.y, right_text, TK.tstyle(:text_dim))
+    return
+end
+
 # Entre ou sort du mode recherche.
 _picker_search!(pk::Picker, on::Bool) = (pk.searching = on; pk.input.focused = on; nothing)
 
@@ -85,12 +122,8 @@ touche a servi.
 """
 function _picker_type!(pk::Picker, evt::TK.KeyEvent)
     pk.searching || return false
-    if evt.key === :char
-        (evt.char != '\0' && _is_typable_ascii(evt.char)) || return false
-        return TK.handle_key!(pk.input, evt)
-    end
-    evt.key in (:backspace, :delete, :left, :right) || return false
-    return TK.handle_key!(pk.input, evt)
+    pk.input.focused = true
+    return _search_type!(pk.input, evt)
 end
 
 """
@@ -102,17 +135,8 @@ saisie, `hint` en grisé à la place (« / pour chercher · … »).
 """
 function _picker_render_input!(pk::Picker, rect::TK.Rect, buf::TK.Buffer;
                                right_text::AbstractString = "", hint::AbstractString = "")
-    (rect.height < 1 || rect.width < 4) && return
-    rw = textwidth(right_text)
-    w = max(1, rect.width - rw - (rw > 0 ? 1 : 0))
-    if !pk.searching && isempty(_picker_query(pk)) && !isempty(hint)
-        TK.set_string!(buf, rect.x, rect.y, first(rpad(hint, w), w), TK.tstyle(:text_dim))
-    else
-        pk.input.focused = pk.searching
-        TK.render(pk.input, TK.Rect(rect.x, rect.y, w, 1), buf)
-    end
-    rw > 0 && TK.set_string!(buf, rect.x + rect.width - rw, rect.y, right_text, TK.tstyle(:text_dim))
-    return
+    pk.input.focused = pk.searching
+    _search_render!(pk.input, rect, buf; right_text, hint)
 end
 
 # La liste dans `rect` (marqueur, surbrillance, barre).

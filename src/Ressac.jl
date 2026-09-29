@@ -559,7 +559,7 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         app.sccode_entries = [_SccodeEntry("1-aaa", "Warm Synth"),
                               _SccodeEntry("1-bbb", "Warm Bass"),
                               _SccodeEntry("1-ccc", "Cold Pad")]
-        app.sccode_cursor = 1
+        app.sccode.list.selected = 1
         Tachikoma.update!(app, Tachikoma.KeyEvent(:char, '/', Tachikoma.key_press))
         for c in "warm"
             Tachikoma.update!(app, Tachikoma.KeyEvent(:char, c, Tachikoma.key_press))

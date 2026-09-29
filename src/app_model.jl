@@ -140,24 +140,18 @@ non-empty), and the focus toggle for keystroke routing.
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
     sccode_entries::Vector{_SccodeEntry} = _SccodeEntry[]
-    sccode_cursor::Int           = 1
+    sccode::Picker               = _picker()       # recherche (titre + id) et liste
     sccode_page::Int             = 1
     sccode_loading::Bool         = false
-    # Live filter — substring match against title + id. Toggled with `/`;
-    # chars append to query in search_mode, Esc exits search_mode but
-    # keeps the filter, q closes the modal entirely.
-    sccode_query::String         = ""
-    sccode_search_mode::Bool     = false
     # Tag filter for `:sccode-tag <tag>` (URL ?tag=…). Empty = no tag.
     sccode_tag::String           = ""
     # Browser modal state (only meaningful when modal === :browse).
-    browser_query::String        = ""
+    browser_search::TK.TextInput = _search_input()   # `/` : la frappe va dans la recherche
     browser_cursor::Int          = 1
     browser_filter::Symbol       = :all   # :all | :instruments | :samples | :synths
     browser_last_preview::Float64 = 0.0
     browser_cols::Int            = 1      # colonnes de la grille (posé au rendu)
     browser_rows::Int            = 1      # lignes visibles (idem)
-    browser_search_mode::Bool    = false  # `/` : la frappe va dans la recherche
     pats::Picker                 = _picker()   # patterns rangés : saisie + liste
     # Exploration de variations de pattern (modal :evolve)
     evolve_seed::String          = ""
@@ -248,9 +242,6 @@ non-empty), and the focus toggle for keystroke routing.
     _keybar_y::Int                       = 0
     _status_hits::Vector{Tuple{Int,Int,Function}} = Tuple{Int,Int,Function}[]
     _status_y::Int                       = 0
-    # Per-modal row → entry-index mapping built during render so the
-    # mouse handler can resolve "click row N" → "select entry K".
-    modal_rows::Vector{Tuple{Int,Int}}   = Tuple{Int,Int}[]  # (screen_y, entry_idx)
     # Le journal du bas : un ScrollPane qui suit le bas tant qu'on n'a
     # pas remonté dans l'historique (touches, molette, barre).
     log_view::TK.ScrollPane              = _scrollpane(; following = true)

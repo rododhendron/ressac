@@ -799,7 +799,10 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `n / p` | page suivante / précédente |
-| `j / k / ↓ / ↑` | naviguer |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page d'écran suivante |
+| `PgUp / Ctrl-u` | page d'écran précédente |
 | `Esc / q` | fermer |
 
 **Éditer**

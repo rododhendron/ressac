@@ -198,7 +198,7 @@ end
     Ressac.register_sample!(Ressac.SampleEntry(:gdjazz, "test", "", String[], Dict{String,Any}()))
     try
         _gdex(app, "browse")
-        @test app.modal === :browse && !app.browser_search_mode
+        @test app.modal === :browse && !app.browser_search.focused
         scr = _gdscreen(app, tb, frame)
         @test occursin("/ pour chercher", scr) && occursin("sons", scr)
         n = length(Ressac._browser_entries(app))
@@ -216,22 +216,22 @@ end
         _gdkey(app, 'g'); @test app.browser_cursor == 1
         # recherche : « jazz » contient j et a, qui sont des raccourcis hors recherche
         _gdkey(app, '/')
-        @test app.browser_search_mode
+        @test app.browser_search.focused
         for c in "jazz"; _gdkey(app, c); end
-        @test app.browser_query == "jazz"
+        @test Ressac._browser_query(app) == "jazz"
         @test [String(e.name) for e in Ressac._browser_entries(app)] == ["gdjazz"]
         @test occursin("⌕ jazz", _gdscreen(app, tb, frame))
         _gdkey(app, :enter)                                # valide : filtre gardé, nav revient
-        @test !app.browser_search_mode && app.browser_query == "jazz"
+        @test !app.browser_search.focused && Ressac._browser_query(app) == "jazz"
         _gdkey(app, :escape)                               # 1er Esc efface le filtre
-        @test isempty(app.browser_query) && app.modal === :browse
+        @test isempty(Ressac._browser_query(app)) && app.modal === :browse
         _gdkey(app, :escape)                               # 2e ferme
         @test app.modal === :none
         # Esc pendant la recherche efface aussi
         _gdex(app, "browse"); _gdkey(app, '/'); _gdkey(app, 'k')
-        @test app.browser_query == "k"
+        @test Ressac._browser_query(app) == "k"
         _gdkey(app, :escape)
-        @test !app.browser_search_mode && isempty(app.browser_query) && app.modal === :browse
+        @test !app.browser_search.focused && isempty(Ressac._browser_query(app)) && app.modal === :browse
         _gdkey(app, :escape)
     finally
         for nm in names; delete!(Ressac._SAMPLE_REGISTRY, nm); end

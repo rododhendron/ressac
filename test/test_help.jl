@@ -108,7 +108,7 @@ end
     _hex(app, "browse")
     _hkey(app, '?')
     @test app.modal === :help
-    @test isempty(app.browser_query)
+    @test isempty(Ressac._browser_query(app))
     _hkey(app, 'q'); @test app.modal === :browse
 end
 
