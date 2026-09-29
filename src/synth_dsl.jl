@@ -850,6 +850,32 @@ start, so we leave them alone.
 _dsl_preprocess(src::AbstractString) =
     replace(String(src), r"\n[ \t]*\|>" => " |>")
 
+"""
+    _dsl_parse_all(src) -> Expr
+
+Analyse TOUT un fichier de synth, pas seulement sa première expression.
+`Meta.parse` s'arrête après la première et lève « extra token after end
+of expression » dès qu'un fichier contient un commentaire final suivi
+d'une autre ligne, une variable, ou deux `@synth`. On renvoie un bloc
+`:toplevel` évaluable tel quel par `Core.eval`.
+"""
+_dsl_parse_all(src::AbstractString) = Meta.parseall(_dsl_preprocess(src))
+
+"""
+    _dsl_synth_expr(src) -> Union{Nothing,Expr}
+
+La première expression `@synth …` d'un fichier, ou `nothing`. Les autres
+expressions (commentaires, variables d'aide) sont ignorées.
+"""
+function _dsl_synth_expr(src::AbstractString)
+    top = try _dsl_parse_all(src) catch; return nothing end
+    for ex in top.args
+        ex isa Expr || continue
+        ex.head === :macrocall && !isempty(ex.args) && string(ex.args[1]) == "@synth" && return ex
+    end
+    return nothing
+end
+
 macro synth(args...)
     isempty(args) && return :(error("@synth: needs a body"))
     body = args[end]

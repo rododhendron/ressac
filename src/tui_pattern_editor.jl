@@ -22,7 +22,9 @@
 # after it. We capture the slot number and the byte offsets of the p"
 # string contents (between the quotes) so we know which character to
 # highlight when the phase lands inside.
-const _PLAYHEAD_LINE_RX = r"@d(\d+).*?\bp\"([^\"]*)\""
+# Ancré en début de ligne : une ligne commentée (`# @d1 …`) n'est plus une
+# cible du surlignage rythmique, puisqu'elle ne joue pas.
+const _PLAYHEAD_LINE_RX = r"^\s*@d(\d+).*?\bp\"([^\"]*)\""
 
 """
     _render_playhead!(m, rect, buf)

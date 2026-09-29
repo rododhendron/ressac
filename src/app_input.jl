@@ -387,6 +387,10 @@ function _click_tab_bar!(m::RessacApp, x::Int)
 end
 
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
+    # Pavé numérique → chiffres et opérateurs, AVANT tout routage : les
+    # panes (saisie de valeur du sculpt…) recevaient des `:kp_1` bruts
+    # que personne ne lisait, seul le flux éditeur normalisait.
+    evt = _normalise_event(evt)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
     end
@@ -492,7 +496,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # opened by a pane keystroke (sculpt via explorer `M`) still gets input
     # instead of the still-focused pane swallowing it.
     if m.modal !== :none
-        mevt = _normalise_event(evt)
+        mevt = evt                      # déjà normalisé en tête de update!
         is_nav = mevt.char in ('j', 'k', 'd', 'u', 'h', 'l', 'n', 'p', '<', '>') ||
                  mevt.key in (:up, :down, :left, :right, :pageup, :pagedown)
         if mevt.action === TK.key_press ||
@@ -570,7 +574,6 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
         end
         return
     end
-    evt = _normalise_event(evt)
     ed = _active_editor(m)
     is_press = evt.action === TK.key_press
     # Sélection visuelle : ses propres touches (étendre, d/y/c, m, e, Esc).

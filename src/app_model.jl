@@ -306,10 +306,20 @@ const _NUMPAD_TO_CHAR = Dict{Symbol,Char}(
     :kp_separator => ',',
 )
 
+# Touches du pavé numérique qui ne sont pas des caractères mais des
+# touches nommées : Entrée valide une saisie, les flèches déplacent.
+const _NUMPAD_TO_KEY = Dict{Symbol,Symbol}(
+    :kp_enter => :enter, :kp_left => :left, :kp_right => :right, :kp_up => :up,
+    :kp_down => :down, :kp_pageup => :pageup, :kp_pagedown => :pagedown,
+    :kp_home => :home, :kp_end => :end, :kp_delete => :delete, :kp_insert => :insert,
+)
+
 function _normalise_event(evt::TK.KeyEvent)
     c = get(_NUMPAD_TO_CHAR, evt.key, nothing)
-    c === nothing && return evt
-    return TK.KeyEvent(:char, c, evt.action)
+    c === nothing || return TK.KeyEvent(:char, c, evt.action)
+    k = get(_NUMPAD_TO_KEY, evt.key, nothing)
+    k === nothing || return TK.KeyEvent(k, evt.action)
+    return evt
 end
 
 """

@@ -296,7 +296,10 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
             # _dsl_preprocess joins leading-`|>` continuation lines.
             _AUDITION_ARGS[] = extra
             try
-                Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(src)))
+                # Tout le fichier, pas seulement la première expression :
+                # un commentaire final ou une variable d'aide ne doivent
+                # pas faire échouer le test du synth.
+                Core.eval(SynthDSL, SynthDSL._dsl_parse_all(src))
             finally
                 _AUDITION_ARGS[] = Any[]
             end

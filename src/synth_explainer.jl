@@ -586,7 +586,10 @@ end
 
 "Parse notre DSL @synth (begin/feedback) en Genome best-effort, ou nothing."
 function genome_from_dsl(text::AbstractString)
-    expr = try Meta.parse(text) catch; return nothing end
+    # La première `@synth` du fichier, quoi qu'il y ait autour (le fichier
+    # entier est analysé, pas seulement sa première expression).
+    expr = SynthDSL._dsl_synth_expr(text)
+    expr === nothing && return nothing
     body = _synth_body(expr)
     body === nothing && return nothing
     g = Genome(); nmap = Dict{Symbol,Int}(); fbid = Ref(0); last = 0
