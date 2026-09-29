@@ -12,7 +12,11 @@ const N_DESCRIPTORS = length(DESCRIPTORS)
 const _NRT_SR = 44100
 const _NRT_GAP = 0.05          # silence entre candidats (s)
 
-_sclang_available() = Sys.which("sclang") !== nothing
+# Interrupteur global du rendu hors-ligne : la suite de tests le coupe
+# (sauf RESSAC_NRT_TESTS=1) pour qu'aucun chemin — récolte de
+# l'explorateur, onde d'une pane, sculpt — ne lance sclang par surprise.
+const _NRT_ALLOWED = Ref{Bool}(true)
+_sclang_available() = _NRT_ALLOWED[] && Sys.which("sclang") !== nothing
 _nrt_slot_dt() = 0.01 + _NRT_WINDOW + 0.02 + _NRT_GAP   # durée d'un slot candidat
 
 # Script sclang : un Score qui charge tous les analysis-synthdefs (t=0) puis

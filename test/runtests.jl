@@ -1,6 +1,11 @@
 using Test
 using Ressac
 
+# Jamais de sclang dans la suite par défaut : tout rendu hors-ligne
+# (récolte NRT de l'explorateur, onde d'une pane, sculpt) échoue vite et
+# proprement. RESSAC_NRT_TESTS=1 pour les tests qui le veulent vraiment.
+Ressac._NRT_ALLOWED[] = get(ENV, "RESSAC_NRT_TESTS", "") == "1"
+
 # Load plugins so the doc + snippet registry is populated for tests
 # that query `:doc <name>` or `:starter <name>`. Idempotent re-runs
 # repopulate the same dicts.
@@ -58,6 +63,7 @@ Ressac._load_plugins([joinpath(@__DIR__, "..", "plugins")])
     include("test_tk_widgets.jl")
     include("test_key_tour.jl")
     include("test_sc_expr_parse.jl")
+    include("test_tidal_ops.jl")
     include("test_tap_detection.jl")
     include("test_orbit_routing.jl")
     include("test_modal_helpers.jl")
