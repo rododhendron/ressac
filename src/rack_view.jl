@@ -69,8 +69,10 @@ end
 """
     _render_rack!(m, rect, buf)
 
-Dessine le bandeau. Chaque ligne est cliquable : couper ou remettre le
-slot.
+Dessine le bandeau. Par slot : son numéro, ▸ ou ⏸, un vumètre (RMS de
+SC, sinon décroissance sur les événements), le motif du cycle avec le
+pas qui sonne, le gain, la source ou les notes. Chaque ligne est
+cliquable (couper / remettre) et la molette ajuste le gain.
 """
 function _render_rack!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     rect.height >= 1 || return
@@ -81,7 +83,9 @@ function _render_rack!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     sched = m.scheduler
     cyc = sched.t_start > 0 ? floor(Int, (time() - sched.t_start) * sched.cps) : 0
     phase = sched.t_start > 0 ? mod((time() - sched.t_start) * sched.cps, 1.0) : 0.0
-    steps = rect.width >= 46 ? 16 : 8
+    wide = rect.width >= 60
+    steps = wide ? 16 : 8
+    vu_w = wide ? 6 : 0                     # le vumètre demande de la place
     # S'il y a plus de slots que de place, la dernière ligne est le
     # récapitulatif : on lui garde sa place plutôt que de la perdre.
     shown = min(length(slots), rect.height, _RACK_MAX_ROWS)
@@ -90,6 +94,7 @@ function _render_rack!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
         (slot, pat, muted) = slots[i]
         y = rect.y + i - 1
         x = rect.x
+        xmax = rect.x + rect.width
         col = muted ? TK.theme().text_dim : _slot_color(slot)
         lbl = rpad(String(slot), 4)
         TK.set_string!(buf, x, y, lbl, TK.Style(fg = col, bold = !muted))
@@ -98,8 +103,14 @@ function _render_rack!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
         mark = muted ? "⏸ " : "▸ "
         TK.set_string!(buf, x, y, mark, TK.Style(fg = col))
         x += textwidth(mark)
+        # Vumètre : ce qui sort vraiment de ce slot.
+        if vu_w > 0 && x + vu_w + 1 < xmax
+            level, pk = _slot_level(m, slot)
+            _render_vu_bar!(buf, x, y, vu_w, level, pk; muted = muted)
+            x += vu_w + 1
+        end
         grid, label = _rack_grid(m, slot, pat, cyc, steps)
-        if x + steps + 2 <= rect.x + rect.width
+        if x + steps + 2 <= xmax
             TK.set_string!(buf, x, y, "│", TK.tstyle(:border)); x += 1
             cur = clamp(floor(Int, phase * steps) + 1, 1, steps)
             for (k, ch) in enumerate(grid)
@@ -117,9 +128,14 @@ function _render_rack!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
             end
             TK.set_string!(buf, x, y, "│", TK.tstyle(:border)); x += 2
         end
-        if !isempty(label) && x < rect.x + rect.width
-            TK.set_string!(buf, x, y, first(label, rect.x + rect.width - x),
-                           muted ? TK.tstyle(:text_dim) : TK.tstyle(:text))
+        # Gain, puis la source ou les notes.
+        (gain_str, source_str) = _slot_summary(m, slot)
+        tail = String[]
+        gain_str == "-" || push!(tail, "×" * gain_str)
+        isempty(label) ? (source_str == "—" || push!(tail, source_str)) : push!(tail, label)
+        txt = join(tail, "  ")
+        if !isempty(txt) && x < xmax
+            TK.set_string!(buf, x, y, first(txt, xmax - x), muted ? TK.tstyle(:text_dim) : TK.tstyle(:text))
         end
         push!(m._rack_hits, (y, slot))
     end
@@ -131,22 +147,38 @@ function _render_rack!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     return
 end
 
+# Le slot de la ligne `y` du bandeau, ou `nothing`.
+function _rack_slot_at(m::RessacApp, y::Int)
+    for (ry, slot) in m._rack_hits
+        ry == y && return slot
+    end
+    return nothing
+end
+
 """
     _rack_click!(m, y) -> Bool
 
 Un clic sur une ligne du bandeau coupe ou remet le slot.
 """
 function _rack_click!(m::RessacApp, y::Int)
-    for (ry, slot) in m._rack_hits
-        ry == y || continue
-        if haskey(m.scheduler.patterns, slot)
-            _mute_pattern_slot!(m, slot)
-        else
-            _unmute_pattern_slot!(m, slot)
-        end
-        return true
-    end
-    return false
+    slot = _rack_slot_at(m, y)
+    slot === nothing && return false
+    haskey(m.scheduler.patterns, slot) ? _mute_pattern_slot!(m, slot) : _unmute_pattern_slot!(m, slot)
+    return true
+end
+
+"""
+    _rack_wheel!(m, evt) -> Bool
+
+La molette sur une ligne du bandeau ajuste le gain du slot (±0.1, ±0.5
+avec Maj) dans le buffer, comme le mixer.
+"""
+function _rack_wheel!(m::RessacApp, evt::TK.MouseEvent)
+    slot = _rack_slot_at(m, evt.y)
+    slot === nothing && return false
+    sign = evt.button === TK.mouse_scroll_up ? 1 : -1
+    _mixer_nudge_gain!(m, slot, sign * (evt.shift ? 0.5 : 0.1))
+    return true
 end
 
 """

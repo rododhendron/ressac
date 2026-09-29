@@ -180,6 +180,18 @@ end
         @test Ressac._rack_click!(app, y_d1)
         @test haskey(app.scheduler.patterns, :d1)
         @test !Ressac._rack_click!(app, 21)                # hors bandeau
+        # gain et source lus sur le premier événement, vumètre présent
+        set_pattern!(app.scheduler, :d1, pat("bd(3,8)") |> gain(0.7))
+        rows = split(_nv_screen(app, tb, frame, 22), "\n")
+        @test occursin("×0.7", rows[2]) && occursin("bd", rows[2])
+        @test occursin("░", rows[2]) || occursin("█", rows[2])     # le vumètre
+        # la molette sur la ligne ajuste le gain dans le buffer
+        Tachikoma.set_text!(Ressac._active_editor(app), "@d1 p\"bd(3,8)\" |> gain(0.7)")
+        wheel = Tachikoma.MouseEvent(5, 2, Tachikoma.mouse_scroll_up, Tachikoma.mouse_press, false, false, false)
+        Tachikoma.update!(app, wheel)
+        @test occursin("gain(0.8)", Tachikoma.text(Ressac._active_editor(app)))
+        wheel_out = Tachikoma.MouseEvent(5, 21, Tachikoma.mouse_scroll_up, Tachikoma.mouse_press, false, false, false)
+        @test !Ressac._rack_wheel!(app, wheel_out)
         # la bascule
         Ressac._toggle_rack!(app)
         @test !app.rack_visible && Ressac._rack_height(app) == 0

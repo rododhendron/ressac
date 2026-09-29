@@ -32,6 +32,47 @@ end
 const _MIXER_BAR_W = 18
 
 """
+    _slot_summary(m, slot) -> (gain::String, source::String)
+
+Le gain et la source d'un slot, lus sur le premier événement du cycle 0
+(« - » et « — » s'il n'en a pas). Partagé par le mixer et le bandeau.
+"""
+function _slot_summary(m::RessacApp, slot::Symbol)
+    pat = haskey(_APP_MUTED_PATTERNS, slot) ? get(_APP_MUTED_PATTERNS, slot, nothing) :
+                                              pattern_get(m.scheduler, slot)
+    gain_str = "-"; source_str = "—"
+    pat === nothing && return (gain_str, source_str)
+    try
+        evs = pat(0//1, 1//1)
+        if !isempty(evs)
+            v = evs[1].value
+            if v isa Dict
+                haskey(v, :gain) && (gain_str = string(round(Float64(v[:gain]); digits = 2)))
+                haskey(v, :s) && (source_str = String(v[:s]))
+            elseif v isa Symbol
+                source_str = String(v)
+            end
+        end
+    catch
+    end
+    return (gain_str, source_str)
+end
+
+"""
+    _slot_level(m, slot) -> (level, peak)
+
+L'activité d'un slot en [0, 1] : le RMS de SC s'il arrive, sinon une
+décroissance depuis le dernier événement joué, pour que ça vive quand même.
+"""
+function _slot_level(m::RessacApp, slot::Symbol)
+    rms  = Float64(_orbit_rms(slot))
+    rms > 0 && return (_amp_to_bar(rms), _amp_to_bar(Float64(_orbit_peak(slot))))
+    age = time() - get(m.scheduler.last_fired_at, slot, 0.0)
+    fb = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
+    return (fb, fb)
+end
+
+"""
     _mixer_sync!(m) -> Vector{Symbol}
 
 Remplit la table du mixer : une ligne par slot, colonnes SLOT, ACTIVITÉ
@@ -45,24 +86,7 @@ function _mixer_sync!(m::RessacApp)
         muted = haskey(_APP_MUTED_PATTERNS, slot)
         push!(states, muted ? "MUTED" : "PLAY")
         push!(styles, muted ? TK.tstyle(:warning) : TK.tstyle(:text))
-        # Le gain et la source : le premier événement du cycle 0, s'il en a.
-        pat = muted ? get(_APP_MUTED_PATTERNS, slot, nothing) : pattern_get(m.scheduler, slot)
-        gain_str = "-"; source_str = "—"
-        if pat !== nothing
-            try
-                evs = pat(0//1, 1//1)
-                if !isempty(evs)
-                    v = evs[1].value
-                    if v isa Dict
-                        haskey(v, :gain) && (gain_str = string(round(Float64(v[:gain]); digits = 2)))
-                        haskey(v, :s) && (source_str = String(v[:s]))
-                    elseif v isa Symbol
-                        source_str = String(v)
-                    end
-                end
-            catch
-            end
-        end
+        (gain_str, source_str) = _slot_summary(m, slot)
         push!(gains, gain_str); push!(sources, source_str)
     end
     cols = TK.DataColumn[
@@ -138,22 +162,11 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # ce qu'une cellule de texte ne sait pas dire.
     dt = m.mixer_table
     TK.render(dt, TK.Rect(inner.x, inner.y, inner.width, inner.height - 1), buf)
-    now = time()
     for (i, slot) in enumerate(slots)
         xy = _datatable_cell_xy(dt, i, 2)
         xy === nothing && continue
         muted = haskey(_APP_MUTED_PATTERNS, slot)
-        # Niveau et crête : le RMS de SC si on l'a, sinon une décroissance
-        # depuis le dernier événement joué, pour que la barre vive quand même.
-        rms  = Float64(_orbit_rms(slot))
-        peak = Float64(_orbit_peak(slot))
-        level, pk = if rms > 0
-            (_amp_to_bar(rms), _amp_to_bar(peak))
-        else
-            age = now - get(m.scheduler.last_fired_at, slot, 0.0)
-            fb = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
-            (fb, fb)
-        end
+        level, pk = _slot_level(m, slot)
         _render_vu_bar!(buf, xy[1], xy[2], _MIXER_BAR_W, level, pk; muted = muted)
         # Saturation : un `!` rouge après la barre quand la crête frôle 1.
         TK.set_string!(buf, xy[1] + _MIXER_BAR_W, xy[2], (pk >= 0.95 && !muted) ? "!" : " ",

@@ -31,7 +31,7 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
     # (the explorer rates candidates on scroll); fall back to the legacy
     # wheel handler (log / editor scroll) when no pane consumes it.
     if evt.button === TK.mouse_scroll_up || evt.button === TK.mouse_scroll_down
-        _workspace_scroll_to_pane!(m, evt) || _mouse_wheel!(m, evt)
+        _rack_wheel!(m, evt) || _workspace_scroll_to_pane!(m, evt) || _mouse_wheel!(m, evt)
         return
     end
     # Left-click routing.
