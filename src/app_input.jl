@@ -381,6 +381,13 @@ function _click_tab_bar!(m::RessacApp, x::Int)
     return
 end
 
+# ═══════════════════════════════════════════════════════════════════════
+# Le pipeline clavier — une suite d'ÉTAPES ordonnées. Chaque étape reçoit
+# l'événement (déjà normalisé) et répond `true` si elle l'a consommé :
+# le pipeline s'arrête là. L'ordre EST la règle de priorité, lisible d'un
+# coup d'œil dans `_KEY_STAGES` ; chaque étape garde son commentaire.
+# ═══════════════════════════════════════════════════════════════════════
+
 function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # Pavé numérique → chiffres et opérateurs, AVANT tout routage : les
     # panes (saisie de valeur du sculpt…) recevaient des `:kp_1` bruts
@@ -389,350 +396,345 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
     end
-    # ── CommandLine ── absolute priority when active ─────────────────
-    # While the command/search bar is active, EVERY key belongs to it.
-    # Nothing else (workspace globals, pane mode, panes) sees the
-    # event. Decoupled from any editor — works no matter which pane
-    # is focused.
-    if is_active(m.command_line)
-        outcome = handle_key!(m.command_line, evt;
-                              complete_fn = q -> _command_completion_candidates(m, q))
-        if outcome === :dispatched
-            cmd = m.command_line.last_dispatched
-            if !isempty(cmd)
-                if m.command_line.last_dispatched_mode === :search
-                    _ex_search!(m, cmd)
-                else
-                    _handle_ex_command!(m, cmd)
-                end
-            end
-        end
-        return
+    for stage in _KEY_STAGES
+        stage(m, evt) && return
     end
-    # ── Panic : coupe-son GLOBAL ─────────────────────────────────────
-    # `!` tue le son (patterns + tous les nœuds SC) depuis N'IMPORTE QUEL
-    # pane ou modal (lib de synths, scope, explorer…). Seules exceptions :
-    # la SAISIE DE TEXTE — barre de commande active (gérée juste au-dessus)
-    # et éditeur en insert/command/search (où `!` est un caractère).
-    if evt.action === TK.key_press && evt.char == '!'
-        ed_panic = _active_editor(m)
-        # …et à condition que l'éditeur n'attende pas un caractère
-        # littéral : `r!` remplace le caractère sous le curseur, `f!`
-        # saute au prochain `!`. Sans ça, ces touches sont inatteignables.
-        if (ed_panic === nothing || ed_panic.mode === :normal) && !_awaiting_literal(m)
-            _panic!(m)
-            return
-        end
-    end
-    # ── Sub-project 10: workspace globals + pane mode ────────────────
-    # These fire BEFORE any existing dispatch so live-coding shortcuts
-    # don't get swallowed by editor modes.
-    if evt.action === TK.key_press
-        if evt.key === :ctrl && evt.char in '1':'9'
-            cmd_workspace_switch!(m.workspaces, Int(evt.char - '0'))
-            return
-        end
-        if evt.key === :ctrl && evt.char == 'F'
-            m.floats_hidden = !m.floats_hidden
-            return
-        end
-        # Pane mode dispatch — persistent. Exits: Esc, Enter, Ctrl-W.
-        # Recognized ops (s/v/h/j/k/l/c) keep pane mode active so a
-        # quick sequence doesn't need a Ctrl-W between each command.
-        if _PANE_MODE.active
-            if evt.key === :escape || evt.key === :enter ||
-               (evt.key === :ctrl && evt.char == 'w')
-                _PANE_MODE.active = false
-                return
-            elseif evt.key === :left
-                cmd_focus!(m.workspaces, :left);  return
-            elseif evt.key === :down
-                cmd_focus!(m.workspaces, :down);  return
-            elseif evt.key === :up
-                cmd_focus!(m.workspaces, :up);    return
-            elseif evt.key === :right
-                cmd_focus!(m.workspaces, :right); return
-            elseif evt.key === :char && evt.char == 'z'
-                _toggle_zoom!(m); return             # z : zoom / dézoom du leaf focalisé
-            elseif evt.key === :char
-                _dispatch_pane_mode_key(m.workspaces, evt.char)
-                return
-            end
-            return  # eat any other key while in pane mode
-        end
-        # No editor → treat as :normal so pane mode + ex command stay
-        # reachable (the user must be able to `:vsplit editor` to reopen
-        # a patterns pane when none is open).
-        ed = _active_editor(m)
-        in_normal = ed === nothing || ed.mode === :normal
-        # Pane mode entry — only from editor normal mode so insert-mode
-        # word-delete (Ctrl-W) keeps working.
-        if in_normal && evt.key === :ctrl && evt.char == 'w'
-            _PANE_MODE.active = true
-            return
-        end
-        # CommandLine entry — ':' opens ex command, '/' opens search.
-        # Only when the editor is in :normal (so ':' typed during insert
-        # is a literal char) et hors modal : un modal peut avoir sa propre
-        # recherche (`/` dans le navigateur de sons). Replaces
-        # TK.CodeEditor's built-in :command/:search mode entry, which we
-        # never want to trigger.
-        if in_normal && evt.key === :char && !_awaiting_literal(m)
-            if evt.char == ':'
-                enter!(m.command_line, :command)
-                return
-            elseif evt.char == '/' && !_modal_owns_key(m, "/")
-                enter!(m.command_line, :search)
-                return
+    return
+end
+
+# ── 1. Barre de commande : priorité absolue quand elle est active ────
+# Tant que la barre `:` / `/` est ouverte, TOUTE touche lui revient : ni
+# les globaux du workspace, ni le mode pane, ni les panes ne la voient.
+# Découplée de l'éditeur : marche quelle que soit la pane focalisée.
+function _stage_command_line!(m::RessacApp, evt::TK.KeyEvent)
+    is_active(m.command_line) || return false
+    outcome = handle_key!(m.command_line, evt;
+                          complete_fn = q -> _command_completion_candidates(m, q))
+    if outcome === :dispatched
+        cmd = m.command_line.last_dispatched
+        if !isempty(cmd)
+            if m.command_line.last_dispatched_mode === :search
+                _ex_search!(m, cmd)
+            else
+                _handle_ex_command!(m, cmd)
             end
         end
     end
-    # Modal overlay owns all keys BEFORE focus-pane routing, so a modal
-    # opened by a pane keystroke (sculpt via explorer `M`) still gets input
-    # instead of the still-focused pane swallowing it.
-    if m.modal !== :none
-        mevt = evt                      # déjà normalisé en tête de update!
-        is_nav = mevt.char in ('j', 'k', 'd', 'u', 'h', 'l', 'n', 'p', '<', '>') ||
-                 mevt.key in (:up, :down, :left, :right, :pageup, :pagedown)
-        if mevt.action === TK.key_press ||
-           (mevt.action === TK.key_repeat && is_nav)
-            _handle_modal_key!(m, mevt)
-        end
-        return
+    return true
+end
+
+# ── 2. Panic : coupe-son GLOBAL ──────────────────────────────────────
+# `!` tue le son (patterns + tous les nœuds SC) depuis N'IMPORTE QUELLE
+# pane ou modale. Seules exceptions : la SAISIE DE TEXTE — éditeur en
+# insertion (où `!` est un caractère) — et l'attente d'un caractère
+# littéral (`r!` remplace, `f!` saute au prochain `!`).
+function _stage_panic!(m::RessacApp, evt::TK.KeyEvent)
+    (evt.action === TK.key_press && evt.char == '!') || return false
+    ed = _active_editor(m)
+    (ed === nothing || ed.mode === :normal) && !_awaiting_literal(m) || return false
+    _panic!(m)
+    return true
+end
+
+# ── 3. Globaux du workspace et mode pane ─────────────────────────────
+# Ils passent AVANT tout le reste pour que les raccourcis de live-coding
+# ne soient pas avalés par un mode de l'éditeur.
+function _stage_workspace!(m::RessacApp, evt::TK.KeyEvent)
+    evt.action === TK.key_press || return false
+    if evt.key === :ctrl && evt.char in '1':'9'
+        cmd_workspace_switch!(m.workspaces, Int(evt.char - '0'))
+        return true
     end
-    # ── Sub-project 10: focus-driven key routing ──────────────────────
-    # When the focused workspace pane is NOT the legacy patterns editor
-    # (_active_editor(m)), its keystrokes must go to that pane's own TK.CodeEditor
-    # via PaneImpl.handle_key!, not into the global _active_editor(m) flow that
-    # follows below. The patterns pane still goes through the legacy
-    # path because _active_editor(m) IS that pane's tabs[1].code_editor — letting
-    # the legacy update! body run keeps cursor moves / autocomplete /
-    # eval flash / playhead intact.
+    if evt.key === :ctrl && evt.char == 'F'
+        m.floats_hidden = !m.floats_hidden
+        return true
+    end
+    # Mode pane, persistant. Sorties : Échap, Entrée, Ctrl-W. Les
+    # opérations reconnues (s/v/h/j/k/l/c, flèches, z) le laissent actif
+    # pour enchaîner sans un Ctrl-W entre chaque ; le reste est avalé.
+    if _PANE_MODE.active
+        if evt.key === :escape || evt.key === :enter || (evt.key === :ctrl && evt.char == 'w')
+            _PANE_MODE.active = false
+        elseif evt.key === :left
+            cmd_focus!(m.workspaces, :left)
+        elseif evt.key === :down
+            cmd_focus!(m.workspaces, :down)
+        elseif evt.key === :up
+            cmd_focus!(m.workspaces, :up)
+        elseif evt.key === :right
+            cmd_focus!(m.workspaces, :right)
+        elseif evt.key === :char && evt.char == 'z'
+            _toggle_zoom!(m)                          # z : zoom / dézoom du leaf focalisé
+        elseif evt.key === :char
+            _dispatch_pane_mode_key(m.workspaces, evt.char)
+        end
+        return true
+    end
+    # Sans éditeur, on se comporte comme en mode normal : le mode pane et
+    # la commande `:` restent joignables (il faut pouvoir `:vsplit editor`
+    # pour rouvrir une pane de patterns quand il n'y en a plus).
+    ed = _active_editor(m)
+    in_normal = ed === nothing || ed.mode === :normal
+    # Entrée en mode pane — depuis le mode normal seulement, pour que
+    # Ctrl-W en insertion efface toujours un mot.
+    if in_normal && evt.key === :ctrl && evt.char == 'w'
+        _PANE_MODE.active = true
+        return true
+    end
+    # Barre de commande : `:` ouvre la commande, `/` la recherche — en mode
+    # normal seulement (en insertion `:` est un caractère), hors attente
+    # d'un caractère littéral, et `/` seulement si la modale ouverte n'a
+    # pas sa propre recherche (le navigateur de sons). Remplace l'entrée
+    # :command/:search du CodeEditor, qu'on ne veut jamais déclencher.
+    if in_normal && evt.key === :char && !_awaiting_literal(m)
+        if evt.char == ':'
+            enter!(m.command_line, :command)
+            return true
+        elseif evt.char == '/' && !_modal_owns_key(m, "/")
+            enter!(m.command_line, :search)
+            return true
+        end
+    end
+    return false
+end
+
+# ── 4. Modale ouverte : elle possède toutes les touches ──────────────
+# Avant le routage vers la pane focalisée, pour qu'une modale ouverte
+# par une touche de pane (sculpt via `M` de l'explorer) reçoive bien la
+# saisie au lieu que la pane encore focalisée l'avale. Les répétitions
+# de touche ne passent que pour la navigation.
+function _stage_modal!(m::RessacApp, evt::TK.KeyEvent)
+    m.modal === :none && return false
+    is_nav = evt.char in ('j', 'k', 'd', 'u', 'h', 'l', 'n', 'p', '<', '>') ||
+             evt.key in (:up, :down, :left, :right, :pageup, :pagedown)
+    if evt.action === TK.key_press || (evt.action === TK.key_repeat && is_nav)
+        _handle_modal_key!(m, evt)
+    end
+    return true
+end
+
+# ── 5. Pane focalisée ────────────────────────────────────────────────
+# Une pane qui n'est pas l'éditeur actif (journal, doc, scope, sculpt…)
+# reçoit la touche par son `handle_key!`. Si elle ne la consomme pas, ou
+# s'il n'y a aucun éditeur ouvert, seul le scope :global s'applique
+# (aide, hush, scope…). Sinon la touche continue vers l'éditeur, qu'on
+# remet focalisé : `_render_tree_inner!` baisse ce drapeau dès que le
+# focus est ailleurs, et `TK.handle_key!` l'ignore alors en silence.
+function _stage_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     r = _route_key_to_focused_pane!(m, evt)
-    r === :consumed && return
-    # Pane non-éditeur focalisée (touche non consommée) ou aucun éditeur
-    # ouvert : seul le scope :global s'applique (aide, hush, scope…).
+    r === :consumed && return true
     if r === :pass || _active_editor(m) === nothing
         dispatch!(((:global, m),), evt)
-        return
+        return true
     end
-    # Cause A fix: the legacy update! body below calls
-    # `TK.handle_key!(_active_editor(m), evt)`, which short-circuits
-    # when `.focused == false`. _render_tree_inner! clears that flag
-    # whenever ws.focused_pane is on a different leaf (a side log /
-    # doc / scope pane, a synth-role editor, etc.). Without forcing
-    # it back to true here, any global keystroke (':', text, vim
-    # motions on _active_editor(m)) routed past the workspace pane gets
-    # silently dropped. Per-frame view() will re-sync from the tree.
     _active_editor(m).focused = true
-    # Piano mode: letter keys → semitones → fire the current synth at
-    # that pitch. Octave shift via `[` and `]`. Enter commits the
-    # recording (if piano_rec is on), Esc exits.
-    if m.piano_active && evt.action === TK.key_press
-        if evt.key === :escape
-            _piano_stop!(m); return
-        elseif evt.key === :enter
-            m.piano_rec ? _piano_commit!(m) : _piano_stop!(m); return
-        elseif evt.char == '['
-            m.piano_octave = max(0, m.piano_octave - 1)
-            _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)"); return
-        elseif evt.char == ']'
-            m.piano_octave = min(9, m.piano_octave + 1)
-            _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)"); return
-        elseif haskey(_PIANO_KEYMAP, evt.char)
-            _piano_play!(m, _PIANO_KEYMAP[evt.char])
-            return
-        end
-        return  # swallow everything else
+    return false
+end
+
+# ── 6. Piano : les lettres jouent le synth courant ───────────────────
+# `[` / `]` changent d'octave, Entrée valide l'enregistrement s'il y en
+# a un, Échap sort. Tout le reste est avalé.
+function _stage_piano!(m::RessacApp, evt::TK.KeyEvent)
+    (m.piano_active && evt.action === TK.key_press) || return false
+    if evt.key === :escape
+        _piano_stop!(m)
+    elseif evt.key === :enter
+        m.piano_rec ? _piano_commit!(m) : _piano_stop!(m)
+    elseif evt.char == '['
+        m.piano_octave = max(0, m.piano_octave - 1)
+        _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)")
+    elseif evt.char == ']'
+        m.piano_octave = min(9, m.piano_octave + 1)
+        _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)")
+    elseif haskey(_PIANO_KEYMAP, evt.char)
+        _piano_play!(m, _PIANO_KEYMAP[evt.char])
     end
-    # Tap-record mode: capture Space as a hit, Enter to commit, Esc to
-    # cancel. Every other key is swallowed so the user can hold the
-    # tempo without accidentally editing the buffer.
-    if m.tap_recording && evt.action === TK.key_press
-        if evt.key === :enter
-            _tap_commit!(m); return
-        elseif evt.key === :escape
-            m.tap_recording = false
-            empty!(m.tap_events)
-            _push_app_log!(m, "[INFO] tap annulé"); return
-        elseif evt.char == ' '
-            _tap_hit!(m); return
-        end
-        return
+    return true
+end
+
+# ── 7. Tap : Espace marque un coup, Entrée valide, Échap annule ──────
+# Tout le reste est avalé, pour tenir le tempo sans éditer par accident.
+function _stage_tap!(m::RessacApp, evt::TK.KeyEvent)
+    (m.tap_recording && evt.action === TK.key_press) || return false
+    if evt.key === :enter
+        _tap_commit!(m)
+    elseif evt.key === :escape
+        m.tap_recording = false
+        empty!(m.tap_events)
+        _push_app_log!(m, "[INFO] tap annulé")
+    elseif evt.char == ' '
+        _tap_hit!(m)
     end
-    # Paused: any key_press resumes and is then swallowed (so the
-    # resume key doesn't double-act as e.g. an insert-mode character).
-    if m.paused
-        if evt.action === TK.key_press
-            m.paused = false
-            _push_app_log!(m, "[INFO] reprise")
-        end
-        return
+    return true
+end
+
+# ── 8. Pause : une touche reprend, et elle est avalée ────────────────
+# (pour qu'elle ne s'insère pas aussi comme caractère).
+function _stage_paused!(m::RessacApp, evt::TK.KeyEvent)
+    m.paused || return false
+    if evt.action === TK.key_press
+        m.paused = false
+        _push_app_log!(m, "[INFO] reprise")
     end
+    return true
+end
+
+# ── 9. Sélection visuelle : ses propres touches (étendre, d/y/c, m, e, Échap)
+function _stage_visual!(m::RessacApp, evt::TK.KeyEvent)
+    (m.visual_active && evt.action === TK.key_press) || return false
+    return _visual_handle!(m, _active_editor(m), evt)
+end
+
+# ── 10. Mémoire de `.` : la session d'insertion est enregistrée ──────
+# Un effet de bord, jamais une consommation.
+function _stage_vim_record!(m::RessacApp, evt::TK.KeyEvent)
+    _vim_record_keystroke!(m, _active_editor(m), evt, evt.action === TK.key_press)
+    return false
+end
+
+# ── 11. Mode normal : registre de bindings et accords ────────────────
+# Toutes les ACTIONS passent par le registre (app_keymap.jl), en mode
+# normal seulement : jamais une touche tapée en insertion ne déclenche
+# une action. Couches : pane focalisée (:patterns | :synth) → :editor →
+# :global. Un binding qui ne matche pas laisse la touche au moteur vim.
+function _stage_editor_normal!(m::RessacApp, evt::TK.KeyEvent)
     ed = _active_editor(m)
+    ed.mode === :normal || return false
     is_press = evt.action === TK.key_press
-    # Sélection visuelle : ses propres touches (étendre, d/y/c, m, e, Esc).
-    if m.visual_active && is_press
-        _visual_handle!(m, ed, evt) && return
+    # Trous d'un snippet : Tab / Maj-Tab sautent, Échap sort.
+    if m.placeholder_active && is_press
+        evt.key === :tab     && (_placeholder_jump!(m, ed, +1); return true)
+        evt.key === :backtab && (_placeholder_jump!(m, ed, -1); return true)
+        evt.key === :escape  && (m.placeholder_active = false; return true)
     end
-    # Track insert-session text so `.` has something to replay.
-    _vim_record_keystroke!(m, ed, evt, is_press)
-    # ── Registre de bindings (app_keymap.jl) ─────────────────────────
-    # Toutes les ACTIONS passent par ici, en mode normal seulement : jamais
-    # une touche tapée en insertion ne déclenche une action. Couches :
-    # pane focalisée (:patterns | :synth) → :editor → :global. Un binding
-    # qui ne matche pas laisse la touche au moteur vim de l'éditeur.
-    if ed.mode === :normal
-        # Trous d'un snippet, en mode normal : Tab / Maj-Tab sautent, Esc sort.
-        if m.placeholder_active && is_press
-            evt.key === :tab     && (_placeholder_jump!(m, ed, +1); return)
-            evt.key === :backtab && (_placeholder_jump!(m, ed, -1); return)
-            evt.key === :escape  && (m.placeholder_active = false; return)
+    if m.pending_leader
+        # Espace déjà pressé : la touche suivante choisit dans :leader.
+        is_press || return true
+        if evt.key === :escape
+            m.pending_leader = false; return true
         end
-        if m.pending_leader
-            # Space déjà pressé : la touche suivante choisit dans :leader.
-            is_press || return
-            if evt.key === :escape
-                m.pending_leader = false; return
-            end
-            # Modificateur seul (Shift avant un E majuscule…) : on attend.
-            (evt.key !== :char || evt.char == '\0') && return
-            m.pending_leader = false
-            dispatch!(((:leader, m),), evt; prefix = "Space")
-            return
+        # Modificateur seul (Maj avant un E majuscule…) : on attend.
+        (evt.key !== :char || evt.char == '\0') && return true
+        m.pending_leader = false
+        dispatch!(((:leader, m),), evt; prefix = "Space")
+        return true
+    end
+    # `f` / `t` en attente : le caractère suivant est la cible.
+    if m.pending_find !== nothing && is_press
+        motion = m.pending_find
+        m.pending_find = nothing
+        if evt.key === :char && evt.char != '\0'
+            _find_char!(m, ed, motion, evt.char)
         end
-        # `f` / `t` en attente : le caractère suivant est la cible.
-        if m.pending_find !== nothing && is_press
-            motion = m.pending_find
-            m.pending_find = nothing
-            if evt.key === :char && evt.char != '\0'
-                _find_char!(m, ed, motion, evt.char)
-            end
-            return
-        end
-        # `r`, `f`, `t`… attendent un caractère LITTÉRAL : le registre ne
-        # doit pas l'intercepter, sinon `r!` déclenche le panic et `r `
-        # ouvre le menu Espace au lieu de remplacer le caractère.
-        if !(is_press && _awaiting_literal(m))
-            # `g` en attente (posé par l'éditeur) → accords « g t », « g T »…
-            prefix = ed.pending_key == 'g' ? "g" : ""
-            if dispatch!(_editor_layers(m), evt; prefix = prefix)
-                isempty(prefix) || (ed.pending_key = nothing)
-                return
-            end
+        return true
+    end
+    # `r`, `f`, `t`… attendent un caractère LITTÉRAL : le registre ne
+    # doit pas l'intercepter, sinon `r!` déclenche le panic et `r `
+    # ouvre le menu Espace au lieu de remplacer le caractère.
+    if !(is_press && _awaiting_literal(m))
+        # `g` en attente (posé par l'éditeur) → accords « g t », « g T »…
+        prefix = ed.pending_key == 'g' ? "g" : ""
+        if dispatch!(_editor_layers(m), evt; prefix = prefix)
+            isempty(prefix) || (ed.pending_key = nothing)
+            return true
         end
     end
-    # Operator-motion combos (cw / dw / yw + big variants + e variants).
-    # TK only implements the doubled forms (cc/dd/yy) — these proper
-    # combos are ours. Each preserves `scroll_offset` so the buffer
-    # view doesn't jump when text is mutated.
-    if is_press && ed.mode === :normal &&
-       ed.pending_key in ('c', 'd', 'y') &&
-       evt.char in ('w', 'b', 'W', 'B', 'e', 'E')
+    # Opérateur + mouvement (cw / dw / yw, variantes majuscules et e) :
+    # Tachikoma ne connaît que les formes doublées (cc/dd/yy), celles-ci
+    # sont à nous. Chacune garde `scroll_offset` pour que la vue ne saute
+    # pas quand le texte change.
+    if is_press && ed.pending_key in ('c', 'd', 'y') && evt.char in ('w', 'b', 'W', 'B', 'e', 'E')
         op = ed.pending_key
         ed.pending_key = nothing
         _op_with_motion!(m, ed, op, evt.char)
-        return
+        return true
     end
-    # Word motions — override TK's so they ALWAYS advance and wrap
-    # across lines reliably, never blocking on punctuation. W / B / E
-    # are vim's "big word" variants treating whitespace as the only
-    # separator (foo.bar = one jump). Skipped when a multi-key pending
-    # is active (handled above as a NOOP) so they don't fire under
-    # cw/dw/yw.
-    if is_press && ed.mode === :normal &&
-       evt.char in ('w', 'b', 'W', 'B') &&
-       ed.pending_key === nothing
+    # Mouvements par mot — les nôtres plutôt que ceux de Tachikoma, pour
+    # qu'ils avancent TOUJOURS et passent les lignes sans buter sur la
+    # ponctuation. W / B sont les « gros mots » de vim (seule l'espace
+    # sépare : foo.bar = un saut). Pas quand un opérateur attend (géré
+    # juste au-dessus), pour ne pas tirer sous cw/dw/yw.
+    if is_press && evt.char in ('w', 'b', 'W', 'B') && ed.pending_key === nothing
         kind = (evt.char == 'W' || evt.char == 'B') ? :big : :small
         dir  = (evt.char == 'w' || evt.char == 'W') ? +1 : -1
         _word_motion!(ed, dir, kind)
-        return
+        return true
     end
-    # Tab autocomplete in :insert mode. Priority order:
-    #   1. If a ghost suggestion is visible, accept it.
-    #   2. Otherwise fall through to the existing word-cycle.
-    # On any non-Tab keystroke in insert mode we reset the cycle state
-    # and recompute the ghost from the new context.
-    if is_press && ed.mode === :insert
-        # Placeholder navigation takes priority over autocomplete when
-        # a snippet expansion is being filled. Tab/Shift-Tab move
-        # between $1, $2, …; Esc exits placeholder tracking (the next
-        # Esc returns to normal mode via the editor's default).
-        if m.placeholder_active && evt.key === :tab
-            _placeholder_jump!(m, ed, +1); return
-        end
-        if m.placeholder_active && evt.key === :backtab
-            _placeholder_jump!(m, ed, -1); return
-        end
-        # Esc en insertion : retour au mode normal, les trous restent
-        # actifs (Tab y saute encore) ; un second Esc en normal les quitte.
-        if evt.key === :tab
-            if !isempty(m.ghost) && _accept_ghost!(m)
-                _compute_ghost!(m)
-                return
-            end
-            if _try_autocomplete!(m, ed)
-                m.ghost = ""
-                return
-            end
-        else
-            _reset_completion!(m)
-            # Snapshot line length pre-edit so the placeholder tracker
-            # can shift remaining $N positions by the right delta.
-            pre_len = (m.placeholder_active &&
-                       1 <= ed.cursor_row <= length(ed.lines)) ?
-                      length(ed.lines[ed.cursor_row]) : 0
-            TK.handle_key!(ed, evt)
-            cmd = TK.pending_command!(ed)
-            isempty(cmd) || _handle_ex_command!(m, cmd)
-            m.placeholder_active && _placeholder_track_change!(m, ed, pre_len)
+    return false
+end
+
+# ── 12. Mode insertion : Tab complète, le reste s'écrit ──────────────
+# Tab : accepter la suggestion fantôme si elle est visible, sinon le
+# cycle de complétion de mot ; si rien ne s'applique, Tab continue vers
+# l'éditeur. Toute autre touche remet le cycle à zéro, s'écrit, puis
+# recalcule le fantôme. Les trous d'un snippet passent avant : Tab /
+# Maj-Tab sautent de $1 en $2.
+function _stage_editor_insert!(m::RessacApp, evt::TK.KeyEvent)
+    ed = _active_editor(m)
+    (evt.action === TK.key_press && ed.mode === :insert) || return false
+    if m.placeholder_active && evt.key === :tab
+        _placeholder_jump!(m, ed, +1); return true
+    end
+    if m.placeholder_active && evt.key === :backtab
+        _placeholder_jump!(m, ed, -1); return true
+    end
+    if evt.key === :tab
+        if !isempty(m.ghost) && _accept_ghost!(m)
             _compute_ghost!(m)
-            return
+            return true
         end
-    end
-    # Tab in :command (ex-command line, ":synth wob...") autocompletes
-    # the command verb itself OR the argument (synth/sample/instrument
-    # name) when one already has been typed.
-    if is_press && evt.key === :tab && ed.mode === :command
-        if _try_ex_autocomplete!(m, ed)
-            return
+        if _try_autocomplete!(m, ed)
+            m.ghost = ""
+            return true
         end
+        return false                                # Tab sans complétion : à l'éditeur
     end
-    # Arrow keys navigate the completion picker grid while an
-    # ex-command cycle is active. Up/down move by row (±cols), left/
-    # right move by one cell with wrap. The picker stays open so the
-    # user can refine; Enter accepts the current selection by virtue
-    # of the splice having already rewritten the command_buffer.
-    if is_press && ed.mode === :command && _completion_picker_active(m)
-        if evt.key === :up
-            _move_completion_session!(m, :up) && return
-        elseif evt.key === :down
-            _move_completion_session!(m, :down) && return
-        elseif evt.key === :left
-            _move_completion_session!(m, :left) && return
-        elseif evt.key === :right
-            _move_completion_session!(m, :right) && return
-        end
+    _reset_completion!(m)
+    # Longueur de la ligne avant l'édition, pour que le suivi des trous
+    # décale les $N restants du bon delta.
+    pre_len = (m.placeholder_active && 1 <= ed.cursor_row <= length(ed.lines)) ?
+              length(ed.lines[ed.cursor_row]) : 0
+    TK.handle_key!(ed, evt)
+    cmd = TK.pending_command!(ed)
+    isempty(cmd) || _handle_ex_command!(m, cmd)
+    m.placeholder_active && _placeholder_track_change!(m, ed, pre_len)
+    _compute_ghost!(m)
+    return true
+end
+
+# ── 13. Mode commande du CodeEditor (`:synth wob…`) ──────────────────
+# Tab complète le verbe ou l'argument ; les flèches parcourent la grille
+# de complétion quand elle est ouverte, sinon ↑/↓ font l'historique
+# comme un shell. Toute autre touche ferme le cycle de complétion (pour
+# que la fermeture capturée ne pointe pas sur des jetons périmés) — et
+# éditer sort du mode historique.
+function _stage_editor_command!(m::RessacApp, evt::TK.KeyEvent)
+    ed = _active_editor(m)
+    (evt.action === TK.key_press && ed.mode === :command) || return false
+    if evt.key === :tab
+        _try_ex_autocomplete!(m, ed) && return true
+        return false
     end
-    # ↑/↓ in :command (with no completion picker) navigate the ex-cmd
-    # history — like a shell prompt. Reset on any other keypress.
-    if is_press && ed.mode === :command && !_completion_picker_active(m) &&
-       (evt.key === :up || evt.key === :down)
+    if _completion_picker_active(m)
+        dir = evt.key === :up ? :up : evt.key === :down ? :down :
+              evt.key === :left ? :left : evt.key === :right ? :right : nothing
+        dir !== nothing && _move_completion_session!(m, dir) && return true
+    elseif evt.key === :up || evt.key === :down
         _ex_history_nav!(m, ed, evt.key)
-        return
+        return true
     end
-    # Any other non-Tab / non-arrow key in :command clears the
-    # completion cycle (so the splice closure's captured tokens
-    # don't go stale).
-    if is_press && ed.mode === :command && evt.key !== :tab &&
-       !(evt.key in (:up, :down, :left, :right))
+    if !(evt.key in (:up, :down, :left, :right))
         _reset_completion!(m)
-        # Editing the buffer also exits history-nav mode so the next ↑
-        # restarts from the most-recent entry.
         evt.key === :char && (m.ex_history_idx = 0)
     end
-    # Snapshot for normal-mode `.` recording — see _vim_post_normal!.
-    pre_text = ed.mode === :normal ? TK.text(ed) : ""
+    return false
+end
+
+# ── 14. L'éditeur lui-même : moteur vim de Tachikoma, puis `.` ───────
+function _stage_editor!(m::RessacApp, evt::TK.KeyEvent)
+    ed = _active_editor(m)
+    is_press = evt.action === TK.key_press
+    pre_text = ed.mode === :normal ? TK.text(ed) : ""     # pour l'enregistrement de `.`
     pre_mode = ed.mode
     TK.handle_key!(ed, evt)
     cmd = TK.pending_command!(ed)
@@ -740,7 +742,27 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if is_press && pre_mode === :normal
         _vim_post_normal!(m, ed, evt, pre_text)
     end
+    return true
 end
+
+# L'ordre des étapes est la règle de priorité. À partir de la 6e, un
+# éditeur actif existe forcément (la 5e a tout renvoyé sinon).
+const _KEY_STAGES = (
+    _stage_command_line!,
+    _stage_panic!,
+    _stage_workspace!,
+    _stage_modal!,
+    _stage_focused_pane!,
+    _stage_piano!,
+    _stage_tap!,
+    _stage_paused!,
+    _stage_visual!,
+    _stage_vim_record!,
+    _stage_editor_normal!,
+    _stage_editor_insert!,
+    _stage_editor_command!,
+    _stage_editor!,
+)
 
 _is_typable_ascii(c::Char) = ncodeunits(c) == 1 && (isprint(c) && c != '\0')
 
