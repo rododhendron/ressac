@@ -213,11 +213,15 @@ end
     end
 
     @testset "handle_key! j/k adjust scroll" begin
-        dp = Ressac._pane_new(:doc, Dict{String,Any}())
+        Ressac.lookup_doc("gain") === nothing &&
+            Ressac._handle_docs(joinpath(@__DIR__, "..", "plugins", "core"), Dict("dir" => "docs"), "core")
+        dp = Ressac._pane_new(:doc, Dict{String,Any}("ref" => "gain"))
+        tb = Tachikoma.TestBackend(40, 5)
+        Ressac.render!(dp, Tachikoma.Rect(1, 1, 40, 5), tb.buf)     # la fiche dépasse les 3 lignes visibles
         @test Ressac.handle_key!(dp, Tachikoma.KeyEvent('j')) == true
-        @test dp.scroll == 1
+        @test dp.pane.offset == 1
         @test Ressac.handle_key!(dp, Tachikoma.KeyEvent('k')) == true
-        @test dp.scroll == 0
+        @test dp.pane.offset == 0
         @test Ressac.handle_key!(dp, Tachikoma.KeyEvent('k')) == false
     end
 end

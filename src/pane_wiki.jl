@@ -6,16 +6,36 @@
 mutable struct WikiPane <: PaneImpl
     pages::Vector{_WikiPage}
     idx::Int
-    scroll::Int
+    pane::TK.ScrollPane               # le contenu rendu, son défilement, sa barre
+    rendered::Tuple{Int,Int}          # (page, largeur) du contenu posé dans `pane`
 end
+
+WikiPane(pages::Vector{_WikiPage}, idx::Int, offset::Int = 0) =
+    WikiPane(pages, clamp(idx, 1, max(1, length(pages))), _md_scrollpane(; offset), (0, 0))
 
 function _wiki_pane_ctor(args::AbstractDict)
-    pages = _load_wiki_pages()
-    idx = clamp(Int(get(args, "idx", 1)), 1, max(1, length(pages)))
-    return WikiPane(pages, idx, max(0, Int(get(args, "scroll", 0))))
+    return WikiPane(_load_wiki_pages(), Int(get(args, "idx", 1)), Int(get(args, "scroll", 0)))
 end
 
-_wiki_last(p::WikiPane) = isempty(p.pages) ? 0 : max(0, length(p.pages[p.idx].lines) - 1)
+# Pose dans le ScrollPane la page courante rendue à `width` colonnes,
+# une fois par (page, largeur).
+function _wiki_sync!(p::WikiPane, width::Int)
+    isempty(p.pages) && return
+    p.rendered == (p.idx, width) && return
+    TK.set_content!(p.pane, _md_render(p.pages[p.idx].lines, width))
+    p.rendered = (p.idx, width)
+    return
+end
+
+# La dernière position de défilement (le bas du contenu visible), telle
+# que le ScrollPane la calcule après un rendu.
+_wiki_last(p::WikiPane) = TK._max_offset(p.pane, max(1, p.pane.last_area.height))
+
+# Changer de page : le défilement repart du haut.
+function _wiki_show!(p::WikiPane, idx::Int)
+    p.idx = idx; p.pane.offset = 0
+    return
+end
 
 """
     _wiki_goto!(p, query) -> Bool
@@ -29,12 +49,12 @@ function _wiki_goto!(p::WikiPane, query::AbstractString)
     n = tryparse(Int, q)
     if n !== nothing
         1 <= n <= length(p.pages) || return false
-        p.idx = n; p.scroll = 0
+        _wiki_show!(p, n)
         return true
     end
     i = findfirst(pg -> occursin(q, lowercase(pg.title)), p.pages)
     i === nothing && return false
-    p.idx = i; p.scroll = 0
+    _wiki_show!(p, i)
     return true
 end
 
@@ -69,43 +89,35 @@ function render!(p::WikiPane, area, buf)
         content_x = sep_x + 2
         content_w = inner.width - toc_w - 2
     end
-    visible = page.lines[max(1, p.scroll + 1):end]
-    in_code = isodd(count(l -> startswith(strip(l), "```"), page.lines[1:min(p.scroll, length(page.lines))]))
-    for (i, line) in enumerate(visible)
-        i > inner.height && break
-        if startswith(strip(line), "```")
-            in_code = !in_code
-            TK.set_string!(buf, content_x, inner.y + i - 1,
-                           first(rpad("┄" * "─" ^ max(0, content_w - 1), content_w), content_w),
-                           TK.tstyle(:border))
-            continue
-        end
-        _render_markdown_line!(line, buf, content_x, inner.y + i - 1, content_w; in_code = in_code)
-    end
+    # Le ScrollPane rend le contenu et sa barre ; il garde une colonne
+    # pour la barre, d'où le rendu à content_w - 1.
+    _wiki_sync!(p, max(8, content_w - 1))
+    TK.render(p.pane, TK.Rect(content_x, inner.y, content_w, inner.height), buf)
     return nothing
 end
 
 handle_key!(p::WikiPane, evt) = evt isa TK.KeyEvent && dispatch!(((:wiki, p),), evt)
+handle_mouse!(p::WikiPane, evt::TK.MouseEvent) = TK.handle_mouse!(p.pane, evt)   # molette, barre
 pane_scope(::WikiPane) = :wiki
 title(p::WikiPane) = isempty(p.pages) ? "wiki" : "wiki:$(p.pages[p.idx].title)"
-serialize(p::WikiPane) = Dict{String,Any}("idx" => p.idx, "scroll" => p.scroll)
+serialize(p::WikiPane) = Dict{String,Any}("idx" => p.idx, "scroll" => p.pane.offset)
 register_pane_kind!(:wiki, _wiki_pane_ctor)
 
 scope!(:wiki, "Wiki (pane)")
 bind!(:wiki, ["j", "↓"], "défiler"; group = :nav, repeat = true,
-      action = p -> (p.scroll = min(p.scroll + 1, _wiki_last(p))))
-bind!(:wiki, ["k", "↑"], "remonter"; group = :nav, repeat = true, when = p -> p.scroll > 0,
-      action = p -> (p.scroll = max(0, p.scroll - 1)))
+      action = p -> _md_scroll!(p.pane, :down))
+bind!(:wiki, ["k", "↑"], "remonter"; group = :nav, repeat = true, when = p -> p.pane.offset > 0,
+      action = p -> _md_scroll!(p.pane, :up))
 bind!(:wiki, ["n", "]", "→"], "page du wiki suivante"; group = :nav,
-      action = p -> (isempty(p.pages) || (p.idx = mod1(p.idx + 1, length(p.pages)); p.scroll = 0)))
+      action = p -> (isempty(p.pages) || _wiki_show!(p, mod1(p.idx + 1, length(p.pages)))))
 bind!(:wiki, ["p", "[", "←"], "page du wiki précédente"; group = :nav,
-      action = p -> (isempty(p.pages) || (p.idx = mod1(p.idx - 1, length(p.pages)); p.scroll = 0)))
+      action = p -> (isempty(p.pages) || _wiki_show!(p, mod1(p.idx - 1, length(p.pages)))))
 bind!(:wiki, ["d", "PgDn"], "défiler d'un écran"; group = :nav, hint = false, repeat = true,
-      action = p -> (p.scroll = min(p.scroll + 10, _wiki_last(p))))
+      action = p -> _md_scroll!(p.pane, :pagedown))
 bind!(:wiki, ["u", "PgUp"], "remonter d'un écran"; group = :nav, hint = false, repeat = true,
-      action = p -> (p.scroll = max(0, p.scroll - 10)))
+      action = p -> _md_scroll!(p.pane, :pageup))
 bind!(:wiki, ["g", "G"], "début / fin de page"; group = :nav, hint = false,
-      action = (p, evt) -> (p.scroll = evt.char == 'g' ? 0 : _wiki_last(p)))
+      action = (p, evt) -> _md_scroll!(p.pane, evt.char == 'g' ? :home : :end_key))
 bind!(:wiki, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "aller à la page N"; group = :nav, hint = false,
       action = (p, evt) -> (n = Int(evt.char - '0');
-                            1 <= n <= length(p.pages) && (p.idx = n; p.scroll = 0)))
+                            1 <= n <= length(p.pages) && _wiki_show!(p, n)))

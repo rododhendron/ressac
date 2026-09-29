@@ -462,8 +462,8 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | descendre |
 | `k / ↑` | remonter |
-| `d / PgDn` | page suivante |
-| `u / PgUp` | page précédente |
+| `d / PgDn` | descendre d'un écran |
+| `u / PgUp` | remonter d'un écran |
 | `g` | début |
 | `f` | suivre le curseur ou figer |
 

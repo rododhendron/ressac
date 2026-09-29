@@ -122,17 +122,20 @@ end
         @test Ressac.lookup(sc, "PgUp") !== nothing
     end
     # dans la pane wiki, PgDn fait la même chose que d
-    app, ed, _, _ = _ek_app()
+    app, ed, tb, frame = _ek_app()
     Ressac._open_wiki!(app)
     wp = Ressac._focused_pane_impl(app)
     @test wp isa Ressac.WikiPane
-    wp.scroll = 0
+    Tachikoma.view(app, frame)                 # après un rendu, le ScrollPane connaît sa hauteur
+    wp.pane.offset = 0
+    page_h = wp.pane.last_area.height
+    @test page_h > 1
     Tachikoma.update!(app, Tachikoma.KeyEvent(:pagedown))
-    @test wp.scroll == 10
+    @test wp.pane.offset == page_h             # un écran
     Tachikoma.update!(app, Tachikoma.KeyEvent(:pageup))
-    @test wp.scroll == 0
+    @test wp.pane.offset == 0
     Tachikoma.update!(app, Tachikoma.KeyEvent(:pageup))
-    @test wp.scroll == 0                       # borné
+    @test wp.pane.offset == 0                  # borné
 end
 
 @testset "disposition de clavier — Maj + touche AZERTY donne le bon caractère" begin

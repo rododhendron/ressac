@@ -3,9 +3,9 @@ const _WIKI_TK = Tachikoma
 
 # Wiki — navigable in-app documentation, sourced from docs/wiki/*.md.
 #
-# Pages are markdown files; the modal renders a TOC + the selected
-# page's content with basic markdown styling (headings, code blocks,
-# lists, paragraphs). `:wiki` opens it, j/k scroll the content,
+# Pages are markdown files; the pane renders a TOC + the selected
+# page's content through the shared markdown renderer
+# (content_markdown.jl). `:wiki` opens it, j/k scroll the content,
 # n/p switch pages, q closes. Pages are re-read at every open so
 # editing a .md file just needs another `:wiki`.
 
@@ -58,42 +58,4 @@ function _load_wiki_pages()
         push!(out, _WikiPage(f, String(title), String.(lines[body_start:end])))
     end
     return out
-end
-
-"""
-    _render_markdown_line(line, buf, x, y, max_w) -> next_y_offset
-
-Render one markdown line with a style appropriate to its type.
-Returns how many screen rows were consumed (usually 1; code blocks
-and wrapped lines may take more — for now we wrap by truncation).
-"""
-function _render_markdown_line!(line::AbstractString, buf::_WIKI_TK.Buffer,
-                                x::Int, y::Int, max_w::Int;
-                                in_code::Bool = false)
-    s = String(line)
-    if in_code
-        # Inside a fenced code block — primary colour, no markdown.
-        _WIKI_TK.set_string!(buf, x, y, first(rpad(s, max_w), max_w),
-                       _WIKI_TK.tstyle(:primary))
-    elseif startswith(s, "## ")
-        text = strip(s[4:end])
-        _WIKI_TK.set_string!(buf, x, y, first(rpad("» " * text, max_w), max_w),
-                       _WIKI_TK.tstyle(:primary, bold=true))
-    elseif startswith(s, "# ")
-        text = strip(s[3:end])
-        _WIKI_TK.set_string!(buf, x, y, first(rpad("▓ " * text, max_w), max_w),
-                       _WIKI_TK.tstyle(:accent, bold=true))
-    elseif startswith(s, "### ")
-        text = strip(s[5:end])
-        _WIKI_TK.set_string!(buf, x, y, first(rpad("  " * text, max_w), max_w),
-                       _WIKI_TK.tstyle(:title, bold=true))
-    elseif startswith(s, "- ") || startswith(s, "* ")
-        text = strip(s[3:end])
-        _WIKI_TK.set_string!(buf, x, y, first(rpad("  • " * text, max_w), max_w),
-                       _WIKI_TK.tstyle(:text))
-    else
-        # Plain paragraph; trim trailing whitespace and clip to width.
-        _WIKI_TK.set_string!(buf, x, y, first(rpad(s, max_w), max_w),
-                       _WIKI_TK.tstyle(:text))
-    end
 end

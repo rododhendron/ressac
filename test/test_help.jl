@@ -415,8 +415,11 @@ end
     @test pi !== nothing
     wp.idx = pi
     page = wp.pages[pi]
-    fence = findfirst(l -> startswith(strip(l), "```"), page.lines)
-    wp.scroll = fence                                        # 1re ligne visible = dans le bloc
+    _screen(app, tb, frame)                                  # rend la page : le ScrollPane a son contenu
+    lines = wp.pane.content
+    fence = findfirst(l -> startswith(join(sp.content for sp in l), "┄"), lines)
+    @test fence !== nothing
+    wp.pane.offset = fence                                   # 1re ligne visible = 1re ligne du bloc (offset 0-based)
     _screen(app, tb, frame)
     rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
     ty = findfirst(r -> occursin("WIKI ·", r), rows)
@@ -427,7 +430,10 @@ end
     x = x0 + 1                                               # début de la colonne contenu
     xs = [i for i in x:min(x1 - 1, 120) if _cell(tb, i, y).char != ' ']
     @test !isempty(xs)
-    @test _cell(tb, xs[1], y).style.fg == Tachikoma.tstyle(:primary).fg
+    # la ligne de code est colorée comme dans l'éditeur, même si la clôture est hors écran
+    code = lines[fence + 1]
+    @test _cell(tb, xs[1], y).style.fg == code[1].style.fg
+    @test code[1].style.fg != Tachikoma.tstyle(:text).fg
     _hkey(app, :escape)
 end
 

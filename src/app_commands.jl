@@ -1198,8 +1198,7 @@ function _show_doc_pane!(m::RessacApp, name::String)
         pane isa DocPane || return nothing
         ws.focused_pane = keep
     else
-        pane.name = name
-        pane.scroll = 0
+        pane.name = name          # le défilement repart du haut (voir _doc_sync!)
     end
     return pane
 end
@@ -1265,7 +1264,6 @@ function _update_live_doc!(m::RessacApp)
         end
         (isempty(target) || tab.name == target) && continue
         tab.name = target
-        tab.scroll = 0
     end
     return
 end

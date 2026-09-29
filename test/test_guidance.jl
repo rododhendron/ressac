@@ -62,9 +62,9 @@ _gdpanes(app, T) = [t for leaf in Ressac._all_leaves(Ressac.current_workspace(ap
     n0 = wp.idx
     _gdkey(app, 'n'); @test wp.idx == n0 + 1
     _gdkey(app, 'p'); @test wp.idx == n0
-    _gdkey(app, 'j'); _gdkey(app, 'j'); @test wp.scroll == 2
-    _gdkey(app, 'G'); @test wp.scroll == Ressac._wiki_last(wp)
-    _gdkey(app, 'g'); @test wp.scroll == 0
+    _gdkey(app, 'j'); _gdkey(app, 'j'); @test wp.pane.offset == 2
+    _gdkey(app, 'G'); @test wp.pane.offset == Ressac._wiki_last(wp) > 2
+    _gdkey(app, 'g'); @test wp.pane.offset == 0
     # :wiki tidal → la page dont le titre contient « tidal », sans doublon de pane
     _gdex(app, "wiki tidal")
     @test length(_gdpanes(app, Ressac.WikiPane)) == 1

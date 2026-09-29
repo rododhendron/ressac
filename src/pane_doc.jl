@@ -3,12 +3,26 @@
 
 mutable struct DocPane <: PaneImpl
     name::String              # the DocEntry name (registry key)
-    scroll::Int
+    pane::TK.ScrollPane       # la fiche rendue, son défilement, sa barre
     follow::Bool              # suit le mot sous le curseur (doc vivante)
+    rendered::Tuple{String,Int}   # (nom, largeur) du contenu posé dans `pane`
 end
 
+DocPane(name::AbstractString, offset::Int = 0, follow::Bool = false) =
+    DocPane(String(name), _md_scrollpane(; offset), follow, ("\0", 0))
+
 function _doc_pane_ctor(args::AbstractDict)
-    return DocPane(String(get(args, "ref", "")), 0, get(args, "follow", false) == true)
+    return DocPane(String(get(args, "ref", "")), Int(get(args, "scroll", 0)), get(args, "follow", false) == true)
+end
+
+# Pose dans le ScrollPane la fiche courante rendue à `width` colonnes,
+# une fois par (nom, largeur) ; changer de fiche remonte en haut.
+function _doc_sync!(p::DocPane, width::Int)
+    p.rendered == (p.name, width) && return
+    p.rendered[1] == p.name || (p.pane.offset = 0)
+    TK.set_content!(p.pane, _doc_pane_lines(p.name, width))
+    p.rendered = (p.name, width)
+    return
 end
 
 function render!(p::DocPane, area, buf)
@@ -16,56 +30,49 @@ function render!(p::DocPane, area, buf)
     title_str = (p.follow ? "DOC ✦" : "DOC") * (isempty(p.name) ? "" : " · $(p.name)")
     _render_pane_block_simple!(rect, title_str, buf)
     inner = _inner_rect_simple(rect)
-    inner.height < 1 && return
-    lines = _doc_pane_lines(p.name, inner.width)
-    first_idx = clamp(1 + p.scroll, 1, max(1, length(lines)))
-    for (offset, (line, style)) in enumerate(@view lines[first_idx:end])
-        screen_y = inner.y + offset - 1
-        screen_y >= inner.y + inner.height && break
-        TK.set_string!(buf, inner.x, screen_y, first(line, inner.width), style)
-    end
+    (inner.height < 1 || inner.width < 4) && return
+    _doc_sync!(p, max(8, inner.width - 1))        # une colonne pour la barre
+    TK.render(p.pane, inner, buf)
     return nothing
 end
 
-# Lignes (texte, style) de la fiche, repliées à `width`.
+# Lignes écran de la fiche (segments stylés), repliées à `width`. Le
+# corps est du markdown, les exemples sont colorés comme dans l'éditeur.
 function _doc_pane_lines(name::String, width::Int)
-    out = Tuple{String,TK.Style}[]
+    out = _MdLine[]
     # Un nom de son passe avant une fiche de fonction : dans un buffer de
     # patterns, `bd` est un son, pas un mot du vocabulaire.
     card = isempty(name) ? nothing : _sound_card(name, width)
-    card === nothing || return card
+    card === nothing || return [_md_plain(l, sty) for (l, sty) in card]
     entry = isempty(name) ? nothing : lookup_doc(name)
     if entry === nothing
         desc = isempty(name) ? nothing : _lookup_livedoc(name)
         if desc === nothing
             for l in _wrap_text(isempty(name) ? "K sur un mot, ou :doc <nom>, affiche sa fiche ici." :
                                 "(aucune entrée pour « $name »)", width)
-                push!(out, (l, TK.tstyle(:text_dim)))
+                push!(out, _md_plain(l, TK.tstyle(:text_dim)))
             end
         else
-            push!(out, (name, TK.tstyle(:accent, bold = true)))
-            for l in _wrap_text(String(desc), width); push!(out, (l, TK.tstyle(:text))); end
+            push!(out, _md_plain(name, TK.tstyle(:accent, bold = true)))
+            append!(out, _md_wrap(_md_inline(String(desc)), width))
         end
         return out
     end
-    push!(out, (entry.name, TK.tstyle(:accent, bold = true)))
-    for l in _wrap_text(entry.short, width); push!(out, (l, TK.tstyle(:text))); end
-    isempty(entry.kwargs) || push!(out, ("kwargs : " * join(entry.kwargs, ", "), TK.tstyle(:text_dim)))
+    push!(out, _md_plain(entry.name, TK.tstyle(:accent, bold = true)))
+    append!(out, _md_wrap(_md_inline(entry.short), width))
+    isempty(entry.kwargs) || push!(out, _md_plain("kwargs : " * join(entry.kwargs, ", "), TK.tstyle(:text_dim)))
     if !isempty(entry.examples)
-        push!(out, ("", TK.tstyle(:text)))
-        push!(out, ("exemples", TK.tstyle(:title, bold = true)))
+        push!(out, TK.Span[])
+        push!(out, _md_plain("exemples", TK.tstyle(:title, bold = true)))
         for ex in entry.examples
-            for l in _wrap_text("  " * ex, width); push!(out, (l, TK.tstyle(:text_bright))); end
+            push!(out, vcat(_md_plain("  "), _md_code_line(ex, width - 2)))
         end
     end
     body = strip(entry.body)
     if !isempty(body) && body != strip(entry.short) && !endswith(body, strip(entry.short))
-        push!(out, ("", TK.tstyle(:text)))
-        for raw in split(body, '\n')
-            l = String(raw)
-            startswith(l, "# ") && continue          # le titre est déjà affiché
-            for w in _wrap_text(l, width); push!(out, (w, TK.tstyle(:text))); end
-        end
+        push!(out, TK.Span[])
+        body_lines = [String(l) for l in split(body, '\n') if !startswith(l, "# ")]   # le titre est déjà affiché
+        append!(out, _md_render(body_lines, width))
     end
     return out
 end
@@ -158,22 +165,23 @@ function _wrap_text(line::AbstractString, width::Int)
 end
 
 handle_key!(p::DocPane, evt) = evt isa TK.KeyEvent && dispatch!(((:doc, p),), evt)
+handle_mouse!(p::DocPane, evt::TK.MouseEvent) = TK.handle_mouse!(p.pane, evt)   # molette, barre
 pane_scope(::DocPane) = :doc
 scope!(:doc, "Documentation")
-bind!(:doc, ["j", "↓"], "descendre"; group = :nav, action = p -> (p.scroll += 1), repeat = true)
-bind!(:doc, ["k", "↑"], "remonter"; group = :nav, when = p -> p.scroll > 0, repeat = true,
-      action = p -> (p.scroll -= 1))
-bind!(:doc, ["d", "PgDn"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = p -> (p.scroll += 15))
-bind!(:doc, ["u", "PgUp"], "page précédente"; group = :nav, hint = false, repeat = true,
-      when = p -> p.scroll > 0, action = p -> (p.scroll = max(0, p.scroll - 15)))
-bind!(:doc, "g", "début"; group = :nav, hint = false, action = p -> (p.scroll = 0))
+bind!(:doc, ["j", "↓"], "descendre"; group = :nav, repeat = true, action = p -> _md_scroll!(p.pane, :down))
+bind!(:doc, ["k", "↑"], "remonter"; group = :nav, when = p -> p.pane.offset > 0, repeat = true,
+      action = p -> _md_scroll!(p.pane, :up))
+bind!(:doc, ["d", "PgDn"], "descendre d'un écran"; group = :nav, hint = false, repeat = true,
+      action = p -> _md_scroll!(p.pane, :pagedown))
+bind!(:doc, ["u", "PgUp"], "remonter d'un écran"; group = :nav, hint = false, repeat = true,
+      when = p -> p.pane.offset > 0, action = p -> _md_scroll!(p.pane, :pageup))
+bind!(:doc, "g", "début"; group = :nav, hint = false, action = p -> _md_scroll!(p.pane, :home))
 bind!(:doc, "f", "suivre le curseur ou figer"; short = "suivre", group = :nav,
       action = p -> (p.follow = !p.follow))
 
 title(p::DocPane) = isempty(p.name) ? "doc" : "doc:$(p.name)"
 
-serialize(p::DocPane) = Dict{String,Any}("name" => p.name, "scroll" => p.scroll,
+serialize(p::DocPane) = Dict{String,Any}("name" => p.name, "scroll" => p.pane.offset,
                                           "follow" => p.follow, "ref" => p.name)
 
 register_pane_kind!(:doc, _doc_pane_ctor)
