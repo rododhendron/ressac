@@ -35,7 +35,7 @@ _wheel(x, y, up) = Tachikoma.MouseEvent(x, y, up ? Tachikoma.mouse_scroll_up : T
 end
 
 @testset "picker — saisie, liste, sélection, souris" begin
-    pk = Ressac._picker()
+    pk = Ressac._picker(; searching = true)
     words = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"]
     sync!() = (q = Ressac._picker_query(pk); vis = filter(w -> occursin(q, w), words);
                Ressac._picker_set!(pk, [Tachikoma.ListItem(w) for w in vis], vis); vis)
@@ -66,6 +66,12 @@ end
     @test Ressac._picker_mouse!(pk, _wheel(5, 3, false)) && pk.list.offset == 1
     Ressac._picker_reset!(pk)
     @test isempty(pk.list.items) && pk.list.selected == 1 && isempty(Ressac._picker_query(pk))
+    # hors mode recherche, la frappe n'entre pas dans la saisie (elle va aux touches de la modale)
+    Ressac._picker_search!(pk, false)
+    @test !Ressac._picker_type!(pk, _ev('j')) && isempty(Ressac._picker_query(pk))
+    Ressac._picker_search!(pk, true)
+    @test Ressac._picker_type!(pk, _ev('j')) && Ressac._picker_query(pk) == "j"
+    Ressac._picker_clear!(pk); @test isempty(Ressac._picker_query(pk)) && pk.searching
 end
 
 if !isdefined(Main, :MockOSCClient)

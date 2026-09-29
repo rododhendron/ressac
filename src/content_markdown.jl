@@ -423,3 +423,18 @@ function _md_render(lines::AbstractVector{<:AbstractString}, width::Int)
     end
     return out
 end
+
+"""
+    _md_draw_line!(buf, x, y, line, width)
+
+Pose une ligne de segments à l'écran, rognée à `width` — pour un rendu
+hors ScrollPane (l'aperçu de code d'une modale, par exemple).
+"""
+function _md_draw_line!(buf::TK.Buffer, x::Int, y::Int, line::_MdLine, width::Int)
+    for sp in _md_clip(line, width)
+        isempty(sp.content) && continue
+        TK.set_string!(buf, x, y, sp.content, sp.style)
+        x += textwidth(sp.content)
+    end
+    return
+end

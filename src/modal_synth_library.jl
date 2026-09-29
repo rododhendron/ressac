@@ -3,8 +3,30 @@
 # plugins/user-synths/. Extracted from app.jl.
 
 function _open_synth_library!(m::RessacApp)
-    _open_modal!(m, :synth_library, :synthlib_cursor)
+    _open_modal!(m, :synth_library)
+    _picker_reset!(m.synthlib); _picker_search!(m.synthlib, false)
 end
+
+# Les entrées filtrées par la saisie (nom, catégorie, description).
+function _synthlib_entries(m::RessacApp)
+    entries = _synthlib_all_entries()
+    q = lowercase(_picker_query(m.synthlib))
+    isempty(q) && return entries
+    return filter(e -> occursin(q, lowercase(e.name)) || occursin(q, lowercase(e.category)) ||
+                       occursin(q, lowercase(e.description)), entries)
+end
+
+# Pose les entrées dans le picker, formatées pour `width` colonnes.
+function _synthlib_sync!(m::RessacApp, width::Int = 80)
+    entries = _synthlib_entries(m)
+    rows = [TK.ListItem(first("$(rpad(e.name, 14)) $(e.category == "user" ? "[user]  ★" : "[$(rpad(e.category, 5))]")  $(e.description)", width),
+                        e.category == "user" ? TK.tstyle(:success) : TK.tstyle(:text))
+            for e in entries]
+    _picker_set!(m.synthlib, rows, entries)
+    return entries
+end
+
+_synthlib_cur(m::RessacApp) = (_synthlib_sync!(m); _picker_selected(m.synthlib))
 
 """
     _synthlib_all_entries() -> Vector{_SynthLibEntry}
@@ -52,9 +74,15 @@ function _first_comment_line(src::AbstractString)
 end
 
 function _handle_synthlib_key!(m::RessacApp, evt::TK.KeyEvent)
-    n = length(_synthlib_all_entries())
-    _modal_close_key!(m, evt)        && return
-    _modal_cursor_nav!(m, evt, :synthlib_cursor, n) && return
+    pk = m.synthlib
+    if pk.searching
+        (evt.key === :escape || evt.key === :enter) && (_picker_search!(pk, false); evt.key === :escape && _picker_clear!(pk); return)
+        _picker_type!(pk, evt) && return
+    end
+    if evt.key === :escape || evt.char == 'q'
+        isempty(_picker_query(pk)) ? (m.modal = :none) : _picker_clear!(pk)
+        return
+    end
     dispatch!(((:modal_lib, m),), evt)
     return
 end
@@ -68,17 +96,16 @@ the source, syncs, then `Synth(name, [\\out, 0])`). Lets the user
 audition library entries before deciding to instantiate one.
 """
 function _preview_synth_from_library!(m::RessacApp)
-    entries = _synthlib_all_entries()
-    1 <= m.synthlib_cursor <= length(entries) || return
+    entry = _synthlib_cur(m)
+    entry === nothing && return
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
-    entry = entries[m.synthlib_cursor]
     if entry.mode === :dsl
         try
             # Evaluate in SynthDSL scope so the UGen wrappers (saw,
             # sin_osc, rlpf, …) resolve. Evaluating in Main produces
             # `saw not defined in Main` for any unqualified usage.
-            Core.eval(SynthDSL, Meta.parse(SynthDSL._dsl_preprocess(entry.source)))
+            Core.eval(SynthDSL, SynthDSL._dsl_parse_all(entry.source))
             _push_app_log!(m, "[INFO] écoute de $(entry.name) (DSL)")
         catch err
             _push_app_log!(m, "[ERROR] écoute DSL : $(sprint(showerror, err))")
@@ -100,10 +127,10 @@ user's edits) and open it as a new synth tab. The user can iterate on
 the copy without affecting the canonical template.
 """
 function _instantiate_synth_from_library!(m::RessacApp)
-    entries = _synthlib_all_entries()
-    1 <= m.synthlib_cursor <= length(entries) || return
+    entry = _synthlib_cur(m)
+    entry === nothing && return
     m.modal = :none
-    _instantiate_synth_entry!(m, entries[m.synthlib_cursor])
+    _instantiate_synth_entry!(m, entry)
 end
 
 """
@@ -184,40 +211,31 @@ function _add_synth_from_library!(m::RessacApp, name::AbstractString)
 end
 
 function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    entries = _synthlib_all_entries()
-    n = length(entries)
+    n = length(_synthlib_entries(m))
     inner = _render_modal_block!(buf, area;
         title = "LIBRAIRIE DE SYNTHS",
         title_right = "$n synths · " * _modal_hint_text(m, :modal_lib),
         w_max = 100,
-        h_target = max(10, min(area.height - 4, n + 4)))
+        h_target = max(10, min(area.height - 4, n + 5)))
     inner.width < 20 && return
-    empty!(m.modal_rows)
-    body_h = inner.height
-    # Auto-scroll so the cursor follows j/k past the viewport.
-    m.modal_scroll = _scroll_to_show(m.synthlib_cursor, n, body_h, m.modal_scroll)
-    first_idx = m.modal_scroll + 1
-    last_idx  = min(n, m.modal_scroll + body_h)
-    for (slot, i) in enumerate(first_idx:last_idx)
-        entry = entries[i]
-        is_cur = i == m.synthlib_cursor
-        marker = is_cur ? "▶ " : "  "
-        tag = entry.category == "user" ? "[user]  ★" : "[$(rpad(entry.category, 5))]"
-        text = "$marker$(rpad(entry.name, 14)) $tag  $(entry.description)"
-        base_style = entry.category == "user" ?
-            TK.tstyle(:success) : TK.tstyle(:text)
-        style = is_cur ? TK.tstyle(:accent, bold = true) : base_style
-        screen_y = inner.y + slot - 1
-        TK.set_string!(buf, inner.x, screen_y,
-                       first(rpad(text, inner.width), inner.width), style)
-        push!(m.modal_rows, (screen_y, i))
-    end
+    _synthlib_sync!(m, inner.width - 3)
+    _picker_render!(m.synthlib, inner, buf; right_text = "$(m.synthlib.list.selected)/$n",
+                    hint = "/ pour chercher · Espace écoute · Entrée ouvre")
 end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
 scope!(:modal_lib, "Librairie de synths")
 bind!(:modal_lib, "Space", "écouter"; group = :audio, action = _preview_synth_from_library!)
+bind!(:modal_lib, "/", "chercher"; short = "chercher", group = :nav, action = m -> _picker_search!(m.synthlib, true))
+bind!(:modal_lib, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
+      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :down)))
+bind!(:modal_lib, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
+      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :up)))
+bind!(:modal_lib, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :pagedown)))
+bind!(:modal_lib, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :pageup)))
 bind!(:modal_lib, "Enter", "ouvrir dans une pane synth"; short = "ouvrir", group = :file,
       action = _instantiate_synth_from_library!)
-_bind_modal_common!(:modal_lib)
+_bind_modal_common!(:modal_lib; nav = false)

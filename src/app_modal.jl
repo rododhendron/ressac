@@ -14,26 +14,35 @@ function _modal_click!(m::RessacApp, x::Int, y::Int)
     isempty(m.modal_rows) && return
     for (yy, idx) in m.modal_rows
         if y == yy
-            if m.modal === :synth_library
-                m.synthlib_cursor = idx
-            elseif m.modal === :snippets
-                m.snip_cursor = idx
-            elseif m.modal === :sccode
-                m.sccode_cursor = idx
-            end
+            m.modal === :sccode && (m.sccode_cursor = idx)
             return
         end
     end
 end
 
+# Le picker de la modale ouverte, s'il y en a un.
+_modal_picker(m::RessacApp) =
+    m.modal === :palette       ? m.palette :
+    m.modal === :patterns      ? m.pats :
+    m.modal === :synth_library ? m.synthlib :
+    m.modal === :snippets      ? m.snips : nothing
+
 """
     _modal_mouse!(m, evt) -> Bool
 
-La souris dans une modale : la palette a son picker (clic, molette) ;
-les autres ne connaissent que le clic gauche sur une ligne.
+La souris dans une modale : celles qui ont un picker (palette, patterns,
+librairie, snippets) reçoivent clic et molette ; les autres ne connaissent
+que le clic gauche sur une ligne.
 """
 function _modal_mouse!(m::RessacApp, evt::TK.MouseEvent)
-    m.modal === :palette && return _palette_mouse!(m, evt)
+    pk = _modal_picker(m)
+    if pk !== nothing
+        # Un clic sur la ligne déjà sélectionnée vaut Entrée ; sinon la liste
+        # sélectionne ou défile.
+        _picker_click_hits_selected(pk, evt) &&
+            return dispatch!(((modal_scope(m), m),), TK.KeyEvent(:enter))
+        return _picker_mouse!(pk, evt)
+    end
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
         _modal_click!(m, evt.x, evt.y)
         return true

@@ -114,17 +114,17 @@ end
                 @test occursin("bd(3,8)", scr)                  # aperçu du code sélectionné
                 @test length(Ressac._pattern_entries(app)) == 2
                 _plkey(app, '/'); _plkey(app, 'h'); _plkey(app, 'a')
-                @test app.pat_query == "ha"
+                @test Ressac._picker_query(app.pats) == "ha"
                 @test [x.name for x in Ressac._pattern_entries(app)] == ["hats"]
                 _plkey(app, :enter)                              # valide la recherche
-                @test !app.pat_search_mode
+                @test !app.pats.searching
                 _plkey(app, '7')                                 # charge sur d7
                 @test app.modal === :none
                 @test occursin("@d7 p\"hh*16\"", Tachikoma.text(ed))
                 @test haskey(app.scheduler.patterns, :d7)
                 # suppression depuis le sélecteur
                 _plkey(app, ' '); _plkey(app, 'P')
-                app.pat_cursor = 1
+                app.pats.list.selected = 1
                 _plkey(app, 'x')
                 @test length(list_patterns()) == 1
                 _plkey(app, :escape)

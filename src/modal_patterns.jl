@@ -4,9 +4,8 @@
 # synths : on essaie beaucoup, on garde ce qui marche.
 
 function _open_patterns_modal!(m::RessacApp)
-    _open_modal!(m, :patterns, :pat_cursor)
-    m.pat_query = ""
-    m.pat_search_mode = false
+    _open_modal!(m, :patterns)
+    _picker_reset!(m.pats); _picker_search!(m.pats, false)
     if isempty(list_patterns())
         _push_app_log!(m, "[INFO] aucun pattern rangé — :keep <nom> range le bloc sous le curseur")
     end
@@ -14,38 +13,39 @@ end
 
 function _pattern_entries(m::RessacApp)
     out = list_patterns()
-    isempty(m.pat_query) && return out
-    q = lowercase(m.pat_query)
-    return filter(e -> _fuzzy_score(m.pat_query, e.name) !== nothing ||
-                       any(t -> occursin(q, lowercase(t)), e.tags), out)
+    q = _picker_query(m.pats)
+    isempty(q) && return out
+    ql = lowercase(q)
+    return filter(e -> _fuzzy_score(q, e.name) !== nothing ||
+                       any(t -> occursin(ql, lowercase(t)), e.tags), out)
 end
 
-_pattern_cur(m::RessacApp) =
-    (e = _pattern_entries(m); 1 <= m.pat_cursor <= length(e) ? e[m.pat_cursor] : nothing)
+# Recalcule les entrées filtrées et les pose dans le picker (libellé + slot).
+function _patterns_sync!(m::RessacApp, width::Int = 30)
+    entries = _pattern_entries(m)
+    rows = [TK.ListItem(first(e.name * (pattern_slot(e.code) === nothing ? "" : "  d$(pattern_slot(e.code))"), width))
+            for e in entries]
+    _picker_set!(m.pats, rows, entries)
+    return entries
+end
+
+_pattern_cur(m::RessacApp) = (_patterns_sync!(m); _picker_selected(m.pats))
 
 function _handle_patterns_key!(m::RessacApp, evt::TK.KeyEvent)
-    if m.pat_search_mode
+    pk = m.pats
+    if pk.searching
         if evt.key === :escape
-            m.pat_search_mode = false; m.pat_query = ""; m.pat_cursor = 1
+            _picker_search!(pk, false); _picker_clear!(pk)
             return
         elseif evt.key === :enter
-            m.pat_search_mode = false
-            return
-        elseif evt.key === :backspace
-            isempty(m.pat_query) || (m.pat_query = m.pat_query[1:prevind(m.pat_query, end)])
-            m.pat_cursor = 1
-            return
-        elseif evt.key === :char && evt.char != '\0' && _is_typable_ascii(evt.char)
-            m.pat_query *= string(evt.char); m.pat_cursor = 1
+            _picker_search!(pk, false)
             return
         end
+        _picker_type!(pk, evt) && return
     end
     if evt.key === :escape || evt.char == 'q'
-        if isempty(m.pat_query)
-            m.modal = :none
-        else
-            m.pat_query = ""; m.pat_cursor = 1
-        end
+        # Échap pèle : la recherche d'abord, puis la modale.
+        isempty(_picker_query(pk)) ? (m.modal = :none) : _picker_clear!(pk)
         return
     end
     dispatch!(((:modal_patterns, m),), evt) && return
@@ -53,24 +53,19 @@ function _handle_patterns_key!(m::RessacApp, evt::TK.KeyEvent)
 end
 
 function _render_patterns_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    entries = _pattern_entries(m)
-    n = length(entries)
+    n = length(_pattern_entries(m))
     inner = _render_modal_block!(buf, area;
         title = "PATTERNS RANGÉS",
         title_right = _modal_hint_text(m, :modal_patterns),
         w_max = 110,
         h_target = max(14, min(area.height - 4, n + 8)))
     inner.width < 24 && return
-    count_txt = "$(n) rangé$(n == 1 ? "" : "s")" * (n == 0 ? "" : "  ·  $(m.pat_cursor)/$n")
-    sb = m.pat_search_mode ? "⌕ " * m.pat_query * "▏" :
-         isempty(m.pat_query) ? "/ pour chercher · Entrée charge · 1-9 charge sur le slot" :
-         "⌕ " * m.pat_query
-    sb_style = m.pat_search_mode ? TK.tstyle(:accent, bold = true) :
-               isempty(m.pat_query) ? TK.tstyle(:text_dim) : TK.tstyle(:text)
-    w = max(0, inner.width - textwidth(count_txt))
-    TK.set_string!(buf, inner.x, inner.y, first(rpad(sb, w), w), sb_style)
-    TK.set_string!(buf, inner.x + inner.width - textwidth(count_txt), inner.y,
-                   count_txt, TK.tstyle(:text_dim))
+    list_w = max(18, min(30, inner.width ÷ 3))
+    entries = _patterns_sync!(m, list_w - 3)
+    sel = m.pats.list.selected
+    count_txt = "$(n) rangé$(n == 1 ? "" : "s")" * (n == 0 ? "" : "  ·  $sel/$n")
+    _picker_render_input!(m.pats, TK.Rect(inner.x, inner.y, inner.width, 1), buf;
+                          right_text = count_txt, hint = "/ pour chercher · Entrée charge · 1-9 charge sur le slot")
     if n == 0
         TK.set_string!(buf, inner.x, inner.y + 2,
                        first("Rien de rangé. « :keep <nom> » range le bloc @dN sous le curseur.", inner.width),
@@ -78,25 +73,14 @@ function _render_patterns_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         return
     end
     # Liste à gauche, code du pattern sélectionné à droite.
-    list_w = max(18, min(30, inner.width ÷ 3))
     body_y = inner.y + 1
     body_h = inner.height - 1
-    m.modal_scroll = _scroll_to_show(m.pat_cursor, n, body_h, m.modal_scroll)
-    for i in 1:body_h
-        idx = m.modal_scroll + i
-        idx > n && break
-        e = entries[idx]
-        sel = idx == m.pat_cursor
-        slot = pattern_slot(e.code)
-        label = "$(sel ? "▶ " : "  ")$(e.name)" * (slot === nothing ? "" : "  d$slot")
-        TK.set_string!(buf, inner.x, body_y + i - 1, first(rpad(label, list_w), list_w),
-                       sel ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
-    end
+    _picker_render_list!(m.pats, TK.Rect(inner.x, body_y, list_w, body_h), buf)
     sep_x = inner.x + list_w
     for y in body_y:(body_y + body_h - 1)
         TK.set_string!(buf, sep_x, y, "│", TK.tstyle(:border))
     end
-    cur = entries[clamp(m.pat_cursor, 1, n)]
+    cur = entries[clamp(sel, 1, n)]
     code_x = sep_x + 2
     code_w = inner.width - list_w - 2
     row = 0
@@ -107,7 +91,7 @@ function _render_patterns_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     end
     for line in split(cur.code, '\n')
         row >= body_h && break
-        TK.set_string!(buf, code_x, body_y + row, first(String(line), code_w), TK.tstyle(:text_bright))
+        _md_draw_line!(buf, code_x, body_y + row, _md_code_line(String(line), code_w), code_w)
         row += 1
     end
 end
@@ -201,7 +185,7 @@ function _patterns_delete_selected!(m::RessacApp)
     e = _pattern_cur(m)
     e === nothing && return
     delete_pattern!(e.name)
-    m.pat_cursor = max(1, m.pat_cursor - 1)
+    _patterns_sync!(m)                       # la sélection se borne sur la liste réduite
     _push_app_log!(m, "[INFO] pattern « $(e.name) » supprimé")
 end
 
@@ -213,19 +197,19 @@ bind!(:modal_patterns, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "charger s
       short = "slot N", group = :edit,
       action = (m, evt) -> _patterns_load_selected!(m, Int(evt.char - '0')))
 bind!(:modal_patterns, "/", "chercher"; short = "chercher", group = :nav,
-      action = m -> (m.pat_search_mode = true))
+      action = m -> _picker_search!(m.pats, true))
 bind!(:modal_patterns, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.pat_cursor = min(m.pat_cursor + 1, max(1, length(_pattern_entries(m))))))
+      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :down)))
 bind!(:modal_patterns, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.pat_cursor = max(1, m.pat_cursor - 1)))
+      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :up)))
 bind!(:modal_patterns, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.pat_cursor = min(m.pat_cursor + 15, max(1, length(_pattern_entries(m))))))
+      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :pagedown)))
 bind!(:modal_patterns, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.pat_cursor = max(1, m.pat_cursor - 15)))
+      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :pageup)))
 bind!(:modal_patterns, "g", "premier"; group = :nav, hint = false,
-      action = m -> (m.pat_cursor = 1))
+      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :home)))
 bind!(:modal_patterns, "G", "dernier"; group = :nav, hint = false,
-      action = m -> (m.pat_cursor = max(1, length(_pattern_entries(m)))))
+      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :end_key)))
 bind!(:modal_patterns, "x", "supprimer"; group = :edit,
       action = m -> _patterns_delete_selected!(m))
 _bind_modal_common!(:modal_patterns)

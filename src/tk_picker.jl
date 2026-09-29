@@ -11,13 +11,31 @@ mutable struct Picker
     list::TK.SelectableList
     keys::Vector{Any}            # ce que chaque ligne désigne, dans l'ordre de la liste
     last_query::String           # la saisie au dernier `_picker_set!` : si elle change, on remonte en tête
+    searching::Bool              # la frappe va dans la saisie (sinon aux touches de la modale)
 end
 
-function _picker()
+"""
+    _picker(; searching = false) -> Picker
+
+`searching = true` pour une modale qui est d'abord une barre de recherche
+(la palette) ; les autres y entrent par `/` et en sortent par Entrée ou Échap.
+"""
+function _picker(; searching::Bool = false)
     input = TK.TextInput(; label = "⌕ ", style = TK.tstyle(:accent, bold = true),
-                         label_style = TK.tstyle(:accent, bold = true), focused = true)
+                         label_style = TK.tstyle(:accent, bold = true), focused = searching)
     list = TK.SelectableList(TK.ListItem[]; focused = true, show_scrollbar = true)
-    return Picker(input, list, Any[], "")
+    return Picker(input, list, Any[], "", searching)
+end
+
+# Entre ou sort du mode recherche.
+_picker_search!(pk::Picker, on::Bool) = (pk.searching = on; pk.input.focused = on; nothing)
+
+# Efface la saisie et remonte en tête, sans toucher au mode.
+function _picker_clear!(pk::Picker)
+    TK.set_text!(pk.input, "")
+    pk.last_query = ""
+    pk.list.selected = 1; pk.list.offset = 0
+    return
 end
 
 _picker_query(pk::Picker) = TK.text(pk.input)
@@ -61,10 +79,12 @@ _picker_nav!(pk::Picker, key::Symbol) = TK.handle_key!(pk.list, TK.KeyEvent(key)
 """
     _picker_type!(pk, evt) -> Bool
 
-La saisie : un caractère imprimable filtre, retour arrière efface, ←/→
-et Suppr déplacent ou coupent. Vrai si la touche a servi.
+La saisie, en mode recherche seulement : un caractère imprimable filtre,
+retour arrière efface, ←/→ et Suppr déplacent ou coupent. Vrai si la
+touche a servi.
 """
 function _picker_type!(pk::Picker, evt::TK.KeyEvent)
+    pk.searching || return false
     if evt.key === :char
         (evt.char != '\0' && _is_typable_ascii(evt.char)) || return false
         return TK.handle_key!(pk.input, evt)
@@ -74,17 +94,41 @@ function _picker_type!(pk::Picker, evt::TK.KeyEvent)
 end
 
 """
-    _picker_render!(pk, inner, buf; right_text = "")
+    _picker_render_input!(pk, rect, buf; right_text = "", hint = "")
 
-La saisie sur la première ligne (avec `right_text` à droite : un compte,
-un état), la liste dessous.
+La ligne de saisie : le TextInput (curseur visible en mode recherche),
+`right_text` à droite (un compte, un état). Hors recherche et sans
+saisie, `hint` en grisé à la place (« / pour chercher · … »).
 """
-function _picker_render!(pk::Picker, inner::TK.Rect, buf::TK.Buffer; right_text::AbstractString = "")
-    (inner.height < 1 || inner.width < 4) && return
+function _picker_render_input!(pk::Picker, rect::TK.Rect, buf::TK.Buffer;
+                               right_text::AbstractString = "", hint::AbstractString = "")
+    (rect.height < 1 || rect.width < 4) && return
     rw = textwidth(right_text)
-    TK.render(pk.input, TK.Rect(inner.x, inner.y, max(1, inner.width - rw - 1), 1), buf)
-    isempty(right_text) || TK.set_string!(buf, inner.x + inner.width - rw, inner.y, right_text, TK.tstyle(:text_dim))
-    inner.height >= 2 && TK.render(pk.list, TK.Rect(inner.x, inner.y + 1, inner.width, inner.height - 1), buf)
+    w = max(1, rect.width - rw - (rw > 0 ? 1 : 0))
+    if !pk.searching && isempty(_picker_query(pk)) && !isempty(hint)
+        TK.set_string!(buf, rect.x, rect.y, first(rpad(hint, w), w), TK.tstyle(:text_dim))
+    else
+        pk.input.focused = pk.searching
+        TK.render(pk.input, TK.Rect(rect.x, rect.y, w, 1), buf)
+    end
+    rw > 0 && TK.set_string!(buf, rect.x + rect.width - rw, rect.y, right_text, TK.tstyle(:text_dim))
+    return
+end
+
+# La liste dans `rect` (marqueur, surbrillance, barre).
+_picker_render_list!(pk::Picker, rect::TK.Rect, buf::TK.Buffer) =
+    ((rect.height < 1 || rect.width < 3) || TK.render(pk.list, rect, buf); nothing)
+
+"""
+    _picker_render!(pk, inner, buf; right_text = "", hint = "")
+
+La saisie sur la première ligne, la liste dessous.
+"""
+function _picker_render!(pk::Picker, inner::TK.Rect, buf::TK.Buffer;
+                         right_text::AbstractString = "", hint::AbstractString = "")
+    (inner.height < 1 || inner.width < 4) && return
+    _picker_render_input!(pk, TK.Rect(inner.x, inner.y, inner.width, 1), buf; right_text, hint)
+    inner.height >= 2 && _picker_render_list!(pk, TK.Rect(inner.x, inner.y + 1, inner.width, inner.height - 1), buf)
     return
 end
 

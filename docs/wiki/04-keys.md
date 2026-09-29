@@ -603,18 +603,22 @@ Lecture d'une carte :
 |---|---|
 | `Space` | écouter |
 
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `/` | chercher |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `Esc / q` | fermer |
+
 **Fichiers**
 
 | Touche | Action |
 |---|---|
 | `Enter` | ouvrir dans une pane synth |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / k / ↓ / ↑` | naviguer |
-| `Esc / q` | fermer |
 
 **Aide**
 
@@ -643,8 +647,11 @@ Lecture d'une carte :
 |---|---|
 | `Tab / l / →` | catégorie suivante |
 | `h / ←` | catégorie précédente |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
 | `Esc / q` | effacer la recherche → la catégorie → fermer |
-| `j / k / ↓ / ↑` | naviguer |
 | `Esc / q` | fermer |
 
 **Aide**

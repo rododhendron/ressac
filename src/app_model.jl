@@ -72,12 +72,9 @@ non-empty), and the focus toggle for keystroke routing.
     # Zoom : id du leaf rendu seul dans tout le workspace (0 = aucun).
     # Ctrl-w z / :zoom basculent ; un changement de focus dézoome.
     zoom_leaf::Int               = 0
-    # Synth library picker state (only meaningful when modal === :synth_library).
-    synthlib_cursor::Int         = 1
-    # Snippet picker state (only meaningful when modal === :snippets).
-    snip_cursor::Int             = 1
-    snip_query::String           = ""
-    snip_search_mode::Bool       = false
+    # Librairie de synths et snippets : saisie de filtre + liste (tk_picker.jl).
+    synthlib::Picker             = _picker()
+    snips::Picker                = _picker()
     # Active category tab — empty string = "all". Tab / Shift-Tab cycle.
     snip_category::String        = ""
     # Wiki state (only meaningful when modal === :wiki). Pages re-read
@@ -161,9 +158,7 @@ non-empty), and the focus toggle for keystroke routing.
     browser_cols::Int            = 1      # colonnes de la grille (posé au rendu)
     browser_rows::Int            = 1      # lignes visibles (idem)
     browser_search_mode::Bool    = false  # `/` : la frappe va dans la recherche
-    pat_cursor::Int              = 1      # bibliothèque de patterns
-    pat_query::String            = ""
-    pat_search_mode::Bool        = false
+    pats::Picker                 = _picker()   # patterns rangés : saisie + liste
     # Exploration de variations de pattern (modal :evolve)
     evolve_seed::String          = ""
     evolve_items::Vector{String} = String[]
@@ -172,7 +167,7 @@ non-empty), and the focus toggle for keystroke routing.
     evolve_gen::Int              = 1
     evolve_count::Int            = 8
     evolve_rng::Random.MersenneTwister = Random.MersenneTwister(0)
-    palette::Picker              = _picker()       # saisie + liste de la palette (Ctrl-p)
+    palette::Picker              = _picker(; searching = true)   # la palette est d'abord une barre de recherche
     # `f` / `F` / `t` / `T` en attente du caractère à chercher sur la ligne,
     # et le dernier couple (motion, caractère) pour `;` et `,`.
     pending_find::Union{Nothing,Char} = nothing

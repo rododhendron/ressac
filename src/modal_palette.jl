@@ -27,7 +27,7 @@ const _PALETTE_LABEL = Dict{Symbol,String}(
 
 function _open_palette!(m::RessacApp)
     _open_modal!(m, :palette)
-    _picker_reset!(m.palette)
+    _picker_reset!(m.palette)          # reste en mode recherche : on tape, ça filtre
 end
 
 """
@@ -130,16 +130,6 @@ function _handle_palette_key!(m::RessacApp, evt::TK.KeyEvent)
     # de recherche, la navigation passe par les flèches et Ctrl-n / Ctrl-p.
     _picker_type!(m.palette, evt)
     return
-end
-
-# Souris dans la palette : un clic sélectionne, un second sur la même
-# ligne valide, la molette fait défiler.
-function _palette_mouse!(m::RessacApp, evt::TK.MouseEvent)
-    if _picker_click_hits_selected(m.palette, evt)
-        _palette_run!(m)
-        return true
-    end
-    return _picker_mouse!(m.palette, evt)
 end
 
 function _render_palette_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)

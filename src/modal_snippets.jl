@@ -39,8 +39,8 @@ function _snippets_visible(m::RessacApp)
     if !isempty(m.snip_category)
         base = [s for s in base if _snip_category_of(s) == m.snip_category]
     end
-    isempty(m.snip_query) && return base
-    q = lowercase(m.snip_query)
+    q = lowercase(_picker_query(m.snips))
+    isempty(q) && return base
     return [s for s in base
             if occursin(q, lowercase(s.name)) ||
                occursin(q, lowercase(_snip_category_of(s))) ||
@@ -82,46 +82,44 @@ function _snip_cycle_category!(m::RessacApp, dir::Int)
     cur === nothing && (cur = 1)
     new = mod1(cur + dir, length(cats))
     m.snip_category = cats[new]
-    m.snip_cursor = 1
+    m.snips.list.selected = 1; m.snips.list.offset = 0
 end
 
 function _open_snippets!(m::RessacApp)
-    _open_modal!(m, :snippets, :snip_cursor)
-    m.snip_query = ""
-    m.snip_search_mode = false
+    _open_modal!(m, :snippets)
+    _picker_reset!(m.snips); _picker_search!(m.snips, false)
     m.snip_category = ""
 end
 
+# Pose les snippets visibles dans le picker, formatés pour `width` colonnes.
+function _snippets_sync!(m::RessacApp, width::Int = 80)
+    snips = _snippets_visible(m)
+    rows = [TK.ListItem(first("$(rpad(s.name, 18)) [$(rpad(_snip_category_of(s), 9))]  $(s.description)", width))
+            for s in snips]
+    _picker_set!(m.snips, rows, snips)
+    return snips
+end
+
+_snip_cur(m::RessacApp) = (_snippets_sync!(m); _picker_selected(m.snips))
+
 function _handle_snippets_key!(m::RessacApp, evt::TK.KeyEvent)
-    if m.snip_search_mode
-        if evt.key === :escape
-            m.snip_search_mode = false
-        elseif evt.key === :enter
-            m.snip_search_mode = false
-        elseif evt.key === :backspace
-            isempty(m.snip_query) || (m.snip_query = m.snip_query[1:end-1])
-            m.snip_cursor = 1
-        elseif evt.key === :char && isprint(evt.char)
-            m.snip_query *= string(evt.char)
-            m.snip_cursor = 1
-        end
+    pk = m.snips
+    if pk.searching
+        (evt.key === :escape || evt.key === :enter) && (_picker_search!(pk, false); return)
+        _picker_type!(pk, evt) && return
         return
     end
-    n = length(_snippets_visible(m))
-    # Query+category-aware Esc: Esc/q clears query → clears category
-    # → closes the modal (three escapes peel through filter state).
-    # Can't use _modal_close_key! because of that.
+    # Échap pèle : la recherche, puis la catégorie, puis la modale.
     if evt.key === :escape || evt.char == 'q'
-        if !isempty(m.snip_query)
-            m.snip_query = ""; m.snip_cursor = 1
+        if !isempty(_picker_query(pk))
+            _picker_clear!(pk)
         elseif !isempty(m.snip_category)
-            m.snip_category = ""; m.snip_cursor = 1
+            m.snip_category = ""; pk.list.selected = 1; pk.list.offset = 0
         else
             m.modal = :none
         end
         return
     end
-    _modal_cursor_nav!(m, evt, :snip_cursor, n) && return
     dispatch!(((:modal_snippets, m),), evt)
     return
 end
@@ -133,9 +131,8 @@ Dump the snippet body line-by-line into the log so the user can read
 exactly what Enter would insert. Cheap and reversible.
 """
 function _preview_snippet!(m::RessacApp)
-    snips = _snippets_visible(m)
-    1 <= m.snip_cursor <= length(snips) || return
-    s = snips[m.snip_cursor]
+    s = _snip_cur(m)
+    s === nothing && return
     _push_app_log!(m, "[INFO] aperçu du snippet $(s.name) — $(s.description)")
     for line in split(strip(s.resolved_content), '\n')
         _push_app_log!(m, "        $line")
@@ -152,9 +149,8 @@ current one — so the user's existing line content is preserved.
 After insertion the cursor lands at the START of the first new line.
 """
 function _insert_snippet!(m::RessacApp)
-    snips = _snippets_visible(m)
-    1 <= m.snip_cursor <= length(snips) || return
-    s = snips[m.snip_cursor]
+    s = _snip_cur(m)
+    s === nothing && return
     ed = _active_editor(m)
     ed === nothing && return
     body_lines = split(strip(s.resolved_content), '\n')
@@ -208,38 +204,21 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         end
     end
     # ── Row 2: search bar ─────────────────────────────────────────
-    sb_prefix = m.snip_search_mode ? "/" : "⌕ "
-    sb_text = sb_prefix * m.snip_query * (m.snip_search_mode ? "▏" : "")
-    sb_style = m.snip_search_mode ?
-        TK.tstyle(:accent, bold = true) : TK.tstyle(:text_dim)
-    TK.set_string!(buf, inner.x, inner.y + 1,
-                   first(rpad(sb_text, inner.width), inner.width), sb_style)
+    _picker_render_input!(m.snips, TK.Rect(inner.x, inner.y + 1, inner.width, 1), buf;
+                          hint = "/ pour chercher · Tab change de catégorie · Entrée insère")
     # ── Body: rows 3..(end-1), footer on last row ────────────────
     body_y0 = inner.y + 2
     body_h  = inner.height - 3
+    _snippets_sync!(m, inner.width - 3)
     n = length(snips)
     if n == 0
-        msg = isempty(m.snip_query) ?
+        q = _picker_query(m.snips)
+        msg = isempty(q) ?
             "(aucun snippet dans la catégorie « $(m.snip_category) »)" :
-            "(rien pour « $(m.snip_query) »)"
+            "(rien pour « $q »)"
         TK.set_string!(buf, inner.x + 1, body_y0, msg, TK.tstyle(:text_dim))
     else
-        start_i = max(1, m.snip_cursor - body_h ÷ 2)
-        end_i = min(n, start_i + body_h - 1)
-        start_i = max(1, end_i - body_h + 1)
-        empty!(m.modal_rows)
-        for (slot, i) in enumerate(start_i:end_i)
-            s = snips[i]
-            is_cur = i == m.snip_cursor
-            marker = is_cur ? "▶ " : "  "
-            cat = _snip_category_of(s)
-            label = "$(marker)$(rpad(s.name, 18)) [$(rpad(cat, 9))]  $(s.description)"
-            style = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
-            screen_y = body_y0 + slot - 1
-            TK.set_string!(buf, inner.x, screen_y,
-                           first(rpad(label, inner.width), inner.width), style)
-            push!(m.modal_rows, (screen_y, i))
-        end
+        _picker_render_list!(m.snips, TK.Rect(inner.x, body_y0, inner.width, body_h), buf)
     end
     cat_label = isempty(m.snip_category) ? "all" : m.snip_category
     foot = "$(n) shown · ctx = $ctx_label · cat = $cat_label"
@@ -257,6 +236,14 @@ bind!(:modal_snippets, ["Tab", "l", "→"], "catégorie suivante"; group = :nav,
       action = m -> _snip_cycle_category!(m, +1))
 bind!(:modal_snippets, ["h", "←"], "catégorie précédente"; group = :nav, hint = false,
       action = m -> _snip_cycle_category!(m, -1))
-bind!(:modal_snippets, "/", "rechercher"; group = :edit, action = m -> (m.snip_search_mode = true))
+bind!(:modal_snippets, "/", "rechercher"; group = :edit, action = m -> _picker_search!(m.snips, true))
+bind!(:modal_snippets, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
+      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :down)))
+bind!(:modal_snippets, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
+      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :up)))
+bind!(:modal_snippets, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
+      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :pagedown)))
+bind!(:modal_snippets, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
+      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :pageup)))
 bind!(:modal_snippets, "Esc / q", "effacer la recherche → la catégorie → fermer"; group = :nav, hint = false)
-_bind_modal_common!(:modal_snippets)
+_bind_modal_common!(:modal_snippets; nav = false)

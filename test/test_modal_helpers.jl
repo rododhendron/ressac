@@ -215,11 +215,11 @@
         mock = MockOSCClient()
         app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
         app.modal = :none
-        app.synthlib_cursor = 7
+        app.mixer_cursor = 7
         app.modal_scroll = 42
-        Ressac._open_modal!(app, :synth_library, :synthlib_cursor)
-        @test app.modal === :synth_library
-        @test app.synthlib_cursor == 1
+        Ressac._open_modal!(app, :mixer, :mixer_cursor)
+        @test app.modal === :mixer
+        @test app.mixer_cursor == 1
         @test app.modal_scroll == 0
     end
 
@@ -228,12 +228,12 @@
         # all per-modal state alone, only modal + modal_scroll change.
         mock = MockOSCClient()
         app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
-        app.synthlib_cursor = 7
+        app.mixer_cursor = 7
         app.modal_scroll = 42
         Ressac._open_modal!(app, :snippets, nothing)
         @test app.modal === :snippets
         @test app.modal_scroll == 0
-        @test app.synthlib_cursor == 7   # untouched
+        @test app.mixer_cursor == 7   # untouched
     end
 
     # ── app.jl — _modal_cursor_nav! / _modal_close_key! ──
@@ -242,42 +242,42 @@
         mock = MockOSCClient()
         app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
         kp   = TK.key_press
-        app.synthlib_cursor = 1
+        app.mixer_cursor = 1
         # j moves down, clamped to n.
         @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', kp), :synthlib_cursor, 3) == true
-        @test app.synthlib_cursor == 2
+            TK.KeyEvent(:char, 'j', kp), :mixer_cursor, 3) == true
+        @test app.mixer_cursor == 2
         @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', kp), :synthlib_cursor, 3) == true
-        @test app.synthlib_cursor == 3
+            TK.KeyEvent(:char, 'j', kp), :mixer_cursor, 3) == true
+        @test app.mixer_cursor == 3
         # j at n stays at n.
         Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', kp), :synthlib_cursor, 3)
-        @test app.synthlib_cursor == 3
+            TK.KeyEvent(:char, 'j', kp), :mixer_cursor, 3)
+        @test app.mixer_cursor == 3
         # k decrements, clamped to 1.
         @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'k', kp), :synthlib_cursor, 3) == true
-        @test app.synthlib_cursor == 2
+            TK.KeyEvent(:char, 'k', kp), :mixer_cursor, 3) == true
+        @test app.mixer_cursor == 2
         # :down / :up also work.
         @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:down, '\0', kp), :synthlib_cursor, 3) == true
-        @test app.synthlib_cursor == 3
+            TK.KeyEvent(:down, '\0', kp), :mixer_cursor, 3) == true
+        @test app.mixer_cursor == 3
         @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:up, '\0', kp), :synthlib_cursor, 3) == true
-        @test app.synthlib_cursor == 2
+            TK.KeyEvent(:up, '\0', kp), :mixer_cursor, 3) == true
+        @test app.mixer_cursor == 2
         # Non-nav key not consumed.
         @test Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'x', kp), :synthlib_cursor, 3) == false
+            TK.KeyEvent(:char, 'x', kp), :mixer_cursor, 3) == false
     end
 
     @testset "_modal_cursor_nav! — empty list cursor stays at 1" begin
         TK = Ressac.TK
         mock = MockOSCClient()
         app = Ressac.RessacApp(; scheduler = Scheduler(mock; cps=0.5))
-        app.synthlib_cursor = 1
+        app.mixer_cursor = 1
         Ressac._modal_cursor_nav!(app,
-            TK.KeyEvent(:char, 'j', TK.key_press), :synthlib_cursor, 0)
-        @test app.synthlib_cursor == 1
+            TK.KeyEvent(:char, 'j', TK.key_press), :mixer_cursor, 0)
+        @test app.mixer_cursor == 1
     end
 
     @testset "_modal_close_key! — Esc or q closes" begin
