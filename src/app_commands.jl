@@ -194,6 +194,19 @@ function _quit!(m::RessacApp)
 end
 _register_literal!(m -> _panic!(m),              "panic")
 _register_literal!(m -> _hush!(m),               "hush", "stop", "silence")
+# Transitions : comment les prochains @dN prennent la place des anciens.
+function _set_transition!(m::RessacApp, mode::Symbol, n::Int)
+    _EVAL_MODE[] = (mode, n)
+    _push_app_log!(m, mode === :immediate ? "[INFO] transitions : immédiat — un @dN remplace tout de suite" :
+                      mode === :deferred  ? "[INFO] transitions : jump $n — un @dN attend $(n == 1 ? "le prochain cycle" : "$n cycles")" :
+                                            "[INFO] transitions : xfade $n — un @dN fond sur $n cycle$(n > 1 ? "s" : "")")
+    return
+end
+_register_literal!(m -> _set_transition!(m, :immediate, 0), "now")
+_register_literal!(m -> _set_transition!(m, :deferred, 1),  "jump")
+_register_regex!(r"^jump\s+(\d+)$",  (m, mt) -> _set_transition!(m, :deferred, parse(Int, mt.captures[1])))
+_register_literal!(m -> _set_transition!(m, :xfade, 4),     "xfade")
+_register_regex!(r"^xfade\s+(\d+)$", (m, mt) -> _set_transition!(m, :xfade, max(1, parse(Int, mt.captures[1]))))
 
 # ── Synth tabs ───────────────────────────────────────────────────────
 _register_literal!(m -> _open_sandbox_synth!(m),     "synth", "scratch", "sandbox")

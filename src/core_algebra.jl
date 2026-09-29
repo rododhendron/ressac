@@ -106,3 +106,26 @@ function _as_bool_pattern(q::AbstractString)
     Pattern{Bool}((s::Rational, e::Rational) -> Event{Bool}[Event{Bool}(ev.start, ev.stop, _truthy(ev.value)) for ev in sp(s, e)])
 end
 _as_bool_pattern(q::Pattern{Bool}) = q
+
+# --- Concaténer, empiler, tirer au sort : les crochets et deux opérateurs ---
+#
+# `+` reste l'arithmétique (structure des deux côtés, comme Tidal) : on ne
+# lui fait pas dire « enchaîne ». Les crochets de Julia disent déjà la
+# forme : côte à côte = dans le cycle, l'un sous l'autre = un par cycle.
+#
+#   [a b]    fastcat  — a puis b dans UN cycle
+#   [a; b]   slowcat  — a au cycle 0, b au cycle 1, puis on recommence
+#   a & b    overlay  — a ET b ensemble (stack)
+#   a | b    randcat  — a OU b, tiré au sort à chaque cycle (le `|` de la mini-notation)
+#
+# Les chaînes se mêlent aux patterns dès qu'un pattern est présent :
+# `[p"bd*2" "hh sn"]`.
+const _Catable = Union{Pattern,AbstractString,Symbol}
+Base.hcat(a::Pattern, rest::_Catable...) = fastcat(collect(_Catable, (a, rest...)))
+Base.hcat(a::Union{AbstractString,Symbol}, b::Pattern, rest::_Catable...) = fastcat(collect(_Catable, (a, b, rest...)))
+Base.vcat(a::Pattern, rest::_Catable...) = slowcat(collect(_Catable, (a, rest...)))
+Base.vcat(a::Union{AbstractString,Symbol}, b::Pattern, rest::_Catable...) = slowcat(collect(_Catable, (a, b, rest...)))
+Base.:&(a::Pattern, b::_Catable) = overlay(a, b)
+Base.:&(a::Union{AbstractString,Symbol}, b::Pattern) = overlay(a, b)
+Base.:|(a::Pattern, b::_Catable) = randcat(a, b)
+Base.:|(a::Union{AbstractString,Symbol}, b::Pattern) = randcat(a, b)

@@ -80,9 +80,10 @@ Combinateurs disponibles :
   `spaceOut` `rot`
 - concaténation : `stack` `overlay` `cat` `slowcat` `append` `seq` `fastcat`
   `fastAppend` `timeCat` `ncat` `randcat` `wrandcat` `wedge`
-- structure : `superimpose` `layer` `mask` `inv` `gate` `structPat` `sew`
-  `stitch` `euclid` `euclidInv` `euclidOff` `euclidFull` `chunk` `chunkBack`
-  `shuffle` `scramble` `mono` `binary` `binaryN` `asciip` `necklace`
+- structure : `superimpose` `layer` `mask` `inv` `gate` `structPat`
+  `substruct` `sew` `stitch` `euclid` `euclidInv` `euclidOff` `euclidFull`
+  `chunk` `chunkBack` `shuffle` `scramble` `mono` `binary` `binaryN` `asciip`
+  `necklace`
 - conditionnel : `every` `every(n, décalage, f)` `whenmod` `when` `whenT`
   `within` `ifp` `sometimes` `sometimesBy` `often` `rarely` `always` `never`
   `almostAlways` `almostNever` `someCycles` `someCyclesBy` `degrade`
@@ -104,6 +105,24 @@ côtés, le `|+|` de Tidal), entre un pattern et un nombre, ou avec une
 chaîne : `n(p"0 3" + "<0 12>")`, `n(p"0 3" + 12)`. Entre deux
 ControlPatterns les clés numériques communes se combinent. En pipe :
 `add(:n, 12)`, `sub`, `mul`.
+
+**Enchaîner, empiler, tirer au sort** : les crochets de Julia disent la
+forme, deux opérateurs font le reste. `+` reste l'arithmétique.
+
+```julia
+@d1 [p"bd*2" "hh sn"]          # côte à côte : dans UN cycle   (= fastcat)
+@d1 [p"bd*2"; "hh sn"]         # l'un sous l'autre : un par cycle (= slowcat)
+@d1 p"bd*2" & "hh*4"           # ensemble                        (= overlay / stack)
+@d1 p"bd*2" | "cp*3"           # l'un OU l'autre, tiré au sort par cycle (= randcat)
+```
+
+Dès qu'un pattern est présent, les autres membres peuvent être des
+chaînes ou des symboles.
+
+**Structure d'un contrôle** : `"bd*4" |> n("0 1 2")` découpe aux
+intersections (six coups, structure des deux côtés). Pour garder la
+structure de gauche — quatre coups qui lisent `n` à leur attaque, le `#`
+de Tidal — : `"bd*4" |> sampled(n("0 1 2"))`.
 
 `:doc <nom>` donne la description et des exemples de chacune ; la
 livedoc les montre dès que le curseur est dans l'appel.

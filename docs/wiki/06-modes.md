@@ -96,6 +96,19 @@ leur gain et leur source. Par slot :
 - `!` / `.` — panic
 - `q` / Esc — fermer
 
+## Transitions — `:xfade [n]`, `:jump [n]`, `:now`
+
+Comment un `@dN` évalué prend la place de l'ancien pattern du slot. Le
+réglage reste actif jusqu'au suivant.
+
+- `:now` (défaut) — remplace tout de suite.
+- `:jump [n]` — attend le prochain cycle, ou `n` cycles (le `jump` de
+  Tidal) : on tape en avance, ça tombe sur le temps.
+- `:xfade [n]` — fondu croisé sur `n` cycles (4 par défaut) à partir du
+  prochain cycle : l'ancien descend pendant que le nouveau monte, gain
+  lu à l'attaque de chaque événement. Un `@dN` sans corps coupe tout de
+  suite, sans fondu.
+
 ## Pause — `:pause`
 
 Fige le rendu pour sélectionner du texte à la souris (shift-glisser)

@@ -17,6 +17,8 @@ vocabulaire se transposent. Les grandes différences :
 | `degradeBy 0.3`            | `degradeBy 0.3`                |
 | `pat1 |+| pat2`            | `pat1 + pat2`  (structure des deux) |
 | `n "0 3" |+ n 12`          | `n("0 3") \|> add(:n, 12)`  (structure de gauche) |
+| `s "bd*4" # n "0 1 2"`     | `"bd*4" \|> sampled(n("0 1 2"))`  (structure de gauche, valeur lue à l'attaque) |
+| `cat [a, b]` / `fastcat`   | `[a; b]` / `[a b]` — `a & b` empile, `a \| b` tire au sort |
 | `+|` `|-` `|*` `|/` `|%`   | `sub` `mul` en pipe, ou `+ - * / %` |
 | `every 4 (fast 2)`         | `every 4 fast(2)`              |
 
@@ -120,13 +122,13 @@ par Julia (mot-clé ou clash avec `Base`) : `struct` → `structPat`,
 `trunc` → `truncp`, `ascii` → `asciip`, `run` → `runp`, `chop` → `chopp`,
 `rand` → `rand_pat`, `range` → `range_pat`, `chunk'` → `chunkBack`,
 `every'` → `every(n, décalage, f)`, `iter'` → `iterBack`, `begin`/`end` →
-`begin_`/`end_`, `while` → `sew(b, f(p), p)`.
+`begin_`/`end_`, `while` → `sew(b, f(p), p)`, `sec`/`msec` → `secs`/`msecs`.
 
 | Famille Tidal | Ressac |
 |---|---|
 | temps : `fast` `slow` `hurry` `rev` `iter` `iter'` `palindrome` `ply` `plyWith` `swingBy` `swing` `inside` `outside` `rot` `linger` `trunc` `zoom` `compress` `fastGap` `press` `pressBy` `spaceOut` `early` `late` `off` | idem (`iterBack`, `truncp`) |
 | concaténation : `cat` `slowcat` `fastcat` `timeCat` `randcat` `wrandcat` `append` `fastAppend` `slowAppend` `overlay` `stack` `wedge` `ncat` `seq` | idem |
-| structure : `struct` `substruct` `mask` `inv` `sew` `stitch` `euclid` `euclidInv` `euclidOff` `euclidFull` `binary` `binaryN` `ascii` `necklace` `mono` `chunk` `chunk'` `shuffle` `scramble` `superimpose` `layer` | idem (`structPat`, `asciip`, `chunkBack`) — pas de `substruct` |
+| structure : `struct` `substruct` `mask` `inv` `sew` `stitch` `euclid` `euclidInv` `euclidOff` `euclidFull` `binary` `binaryN` `ascii` `necklace` `mono` `chunk` `chunk'` `shuffle` `scramble` `superimpose` `layer` | idem (`structPat`, `asciip`, `chunkBack`) |
 | conditionnel : `every` `every'` `whenmod` `when` `whenT` `within` `ifp` `sometimesBy` `sometimes` `often` `rarely` `almostAlways` `almostNever` `always` `never` `someCyclesBy` `somecycles` `degradeBy` `unDegradeBy` `fix` `unfix` `contrast` `while` | idem — `while` = `sew(b, f(p), p)` |
 | aléatoire : `rand` `irand` `perlin` `brand` `brandBy` `choose` `chooseBy` `wchoose` `wchooseBy` `cycleChoose` `randslice` `select` `selectF` `pickF` `squeeze` | idem (`rand_pat`) |
 | accumulation : `stut` `echo` `echoWith` `stutWith` `stutter` `off` `superimpose` `layer` `spread` `fastspread` `spreadf` `spreadChoose` `spreadr` `ghost` `ghostWith` | idem |
@@ -134,11 +136,12 @@ par Julia (mot-clé ou clash avec `Base`) : `struct` → `structPat`,
 | harmonie : `arp` `arpeggiate` `arpg` `rolled` `rolledBy` `toScale` `scale` accords `c'maj` `n "c e g"` | idem — `scale(:major)` est un contrôle |
 | signaux : `sine` `cosine` `tri` `saw` `square` `range` `rangex` `quantise` `smooth` `segment` `discretise` `run` `scan` | idem (`range_pat`, `runp`) |
 | arrangement : `ur` `weave` `weaveWith` | idem |
-| arithmétique : `|+|` `|-|` `|*|` `|/|` `|%|` ; `|+` `|*` … ; `#` | `+ - * / %` (structure des deux côtés) ; `add`/`sub`/`mul` en pipe (structure de gauche) ; `\|>` |
+| arithmétique : `|+|` `|-|` `|*|` `|/|` `|%|` ; `|+` `|*` … ; `#` | `+ - * / %` (structure des deux côtés) ; `add`/`sub`/`mul` en pipe (structure de gauche) ; `\|>` (deux côtés) ; `sampled(f)` (structure de gauche, le `#`) |
 | mini-notation : `~` `[]` `<>` `{}%` `*` `/` `!` `@` `_` `.` `..` `?` `|` `,` `(k,n,r)` `:` `'` | idem — couverture complète |
 | contrôles : `s` `sound` `n` `note` `up` `gain` `pan` `speed` `begin` `end` `unit` `cut` `orbit` `nudge` `loop` `squiz` `midinote` `channel` `dry` `legato` `sustain` `accelerate` `vowel` `cutoff` `resonance` `room` `size` `delay`… | idem (`begin_`, `end_`) ; `set(:size, x)` pour les rares absents |
-| session : `setcps` `hush` `once` `solo` `mute` `xfade` `jump` | `cps!` `:hush` `T` `:solo` `:mute` — pas de transitions |
-| `nTake` `numerals` `sec` `msec` `fix` avec fonctions d'état | pas encore |
+| session : `setcps` `hush` `once` `solo` `mute` `xfade` `jump` | `cps!` `:hush` `T` `:solo` `:mute` ; transitions : `:xfade [n]`, `:jump [n]`, `:now` (voir 06-modes) |
+| `sec` `msec` | `secs` `msecs` |
+| `nTake` `numerals` `fix` avec fonctions d'état | pas encore |
 
 - **Entrée MIDI** — pas de driver natif (voir `13-external-midi`).
 

@@ -7,6 +7,45 @@ const _EVAL_MODE = Ref{Tuple{Symbol,Int}}((:immediate, 0))
 
 _current_cycle(s::Scheduler) = (time() - s.t_start) * s.cps
 
+# ── Transitions ─────────────────────────────────────────────────────
+# `_EVAL_MODE[]` : (:immediate, 0) pose tout de suite ; (:deferred, n)
+# pose au prochain cycle + n (le `jump` de Tidal) ; (:xfade, n) pose tout
+# de suite un fondu de n cycles entre l'ancien pattern et le nouveau.
+
+"""
+    _fade_gain(p, t0, dur, rising) -> ControlPattern
+
+`p` avec un gain qui monte (ou descend) linéairement de `t0` à
+`t0 + dur` cycles, lu à l'attaque de chaque événement. Les événements
+à gain nul sont retirés.
+"""
+function _fade_gain(p, t0::Rational{Int64}, dur::Int, rising::Bool)
+    lifted = _lift_to_control(_as_pattern(p))
+    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+        out = Event{ControlMap}[]
+        for ev in lifted(s, e)
+            f = clamp(Float64((ev.start - t0) / dur), 0.0, 1.0)
+            g = rising ? f : 1.0 - f
+            g > 0 || continue
+            cm = copy(ev.value)
+            old = haskey(cm, :gain) ? _resolve_value(cm[:gain]) : 1.0
+            cm[:gain] = (old isa Real ? old : 1.0) * g
+            push!(out, Event{ControlMap}(ev.start, ev.stop, cm))
+        end
+        out
+    end)
+end
+
+"""
+    xfade_pattern(old, new, t0, dur) -> Pattern
+
+Le fondu croisé : `old` s'éteint pendant que `new` monte, sur `dur`
+cycles à partir de `t0`. Sans ancien pattern, `new` monte seul.
+"""
+xfade_pattern(old::Nothing, new, t0::Rational{Int64}, dur::Int) = _fade_gain(new, t0, dur, true)
+xfade_pattern(old, new, t0::Rational{Int64}, dur::Int) =
+    overlay(_fade_gain(old, t0, dur, false), _fade_gain(new, t0, dur, true))
+
 """
     _route_to_slot!(slot::Symbol, p::Pattern)
 
@@ -18,6 +57,10 @@ function _route_to_slot!(slot::Symbol, p::Pattern)
     mode, n = _EVAL_MODE[]
     if mode === :immediate
         set_pattern!(sched, slot, p)
+    elseif mode === :xfade
+        t0 = Rational{Int64}(ceil(Int, _current_cycle(sched)))
+        old = pattern_get(sched, slot)
+        set_pattern!(sched, slot, xfade_pattern(old, p, t0, max(1, n)))
     else
         target = Rational{Int64}(ceil(Int, _current_cycle(sched)) + n)
         schedule_pattern!(sched, slot, p, target)

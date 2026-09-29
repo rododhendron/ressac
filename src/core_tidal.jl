@@ -1113,3 +1113,86 @@ for op in (:+, :-, :*, :/, :%, :mod)
         Base.$op(q::AbstractString, p::Pattern) = $op(parse_minino(String(q)), p)
     end
 end
+
+# ---------------------------------------------------------------------------
+# substruct — la structure vient des booléens, chaque pas vrai reçoit le
+# cycle ENTIER du pattern, compressé dedans (le `substruct` de Tidal).
+# ---------------------------------------------------------------------------
+"""
+    substruct(bools, p) -> Pattern
+
+Chaque pas vrai de `bools` reçoit tout un cycle de `p`, tassé dans sa
+durée. `substruct("t f t t", "bd sn")` joue « bd sn » trois fois, dans les
+trois quarts de cycle marqués vrais. Chaînes acceptées des deux côtés.
+"""
+function substruct(bools, p0)
+    bp = _as_bool_pattern(bools)
+    p = _as_pattern(p0)
+    T = typeof(p).parameters[1]
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for be in bp(s, e)
+            be.value || continue
+            _squeeze_cycle!(out, p, floor(Int, be.start), be.start, be.stop, s, e)
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+substruct(bools) = p -> substruct(bools, p)
+
+# ---------------------------------------------------------------------------
+# sampled — la structure de GAUCHE seule (le `#` de Tidal) : chaque
+# événement du pattern garde son créneau et lit la valeur du contrôle à
+# son attaque, au lieu d'être découpé aux intersections.
+# ---------------------------------------------------------------------------
+"""
+    sampled(f) -> (Pattern -> ControlPattern)
+
+Applique l'étape `f` (un contrôle : `n("0 1 2")`, `lpf("<400 800>")`…) en
+gardant la structure de gauche : chaque événement lit la valeur à son
+attaque et garde sa durée. `"bd*4" |> sampled(n("0 1 2"))` fait quatre
+coups (n = 0, 0, 1, 2) là où `"bd*4" |> n("0 1 2")` en découpe six.
+"""
+function sampled(f)
+    return function (p0)
+        lifted = _lift_to_control(_as_pattern(p0))
+        Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+            out = Event{ControlMap}[]
+            for ev in lifted(s, e)
+                # Le cycle de l'attaque, entier : les requêtes rendent les
+                # événements qui y COMMENCENT, on cherche celui qui couvre
+                # l'attaque (sinon le dernier commencé avant elle).
+                c = Rational{Int64}(floor(Int, ev.start))
+                hit = f(pure(ev.value))(c, c + 1)
+                i = findfirst(x -> x.start <= ev.start < x.stop, hit)
+                i === nothing && (i = findlast(x -> x.start <= ev.start, hit))
+                i === nothing && continue
+                push!(out, Event{ControlMap}(ev.start, ev.stop, hit[i].value))
+            end
+            out
+        end)
+    end
+end
+
+# ---------------------------------------------------------------------------
+# secs / msecs — des secondes en cycles, au tempo courant (lu à la requête,
+# donc un changement de cps est suivi).
+# ---------------------------------------------------------------------------
+_live_cps() = (s = _LIVE_SCHEDULER[]; s === nothing ? 0.5 : s.cps)
+
+"""
+    secs(x) -> Pattern{Float64}
+
+Des secondes en cycles, au tempo courant : `slow(secs(2))` dure deux
+secondes quel que soit le cps. Nombre, chaîne ou pattern. (`sec` est la
+sécante de Julia, d'où le nom.)
+"""
+secs(x) = _mapvals(v -> _num(v) * _live_cps(), _num_pattern(x), Float64)
+
+"""
+    msecs(x) -> Pattern{Float64}
+
+Des millisecondes en cycles, au tempo courant (voir `secs`).
+"""
+msecs(x) = _mapvals(v -> _num(v) / 1000 * _live_cps(), _num_pattern(x), Float64)
