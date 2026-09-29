@@ -257,9 +257,11 @@ non-empty), and the focus toggle for keystroke routing.
     # Per-modal row → entry-index mapping built during render so the
     # mouse handler can resolve "click row N" → "select entry K".
     modal_rows::Vector{Tuple{Int,Int}}   = Tuple{Int,Int}[]  # (screen_y, entry_idx)
-    # Log scroll offset (lines from the bottom). 0 = bottom, increases
-    # backwards into history. Bumped by wheel events over the log pane.
-    log_scroll::Int                      = 0
+    # Le journal du bas : un ScrollPane qui suit le bas tant qu'on n'a
+    # pas remonté dans l'historique (touches, molette, barre).
+    log_view::TK.ScrollPane              = _scrollpane(; following = true)
+    # Le texte d'une modale texte / aide : son ScrollPane.
+    modal_view::TK.ScrollPane            = _scrollpane()
     # Journal en bas de l'écran : nombre de lignes (0 = replié). `:log`
     # bascule 3 → 10 → 0. Une pane :log dans l'arbre le replie aussi.
     log_tail_rows::Int                   = 3

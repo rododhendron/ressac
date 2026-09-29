@@ -320,11 +320,9 @@ function _mouse_wheel!(m::RessacApp, evt::TK.MouseEvent)
         _try_nudge_at!(m, ed, row, col, sign * mag)
         return  # over editor — don't fall through even if no number
     end
-    # 2. Wheel over log pane → scroll log.
-    if m._last_log_rect !== nothing && _in_rect(m._last_log_rect, evt.x, evt.y)
-        m.log_scroll = max(0, m.log_scroll + sign)
-        return
-    end
+    # 2. Wheel over the bottom log → the ScrollPane scrolls (it knows its area).
+    TK.set_content!(m.log_view, _log_spans(m.logs))
+    TK.handle_mouse!(m.log_view, evt) && return
 end
 
 """

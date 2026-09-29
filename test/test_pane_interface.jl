@@ -168,11 +168,16 @@ end
 
     @testset "handle_key! j/k adjust scroll" begin
         lp = Ressac._pane_new(:log, Dict{String,Any}())
+        Ressac._APP_LOG[] = ["[INFO] ligne $i" for i in 1:20]
+        tb = Tachikoma.TestBackend(40, 6)
+        Ressac.render!(lp, Tachikoma.Rect(1, 1, 40, 6), tb.buf)
+        last = Ressac._scroll_last(lp.pane)
+        @test lp.pane.offset == last && lp.pane.following
         @test Ressac.handle_key!(lp, Tachikoma.KeyEvent('k')) == true
-        @test lp.scroll == 1
+        @test lp.pane.offset == last - 1 && !lp.pane.following
         @test Ressac.handle_key!(lp, Tachikoma.KeyEvent('j')) == true
-        @test lp.scroll == 0
-        # j at scroll=0 is a no-op (returns false)
+        @test lp.pane.offset == last && lp.pane.following
+        # j at the bottom is a no-op (returns false)
         @test Ressac.handle_key!(lp, Tachikoma.KeyEvent('j')) == false
     end
 end

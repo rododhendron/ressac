@@ -453,6 +453,7 @@ Lecture d'une carte :
 | `PgUp` | remonter d'un écran |
 | `PgDn` | redescendre d'un écran |
 | `j / ↓` | descendre |
+| `G` | recoller au bas |
 
 ## Documentation
 

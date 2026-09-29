@@ -383,7 +383,7 @@ end
     _md_render(lines, width) -> Vector{_MdLine}
 
 Les lignes source d'un document markdown, rendues en lignes écran de
-`width` colonnes au plus — le contenu d'un `ScrollPane`.
+`width` colonnes au plus — le contenu d'un `ScrollPane` (voir tk_scroll.jl).
 """
 function _md_render(lines::AbstractVector{<:AbstractString}, width::Int)
     out = _MdLine[]
@@ -423,17 +423,3 @@ function _md_render(lines::AbstractVector{<:AbstractString}, width::Int)
     end
     return out
 end
-
-# ── Le ScrollPane qui porte un document ──────────────────────────────
-"""
-    _md_scrollpane(; offset = 0) -> Tachikoma.ScrollPane
-
-Le `ScrollPane` d'un document : pas de cadre (la pane dessine le sien),
-pas de suivi automatique, une barre de défilement quand ça déborde,
-molette et clic sur la barre gérés par Tachikoma.
-"""
-_md_scrollpane(; offset::Int = 0) =
-    TK.ScrollPane(_MdLine[]; offset = max(0, offset), following = false, show_scrollbar = true)
-
-# Fait défiler un ScrollPane comme une touche de Tachikoma le ferait.
-_md_scroll!(sp::TK.ScrollPane, key::Symbol) = (TK.handle_key!(sp, TK.KeyEvent(key)); nothing)

@@ -482,11 +482,11 @@ _register_regex!(r"^scope\s+reservoir\s+([\w-]+)$",
 # ── Modals (browse / lib / sccode / snip / guides) ───────────────────
 _register_literal!(m -> _open_help!(m),
                    "guide", "help", "?")
-_register_literal!(m -> (m.modal = :tutorial; m.modal_scroll = 0),
+_register_literal!(m -> _open_modal!(m, :tutorial),
                    "tutorial", "tour", "start")
-_register_literal!(m -> (m.modal = :synth_guide; m.modal_scroll = 0),
+_register_literal!(m -> _open_modal!(m, :synth_guide),
                    "synth-guide")
-_register_literal!(m -> (m.modal = :dsl_guide; m.modal_scroll = 0),
+_register_literal!(m -> _open_modal!(m, :dsl_guide),
                    "dsl", "dsl-guide", "synth-dsl")
 _register_literal!(m -> _open_wiki!(m),
                    "wiki", "docs", "doc-wiki")
@@ -636,8 +636,7 @@ function _explain_command!(m::RessacApp, name::AbstractString)
         explain_synth_file(path)
     end
     m.explain_lines = vcat(["EXPLAIN · $(isempty(nm) ? "buffer courant" : nm)", ""], lines)
-    m.modal = :explain
-    m.modal_scroll = 0
+    _open_modal!(m, :explain)
     return
 end
 _register_literal!(m -> _explain_command!(m, ""), "explain")

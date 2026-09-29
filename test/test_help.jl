@@ -120,11 +120,13 @@ end
     @test app.help_expanded
     @test length(app.help_scopes) > n_ctx
     @test :explorer in app.help_scopes && :modal_mixer in app.help_scopes
+    _screen(app, tb, frame)                                  # l'aide rendue : son ScrollPane a son contenu
     last = Ressac._help_last(app)
-    _hkey(app, 'G'); @test app.modal_scroll == last
-    _hkey(app, 'j'); @test app.modal_scroll == last
-    _hkey(app, 'g'); @test app.modal_scroll == 0
-    _hkey(app, 'k'); @test app.modal_scroll == 0
+    @test last > 0
+    _hkey(app, 'G'); @test app.modal_view.offset == last
+    _hkey(app, 'j'); @test app.modal_view.offset == last
+    _hkey(app, 'g'); @test app.modal_view.offset == 0
+    _hkey(app, 'k'); @test app.modal_view.offset == 0
     # la référence statique est en queue
     @test any(occursin("MINI-NOTATION", l) for (l, _) in Ressac._help_lines(app))
 end

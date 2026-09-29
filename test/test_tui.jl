@@ -189,12 +189,16 @@ end
     leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
     @test leaf.tabs[1] isa Ressac.LogPane
     log_pane = leaf.tabs[1]
-    @test log_pane.scroll == 0
+    @test log_pane.pane.following                      # colle au bas
+    for i in 1:20; Ressac._push_app_log!(app, "[INFO] ligne $i"); end
+    tb = Tachikoma.TestBackend(60, 8)
+    Ressac.render!(log_pane, Tachikoma.Rect(1, 1, 60, 8), tb.buf)   # le ScrollPane connaît sa hauteur
     # 'k' is bound to "scroll log up" inside LogPane.handle_key!.
     # When the focused pane is the log, _route_key_to_focused_pane!
     # should return true and the log's scroll should bump.
     Tachikoma.update!(app, Tachikoma.KeyEvent('k'))
-    @test log_pane.scroll == 1
+    @test log_pane.pane.offset == Ressac._scroll_last(log_pane.pane) - 1
+    @test !log_pane.pane.following
 end
 
 @testset "key routing — patterns pane stays on legacy Ressac._active_editor(m) path" begin

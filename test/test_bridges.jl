@@ -319,13 +319,16 @@ end
     @test wp.pane.offset == 1
     _bex(app, "q")                                              # ferme la pane wiki
     _bkey(app, '?')
+    Tachikoma.view(app, frame)                                  # l'aide rendue : son ScrollPane a son contenu
     Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'j', Tachikoma.key_repeat))
-    @test app.modal_scroll == 1
+    @test app.modal_view.offset == 1
     _bkey(app, :escape)
     _bex(app, "vsplit log")
     p = Ressac._focused_pane_impl(app)
+    for i in 1:60; Ressac._push_app_log!(app, "[INFO] ligne $i"); end
+    Tachikoma.view(app, frame)
     Tachikoma.update!(app, Tachikoma.KeyEvent(:char, 'k', Tachikoma.key_repeat))
-    @test p.scroll == 1
+    @test p.pane.offset == Ressac._scroll_last(p.pane) - 1 && !p.pane.following
 end
 
 # ── :q ferme une pane, quitte sur la dernière ; Échap ×2 quitte ────────

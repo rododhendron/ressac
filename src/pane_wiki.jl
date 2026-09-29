@@ -11,7 +11,7 @@ mutable struct WikiPane <: PaneImpl
 end
 
 WikiPane(pages::Vector{_WikiPage}, idx::Int, offset::Int = 0) =
-    WikiPane(pages, clamp(idx, 1, max(1, length(pages))), _md_scrollpane(; offset), (0, 0))
+    WikiPane(pages, clamp(idx, 1, max(1, length(pages))), _scrollpane(; offset), (0, 0))
 
 function _wiki_pane_ctor(args::AbstractDict)
     return WikiPane(_load_wiki_pages(), Int(get(args, "idx", 1)), Int(get(args, "scroll", 0)))
@@ -29,7 +29,7 @@ end
 
 # La dernière position de défilement (le bas du contenu visible), telle
 # que le ScrollPane la calcule après un rendu.
-_wiki_last(p::WikiPane) = TK._max_offset(p.pane, max(1, p.pane.last_area.height))
+_wiki_last(p::WikiPane) = _scroll_last(p.pane)
 
 # Changer de page : le défilement repart du haut.
 function _wiki_show!(p::WikiPane, idx::Int)
@@ -105,19 +105,19 @@ register_pane_kind!(:wiki, _wiki_pane_ctor)
 
 scope!(:wiki, "Wiki (pane)")
 bind!(:wiki, ["j", "↓"], "défiler"; group = :nav, repeat = true,
-      action = p -> _md_scroll!(p.pane, :down))
+      action = p -> _scroll!(p.pane, :down))
 bind!(:wiki, ["k", "↑"], "remonter"; group = :nav, repeat = true, when = p -> p.pane.offset > 0,
-      action = p -> _md_scroll!(p.pane, :up))
+      action = p -> _scroll!(p.pane, :up))
 bind!(:wiki, ["n", "]", "→"], "page du wiki suivante"; group = :nav,
       action = p -> (isempty(p.pages) || _wiki_show!(p, mod1(p.idx + 1, length(p.pages)))))
 bind!(:wiki, ["p", "[", "←"], "page du wiki précédente"; group = :nav,
       action = p -> (isempty(p.pages) || _wiki_show!(p, mod1(p.idx - 1, length(p.pages)))))
 bind!(:wiki, ["d", "PgDn"], "défiler d'un écran"; group = :nav, hint = false, repeat = true,
-      action = p -> _md_scroll!(p.pane, :pagedown))
+      action = p -> _scroll!(p.pane, :pagedown))
 bind!(:wiki, ["u", "PgUp"], "remonter d'un écran"; group = :nav, hint = false, repeat = true,
-      action = p -> _md_scroll!(p.pane, :pageup))
+      action = p -> _scroll!(p.pane, :pageup))
 bind!(:wiki, ["g", "G"], "début / fin de page"; group = :nav, hint = false,
-      action = (p, evt) -> _md_scroll!(p.pane, evt.char == 'g' ? :home : :end_key))
+      action = (p, evt) -> _scroll!(p.pane, evt.char == 'g' ? :home : :end_key))
 bind!(:wiki, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "aller à la page N"; group = :nav, hint = false,
       action = (p, evt) -> (n = Int(evt.char - '0');
                             1 <= n <= length(p.pages) && _wiki_show!(p, n)))

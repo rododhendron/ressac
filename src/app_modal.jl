@@ -311,26 +311,26 @@ end
 
 scope!(:modal_text, "Texte (guide, tutoriel, explication)")
 bind!(:modal_text, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = min(m.modal_scroll + 1, max(0, length(_modal_lines(m)) - 1))))
+      action = m -> _scroll!(m.modal_view, :down))
 bind!(:modal_text, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 1)))
+      action = m -> _scroll!(m.modal_view, :up))
 bind!(:modal_text, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = min(m.modal_scroll + 15, max(0, length(_modal_lines(m)) - 1))))
+      action = m -> _scroll!(m.modal_view, :pagedown))
 bind!(:modal_text, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 15)))
+      action = m -> _scroll!(m.modal_view, :pageup))
 bind!(:modal_text, "G", "fin"; group = :nav, hint = false,
-      action = m -> (m.modal_scroll = max(0, length(_modal_lines(m)) - 1)))
+      action = m -> _scroll!(m.modal_view, :end_key))
 bind!(:modal_text, "g", "début"; group = :nav, hint = false,
-      action = m -> (m.modal_scroll = 0))
+      action = m -> _scroll_top!(m.modal_view))
 bind!(:modal_text, ["Esc", "q"], "fermer"; group = :nav,
-      action = m -> (m.modal = :none; m.modal_scroll = 0))
+      action = m -> (m.modal = :none; _scroll_top!(m.modal_view)))
 
 """
     _render_modal!(m, area, buf)
 
 Draw a centered modal box over the rendered scene. Pulls the line
-vector from `_modal_lines(m)`, applies `m.modal_scroll`, clips lines
-to box width.
+vector from `_modal_lines(m)` into the ScrollPane `m.modal_view`, which
+scrolls, clips and draws its bar.
 """
 function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     lines = _modal_lines(m)
@@ -345,15 +345,8 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         title_right = _modal_hint_text(m, :modal_text),
         w_max = 100,
         h_target = min(length(lines) + 2, area.height - 4))
-    visible_end = min(length(lines), m.modal_scroll + inner.height)
-    visible = m.modal_scroll + 1 <= length(lines) ?
-              lines[(m.modal_scroll + 1):visible_end] :
-              String[]
-    for i in 1:inner.height
-        line = i <= length(visible) ? visible[i] : ""
-        TK.set_string!(buf, inner.x, inner.y + i - 1,
-                       first(line, inner.width), TK.tstyle(:text))
-    end
+    TK.set_content!(m.modal_view, [_span_line(l) for l in lines])
+    TK.render(m.modal_view, inner, buf)
 end
 
 # Sculpt : une pane :waveform en mode sculpt (app_sculpt.jl), plus un modal.
@@ -443,6 +436,7 @@ function _open_modal!(m::RessacApp, kind::Symbol,
                      cursor_field::Union{Symbol,Nothing} = nothing)
     m.modal = kind
     m.modal_scroll = 0
+    _scroll_top!(m.modal_view)
     cursor_field === nothing || setfield!(m, cursor_field, 1)
     return nothing
 end
@@ -545,14 +539,14 @@ function _open_help!(m::RessacApp)
     m.help_expanded = false
     m.help_scopes = _help_scopes(m)
     m.modal = :help
-    m.modal_scroll = 0
+    _scroll_top!(m.modal_view)
     return
 end
 
 function _close_help!(m::RessacApp)
     m.modal = m.help_return
     m.help_return = :none
-    m.modal_scroll = 0
+    _scroll_top!(m.modal_view)
     return
 end
 
@@ -600,35 +594,32 @@ function _render_help_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         title_right = _modal_hint_text(m, :modal_help),
         w_max = 100,
         h_target = min(length(lines) + 2, area.height - 4))
-    start = clamp(m.modal_scroll + 1, 1, max(1, length(lines)))
-    for i in 0:(inner.height - 1)
-        idx = start + i
-        idx > length(lines) && break
-        txt, kind = lines[idx]
-        sty = kind === :title ? TK.tstyle(:accent, bold = true) :
-              kind === :group ? TK.tstyle(:title, bold = true) :
-              kind === :dim   ? TK.tstyle(:text_dim) :
-              kind === :note  ? TK.tstyle(:text_dim) :
-                                TK.tstyle(:text)
-        TK.set_string!(buf, inner.x, inner.y + i, first(txt, inner.width), sty)
-    end
+    TK.set_content!(m.modal_view, [_span_line(txt, _help_style(kind)) for (txt, kind) in lines])
+    TK.render(m.modal_view, inner, buf)
     return
 end
 
-_help_last(m::RessacApp) = max(0, length(_help_lines(m)) - 1)
+_help_style(kind::Symbol) =
+    kind === :title ? TK.tstyle(:accent, bold = true) :
+    kind === :group ? TK.tstyle(:title, bold = true) :
+    kind === :dim   ? TK.tstyle(:text_dim) :
+    kind === :note  ? TK.tstyle(:text_dim) :
+                      TK.tstyle(:text)
+
+_help_last(m::RessacApp) = _scroll_last(m.modal_view)
 scope!(:modal_help, "Aide")
 bind!(:modal_help, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = min(m.modal_scroll + 1, _help_last(m))))
+      action = m -> _scroll!(m.modal_view, :down))
 bind!(:modal_help, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 1)))
+      action = m -> _scroll!(m.modal_view, :up))
 bind!(:modal_help, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = min(m.modal_scroll + 20, _help_last(m))))
+      action = m -> _scroll!(m.modal_view, :pagedown))
 bind!(:modal_help, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (m.modal_scroll = max(0, m.modal_scroll - 20)))
+      action = m -> _scroll!(m.modal_view, :pageup))
 bind!(:modal_help, ["g", "G"], "début / fin"; group = :nav, hint = false,
-      action = (m, evt) -> (m.modal_scroll = evt.char == 'g' ? 0 : _help_last(m)))
+      action = (m, evt) -> _scroll!(m.modal_view, evt.char == 'g' ? :home : :end_key))
 bind!(:modal_help, "Tab", "toutes les sections ⟷ contexte"; short = "tout", group = :help,
-      action = m -> (m.help_expanded = !m.help_expanded; m.help_scopes = _help_scopes(m); m.modal_scroll = 0))
+      action = m -> (m.help_expanded = !m.help_expanded; m.help_scopes = _help_scopes(m); _scroll_top!(m.modal_view)))
 bind!(:modal_help, ["?", "Esc", "q"], "fermer l'aide"; short = "fermer", group = :help, action = _close_help!)
 
 # ── Wiki des touches (docs/wiki/04-keys.md), généré ──────────────

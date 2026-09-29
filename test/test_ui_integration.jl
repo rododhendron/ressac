@@ -414,7 +414,8 @@ end
 
 @testset "LogPane render shows the app's log lines + j/k scroll" begin
     app, _ = _new_app()
-    Ressac._APP_LOG[] = ["[INFO] line A", "[INFO] line B", "[INFO] line C"]
+    # _APP_LOG[] est rebranché sur app.logs à chaque update! : on remplit app.logs
+    empty!(app.logs); append!(app.logs, ["[INFO] line A", "[INFO] line B", "[INFO] line C"])
     Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
     ws = Ressac.current_workspace(app.workspaces)
     log_leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
@@ -424,9 +425,11 @@ end
     Ressac.render!(log_pane, Tachikoma.Rect(1, 1, 60, 8), tb.buf)
     body = join((Tachikoma.row_text(tb, y) for y in 2:7), '\n')
     @test occursin("line C", body)
-    # 'k' scrolls older entries into view; render again
+    # 'k' scrolls older entries into view (once the log is taller than the pane)
+    for i in 1:20; Ressac._push_app_log!(app, "[INFO] ligne $i"); end
+    Ressac.render!(log_pane, Tachikoma.Rect(1, 1, 60, 8), tb.buf)
     Tachikoma.update!(app, Tachikoma.KeyEvent('k'))
-    @test log_pane.scroll == 1
+    @test log_pane.pane.offset == Ressac._scroll_last(log_pane.pane) - 1 && !log_pane.pane.following
 end
 
 @testset "DocPane render shows the entry body" begin
@@ -1059,14 +1062,14 @@ end
         Ressac._push_app_log!(app, "[INFO] entry #$i")
     end
     Tachikoma.view(app, frame)   # populate m.layout_logs
-    @test app.log_scroll == 0
+    @test app.log_view.following
     if app._last_log_rect !== nothing
         x = app._last_log_rect.x + 2
         y = app._last_log_rect.y + 2
         wheel = Tachikoma.MouseEvent(x, y, Tachikoma.mouse_scroll_up,
                                       Tachikoma.mouse_press, false, false, false)
         Tachikoma.update!(app, wheel)
-        @test app.log_scroll >= 1
+        @test !app.log_view.following && app.log_view.offset < Ressac._scroll_last(app.log_view)
     else
         # If the chrome log row collapsed (e.g. a LogPane was in the
         # tree by default), the wheel-over path isn't exercisable —

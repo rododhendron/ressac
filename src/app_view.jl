@@ -174,8 +174,7 @@ function _render_global_log_tail!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         title_right = "$(m.completion_idx)/$(length(m.completion_candidates)) · Tab suivant · autre touche annule"
     else
         title       = "JOURNAL"
-        title_right = "$(length(m.logs))" *
-                      (m.log_scroll > 0 ? " · ↑$(m.log_scroll)" : "")
+        title_right = "$(length(m.logs))" * (m.log_view.following ? "" : " · ↑")
     end
     _render_pane_block!(m, area, buf;
         title = title, title_right = title_right, focused = false)
@@ -280,7 +279,7 @@ end
 function _cycle_log_tail!(m::RessacApp, n::Union{Nothing,Int} = nothing)
     m.log_tail_rows = n !== nothing ? clamp(n, 0, 30) :
                       m.log_tail_rows == 3 ? 10 : m.log_tail_rows == 10 ? 0 : 3
-    m.log_scroll = 0
+    _scroll_end!(m.log_view)
     _push_app_log!(m, m.log_tail_rows == 0 ? "[INFO] journal replié (:log pour le rouvrir · :copylogs copie tout)" :
                                              "[INFO] journal : $(m.log_tail_rows) lignes")
     return
@@ -772,50 +771,14 @@ end
 """
     _render_logs(m, area, buf)
 
-Bottom-of-screen log tail with per-level colouring: ERROR in red,
-WARN in yellow, INFO in dim text, KEY in accent. Lets the user scan
-output by colour rather than parsing every line.
+Le journal du bas : les lignes colorées par niveau (`_log_spans`) dans
+le ScrollPane `m.log_view`, qui suit le bas et garde la position quand
+on remonte (touches, molette, barre).
 """
 function _render_logs(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    # log_scroll = lines to skip from the bottom. Clamped so we can't
-    # scroll past the last entry.
-    n = length(m.logs)
-    max_scroll = max(0, n - area.height)
-    m.log_scroll = clamp(m.log_scroll, 0, max_scroll)
-    last_idx = n - m.log_scroll
-    first_idx = max(1, last_idx - area.height + 1)
-    tail = first_idx <= last_idx ? m.logs[first_idx:last_idx] : String[]
-    for (i, line) in enumerate(tail)
-        i > area.height && break
-        # Severity → (stripe colour, text colour). The stripe is a
-        # single ▎ glyph that paints a thin coloured edge on the left
-        # so the eye can scan ERROR / WARN at a glance without parsing
-        # the prefix tag. INFO and bare lines get a dim stripe to keep
-        # the visual rhythm consistent.
-        stripe_style, text_style, body = if startswith(line, "[ERROR]")
-            (TK.tstyle(:error, bold = true), TK.tstyle(:error),
-             SubString(line, 8))
-        elseif startswith(line, "[WARN]")
-            (TK.tstyle(:warning, bold = true), TK.tstyle(:warning),
-             SubString(line, 7))
-        elseif startswith(line, "[KEY]")
-            (TK.tstyle(:accent, dim = true), TK.tstyle(:accent, dim = true),
-             SubString(line, 6))
-        elseif startswith(line, "[INFO]")
-            (TK.tstyle(:text_dim), TK.tstyle(:text),
-             SubString(line, 7))
-        else
-            (TK.tstyle(:text_dim), TK.tstyle(:text_dim), SubString(line, 1))
-        end
-        y = area.y + i - 1
-        TK.set_string!(buf, area.x, y, "▎", stripe_style)
-        # Pad one column after the stripe for legibility.
-        TK.set_string!(buf, area.x + 2, y,
-                       first(strip(body), max(0, area.width - 2)), text_style)
-    end
-    # Tiny scroll indicator in the last column when not at the bottom.
-    m.log_scroll > 0 && TK.set_string!(buf,
-        area.x + area.width - 1, area.y, "↑", TK.tstyle(:warning, bold = true))
+    TK.set_content!(m.log_view, _log_spans(m.logs))
+    TK.render(m.log_view, area, buf)
+    return
 end
 
 """

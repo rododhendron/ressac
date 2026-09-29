@@ -9,7 +9,7 @@ mutable struct DocPane <: PaneImpl
 end
 
 DocPane(name::AbstractString, offset::Int = 0, follow::Bool = false) =
-    DocPane(String(name), _md_scrollpane(; offset), follow, ("\0", 0))
+    DocPane(String(name), _scrollpane(; offset), follow, ("\0", 0))
 
 function _doc_pane_ctor(args::AbstractDict)
     return DocPane(String(get(args, "ref", "")), Int(get(args, "scroll", 0)), get(args, "follow", false) == true)
@@ -168,14 +168,14 @@ handle_key!(p::DocPane, evt) = evt isa TK.KeyEvent && dispatch!(((:doc, p),), ev
 handle_mouse!(p::DocPane, evt::TK.MouseEvent) = TK.handle_mouse!(p.pane, evt)   # molette, barre
 pane_scope(::DocPane) = :doc
 scope!(:doc, "Documentation")
-bind!(:doc, ["j", "↓"], "descendre"; group = :nav, repeat = true, action = p -> _md_scroll!(p.pane, :down))
+bind!(:doc, ["j", "↓"], "descendre"; group = :nav, repeat = true, action = p -> _scroll!(p.pane, :down))
 bind!(:doc, ["k", "↑"], "remonter"; group = :nav, when = p -> p.pane.offset > 0, repeat = true,
-      action = p -> _md_scroll!(p.pane, :up))
+      action = p -> _scroll!(p.pane, :up))
 bind!(:doc, ["d", "PgDn"], "descendre d'un écran"; group = :nav, hint = false, repeat = true,
-      action = p -> _md_scroll!(p.pane, :pagedown))
+      action = p -> _scroll!(p.pane, :pagedown))
 bind!(:doc, ["u", "PgUp"], "remonter d'un écran"; group = :nav, hint = false, repeat = true,
-      when = p -> p.pane.offset > 0, action = p -> _md_scroll!(p.pane, :pageup))
-bind!(:doc, "g", "début"; group = :nav, hint = false, action = p -> _md_scroll!(p.pane, :home))
+      when = p -> p.pane.offset > 0, action = p -> _scroll!(p.pane, :pageup))
+bind!(:doc, "g", "début"; group = :nav, hint = false, action = p -> _scroll!(p.pane, :home))
 bind!(:doc, "f", "suivre le curseur ou figer"; short = "suivre", group = :nav,
       action = p -> (p.follow = !p.follow))
 
