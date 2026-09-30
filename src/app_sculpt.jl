@@ -83,6 +83,25 @@ function _sculpt_command!(m::RessacApp, name::AbstractString)
     return
 end
 _register_literal!(m -> _sculpt_command!(m, ""), "sculpt")
+
+# `:prune [seuil]` — dans le studio sculpt, retire les nœuds dont l'impact
+# mesuré (P) est sous le seuil (0.02 par défaut).
+function _prune_command!(m::RessacApp, arg::AbstractString)
+    p = _focused_sculpt_pane(m)
+    p === nothing && (_push_app_log!(m, "[WARN] :prune — ouvre d'abord un studio sculpt (:sculpt, ou M dans l'explorateur)"); return)
+    thr = isempty(strip(arg)) ? 0.02 : something(tryparse(Float64, strip(arg)), 0.02)
+    if isempty(p.impacts)
+        _push_app_log!(m, p.measuring ? "[INFO] :prune — la mesure est en cours, réessaie dans un instant" :
+                                        "[WARN] :prune — mesure d'abord l'impact des nœuds avec P")
+        return
+    end
+    n = _sculpt_prune!(p; threshold = thr)
+    _push_app_log!(m, n == 0 ? "[INFO] :prune — rien sous $thr, tout s'entend" :
+                              "[INFO] :prune — $n nœud$(n > 1 ? "s" : "") retiré$(n > 1 ? "s" : "") (impact < $thr) · P pour remesurer")
+    return
+end
+_register_literal!(m -> _prune_command!(m, ""), "prune")
+_register_regex!(r"^prune\s+([0-9.]+)$", (m, mt) -> _prune_command!(m, mt.captures[1]))
 _register_regex!(r"^sculpt\s+([\w.-]+)$",
     (m, mt) -> _sculpt_command!(m, mt.captures[1]))
 

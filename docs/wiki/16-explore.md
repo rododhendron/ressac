@@ -111,6 +111,16 @@ est affiché, ‹RLPF · 3/21 o›) :
 | `x` | duplique le nœud en parallèle |
 | `m` | greffe un LFO sur le paramètre focalisé |
 
+**Élaguer.** Un son trouvé par évolution traîne souvent des nœuds qui ne
+s'entendent pas. L'explication se termine par une section ÉLAGAGE : les
+indices lus sur la structure (un nœud hors de la chaîne, une saturation
+qui replie un signal déjà replié, une source à 0 Hz…) apparaissent tout
+de suite, avec ✂ à côté des knobs concernés. `P` **mesure** : le son est
+rendu sans chaque nœud, en un lot, et l'impact de chacun s'affiche du
+plus faible au plus fort. `Tab` puis `d` retire un nœud ; `:prune`
+retire d'un coup tous ceux dont l'impact mesuré est sous 0,02
+(`:prune 0.05` pour un seuil plus large).
+
 Et pour finir : `e` exporte dans l'éditeur, `U` **utilise** le son dans
 un pattern (sauve, puis pose `@dN p"nom*4"` dans PLAY), `s` revient à la
 vue d'onde, `<` / `>` défilent l'explication.

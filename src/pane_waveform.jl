@@ -39,6 +39,11 @@ mutable struct WaveformPane <: PaneImpl
     explain_lines::Vector{String}   # prose de l'explainer (rafraîchie à chaque édit structurel)
     explain_view::TK.ScrollPane     # la prose repliée et stylée, défilable (</>, molette)
     explain_w::Int                  # largeur pour laquelle explain_view a été construite (0 = à refaire)
+    # ── élagage ────────────────────────────────────────────────────
+    hints::Dict{Int,String}         # indices statiques par nœud (recalculés à chaque structure)
+    impacts::Dict{Int,Float64}      # impact mesuré par nœud (P), vidé à chaque changement de structure
+    measuring::Bool                 # une mesure d'impact est en vol
+    prune_note::String              # pourquoi la mesure n'a pas abouti ("" sinon)
 end
 
 # Constructeur de compatibilité 7-args (anciens appels + tests viewer).
@@ -46,7 +51,8 @@ WaveformPane(samples, sr, vs, vl, label, genome, last_rect) =
     WaveformPane(samples, sr, vs, vl, label, genome, last_rect,
                  false, Knob[], 1, false, "", false, Int[], Float64[], zeros(0, 0),
                  KnobSignatures(), Float64[], 0, 0, 0, false, false,
-                 nothing, AuditionState(1), ReentrantLock(), String[], _scrollpane(), 0)
+                 nothing, AuditionState(1), ReentrantLock(), String[], _scrollpane(), 0,
+                 Dict{Int,String}(), Dict{Int,Float64}(), false, "")
 
 # Seam de rendu : par défaut le rendu NRT, surchargeable en test (sync, mock).
 const _WAVE_RENDER = Ref{Function}(render_genome_audio)
@@ -107,10 +113,94 @@ end
 
 # Prose « pourquoi ça sonne comme ça » du génome courant.
 function _sculpt_refresh_explain!(p::WaveformPane)
-    p.explain_lines = p.genome === nothing ? String[] : explain_genome(p.genome)
+    if p.genome === nothing
+        p.explain_lines = String[]; empty!(p.hints)
+    else
+        empty!(p.hints)
+        for h in static_prune_hints(p.genome); p.hints[h.id] = "$(h.ugen) — $(h.reason)"; end
+        p.explain_lines = vcat(explain_genome(p.genome), _prune_lines(p))
+    end
     p.explain_w = 0                            # le contenu du ScrollPane sera refait au prochain rendu
     _scroll_top!(p.explain_view)
     return
+end
+
+# La section « ÉLAGAGE » de l'explication : indices statiques, impacts
+# mesurés (les plus faibles d'abord), et quoi faire.
+function _prune_lines(p::WaveformPane)
+    out = String["", "ÉLAGAGE (ce qui ne s'entend pas)"]
+    for id in sort!(collect(keys(p.hints)))
+        push!(out, "  ✂ #$id $(p.hints[id])")
+    end
+    if !isempty(p.impacts)
+        ranked = sort!(collect(p.impacts); by = x -> (x[2], x[1]))
+        for (id, imp) in first(ranked, 8)
+            haskey(p.genome.nodes, id) || continue
+            mark = imp < 0.02 ? "✂" : imp < 0.08 ? "·" : " "
+            push!(out, "  $mark #$id $(p.genome.nodes[id].ugen) — impact $(round(imp; digits = 3))")
+        end
+        push!(out, "  ✂ = inaudible (< 0.02) · Tab/d retire un nœud · :prune retire tous les ✂ mesurés")
+    elseif p.measuring
+        push!(out, "  mesure en cours (rendu hors-ligne de chaque nœud retiré)…")
+    elseif !isempty(p.prune_note)
+        push!(out, "  élagage mesuré indisponible : $(p.prune_note)")
+    else
+        isempty(p.hints) && push!(out, "  rien de suspect dans la structure")
+        push!(out, "  P mesure l'impact de chaque nœud (rendu hors-ligne)")
+    end
+    return out
+end
+
+"""
+    _sculpt_measure_impacts!(p)
+
+`P` — rend le son sans chaque nœud, en un lot, et range les impacts.
+Asynchrone comme le rendu de l'onde ; synchrone en test (`_WAVE_SYNC`).
+"""
+function _sculpt_measure_impacts!(p::WaveformPane)
+    (p.genome === nothing || p.measuring) && return false
+    p.measuring = true
+    empty!(p.impacts); p.prune_note = ""
+    _sculpt_refresh_explain!(p)
+    g = _copy_genome(p.genome)
+    work = () -> begin
+        res = try measure_impacts(g) catch err; err end
+        lock(p.lock) do
+            p.closed && return
+            if res isa Exception
+                p.measuring = false
+                p.prune_note = first(sprint(showerror, res), 60)
+            else
+                for r in res; p.impacts[r.id] = r.impact; end
+                p.measuring = false
+            end
+        end
+        _WAVE_SYNC[] || (p.explain_w = 0)
+        return
+    end
+    if _WAVE_SYNC[]
+        work()
+        _sculpt_refresh_explain!(p)
+    else
+        Threads.@spawn (work(); _sculpt_refresh_explain!(p))
+    end
+    return true
+end
+
+"""
+    _sculpt_prune!(p; threshold = 0.02) -> Int
+
+`:prune` — retire tous les nœuds dont l'impact mesuré est sous le seuil.
+Il faut avoir mesuré (`P`) avant. Renvoie le nombre de nœuds retirés.
+"""
+function _sculpt_prune!(p::WaveformPane; threshold::Real = 0.02)
+    (p.genome === nothing || isempty(p.impacts)) && return 0
+    ranked = [(id = id, ugen = get(p.genome.nodes, id, nothing) === nothing ? :none : p.genome.nodes[id].ugen, impact = imp)
+              for (id, imp) in p.impacts]
+    removed = prune!(p.genome, ranked; threshold = threshold)
+    isempty(removed) && return 0
+    _sculpt_reinit_structure!(p; focus_node = p.genome.output_id)
+    return length(removed)
 end
 
 """
@@ -186,6 +276,7 @@ function _sculpt_reinit_structure!(p::WaveformPane; focus_node::Int = 0)
     p.sigs = KnobSignatures()
     p.last_descr = Float64[]
     p.last_tugged = 0
+    empty!(p.impacts); p.prune_note = ""       # la structure a changé : les impacts mesurés sont périmés
     _sculpt_recluster!(p)
     _sculpt_refresh_explain!(p)
     p.structure_dirty = true
@@ -576,6 +667,8 @@ bind!(:sculpt, "x", "dupliquer en parallèle"; short = "dupliquer", group = :str
       action = p -> _sculpt_structural!(p, :duplicate))
 bind!(:sculpt, "m", "greffer un LFO sur le slot"; short = "LFO", group = :structure, when = _sc_has,
       action = p -> _sculpt_graft_focus!(p))
+bind!(:sculpt, "P", "élagage : mesurer l'impact de chaque nœud"; short = "élagage", group = :structure, when = _sc_has,
+      action = p -> _sculpt_measure_impacts!(p))
 bind!(:sculpt, "e", "exporter dans l'éditeur"; short = "exporter", group = :file, when = _sc_has,
       action = p -> _wave_export!(p))
 bind!(:sculpt, "L", "défiler l'onde →"; group = :view, hint = false, when = _sc_has,
@@ -635,12 +728,21 @@ function _render_sculpt_knobs!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
             else
                 string(round(knob_value(p.genome, kb); sigdigits = 5))
             end
-            row = "  $mark $(rpad(String(kb.name), 8)) $val"
+            row = "  $mark $(rpad(String(kb.name), 8)) $val" * _sculpt_prune_mark(p, kb)
             sty = i == p.focus ? TK.tstyle(:primary) : TK.tstyle(:text)
             TK.set_string!(buf, area.x, y, first(row, area.width), sty)
             y += 1
         end
     end
+end
+
+# ✂ après un knob dont le nœud ne s'entend pas (indice ou impact mesuré < 0.02).
+function _sculpt_prune_mark(p::WaveformPane, kb::Knob)
+    kb.kind === :node || return ""
+    haskey(p.hints, kb.node_id) && return "  ✂"
+    imp = get(p.impacts, kb.node_id, nothing)
+    imp === nothing && return ""
+    return imp < 0.02 ? "  ✂" : "  " * string(round(imp; digits = 2))
 end
 
 # Prose de l'explainer dans son ScrollPane (défilable via </> et la molette).

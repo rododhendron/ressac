@@ -231,10 +231,21 @@ end
 # tout ce qui le référençait pointe vers son entrée audio (bypass). Refuse une
 # source pure (pas de bypass → silence : utiliser swap). Renvoie le nœud sur
 # lequel refocaliser (l'entrée reconnectée / la sortie), ou nothing.
+# L'entrée par laquelle on contourne un nœud qu'on retire : son entrée
+# audio, sinon — pour une mise en forme ou un mélange (rôle :math), dont
+# l'entrée est déclarée « signal » — le premier nœud branché dessus.
+function _bypass_input_slot(n::UGenNode)
+    si = _audio_input_slot(n)
+    si === nothing || return si
+    spec = ugen_spec(n.ugen)
+    (spec !== nothing && spec.role === :math) || return nothing
+    return findfirst(a -> a isa NodeRef, n.args)
+end
+
 function delete_node!(g::Genome, node_id::Int)
     (haskey(g.nodes, node_id) && length(g.nodes) > 1) || return nothing
     n = g.nodes[node_id]
-    si = _audio_input_slot(n)
+    si = _bypass_input_slot(n)
     si === nothing && return nothing            # source pure → pas de contournement
     bypass = n.args[si]
     delete!(g.nodes, node_id)

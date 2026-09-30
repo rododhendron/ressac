@@ -419,6 +419,7 @@ Lecture d'une carte :
 | `R` | taux précédent |
 | `x` | dupliquer en parallèle |
 | `m` | greffer un LFO sur le slot |
+| `P` | élagage : mesurer l'impact de chaque nœud |
 
 **Fichiers**
 
