@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "Reservoir.record_history!"
-short = "Enregistrement optionnel de l'historique d'impulsions pour le scope. record_history!(r, capacity). capacity=0 pour arrêter."
+short = "Optional recording of the spike history for the scope. record_history!(r, capacity). capacity=0 to stop."
 tags = ["reservoir"]
 +++
 
 # Reservoir.record_history!
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Optional recording of the spike history for the scope. record_history!(r, capacity). capacity=0 to stop.

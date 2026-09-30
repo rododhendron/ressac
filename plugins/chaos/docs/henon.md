@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "henon"
-short = "UGen HenonL au taux AUDIO pour @synth. Args : freq, a, b, x0, x1. Au taux de contrôle : Chaos.henon."
+short = "HenonL UGen at AUDIO rate for @synth. Args: freq, a, b, x0, x1. At control rate: Chaos.henon."
 tags = ["chaos", "ugen"]
 +++
 
 # henon
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+HenonL UGen at AUDIO rate for @synth. Args: freq, a, b, x0, x1. At control rate: Chaos.henon.

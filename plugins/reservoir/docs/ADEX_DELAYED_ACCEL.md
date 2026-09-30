@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "ADEX_DELAYED_ACCEL"
-short = "Préréglage AdEx — pause puis cadence d'impulsions qui accélère."
+short = "AdEx preset — a pause, then a spike rate that accelerates."
 tags = ["reservoir", "preset"]
 +++
 
 # ADEX_DELAYED_ACCEL
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+AdEx preset — a pause, then a spike rate that accelerates.

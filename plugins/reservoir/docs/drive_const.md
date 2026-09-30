@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "drive_const"
-short = "drive_const(amp) → Function. Courant constant sur tous les neurones à chaque pas."
+short = "drive_const(amp) → Function. Constant current on every neuron at every step."
 tags = ["reservoir", "drive"]
 +++
 
 # drive_const
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+drive_const(amp) → Function. Constant current on every neuron at every step.

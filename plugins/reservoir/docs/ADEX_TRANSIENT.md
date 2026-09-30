@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "ADEX_TRANSIENT"
-short = "Préréglage AdEx — bref tir au début puis s'arrête malgré l'entrée."
+short = "AdEx preset — a brief firing at onset, then stops despite the input."
 tags = ["reservoir", "preset"]
 +++
 
 # ADEX_TRANSIENT
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+AdEx preset — a brief firing at onset, then stops despite the input.

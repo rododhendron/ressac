@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "ADEX_REGULAR_BURST"
-short = "Préréglage AdEx — bouffées répétées sous entrée soutenue."
+short = "AdEx preset — repeated bursts under sustained input."
 tags = ["reservoir", "preset"]
 +++
 
 # ADEX_REGULAR_BURST
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+AdEx preset — repeated bursts under sustained input.
