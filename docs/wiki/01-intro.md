@@ -126,3 +126,5 @@ en haut montre le mode, la surface focalisée et les workspaces.
 - `14-chaos-reservoir` — générateurs chaotiques et patterns par réservoir
 - `15-maths` — les mathématiques de la musique : temps, hauteurs,
   rythmes euclidiens, hasard tenu, chaos, et des pistes à essayer
+- `16-explore` — EXPLORE : l'explorateur génétique de synths, les rôles
+  d'usage, et le studio sculpt
