@@ -87,6 +87,9 @@ function live(; host::AbstractString = "127.0.0.1",
     cfg = _load_ressac_config!()
     _apply_theme!(cfg.theme)
     _install_syntax_theme!()   # punctuation/builtins legible on dark bg
+    # La disposition du clavier : la table Maj de Tachikoma est QWERTY,
+    # on installe celle qui correspond (voir session_keyboard.jl).
+    (kb_layout, kb_source) = try _setup_keyboard!(cfg.keyboard) catch; (:qwerty, "défaut") end
     # Bring the Synth DSL into Main's namespace so pattern evals can
     # use saw/rlpf/lfo/@synth/... without an explicit `using`. Done
     # once per `live()` call; idempotent.
@@ -95,6 +98,7 @@ function live(; host::AbstractString = "127.0.0.1",
     catch
     end
     app = RessacApp(; scheduler=sched)
+    _push_app_log!(app, "[INFO] clavier : $kb_layout ($kb_source) — :keyboard azerty|qwerty|auto pour changer")
     # Sub-project 10: restore the last persisted workspace layout if
     # any. Wrapped so a corrupted file doesn't block boot — the
     # default workspace fallback handles the empty/error case.

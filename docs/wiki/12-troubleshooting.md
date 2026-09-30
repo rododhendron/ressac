@@ -139,3 +139,12 @@ Trois niveaux, du plus doux au plus brutal :
   (`sans hauteur`, ou pas de `durée sustain`). Un `@synth` du DSL en a
   toujours un ; un `.scd` écrit à la main doit le déclarer, ou fixer sa
   propre enveloppe avec `doneAction: 2`.
+
+## `?`, `%`, `.` ne répondent pas sur un clavier AZERTY
+
+Le terminal n'envoie pas le caractère produit par Maj et Ressac a cru
+à un QWERTY. `:keyboard azerty` corrige tout de suite ; pour que ce soit
+durable, `keyboard = "azerty"` dans `[ui]` de `ressac.toml`, ou la
+variable `RESSAC_KEYBOARD=azerty`. Le journal indique au démarrage ce
+qui a été détecté (`localectl status` est la source habituelle).
+

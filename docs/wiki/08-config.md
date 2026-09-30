@@ -10,6 +10,7 @@ optionnelles ; valeurs par défaut ci-dessous.
 [ui]
 theme = "cyberpunk"   # un thème intégré ou personnalisé
 fps   = 60
+keyboard = "auto"     # auto (détection), azerty, qwerty — voir plus bas
 
 [input]
 t_hold_initial_ms = 250
@@ -74,3 +75,19 @@ Bascule avec `:safety on|off`.
 défaut) → 10 → replié → 3. `:log N` fixe une hauteur. `:copylogs` copie
 tout le journal dans le presse-papier, `:vsplit log` l'ouvre dans une
 pane à part.
+
+## Disposition du clavier
+
+Quand le terminal parle le protocole clavier kitty avec les « touches
+alternatives » (kitty, foot, wezterm, ghostty, alacritty récents), il
+envoie le caractère que Maj produit vraiment et tout marche. Sinon
+Ressac reçoit la touche de base avec Maj et doit savoir quoi en faire :
+sur un AZERTY, Maj+`,` est `?`, pas `<`.
+
+`keyboard = "auto"` détecte, dans l'ordre : la variable `RESSAC_KEYBOARD`,
+cette clé, `XKB_DEFAULT_LAYOUT`, `localectl status` (fiable, y compris
+sous Wayland), `setxkbmap -query` (X11 seulement), puis `LANG` (`fr`,
+`be` → azerty). Le journal dit ce qui a été choisi au démarrage ;
+`:keyboard azerty`, `:keyboard qwerty` ou `:keyboard auto` changent en
+session, `:keyboard` seul affiche l'état.
+

@@ -194,6 +194,24 @@ function _quit!(m::RessacApp)
 end
 _register_literal!(m -> _panic!(m),              "panic")
 _register_literal!(m -> _hush!(m),               "hush", "stop", "silence")
+# Disposition du clavier : la table Maj (`?` sur AZERTY est Maj+`,`).
+function _keyboard_command!(m::RessacApp, arg::AbstractString)
+    a = lowercase(strip(arg))
+    if isempty(a)
+        _push_app_log!(m, "[INFO] clavier : $(_KEYBOARD[]) — :keyboard azerty|qwerty|auto")
+    elseif a == "auto"
+        (l, src) = _setup_keyboard!(:auto)
+        _push_app_log!(m, "[INFO] clavier : $l ($src)")
+    elseif a in ("azerty", "qwerty")
+        apply_keyboard_layout!(Symbol(a))
+        _push_app_log!(m, "[INFO] clavier : $a")
+    else
+        _push_app_log!(m, "[WARN] :keyboard azerty | qwerty | auto")
+    end
+    return
+end
+_register_literal!(m -> _keyboard_command!(m, ""), "keyboard", "clavier")
+_register_regex!(r"^(?:keyboard|clavier)\s+(\S+)$", (m, mt) -> _keyboard_command!(m, mt.captures[1]))
 # Transitions : comment les prochains @dN prennent la place des anciens.
 function _set_transition!(m::RessacApp, mode::Symbol, n::Int)
     _EVAL_MODE[] = (mode, n)

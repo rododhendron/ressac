@@ -93,6 +93,7 @@ include("tui_scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
 
 # ─── Content / configuration / theming ────────────────────────────
 include("session_config.jl")     # RessacConfig, _load_ressac_config!
+include("session_keyboard.jl")   # disposition du clavier (table Maj azerty/qwerty, détection)
 include("session_themes.jl")     # _apply_theme!, palette switching
 include("tk_patches.jl")         # correctifs Tachikoma appliqués à l'exécution
 include("content_sccode.jl")     # sccode.org HTTP client
@@ -715,13 +716,10 @@ function __init__()
     # donne `2`… Aucune de ces touches n'existe côté QWERTY, donc rien
     # n'est écrasé. Le vrai correctif est `_request_alternate_keys()`
     # au démarrage ; ceci reste le repli quand le terminal l'ignore.
+    # La table complète (AZERTY : `,` → `?`…) est installée par `live()`
+    # après détection (session_keyboard.jl) ; ici le socle QWERTY + accents.
     try
-        Tachikoma._SHIFT_SYMBOL_MAP['<'] = '>'
-        for (base, shifted) in ('ù' => '%', 'é' => '2', 'è' => '7', 'à' => '0',
-                                'ç' => '9', '²' => '~', '°' => ')', 'µ' => '*',
-                                '§' => '!', '£' => '\$')
-            Tachikoma._SHIFT_SYMBOL_MAP[base] = shifted
-        end
+        apply_keyboard_layout!(:qwerty)
     catch
     end
     # Cache de tokens du CodeEditor comparé au contenu (voir tk_patches.jl).
