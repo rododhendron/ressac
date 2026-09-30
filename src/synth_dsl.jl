@@ -1009,6 +1009,22 @@ function _elixir_pipes(ex)
     if ex.head === :& && length(ex.args) == 1 && !(ex.args[1] isa Integer)
         return _elixir_capture(_elixir_pipes(ex.args[1]) |> x -> Expr(:&, x))
     end
+    if ex.head === :call && length(ex.args) == 3 && ex.args[1] === :.|>
+        # Pipe diffusé : `[a, b] .|> f(x)` → `f.(lhs, x)` — chaque canal
+        # entre en premier argument.
+        lhs = _elixir_pipes(ex.args[2]); rhs = _elixir_pipes(ex.args[3])
+        if rhs isa Symbol || (rhs isa Expr && rhs.head === :. && length(rhs.args) == 2)
+            return Expr(:., rhs, Expr(:tuple, lhs))
+        elseif rhs isa Expr && rhs.head === :call
+            f = rhs.args[1]
+            params = length(rhs.args) >= 2 && rhs.args[2] isa Expr && rhs.args[2].head === :parameters ? rhs.args[2] : nothing
+            rest = params === nothing ? rhs.args[2:end] : rhs.args[3:end]
+            rest = _has_placeholder(rest) ? _fill_placeholder(rest, lhs) : vcat(Any[lhs], rest)
+            return params === nothing ? Expr(:., f, Expr(:tuple, rest...)) :
+                                        Expr(:., f, Expr(:tuple, params, rest...))
+        end
+        return Expr(:call, :.|>, lhs, rhs)
+    end
     if ex.head === :call && length(ex.args) == 3 && ex.args[1] === :|>
         lhs = _elixir_pipes(ex.args[2])
         rhs = _elixir_pipes(ex.args[3])

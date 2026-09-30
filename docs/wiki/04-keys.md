@@ -471,7 +471,8 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `x` | relâcher ce drone |
+| `T / t` | réévaluer le drone depuis son texte |
+| `D / x` | relâcher ce drone |
 | `X` | relâcher tous les drones |
 
 **Sous-modes (touches une fois dedans)**
@@ -479,6 +480,19 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
+
+## Doc du synth (doc · explication)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `→ / l` | onglet suivant (doc · explication) |
+| `← / h` | onglet précédent |
+| `j / ↓` | défiler |
+| `k / ↑` | remonter |
+| `g` | haut |
+| `G` | bas |
 
 ## Journal
 

@@ -657,6 +657,13 @@ _register_regex!(r"^starter\s+([\w.-]+)$",
 # le buffer focalisé. Résultat dans un modal scrollable.
 function _explain_command!(m::RessacApp, name::AbstractString)
     nm = strip(String(name))
+    parts = _synth_workspace_parts(m)
+    if isempty(nm) && parts !== nothing && parts[3] !== nothing
+        _synth_workspace_sync!(m)
+        parts[3].mode = :explain
+        _focus_pane!(m, parts[3])
+        return
+    end
     lines = if isempty(nm)
         ed = _active_editor(m)
         g = ed === nothing ? nothing : genome_from_dsl(TK.text(ed))
@@ -1287,7 +1294,8 @@ function _update_live_doc!(m::RessacApp)
     ws === nothing && return
     target = ""
     found = false
-    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+    for leaf in _all_leaves(ws.tree), tab0 in leaf.tabs
+        tab = tab0 isa SynthDocPane ? tab0.doc : tab0
         tab isa DocPane && tab.follow || continue
         if !found
             target = _doc_target_under_cursor(m)

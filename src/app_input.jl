@@ -142,6 +142,7 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
     _drain_explorer_waveform!(m)
     _drain_explorer_sculpt!(m)
     _drain_sculpt_use!(m)
+    _drain_drone_request!(m)
     # Non consommée par la pane → le scope :global a sa chance (aide,
     # hush, scope…) dans update!.
     return consumed ? :consumed : :pass

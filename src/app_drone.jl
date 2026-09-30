@@ -105,3 +105,25 @@ function _drone_release_buffer!(m::RessacApp, name::AbstractString)
     drone_stop!(d.id)
     _push_app_log!(m, "[INFO] drone $(d.id) relâché avec sa pane")
 end
+
+# Draine la requête postée par la pane MODULATION (T = réévaluer).
+function _drain_drone_request!(m::RessacApp)
+    req = _DRONE_PANE_REQUEST[]
+    req === nothing && return false
+    _DRONE_PANE_REQUEST[] = nothing
+    (what, id) = req
+    what === :reeval || return true
+    d = drone_get(id)
+    d === nothing && return true
+    if d.origin === :slot
+        _push_app_log!(m, "[INFO] drone $(id) : tenu par PLAY — réévalue son pattern (@$(id)) pour le changer")
+        return true
+    end
+    for (_, buf) in _all_synth_buffers(m)
+        buf.name == String(id) || continue
+        _drone_launch!(m, buf)
+        return true
+    end
+    _push_app_log!(m, "[WARN] drone $(id) : son texte n'est plus ouvert — D dans l'éditeur le relance")
+    return true
+end

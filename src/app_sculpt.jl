@@ -52,6 +52,15 @@ end
 # plugins/user-synths/<nom>.jl ; `:sculpt` seul prend le buffer focalisé.
 function _sculpt_command!(m::RessacApp, name::AbstractString)
     nm = strip(String(name))
+    parts = _synth_workspace_parts(m)
+    if parts !== nothing
+        # Workspace synth : le studio suit déjà le texte — on l'y amène.
+        isempty(nm) || _open_synth_tab!(m, nm)
+        _synth_workspace_sync!(m)
+        _focus_pane!(m, parts[2])
+        _push_app_log!(m, "[INFO] studio : h/l tirent un knob et le texte suit · Ctrl-w h revient au texte")
+        return
+    end
     txt_for_msg = ""
     g = if isempty(nm)
         ed = _active_editor(m)

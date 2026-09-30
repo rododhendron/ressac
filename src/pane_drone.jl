@@ -77,6 +77,13 @@ end
 
 _dr_stop_all!(::DronePane) = drone_stop_all!()
 
+# T : réévaluer le drone courant depuis son texte (l'éditeur s'en charge).
+function _dr_reeval!(p::DronePane)
+    d = _dr_current(p)
+    d === nothing && return
+    _DRONE_PANE_REQUEST[] = (:reeval, d.id)
+end
+
 # ── Rendu ────────────────────────────────────────────────────────────
 _dr_fmt(v::Float64) = (isinteger(v) && abs(v) < 1e7) ? string(Int(v)) : string(round(v; sigdigits = 5))
 
@@ -201,7 +208,9 @@ bind!(:drone, "=", "saisir une valeur"; short = "valeur", group = :edit, when = 
       action = p -> _dr_begin_value!(p))
 bind!(:drone, "0", "revenir au défaut"; short = "défaut", group = :edit, when = _dr_has,
       action = p -> _dr_reset!(p))
-bind!(:drone, "x", "relâcher ce drone"; short = "relâcher", group = :audio, when = _dr_has,
+bind!(:drone, ["T", "t"], "réévaluer le drone depuis son texte"; short = "réévaluer", group = :audio, when = _dr_has,
+      action = p -> _dr_reeval!(p))
+bind!(:drone, ["D", "x"], "relâcher ce drone"; short = "relâcher", group = :audio, when = _dr_has,
       action = p -> _dr_stop!(p))
 bind!(:drone, "X", "relâcher tous les drones"; group = :audio, hint = false, when = _dr_has,
       action = p -> _dr_stop_all!(p))

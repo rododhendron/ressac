@@ -75,12 +75,14 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     ws = current_workspace(m.workspaces)
     # Already open → focus its leaf.
     if ws !== nothing
-        for (leaf, buf) in _all_synth_buffers(m)
-            if buf.name == name
-                ws.focused_pane = leaf.id
-                _push_app_log!(m, "[INFO] synth « $name » focalisé")
-                return
-            end
+        for leaf in _all_leaves(ws.tree), pane in leaf.tabs
+            pane isa EditorPane || continue
+            i = findfirst(b -> b.role === :synth && b.name == name, pane.tabs)
+            i === nothing && continue
+            pane.current_tab = i
+            ws.focused_pane = leaf.id
+            _push_app_log!(m, "[INFO] synth « $name » focalisé")
+            return
         end
     end
     # Mode detection: prefer existing `.jl` (DSL); fall back to `.scd`
@@ -99,14 +101,24 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     else
         (_STARTER_DSL(name), :dsl)
     end
-    pane = _place_pane!(m, :editor, Dict{String,Any}(
-        "buffer_role" => "synth",
-        "name"        => name,
-    ))
-    pane isa EditorPane || return
-    eb = pane.tabs[1]
-    eb.synth_mode = mode
-    TK.set_text!(eb.code_editor, src)
+    wsed = _synth_workspace_editor(m)
+    if wsed !== nothing
+        # Workspace synth : un onglet de plus dans la pane texte, le
+        # studio et la doc suivent (synchronisation au rendu).
+        eb = EditorBuffer(; role = :synth, name = name, content = src, synth_mode = mode)
+        push!(wsed.tabs, eb)
+        wsed.current_tab = length(wsed.tabs)
+        _focus_pane!(m, wsed)
+    else
+        pane = _place_pane!(m, :editor, Dict{String,Any}(
+            "buffer_role" => "synth",
+            "name"        => name,
+        ))
+        pane isa EditorPane || return
+        eb = pane.tabs[1]
+        eb.synth_mode = mode
+        TK.set_text!(eb.code_editor, src)
+    end
     eb.code_editor.mode = :normal
     eb.code_editor.focused = true
     _push_app_log!(m, "[INFO] synth « $name » ouvert [$mode] — T teste, :w sauve, U l'utilise dans un pattern")
@@ -153,6 +165,27 @@ function _close_active_synth_tab!(m::RessacApp)
         isempty(syn) && return
         syn[1][1].id
     end
+    leaf = _find_leaf_by_id(ws.tree, leaf_id)
+    pane = (leaf isa PaneLeaf && !isempty(leaf.tabs)) ? leaf.tabs[leaf.current_tab] : nothing
+    if pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs) &&
+       (length(pane.tabs) > 1 || _synth_workspace_editor(m) === pane)
+        # Plusieurs onglets : on ferme le courant, la pane reste. Dans le
+        # workspace synth, le dernier onglet laisse place à un sketch neuf
+        # pour que la forme du workspace tienne.
+        cur = pane.tabs[pane.current_tab]
+        name = cur.name
+        deleteat!(pane.tabs, pane.current_tab)
+        if isempty(pane.tabs)
+            fresh = EditorBuffer(; role = :synth, name = "sketch", content = _STARTER_DSL("sketch"))
+            fresh.code_editor.mode = :normal
+            push!(pane.tabs, fresh)
+        end
+        pane.current_tab = clamp(pane.current_tab, 1, length(pane.tabs))
+        pane.tabs[pane.current_tab].code_editor.focused = true
+        _drone_release_buffer!(m, name)
+        _push_app_log!(m, "[INFO] synth « $name » fermé")
+        return
+    end
     name = (b = _leaf_synth_name(m, leaf_id)) === nothing ? "?" : b
     ws.focused_pane = leaf_id
     cmd_close!(m.workspaces)
@@ -179,6 +212,14 @@ workspace. No-op when fewer than two synth panes are open.
 function _cycle_synth_tab!(m::RessacApp; dir::Int = +1)
     ws = current_workspace(m.workspaces)
     ws === nothing && return
+    # Des onglets dans une même pane : on tourne dedans.
+    wsed = _synth_workspace_editor(m)
+    if wsed !== nothing && length(wsed.tabs) > 1
+        wsed.current_tab = mod1(wsed.current_tab + dir, length(wsed.tabs))
+        wsed.tabs[wsed.current_tab].code_editor.focused = true
+        _focus_pane!(m, wsed)
+        return
+    end
     syn = _all_synth_buffers(m)
     length(syn) <= 1 && return
     cur = findfirst(((leaf, _),) -> leaf.id == ws.focused_pane, syn)

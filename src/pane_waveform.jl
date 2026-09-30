@@ -44,6 +44,12 @@ mutable struct WaveformPane <: PaneImpl
     impacts::Dict{Int,Float64}      # impact mesuré par nœud (P), vidé à chaque changement de structure
     measuring::Bool                 # une mesure d'impact est en vol
     prune_note::String              # pourquoi la mesure n'a pas abouti ("" sinon)
+    linked::Bool                    # studio du workspace synth : suit le texte, y reporte ses édits
+    synced_hash::UInt               # hash du texte dont le génome vient
+    synced_name::String             # nom du synth synchronisé
+    synced_req::Int                 # req_version au dernier report vers le texte
+    last_values::Vector{Float64}    # valeurs des knobs telles qu'écrites dans le texte
+    last_names::Vector{Symbol}      # noms des knobs à ce moment (structure)
 end
 
 # Constructeur de compatibilité 7-args (anciens appels + tests viewer).
@@ -52,7 +58,8 @@ WaveformPane(samples, sr, vs, vl, label, genome, last_rect) =
                  false, Knob[], 1, false, "", false, Int[], Float64[], zeros(0, 0),
                  KnobSignatures(), Float64[], 0, 0, 0, false, false,
                  nothing, AuditionState(1), ReentrantLock(), String[], _scrollpane(), 0,
-                 Dict{Int,String}(), Dict{Int,Float64}(), false, "")
+                 Dict{Int,String}(), Dict{Int,Float64}(), false, "",
+                 false, UInt(0), "", 0, Float64[], Symbol[])
 
 # Seam de rendu : par défaut le rendu NRT, surchargeable en test (sync, mock).
 const _WAVE_RENDER = Ref{Function}(render_genome_audio)
@@ -76,6 +83,8 @@ function _waveform_pane_ctor(args::AbstractDict)
     end
     n = length(samples)
     p = WaveformPane(samples, sr, 1, max(n, 1), label, g, (0, 0, 0, 0))
+    p.linked = Bool(get(args, "linked", false))
+    p.sculpt = sculpt
     if sculpt && g !== nothing
         _sculpt_init!(p)
     end
@@ -496,7 +505,10 @@ function render!(p::WaveformPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
     p.sculpt && _sculpt_pump!(p)              # consomme un rendu prêt
     n = length(p.samples)
-    head = if p.sculpt
+    head = if p.linked
+        "STUDIO ┄ $(p.label) ┄ " * (p.genome === nothing ? "en attente d'un @synth" : "synchronisé") *
+            (_sculpt_busy(p) ? " ↻" : "")
+    elseif p.sculpt
         "SCULPT · $(p.label)$(_sculpt_busy(p) ? " ↻" : "")"
     elseif n == 0
         "WAVE · $(p.label) · (pas d'audio)"
@@ -509,6 +521,11 @@ function render!(p::WaveformPane, area, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 2 || inner.height < 1) && return
     if p.sculpt
+        if p.linked && p.genome === nothing
+            TK.set_string!(buf, inner.x, inner.y, first("  (le texte n'est pas un @synth analysable — le studio attend)", inner.width),
+                           TK.tstyle(:text_dim))
+            return
+        end
         inner.height >= 12 && (_render_sculpt_studio!(p, inner, buf); return)
         striph = min(2, inner.height)
         waveh = inner.height - striph
@@ -580,7 +597,7 @@ function on_close!(p::WaveformPane)
 end
 
 function serialize(p::WaveformPane)
-    d = Dict{String,Any}("label" => p.label, "sculpt" => p.sculpt)
+    d = Dict{String,Any}("label" => p.label, "sculpt" => p.sculpt, "linked" => p.linked)
     p.genome !== nothing && (d["genome"] = serialize_genome(p.genome))
     return d
 end
@@ -677,6 +694,11 @@ function _render_sculpt_studio!(p::WaveformPane, inner::TK.Rect, buf::TK.Buffer)
     bottomy = sepy + 2
     bottomh = inner.y + inner.height - bottomy
     bottomh < 2 && return
+    if p.linked
+        # L'explication vit dans la pane DOC du workspace : les knobs ont toute la largeur.
+        _render_sculpt_knobs!(p, TK.Rect(inner.x, bottomy, inner.width, bottomh), buf)
+        return
+    end
     kw = clamp(inner.width ÷ 2, 16, inner.width - 10)
     _render_sculpt_knobs!(p, TK.Rect(inner.x, bottomy, kw - 1, bottomh), buf)
     for yy in bottomy:(bottomy + bottomh - 1)

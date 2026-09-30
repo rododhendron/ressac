@@ -313,6 +313,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
         end
     end
     _update_live_doc!(m)
+    _synth_workspace_sync!(m)         # texte ⟷ studio ⟷ doc du workspace synth
     buf = f.buffer
 
     area = f.area

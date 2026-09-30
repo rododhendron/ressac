@@ -104,6 +104,7 @@ include("pane_wiki.jl")          # pane wiki (docs/wiki à côté des patterns)
 include("pane_tutorial.jl")      # tutoriel pas à pas, qui suit ce que fait le joueur
 include("pane_notes.jl")         # visualiseur de notes (piano-roll défilant)
 include("pane_drone.jl")         # MODULATION : arguments des drones vivants
+include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
@@ -119,6 +120,7 @@ include("app_patterns.jl")       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
 include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION
+include("app_synth_workspace.jl")# workspace synth : texte ⟷ studio ⟷ doc
 include("app_transport.jl")      # rec / export / panic / hush
 include("app_commands.jl")       # tables ex + commandes + historique
 include("app_modal.jl")          # infra modaux + guide/tutorial/explain

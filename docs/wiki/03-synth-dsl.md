@@ -347,12 +347,25 @@ synth (une copie éditable de la recette — modifie et `T` pour entendre).
 
 ## Sculpter un son
 
-`:sculpt` (ou `M` sur un candidat de l'explorateur) ouvre le **studio
-sculpt** : l'onde du son en haut, ses paramètres (« knobs ») groupés par
-fonction, et l'explication de ce qui fait le son. `h`/`l` tirent un knob,
-`=` saisit une valeur, `o` change l'UGen, `n` insère un filtre, `d`
-supprime un nœud, `x` duplique, `m` greffe un LFO. `:w` sauve, `U`
-l'utilise dans un pattern. Voir `?` dans le studio.
+Dans le workspace DESIGN, le **STUDIO** (en haut à droite) suit le texte :
+dès que le `@synth` change et que tu n'es plus en insertion, il reconstruit
+le graphe du son, son onde et ses knobs, et la DOC (en bas à droite) reçoit
+l'explication. `Ctrl-w l` amène le focus dans le studio, `:sculpt` aussi.
+
+Dans l'autre sens, ce que tu fais dans le studio revient dans le texte :
+
+- **un nombre** tiré (`h`/`l`, `=`) est remplacé **sur place** quand il se
+  retrouve tel quel, et une seule fois, dans le texte — `freq=220` devient
+  `freq=226.443`, rien d'autre ne bouge ;
+- **un changement de structure** (`o` change l'UGen, `n` insère un filtre,
+  `d` supprime un nœud, `x` duplique, `m` greffe un LFO) ou un nombre
+  introuvable (une valeur calculée) réécrit le bloc `@synth` en **forme
+  canonique**, une ligne par nœud. Le log le dit, `u` dans le texte annule.
+
+`:w` sauve, `U` l'utilise dans un pattern, `P` mesure l'impact de chaque
+nœud. Hors de DESIGN, `:sculpt` et `M` sur un candidat de l'explorateur
+ouvrent un studio seul, avec son explication à côté des knobs. Voir `?`
+dans le studio.
 
 ## Inspecter sans jouer
 

@@ -62,10 +62,15 @@ charley : `Esc` puis `E` et tu entends quelque chose.
   la ligne, `E` tous les blocs `@dN`. La tête de lecture surligne le token
   qui joue dans chaque `"…"`.
 
-- **DESIGN** (`Ctrl-2` / `:design`) — la pane **synth** : DSL Julia par
-  défaut (`.jl`) ou SuperCollider brut (`.scd`). `t` / `T` / `Espace`
-  joue le synth (maintenir = rafale accélérée), `:w` sauve, `U` l'utilise
-  dans un pattern.
+- **DESIGN** (`Ctrl-2` / `:design`) — le workspace **synth**, toujours de
+  la même forme : le **texte** à gauche (DSL Julia `.jl` ou SuperCollider
+  brut `.scd`), le **STUDIO** en haut à droite (l'onde et les knobs du
+  son, reconstruits depuis le texte ; tirer un knob réécrit le nombre dans
+  le texte), la **DOC** en bas à droite (`←` `→` : la fiche du mot sous le
+  curseur ou l'explication du synth). Chaque synth ouvert est un onglet
+  du texte, `g t` passe au suivant. `T` joue le synth (maintenir =
+  rafale), `D` le tient en drone, `:w` sauve, `U` l'utilise dans un
+  pattern.
 
 - **EXPLORE** (`Ctrl-3` / `:explore`) — l'**explorateur** génétique de
   synths et le studio **sculpt** (les paramètres d'un son manipulés

@@ -31,6 +31,9 @@ end
 # (miroir des événements PLAY, sur son propre thread) : tout passe par
 # le verrou, et `drone_list()` rend une copie à parcourir sans lui.
 const _DRONES = Drone[]
+# La pane MODULATION ne connaît pas l'app : elle poste ici ce qu'elle veut
+# de l'éditeur (`(:reeval, id)`), l'app le draine à chaque touche.
+const _DRONE_PANE_REQUEST = Ref{Union{Nothing,Tuple{Symbol,Symbol}}}(nothing)
 const _DRONES_LOCK = ReentrantLock()
 
 drone_list() = lock(() -> copy(_DRONES), _DRONES_LOCK)

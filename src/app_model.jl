@@ -411,6 +411,16 @@ synth pane is open.
 function _current_synth_tab(m::RessacApp)
     buf = _focused_buffer(m)
     (buf !== nothing && buf.role === :synth) && return buf
+    # Le focus est ailleurs (studio, doc, modulation) : l'onglet courant
+    # de la pane texte, pas son premier onglet.
+    ws = current_workspace(m.workspaces)
+    if ws !== nothing
+        for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+            tab isa EditorPane && 1 <= tab.current_tab <= length(tab.tabs) || continue
+            b = tab.tabs[tab.current_tab]
+            b.role === :synth && return b
+        end
+    end
     syn = _all_synth_buffers(m)
     isempty(syn) ? nothing : syn[1][2]
 end
@@ -512,6 +522,10 @@ function _fill_workspace!(ws::Workspace, wm = nothing)
         TK.set_text!(eb.code_editor, _STARTER_DSL("sketch"))
         eb.code_editor.mode = :normal
         push!(leaf.tabs, ep)
+        leaf.current_tab = 1
+        ws.focused_pane = leaf.id
+        _synth_workspace_panes!(ws, wm)
+        return
     elseif ws.name == "EXPLORE"
         push!(leaf.tabs, _pane_new(:explorer, Dict{String,Any}()))
     else
