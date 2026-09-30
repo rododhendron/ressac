@@ -172,6 +172,10 @@ end
     @test S.tanh_drive(s, 2).code == (s |> S.tanh_drive(2)).code
     @test (s |> S.soft_clip).code == (s |> S.soft_clip()).code
     @test S.free_verb(s, 0.3, 0.8).code == (s |> S.free_verb(0.3, 0.8)).code
+    # fold2 / clip2 / round_q gardent la forme curried : leur paramètre peut être un signal
+    q = S.saw(:freq)
+    @test (:freq |> S.round_q(q)).code == "(freq).round($(q.code))"
+    @test (S.saw(:freq) |> S.fold2(S.sin_osc(3))).code == "(Saw.ar(freq)).fold2(SinOsc.ar(3, 0))"
     # un filtre garde sa forme curried : son premier argument peut être un LFO
     lfo = S.lfo(0.2; low = 300, high = 2000)
     @test (s |> S.low_pass(lfo)).code == "LPF.ar($(s.code), $(lfo.code))"

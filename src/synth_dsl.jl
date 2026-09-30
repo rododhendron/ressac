@@ -431,9 +431,11 @@ cpsmidi(x) = Sig("($(sc_arg(x))).cpsmidi")
 # Forme directe des mises en forme : `saw(:freq) |> clip` (sans
 # parenthèses) et `clip(saw(:freq), 0.5)` valent `|> clip()` et
 # `|> clip(0.5)`. Leurs paramètres sont des nombres, donc un signal en
-# premier argument est le signal à traiter. (Pas pour les filtres : leur
-# premier argument est une fréquence, qui peut être un signal — un LFO.)
-for f in (:clip, :fold, :wrap, :soft_clip, :cubic, :tanh_drive, :clip2, :fold2, :round_q,
+# premier argument est le signal à traiter. Pas pour les filtres (leur
+# premier argument est une fréquence, qui peut être un LFO), ni pour
+# `fold2`, `clip2`, `round_q` : leur paramètre unique est souvent un
+# signal (`x |> round_q(lfo)`), c'est ce que l'export d'un génome écrit.
+for f in (:clip, :fold, :wrap, :soft_clip, :cubic, :tanh_drive,
           :decimator, :leak_dc, :chorus, :flanger, :phaser, :free_verb)
     @eval $f(s::Sig, args...; kw...) = $f(args...; kw...)(s)
 end
