@@ -69,6 +69,7 @@ function _synth_workspace_sync!(m::RessacApp)
     parts = _synth_workspace_parts(m)
     parts === nothing && return
     (ep, studio, sdoc) = parts
+    sdoc === nothing || (sdoc.studio = studio)
     tab = _synth_workspace_tab(ep)
     tab === nothing && return
     ed = tab.code_editor
@@ -186,4 +187,22 @@ end
 function _synth_workspace_editor(m::RessacApp)
     parts = _synth_workspace_parts(m)
     parts === nothing ? nothing : parts[1]
+end
+
+# Enter dans le graphe : le focus passe au studio, sur le knob du nœud.
+# G dans le studio : la DOC passe sur l'onglet graphe.
+function _drain_synthdoc_request!(m::RessacApp)
+    req = _SYNTHDOC_REQUEST[]
+    req === nothing && return false
+    _SYNTHDOC_REQUEST[] = nothing
+    parts = _synth_workspace_parts(m)
+    parts === nothing && return true
+    (_, studio, sdoc) = parts
+    if req === :focus_studio
+        _focus_pane!(m, studio)
+    elseif req === :graph && sdoc !== nothing
+        sdoc.mode = :graph
+        _focus_pane!(m, sdoc)
+    end
+    return true
 end

@@ -362,6 +362,15 @@ Dans l'autre sens, ce que tu fais dans le studio revient dans le texte :
   introuvable (une valeur calculée) réécrit le bloc `@synth` en **forme
   canonique**, une ligne par nœud. Le log le dit, `u` dans le texte annule.
 
+L'onglet **graphe** de la DOC (`→` deux fois, ou `G` depuis le studio)
+dessine le son tel qu'il est câblé : la chaîne principale de la matière
+vers la sortie, en boîtes reliées par des flèches, une couleur par rôle,
+et sous chaque boîte ce qui la module avec le nom du slot sur l'arête. Le
+nœud focalisé dans le studio est en trait épais ; `h`/`l` passent d'un
+nœud à l'autre et le studio suit, `Enter` ramène le focus sur son knob,
+`d` retire le nœud, `[` `]` défilent un grand graphe, ✂ marque ce qui ne
+s'entend pas.
+
 `:w` sauve, `U` l'utilise dans un pattern, `P` mesure l'impact de chaque
 nœud. Hors de DESIGN, `:sculpt` et `M` sur un candidat de l'explorateur
 ouvrent un studio seul, avec son explication à côté des knobs. Voir `?`

@@ -664,6 +664,8 @@ bind!(:sculpt, "m", "greffer un LFO sur le slot"; short = "LFO", group = :struct
       action = p -> _sculpt_graft_focus!(p))
 bind!(:sculpt, "P", "élagage : mesurer l'impact de chaque nœud"; short = "élagage", group = :structure, when = _sc_has,
       action = p -> _sculpt_measure_impacts!(p))
+bind!(:sculpt, "G", "le graphe du son (onglet graphe de la DOC)"; short = "graphe", group = :view, when = p -> _sc_has(p) && p.linked,
+      action = p -> (_SYNTHDOC_REQUEST[] = :graph))
 bind!(:sculpt, "e", "exporter dans l'éditeur"; short = "exporter", group = :file, when = _sc_has,
       action = p -> _wave_export!(p))
 bind!(:sculpt, "L", "défiler l'onde →"; group = :view, hint = false, when = _sc_has,

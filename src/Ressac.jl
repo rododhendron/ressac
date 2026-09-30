@@ -105,7 +105,8 @@ include("pane_wiki.jl")          # pane wiki (docs/wiki à côté des patterns)
 include("pane_tutorial.jl")      # tutoriel pas à pas, qui suit ce que fait le joueur
 include("pane_notes.jl")         # visualiseur de notes (piano-roll défilant)
 include("pane_drone.jl")         # MODULATION : arguments des drones vivants
-include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication
+include("genome_graph_view.jl")  # le graphe d'un synth en cellules de texte
+include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication · graphe
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────

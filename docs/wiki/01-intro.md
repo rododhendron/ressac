@@ -67,7 +67,7 @@ charley : `Esc` puis `E` et tu entends quelque chose.
   brut `.scd`), le **STUDIO** en haut à droite (l'onde et les knobs du
   son, reconstruits depuis le texte ; tirer un knob réécrit le nombre dans
   le texte), la **DOC** en bas à droite (`←` `→` : la fiche du mot sous le
-  curseur ou l'explication du synth). Chaque synth ouvert est un onglet
+  curseur, l'explication du synth, ou son **graphe**). Chaque synth ouvert est un onglet
   du texte, `g t` passe au suivant. `T` joue le synth (maintenir =
   rafale), `D` le tient en drone, `:w` sauve, `U` l'utilise dans un
   pattern.

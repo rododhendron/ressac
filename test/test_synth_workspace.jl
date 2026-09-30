@@ -60,7 +60,7 @@ end
                 scr = _swscreen(app, tb, frame)
                 @test occursin("SYNTH · sketch", scr)
                 @test occursin("STUDIO ┄ sketch ┄ synchronisé", scr)
-                @test occursin("DOC ✦ ◂ [doc] · explication ▸", scr)
+                @test occursin("DOC ✦ ◂ [doc] · explication · graphe ▸", scr)
                 @test studio.genome !== nothing && !isempty(studio.knobs)    # le starter est analysable
                 @test studio.synced_name == "sketch"
 
@@ -151,10 +151,12 @@ end
         _swex(app, "explain")
         @test sdoc.mode === :explain && Ressac._focused_pane_impl(app) === sdoc
         scr = _swscreen(app, tb, frame)
-        @test occursin("DOC ✦ ◂ doc · [explication] ▸", scr) && occursin("source", scr)
+        @test occursin("DOC ✦ ◂ doc · [explication] · graphe ▸", scr) && occursin("source", scr)
+        _swkey(app, :right)
+        @test sdoc.mode === :graph
         _swkey(app, :right)
         @test sdoc.mode === :doc
-        _swkey(app, :left)
+        _swkey(app, :left); _swkey(app, :left)
         @test sdoc.mode === :explain
         _swex(app, "sculpt")
         @test Ressac._focused_pane_impl(app) === studio
@@ -199,4 +201,83 @@ end
     @test S._elixir_pipes(:(xs .|> amp(_, 0.5))) == :(amp.(xs, 0.5))
     v = Core.eval(S, S._elixir_pipes(:([sin_osc(:freq), sin_osc(:freq + 1)] .|> env_linen(0.01, :sustain, 0.1))))
     @test v isa Vector{S.Sig} && length(v) == 2 && occursin("Env.linen", v[1].code)
+end
+
+@testset "graphe — boîtes, lignes, marques" begin
+    g = Ressac.genome_from_dsl("@synth :acid (freq=60, sustain=0.3) saw(:freq) |> rlpf(line(3000, 500, :sustain), 0.18) |> tanh_drive(2)")
+    boxes = Ressac.graph_boxes(g)
+    chain = [b for b in boxes if b.depth == 0]
+    @test [b.label for b in chain] == ["Saw", "RLPF", "MulAdd", "Tanh"]
+    @test [b.role for b in chain] == [:matière, :corps, :mélange, :grain]
+    @test [b.col for b in chain] == [1, 2, 3, 4]
+    line = only(b for b in boxes if b.label == "Line")
+    @test line.depth == 1 && line.col == 2 && line.edge == "freq" && line.role in (:mouvement, :enveloppe)
+    @test line.sub == "3000 500 :sus…"
+    saw = chain[1]
+    @test saw.sub == ":freq"
+    lines, ids = Ressac.graph_lines(g; focus = chain[2].id)
+    txt = [join(sp.content for sp in l) for l in lines]
+    @test any(l -> occursin("──▶ ◉ out", l), txt)
+    @test any(l -> occursin("┃ freq", l), txt)
+    @test any(l -> occursin("┏", l) && occursin("┓", l), txt)          # le nœud focalisé en trait épais
+    @test any(l -> occursin("│ Saw", l), txt) && any(l -> occursin("┃ RLPF", l), txt)
+    @test occursin("matière", txt[1]) && occursin("sortie", txt[1])
+    @test ids[1] == saw.id && length(ids) == 5
+    # ✂ sur un nœud signalé par l'élagage
+    lines2, _ = Ressac.graph_lines(g; hints = Dict(chain[3].id => "×1"))
+    @test any(l -> occursin("MulAdd ✂", join(sp.content for sp in l)), lines2)
+    # défilement horizontal : la ligne perd ses premières colonnes
+    shifted = Ressac._graph_shift(lines[2], 5)
+    @test join(sp.content for sp in shifted) == String(collect(join(sp.content for sp in lines[2]))[6:end])
+end
+
+@testset "graphe — l'onglet de la DOC, navigation, Enter, d, G" begin
+    oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
+    Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
+    try
+        app, tb, frame = _sw_app()
+        _swex(app, "design")
+        (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
+        ed = ep.tabs[1].code_editor
+        Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)\n"); ed.mode = :normal
+        _swscreen(app, tb, frame)
+        @test sdoc.studio === studio
+        # → → : l'onglet graphe
+        Ressac._focus_pane!(app, sdoc)
+        _swkey(app, :right); _swkey(app, :right)
+        @test sdoc.mode === :graph
+        scr = _swscreen(app, tb, frame)
+        @test occursin("DOC ✦ ◂ doc · explication · [graphe] ▸", scr)
+        @test occursin("◉ out", scr) && occursin("RLPF", scr)
+        @test !isempty(sdoc.graph_ids)
+        # l avance d'une boîte et le studio suit sur le knob du nœud
+        first_id = sdoc.graph_ids[1]
+        @test sdoc.graph_focus == first_id || sdoc.graph_focus in sdoc.graph_ids
+        sdoc.graph_focus = first_id
+        _swkey(app, 'l')
+        @test sdoc.graph_focus == sdoc.graph_ids[2]
+        kb = studio.knobs[studio.focus]
+        @test kb.kind === :node && kb.node_id == sdoc.graph_focus
+        # Enter : le focus passe au studio
+        _swkey(app, :enter)
+        @test Ressac._focused_pane_impl(app) === studio
+        # G dans le studio ramène sur l'onglet graphe
+        sdoc.mode = :doc
+        _swkey(app, 'G')
+        @test sdoc.mode === :graph && Ressac._focused_pane_impl(app) === sdoc
+        # d retire le nœud focalisé (bypass) : le graphe et le texte suivent
+        n0 = length(studio.genome.nodes)
+        rl = findfirst(i -> studio.genome.nodes[i].ugen === :RLPF, sdoc.graph_ids)
+        sdoc.graph_focus = sdoc.graph_ids[rl]
+        _swkey(app, 'd')
+        @test length(studio.genome.nodes) == n0 - 1
+        scr = _swscreen(app, tb, frame)
+        @test !occursin("RLPF", Tachikoma.text(ed)) && !occursin("rlpf", Tachikoma.text(ed))
+        @test !occursin("│ RLPF", scr)
+        # [ ] défilent
+        _swkey(app, ']'); @test sdoc.graph_x == 8
+        _swkey(app, '['); @test sdoc.graph_x == 0
+    finally
+        Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
+    end
 end

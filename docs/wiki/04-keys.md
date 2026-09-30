@@ -422,22 +422,23 @@ Lecture d'une carte :
 | `m` | greffer un LFO sur le slot |
 | `P` | élagage : mesurer l'impact de chaque nœud |
 
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `G` | le graphe du son (onglet graphe de la DOC) |
+| `L` | défiler l'onde → |
+| `H` | défiler l'onde ← |
+| `0` | toute l'onde |
+| `s` | revenir à la vue d'onde |
+| `> / <` | défiler l'explication |
+
 **Fichiers**
 
 | Touche | Action |
 |---|---|
 | `e` | exporter dans l'éditeur |
 | `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `L` | défiler l'onde → |
-| `H` | défiler l'onde ← |
-| `0` | toute l'onde |
-| `s` | revenir à la vue d'onde |
-| `> / <` | défiler l'explication |
 
 **Sous-modes (touches une fois dedans)**
 
@@ -481,18 +482,36 @@ Lecture d'une carte :
 |---|---|
 | `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
 
-## Doc du synth (doc · explication)
+## Doc du synth (doc · explication · graphe)
 
 **Naviguer**
 
 | Touche | Action |
 |---|---|
-| `→ / l` | onglet suivant (doc · explication) |
-| `← / h` | onglet précédent |
+| `→` | onglet suivant (doc · explication · graphe) |
+| `←` | onglet précédent |
+| `l` | onglet suivant |
+| `h` | onglet précédent |
+| `l` | graphe : nœud suivant |
+| `h` | graphe : nœud précédent |
+| `Enter` | graphe : le knob de ce nœud dans le studio |
 | `j / ↓` | défiler |
 | `k / ↑` | remonter |
 | `g` | haut |
 | `G` | bas |
+
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `d` | graphe : retirer le nœud (bypass) |
+
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `]` | graphe : défiler → |
+| `[` | graphe : défiler ← |
 
 ## Journal
 
