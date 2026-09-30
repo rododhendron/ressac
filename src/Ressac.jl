@@ -82,6 +82,7 @@ include("pane_synth_explorer.jl")# GA explorer — :explorer PaneImpl
 include("wave_sculpt.jl")        # :waveform sculpt — knobs + soft quartiers (pure)
 include("pane_waveform.jl")      # :waveform — zoomable sound-wave viewer + sculpt
 include("workspace_commands.jl")
+include("workspace_resize.jl")   # proportions des panes : clavier (mode pane) et souris
 include("workspace_keymap.jl")
 include("workspace_persistence.jl")
 include("snippet_panes.jl")

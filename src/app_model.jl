@@ -238,6 +238,8 @@ non-empty), and the focus toggle for keystroke routing.
     _last_ws_area::Union{Nothing,NamedTuple} = nothing
     # La bulle de glossaire ouverte par la souris (app_hover.jl).
     hover::Union{Nothing,HoverState}     = nothing
+    # Une bordure de pane en cours de glissement (workspace_resize.jl).
+    resize_drag::Union{Nothing,NamedTuple} = nothing
     # Boutons du chrome : (x0, x1, action) sur la ligne de la barre de
     # touches / de la status line, remplis à chaque rendu.
     _keybar_hits::Vector{Tuple{Int,Int,Function}} = Tuple{Int,Int,Function}[]

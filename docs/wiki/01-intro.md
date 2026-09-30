@@ -68,7 +68,9 @@ charley : `Esc` puis `E` et tu entends quelque chose.
   son, reconstruits depuis le texte ; tirer un knob réécrit le nombre dans
   le texte), la **DOC** en bas à droite (`←` `→` : la fiche du mot sous le
   curseur, l'explication du synth, ou son **graphe**). Chaque synth ouvert est un onglet
-  du texte, `g t` passe au suivant. `T` joue le synth (maintenir =
+  du texte, `g t` passe au suivant. Les panes se redimensionnent en
+  glissant une bordure à la souris, ou en mode pane (`Ctrl-w` puis `<` `>`
+  `+` `-`, `=` égalise, `r` tourne la coupe) ; les proportions sont sauvées. `T` joue le synth (maintenir =
   rafale), `D` le tient en drone, `:w` sauve, `U` l'utilise dans un
   pattern.
 

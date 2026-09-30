@@ -257,6 +257,10 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Ctrl-w v` | split vertical |
 | `Ctrl-w c` | fermer la pane |
 | `Ctrl-w z` | zoom / dézoom (la pane seule à l'écran) |
+| `Ctrl-w < / Ctrl-w >` | moins / plus large (5 %) — ou glisser une bordure à la souris |
+| `Ctrl-w - / Ctrl-w +` | moins / plus haut (5 %) |
+| `Ctrl-w =` | des parts égales |
+| `Ctrl-w r` | tourner la coupe (horizontal ⟷ vertical) |
 | `Ctrl-w Esc / Ctrl-w Enter / Ctrl-w Ctrl-w` | quitter le mode pane |
 
 **Naviguer**

@@ -21,6 +21,7 @@ was a recognized op (consumed), `false` if not. Recognized keys:
   v — vsplit (new editor pane to the right)
   h/j/k/l — navigate left/down/up/right
   c — close focused pane
+  < > — narrower / wider · - + — shorter / taller · = — equal shares · r — rotate the split
 
 The caller is responsible for exit handling (Esc / Enter / Ctrl-W
 turn pane mode off). Recognized ops do NOT auto-exit.
@@ -40,6 +41,18 @@ function _dispatch_pane_mode_key(wm::WorkspaceManager, char::Char)
         cmd_focus!(wm, :right)
     elseif char == 'c'
         cmd_close!(wm)
+    elseif char == '<'
+        cmd_resize!(wm, :h, -_RATIO_STEP)
+    elseif char == '>'
+        cmd_resize!(wm, :h, +_RATIO_STEP)
+    elseif char == '-'
+        cmd_resize!(wm, :v, -_RATIO_STEP)
+    elseif char == '+'
+        cmd_resize!(wm, :v, +_RATIO_STEP)
+    elseif char == '='
+        cmd_equalize!(wm)
+    elseif char == 'r'
+        cmd_rotate!(wm)
     else
         return false
     end

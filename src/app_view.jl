@@ -346,6 +346,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
             m.zoom_leaf != 0 && m.zoom_leaf != ws.focused_pane && (m.zoom_leaf = 0)
             rects = _workspace_rects(m, ws, ws_nt)
             _render_tree!(ws.tree, rects, buf, m)
+            _render_resize_highlight!(m, buf)
             m.floats_hidden || _render_floats!(ws.floats, buf, m)
         end
     else
