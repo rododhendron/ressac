@@ -26,6 +26,20 @@ function _emit_special(g::Genome, n::UGenNode)
     n.ugen === :Round    && return "($(A(1))).round($(A(2)))"
     n.ugen === :LFPulseKR && return "LFPulse.kr($(A(1)), $(A(2)), $(A(3)))"
     n.ugen === :FbIn     && return "fb"   # lit le bus de feedback (var fb)
+    # Méthodes SC plutôt que classes : ce que les wrappers du DSL écrivent.
+    n.ugen === :Softclip && return "($(A(1))).softclip"
+    n.ugen === :Cubed    && return "($(A(1))).cubed"
+    n.ugen === :Midicps  && return "($(A(1))).midicps"
+    n.ugen === :Cpsmidi  && return "($(A(1))).cpsmidi"
+    n.ugen === :Fold     && return "($(A(1))).fold($(A(2)), $(A(3)))"
+    n.ugen === :Wrap     && return "($(A(1))).wrap($(A(2)), $(A(3)))"
+    n.ugen === :Clip     && return "($(A(1))).clip($(A(2)), $(A(3)))"
+    n.ugen === :Div      && return "($(A(1)) / $(A(2)))"
+    n.ugen === :EnvPerc  && return "Env.perc($(join((A(i) for i in 1:length(n.args)), ", ")))"
+    n.ugen === :EnvLinen && return "Env.linen($(join((A(i) for i in 1:length(n.args)), ", ")))"
+    n.ugen === :EnvAsr   && return "Env.asr($(join((A(i) for i in 1:length(n.args)), ", ")))"
+    n.ugen === :EnvAdsr  && return "Env.adsr($(join((A(i) for i in 1:length(n.args)), ", ")))"
+    n.ugen === :Raw      && return "Silent.ar"   # un bloc écrit à la main : pas re-rendable
     return nothing
 end
 
@@ -232,6 +246,17 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     n.ugen === :Round     && return "$(A(1)) |> round_q($(A(2)))"
     n.ugen === :SinOscKR  && return "ugen(:SinOsc, $(A(1)); rate = :kr)"
     n.ugen === :LFPulseKR && return "ugen(:LFPulse, $(A(1)), $(A(2)), $(A(3)); rate = :kr)"
+    n.ugen === :Softclip  && return "$(A(1)) |> soft_clip()"
+    n.ugen === :Cubed     && return "$(A(1)) |> cubic()"
+    n.ugen === :Midicps   && return "midicps($(A(1)))"
+    n.ugen === :Cpsmidi   && return "cpsmidi($(A(1)))"
+    n.ugen === :Fold      && return "$(A(1)) |> fold($(A(2)), $(A(3)))"
+    n.ugen === :Wrap      && return "$(A(1)) |> wrap($(A(2)), $(A(3)))"
+    n.ugen === :Clip      && return "$(A(1)) |> clip($(A(2)), $(A(3)))"
+    n.ugen === :Div       && return "$(A(1)) / $(A(2))"
+    n.ugen in (:EnvPerc, :EnvLinen, :EnvAsr, :EnvAdsr) &&
+        return "SynthDSL.Sig(\"Env.$(lowercase(String(n.ugen)[4:end]))($(join((A(i) for i in 1:length(n.args)), ", ")))\")"
+    n.ugen === :Raw       && return "ugen(:Silent)"
     spec = ugen_spec(n.ugen)
     parts = String[]
     for (i, a) in enumerate(n.args)

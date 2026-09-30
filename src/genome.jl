@@ -66,8 +66,12 @@ end
 const UGEN_CATALOG = Dict{Symbol,UGenSpec}()
 register_ugen!(s::UGenSpec) = (UGEN_CATALOG[s.name] = s)
 ugen_spec(name::Symbol) = get(UGEN_CATALOG, name, nothing)
+# Dans le catalogue pour être sculptés et expliqués, mais pas tirés par
+# la mutation ni par `o` : un bloc opaque, des tables, des conversions.
+const _NOT_FOR_MUTATION = Set{Symbol}((:Raw, :Klang, :Div, :Midicps, :Cpsmidi, :K2A, :DC,
+                                       :EnvGen, :EnvPerc, :EnvLinen, :EnvAsr, :EnvAdsr))
 catalog_by_role(role::Symbol) =
-    [s for s in values(UGEN_CATALOG) if s.role === role]
+    [s for s in values(UGEN_CATALOG) if s.role === role && !(s.name in _NOT_FOR_MUTATION)]
 
 function _install_builtin_ugens!()
     sig(name, def, lo, hi) = SlotSpec(name, :signal, def, lo, hi)   # modulatable control (any rate)

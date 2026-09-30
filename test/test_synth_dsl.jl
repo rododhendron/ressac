@@ -163,3 +163,50 @@ end
         @test occursin("doneAction: 2", s.code)
     end
 end
+
+@testset "mises en forme — forme directe et sans parenthèses, puissance" begin
+    S = Ressac.SynthDSL
+    s = S.saw(:freq)
+    @test (s |> S.clip).code == (s |> S.clip()).code
+    @test S.clip(s, 0.5).code == (s |> S.clip(0.5)).code
+    @test S.tanh_drive(s, 2).code == (s |> S.tanh_drive(2)).code
+    @test (s |> S.soft_clip).code == (s |> S.soft_clip()).code
+    @test S.free_verb(s, 0.3, 0.8).code == (s |> S.free_verb(0.3, 0.8)).code
+    # un filtre garde sa forme curried : son premier argument peut être un LFO
+    lfo = S.lfo(0.2; low = 300, high = 2000)
+    @test (s |> S.low_pass(lfo)).code == "LPF.ar($(s.code), $(lfo.code))"
+    # puissance et moins unaire
+    @test (S.sin_osc(:freq) ^ 2).code == "(SinOsc.ar(freq, 0) ** 2)"
+    @test (:freq ^ 2).code == "(freq ** 2)"
+    @test (-(:freq)).code == "(freq.neg)"
+    # par le chemin de la pane : T évalue tout le fichier dans SynthDSL
+    for body in ("saw(:freq) |> clip", "clip(saw(:freq), 0.5)", "saw(:freq) |> soft_clip", "sin_osc(:freq) ^ 2")
+        src = "@synth :probe (freq=220, sustain=0.5) " * body
+        @test (Core.eval(S, S._dsl_parse_all(src)); true)
+    end
+end
+
+@testset "une étape sans signal — message clair, pas de MethodError" begin
+    S = Ressac.SynthDSL
+    err = try
+        Core.eval(S, S._dsl_parse_all("@synth :probe (freq=220) low_pass(800)"))
+        nothing
+    catch e; e end
+    @test err isa ArgumentError && occursin("le signal d'abord", sprint(showerror, err))
+end
+
+@testset "ugen() — les noms-méthodes du catalogue rendent du SC valide" begin
+    S = Ressac.SynthDSL
+    @test S.ugen(:Midicps, 4.0).code == "(4.0).midicps"
+    @test S.ugen(:Cubed, S.saw(:freq)).code == "(Saw.ar(freq)).cubed"
+    @test S.ugen(:Clip, S.saw(:freq), -0.5, 0.5).code == "(Saw.ar(freq)).clip(-0.5, 0.5)"
+    @test S.ugen(:EnvPerc, 0.01, 0.4).code == "Env.perc(0.01, 0.4)"
+    @test S.ugen(:Div, S.saw(:freq), 2).code == "(Saw.ar(freq) / 2)"
+    @test S.ugen(:Saw, :freq).code == "Saw.ar(freq)"                  # les vraies classes ne changent pas
+    # le fichier exporté par l'ancien exporteur (Midicps, Cubed en ugen()) rend du SC sans classe inconnue
+    old = "@synth :t (freq=166.0, sustain=0.5) begin\n    n1 = ugen(:Saw, :freq)\n    n2 = 4.0 |> clip2(1.0)\n" *
+          "    n8 = ugen(:Midicps, 4.0)\n    n9 = ugen(:Cubed, n8)\n    n10 = ugen(:LFPulse, n9, 0.0, 0.5; rate = :kr)\n" *
+          "    ugen(:RLPF, n1 + n2, 400.0, n10)\nend"
+    sc = Ressac.synth_source(:t, Core.eval(S, S._dsl_synth_expr(old).args[end] |> x -> Expr(:let, Expr(:block), x)))
+    @test occursin("(4.0).midicps", sc) && occursin(".cubed", sc) && !occursin("Midicps.ar", sc)
+end

@@ -92,3 +92,24 @@ end
     arrow = findfirst(l -> !isempty(l) && startswith(l[1].content, "  ←"), spans)
     @test arrow !== nothing && any(sp -> sp.content == "[grain] ", spans[arrow])
 end
+
+@testset "aller-retour — un synth écrit à la main s'exporte en DSL et en SC valides" begin
+    src = "@synth :h (freq=220) begin\n  a = saw(:freq) |> soft_clip() |> clip(-0.5, 0.5)\n" *
+          "  a |> low_pass(midicps(60)) |> env_perc(0.01, 0.4)\nend"
+    g = Ressac.genome_from_dsl(src)
+    sc = Ressac.render_synthdef(g, :h)
+    @test occursin(".softclip", sc) && occursin(".clip(-0.5, 0.5)", sc) && occursin("(60.0).midicps", sc)
+    @test occursin("Env.perc(", sc) && !occursin("Softclip.ar", sc) && !occursin("Midicps.ar", sc) && !occursin("EnvPerc", sc)
+    dsl = Ressac.render_dsl(g, :h)
+    @test occursin("|> soft_clip()", dsl) && occursin("midicps(", dsl) && occursin("Env.perc", dsl)
+    g2 = Ressac.genome_from_dsl(dsl)                        # l'export se relit…
+    @test g2 !== nothing && Ressac.render_synthdef(g2, :h) == sc   # …et rend le même SC
+    @test (Core.eval(Ressac.SynthDSL, Ressac.SynthDSL._dsl_parse_all(dsl)); true)   # …et s'évalue (T)
+    # une constante dans une étape (export d'une mutation) s'évalue
+    @test (Core.eval(Ressac.SynthDSL, Ressac.SynthDSL._dsl_parse_all("@synth :c (freq=220) begin\n n2 = 4.0 |> clip2(1.0)\n ugen(:LFPulse, n2, 0.0, 0.3; rate = :kr) * saw(:freq)\nend")); true)
+    # les conversions et blocs opaques ne sont pas matière à mutation
+    for role in (:source, :filter, :math, :mod)
+        @test !any(s -> s.name in (:Raw, :Midicps, :Cpsmidi, :Div, :K2A, :DC, :Klang), Ressac.catalog_by_role(role))
+    end
+    @test Ressac.ugen_spec(:Midicps) !== nothing                # mais restent connus (knobs, explication)
+end
