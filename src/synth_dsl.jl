@@ -25,7 +25,7 @@
 
 module SynthDSL
 
-import ..Ressac: _LIVE_SCHEDULER, _INSTALLING_SYNTH, _AUDITION_ARGS,
+import ..Ressac: _LIVE_SCHEDULER, _INSTALLING_SYNTH, _AUDITION_ARGS, _DRONE_CAPTURE,
                  send_osc, encode, OSCMessage,
                  register_synth!, register_synth_alias!, SynthEntry
 
@@ -72,7 +72,7 @@ export play_buf, buf_rd
 # Sequence helpers
 export demand_seq, demand_white, t_rand
 # Top-level builders
-export build_synth, play_synth, @synth, synth_source
+export build_synth, play_synth, @synth, synth_source, drone_def_name, build_drone_synth
 
 # ════════════════════════════════════════════════════════════════════
 # Sig type & rendering
@@ -688,7 +688,8 @@ function build_synth(name::Symbol, sig::Sig;
                      params::NamedTuple = NamedTuple(),
                      pan = 0,
                      auto_env::Bool = true,
-                     auto_gain::Bool = true)
+                     auto_gain::Bool = true,
+                     gate::Bool = false)
     # SynthDef args in SuperCollider must be numeric — `false` / `true`
     # as a default value throws DoesNotUnderstandError. So if the user
     # wrote `(freq=110, auto_env=false)` as a single tuple (which is the
@@ -710,8 +711,18 @@ function build_synth(name::Symbol, sig::Sig;
     merged = merge(_DEFAULT_PARAMS, local_params)
 
     code = sig.code
-    # Auto-envelope only when the chain doesn't already have one.
-    if auto_env && !occursin("EnvGen", code)
+    if gate
+        # Variante drone : le nœud tient tant que `gate` vaut 1 et se
+        # libère sur `release` secondes après gate 0. Une enveloppe écrite
+        # à la main garde sa forme mais ne libère plus le nœud (c'est la
+        # porte qui s'en charge), sinon un `sustain` de 0.5 s tuerait le
+        # drone avant qu'on ait touché un knob.
+        code = replace(code, r"doneAction:\s*2" => "doneAction: 0")
+        code = "($code * EnvGen.kr(Env.asr(0.01, 1, release), gate, doneAction: 2))"
+        haskey(merged, :gate) || (merged = merge(merged, (gate = 1,)))
+        haskey(merged, :release) || (merged = merge(merged, (release = 0.1,)))
+    elseif auto_env && !occursin("EnvGen", code)
+        # Auto-envelope only when the chain doesn't already have one.
         code = "($code * EnvGen.kr(Env.linen(0.01, sustain, 0.1), doneAction: 2))"
     end
     # Auto-gain. Wrapped after the env so :gain scales the final
@@ -731,6 +742,23 @@ function build_synth(name::Symbol, sig::Sig;
     body = "    OffsetOut.ar(out, DirtPan.ar($code, ~dirt.numChannels, pan));"
     "SynthDef(\\$name, { $param_decl\n$body\n}).add;\n"
 end
+
+"""
+    drone_def_name(name) -> Symbol
+
+Nom SC de la variante à porte d'un synth : `:acid` → `:acid_drone`.
+"""
+drone_def_name(name::Symbol) = Symbol(name, "_drone")
+
+"""
+    build_drone_synth(name, sig; kwargs...) -> String
+
+La variante drone d'un synth (`build_synth(…; gate = true)`) sous le nom
+`drone_def_name(name)` : même chaîne, tenue par `gate`, relâchée en
+`release` secondes.
+"""
+build_drone_synth(name::Symbol, sig::Sig; kwargs...) =
+    build_synth(drone_def_name(name), sig; gate = true, kwargs...)
 
 """
     synth_source(name, sig; kwargs...) -> String
@@ -771,6 +799,17 @@ play_synth(sc_name::Symbol, f::Function; kwargs...) =
 function play_synth(sc_name::Symbol, sig::Sig;
                     alias::Union{Symbol,Nothing} = nothing, kwargs...)
     src = build_synth(sc_name, sig; kwargs...)
+    kw = Dict{Symbol,Any}(kwargs)
+    declared = get(kw, :params, NamedTuple())
+    eff = effective_params(declared)
+    cap = _DRONE_CAPTURE[]
+    if cap isa Vector
+        # L'éditeur veut un drone : on ne joue rien, on lui rend la variante
+        # à porte et les paramètres qu'il pourra moduler.
+        push!(cap, (sc_name, build_drone_synth(sc_name, sig; kwargs...), eff))
+        _register_dsl_synth!(sc_name, eff, alias)
+        return src
+    end
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return src
     # When _INSTALLING_SYNTH is true (set by the plugin loader during
@@ -780,21 +819,27 @@ function play_synth(sc_name::Symbol, sig::Sig;
     # split, plugin-loaded synths played a one-shot every session boot.
     if _INSTALLING_SYNTH[]
         send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC", Any[src])))
+        # Le jumeau à porte aussi, pour que PLAY puisse tenir ce synth en
+        # drone sans repasser par l'éditeur.
+        send_osc(sched.osc, encode(OSCMessage("/dirt/evalSC",
+                                              Any[build_drone_synth(sc_name, sig; kwargs...)])))
     else
         send_osc(sched.osc,
                  encode(OSCMessage("/ressac/evalAndPlay",
                                     Any[String(sc_name), src, _AUDITION_ARGS[]...])))
     end
-    kw = Dict{Symbol,Any}(kwargs)
-    declared = get(kw, :params, NamedTuple())
-    eff = effective_params(declared)
+    _register_dsl_synth!(sc_name, eff, alias)
+    src
+end
+
+function _register_dsl_synth!(sc_name::Symbol, eff::NamedTuple, alias)
     register_synth!(SynthEntry(sc_name, "user-dsl",
                                Dict{String,Any}("description" => "DSL-defined",
                                                 "tags" => ["dsl"],
                                                 "params" => Dict{String,Any}(String(k) => v for (k, v) in pairs(eff)
                                                                              if v isa Real))))
     alias !== nothing && register_synth_alias!(alias, sc_name)
-    src
+    return nothing
 end
 
 """

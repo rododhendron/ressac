@@ -44,6 +44,7 @@ include("plugin_registry.jl")    # _SAMPLE/INSTRUMENT/SYNTH_REGISTRY,
 # ─── Synth DSL submodule (uses _LIVE_SCHEDULER + registry helpers) ─
 include("synth_dsl.jl")          # SynthDSL: @synth, Sig, every ugen wrapper
 include("synth_library.jl")      # _SYNTH_LIBRARY entries (uses SynthDSL)
+include("synth_drone.jl")        # drones : registre + OSC start/set/stop
 
 # ─── GA synth explorer — modules purs (génome + GA, aucun SC/UI) ───
 include("genome.jl")             # Genome DAG + UGenSpec catalog
@@ -102,6 +103,7 @@ include("content_wiki.jl")       # docs/wiki/*.md loader
 include("pane_wiki.jl")          # pane wiki (docs/wiki à côté des patterns)
 include("pane_tutorial.jl")      # tutoriel pas à pas, qui suit ce que fait le joueur
 include("pane_notes.jl")         # visualiseur de notes (piano-roll défilant)
+include("pane_drone.jl")         # MODULATION : arguments des drones vivants
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
@@ -116,6 +118,7 @@ include("tui_input_modes.jl")    # tap / piano / bpm
 include("app_patterns.jl")       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
+include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION
 include("app_transport.jl")      # rec / export / panic / hush
 include("app_commands.jl")       # tables ex + commandes + historique
 include("app_modal.jl")          # infra modaux + guide/tutorial/explain
@@ -192,7 +195,7 @@ export SynthEntry, synth_info, list_synths, register_synth!
 export PatternEntry, save_pattern!, load_pattern, list_patterns, delete_pattern!
 export retarget_pattern, pattern_slot
 export mutate_pattern, crossover_patterns, evolve_patterns, valid_pattern_code
-export ControlMap, ControlPattern, set, gain, lpf, hpf, speed
+export ControlMap, ControlPattern, set, gain, lpf, hpf, speed, drone
 export pan, n, room, delay, shape, pump, note, scale, degree
 export s, sound, up, begin_, end_
 export unit, cut, orbit, nudge, loop, squiz, midinote, channel, dry

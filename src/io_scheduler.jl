@@ -304,6 +304,17 @@ function event_to_osc(ev::Event{ControlMap}; cps = nothing)
     target = haskey(final, :s) ? Symbol(final[:s] isa Symbol ? final[:s] : Symbol(final[:s])) : nothing
     sc_target = target === nothing ? nothing : resolve_synth_name(target)
     if sc_target !== nothing && _is_user_synth(sc_target)
+        if _drone_flag(final)
+            # Slot en drone : chaque événement module le nœud tenu par SC.
+            # Le slot (1er argument) est posé par `_inject_orbit!`, qui
+            # seul le connaît. Pas de sustain : le nœud tient tout seul.
+            args = Any["", String(SynthDSL.drone_def_name(sc_target))]
+            delete!(final, :s); delete!(final, :drone)
+            _direct_pitch!(final, sc_target)
+            _push_kv_args!(args, final)
+            return OSCMessage("/ressac/drone/set", args)
+        end
+        haskey(final, :drone) && delete!(final, :drone)
         if any(k -> k in _DIRT_FX_KEYS, keys(final))
             # Un effet SuperDirt est demandé : SuperDirt joue le synth
             # (par son nom de SynthDef), avec les défauts du synth pour
@@ -404,6 +415,10 @@ routes the event through orbit `N`. No-op for any other address (e.g.
 the per-orbit RMS taps in SC see distinct levels per `@dN` slot.
 """
 function _inject_orbit!(msg::OSCMessage, slot::Symbol)
+    if msg.address == "/ressac/drone/set" && !isempty(msg.args) && msg.args[1] == ""
+        msg.args[1] = String(slot)
+        return msg
+    end
     msg.address == "/dirt/play" || return msg
     orbit = _orbit_for_slot(slot)
     orbit === nothing && return msg
@@ -490,6 +505,7 @@ function _step!(s::Scheduler, now::Float64)
                 if start_cycles <= ev_start < end_cycles
                     fire_time = t_start + ev_start / cps
                     msg = _inject_orbit!(event_to_osc(ev; cps = cps), slot)
+                    msg.address == "/ressac/drone/set" && _drone_mirror!(slot, msg)
                     bundle = OSCBundle(fire_time, [msg])
                     send_osc(s.osc, encode(bundle))
                     Threads.atomic_add!(s.events_shipped, 1)
@@ -568,6 +584,9 @@ function set_pattern!(s::Scheduler, slot::Symbol, p::Pattern)
     lock(s.lock) do
         s.patterns[slot] = p
     end
+    # Un drone tenu par ce slot repart de zéro avec le nouveau pattern
+    # (son premier événement recrée le nœud) : on relâche l'ancien.
+    _drone_slot_release!(slot)
     return nothing
 end
 
@@ -581,6 +600,7 @@ function hush!(s::Scheduler)
     lock(s.lock) do
         empty!(s.patterns)
     end
+    _drone_slots_release!()
     return nothing
 end
 
@@ -593,6 +613,7 @@ function unset_pattern!(s::Scheduler, slot::Symbol)
     lock(s.lock) do
         delete!(s.patterns, slot)
     end
+    _drone_slot_release!(slot)
     return nothing
 end
 

@@ -164,13 +164,16 @@
                 finally
                     Ressac._INSTALLING_SYNTH[] = false
                 end
-                # Exactly one OSC msg shipped — /dirt/evalSC, NOT
-                # /ressac/evalAndPlay (which would have played the synth).
-                @test length(mock.sent) == 1
+                # Deux /dirt/evalSC (le synth et son jumeau à porte pour
+                # les drones), jamais /ressac/evalAndPlay (qui le jouerait).
+                @test length(mock.sent) == 2
                 msg = Ressac.decode_message(mock.sent[1])
                 @test msg.address == "/dirt/evalSC"
                 @test occursin("SynthDef", msg.args[1])
                 @test occursin("silent_test", msg.args[1])
+                twin = Ressac.decode_message(mock.sent[2])
+                @test twin.address == "/dirt/evalSC"
+                @test occursin("silent_test_drone", twin.args[1])
                 # And the synth IS registered for pattern use.
                 @test Ressac.synth_info(:silent_test) !== nothing
             end

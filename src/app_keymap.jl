@@ -157,6 +157,8 @@ scope!(:synth, "Pane synth")
 bind!(:synth, ["t", "T", "Space"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
       repeat = true, when = _km_synth,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
+bind!(:synth, "D", "drone : tenir le synth / le relâcher"; short = "drone", group = :audio,
+      when = _km_synth, action = _drone_toggle!)
 bind!(:synth, "K", "doc du mot sous le curseur (pane DOC)"; short = "doc", group = :help,
       when = _km_synth, action = _doc_under_cursor!)
 bind!(:synth, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",

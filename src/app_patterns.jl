@@ -99,6 +99,9 @@ function _kill_voices_for_line!(m::RessacApp, line::AbstractString)
     for mn in eachmatch(r":(\w+)", line)
         push!(names, Symbol(mn.captures[1]))
     end
+    for ms in eachmatch(r"@(d\d+)", line)
+        _drone_slot_release!(Symbol(ms.captures[1]))
+    end
     isempty(names) && return
     for name in names
         send_osc(sched.osc,

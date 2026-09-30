@@ -189,6 +189,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | Touche | Action |
 |---|---|
 | `t / T / Space` | tester le synth (maintenir = rafale) |
+| `D` | drone : tenir le synth / le relâcher |
 
 **Aide**
 
@@ -444,6 +445,41 @@ Lecture d'une carte :
 |---|---|
 | `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
 
+## Modulation (drones)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | argument suivant |
+| `k / ↑` | argument précédent |
+| `Tab` | drone suivant |
+| `S-Tab` | drone précédent |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `l / →` | moduler + |
+| `h / ←` | moduler − |
+| `L` | moduler + (grand pas) |
+| `H` | moduler − (grand pas) |
+| `=` | saisir une valeur |
+| `0` | revenir au défaut |
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `x` | relâcher ce drone |
+| `X` | relâcher tous les drones |
+
+**Sous-modes (touches une fois dedans)**
+
+| Touche | Action |
+|---|---|
+| `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
+
 ## Journal
 
 **Naviguer**
@@ -502,6 +538,18 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `r` | étiquettes : cents ⟷ ratios |
+
+## Tutoriel
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | défiler |
+| `k / ↑` | remonter |
+| `n` | sauter l'étape |
+| `p` | étape précédente |
+| `r` | recommencer |
 
 ## Tap (:tap / :bpm)
 

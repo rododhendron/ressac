@@ -36,3 +36,4 @@ tachikoma_*.tach
 
 # Patterns rangés par l'utilisateur (données, pas du code)
 plugins/user-patterns/
+test/SuppositionDB/

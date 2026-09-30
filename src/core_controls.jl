@@ -290,6 +290,19 @@ end
 _resolve_note(v) = _resolve_value(v)
 
 """
+    drone(on = 1) -> (Pattern -> ControlPattern)
+
+Tient le synth utilisateur du slot en drone : le premier événement crée le
+nœud (variante à porte du synth), les suivants le modulent au lieu de
+déclencher une voix — le pattern devient une automation du son vivant.
+`drone(0)` rend le slot à ses notes. Changer ou vider le slot relâche le
+nœud avec son `release`.
+
+    @d1 :acid |> drone() |> lpf("<400 800 1600>")
+"""
+drone(on = 1) = _control_op(:drone, _overwrite, on)
+
+"""
     gain(x) -> (Pattern -> ControlPattern)
 
 Multiplicative gain. Chains via `gain(a) |> gain(b) = gain(a * b)`.

@@ -37,7 +37,7 @@ end
 Default body for a fresh sandbox / unnamed synth tab in DSL mode.
 """
 _STARTER_DSL(name) = """
-# T = tester  ·  :w <nom> = sauver sous  ·  U = utiliser dans un pattern  ·  :dsl = guide du DSL
+# T = tester  ·  D = drone (moduler en direct)  ·  :w <nom> = sauver sous  ·  U = utiliser dans un pattern  ·  :dsl = guide du DSL
 
 @synth :$(name) (freq=220, sustain=0.5) sin_osc(:freq)
 """
@@ -128,6 +128,7 @@ function _close_synth_pane!(m::RessacApp)
         isempty(syn) && break
         ws.focused_pane = syn[1][1].id
         cmd_close!(m.workspaces)
+        _drone_release_buffer!(m, syn[1][2].name)
         closed += 1
         closed > 64 && break   # safety against a stuck close
     end
@@ -155,6 +156,7 @@ function _close_active_synth_tab!(m::RessacApp)
     name = (b = _leaf_synth_name(m, leaf_id)) === nothing ? "?" : b
     ws.focused_pane = leaf_id
     cmd_close!(m.workspaces)
+    _drone_release_buffer!(m, name)
     _push_app_log!(m, "[INFO] synth « $name » fermé")
 end
 
@@ -259,6 +261,8 @@ function _fire_t_with_accel!(m::RessacApp; held::Bool=false)
         _test_current_synth!(m)
         return
     end
+    # Un drone vivant : T l'a réévalué, la rafale n'a pas de sens.
+    _editor_drone(m) === nothing || return
     # key_repeat path: gate by interval.
     if now - m.last_t_fire < m.t_hold_interval_ms
         return
@@ -281,6 +285,11 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     tab = _current_synth_tab(m)
+    # Le synth tourne en drone : T le réévalue (nouveau nœud, mêmes réglages).
+    if _editor_drone(m) !== nothing
+        _drone_launch!(m, tab)
+        return
+    end
     src = TK.text(tab.code_editor)
     extra = _audition_args(m, tab, src)
     if tab.synth_mode === :dsl

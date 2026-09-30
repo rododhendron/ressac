@@ -60,6 +60,7 @@ function _reload_core_pane_kinds()
     Ressac.register_pane_kind!(:wiki, Ressac._wiki_pane_ctor)
     Ressac.register_pane_kind!(:notes, Ressac._notes_pane_ctor)
     Ressac.register_pane_kind!(:tutorial, Ressac._tutorial_pane_ctor)
+    Ressac.register_pane_kind!(:drone, Ressac._drone_pane_ctor)
 end
 
 @testset "pane_editor — :editor kind" begin

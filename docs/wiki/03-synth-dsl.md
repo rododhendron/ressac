@@ -41,7 +41,53 @@ que `T`.
 Les symboles (`:freq`, `:cutoff`) deviennent des arguments SC : on les
 pilote en live depuis les patterns : `@d1 :acid |> n("0 3 5")`.
 
-## Drones — sans enveloppe automatique
+## Drones — tenir un son et le moduler en direct
+
+Un synth du DSL a toujours un jumeau **à porte** (`<nom>_drone`) : la même
+chaîne, tenue tant que `gate` vaut 1, relâchée en `release` secondes.
+C'est lui qu'on entend en drone, et chaque argument du `@synth` devient un
+knob vivant.
+
+Depuis l'éditeur de synth :
+
+| Touche | Effet |
+|---|---|
+| `D` | lance le synth en drone et ouvre la pane MODULATION à côté ; `D` de nouveau le relâche |
+| `T` | pendant qu'un drone tourne : réévalue le texte, nouveau nœud, réglages gardés |
+| `:note c4` | la hauteur de départ du drone (comme pour T) |
+
+Dans la pane MODULATION (un argument par ligne, `●` = la valeur, `┼` = le
+défaut du synth) :
+
+| Touche | Effet |
+|---|---|
+| `j` / `k` | argument suivant / précédent |
+| `h` / `l` | moduler − / + (24 pas par octave pour les fréquences, linéaire sinon) ; `H` / `L` par grands pas |
+| `=` puis `⏎` | saisir une valeur exacte |
+| `0` | revenir au défaut |
+| `Tab` | drone suivant quand plusieurs tournent |
+| `x` / `X` | relâcher ce drone / tous |
+| molette | module l'argument survolé ; clic le focalise |
+
+Une enveloppe écrite à la main (`env_perc`, `env_adsr`…) garde sa forme en
+drone mais ne libère plus le nœud : c'est la porte qui s'en charge. Un son
+percussif s'éteint donc de lui-même — c'est sa nature — tandis qu'un
+`env_adsr(...; gate = :gate)` tient et se relâche proprement.
+
+Côté PLAY, `drone()` marque un slot : le premier événement crée le nœud,
+les suivants le **modulent** au lieu de déclencher une voix. Le pattern est
+alors une automation du son vivant, et le slot apparaît dans la pane
+MODULATION où on peut aussi le régler à la main.
+
+```julia
+@d1 :acid |> drone() |> lpf("<400 800 1600>") |> set(:freq, "<55 110>")
+```
+
+Changer le pattern du slot, le vider (`@d1` seul), le couper (`m`) ou `,`
+(hush) relâchent le nœud avec son `release`. `!` (panic) coupe tout.
+
+Sans passer par la porte, un synth peut aussi tenir seul en désactivant
+l'enveloppe automatique :
 
 ```julia
 @synth :pad (freq=110, sustain=999) (auto_env=false,)

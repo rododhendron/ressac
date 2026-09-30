@@ -132,6 +132,7 @@ function _panic!(m::RessacApp)
     if sched !== nothing
         send_osc(sched.osc, encode(OSCMessage("/ressac/panic", Any[])))
     end
+    empty!(_DRONES)   # SC a tout libéré, le registre suit
     _push_app_log!(m, "[INFO] PANIC — tout le son est coupé")
 end
 
@@ -149,6 +150,8 @@ function _hush!(m::RessacApp)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
     hush!(sched)
-    _push_app_log!(m, "[INFO] hush — patterns arrêtés, les queues finissent · :panic coupe aussi les voix")
+    nd = drone_stop_all!()
+    _push_app_log!(m, "[INFO] hush — patterns arrêtés, les queues finissent" *
+                      (nd > 0 ? ", $(nd) drone(s) relâché(s)" : "") * " · :panic coupe aussi les voix")
 end
 

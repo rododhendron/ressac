@@ -221,6 +221,86 @@ s.waitForBoot({
         }.play(AppClock);
     }, '/ressac/evalAndPlay');
 
+    // ── Drones : un nœud tenu, modulable en direct ──────────────────
+    // Un drone est un Synth de la variante à porte d'un synth du DSL
+    // (`<nom>_drone`, construite par Ressac : Env.asr sur `gate`, `release`
+    // en argument). Identifié par un nom (le synth dans l'éditeur, le
+    // slot côté PLAY). Ressac parle en trois messages :
+    //   /ressac/drone/start id def src k v …  (re)définit `def` si src ≠ ""
+    //                                          puis (re)démarre le nœud `id`
+    //   /ressac/drone/set   id def k v …      n.set — crée le nœud s'il manque
+    //   /ressac/drone/stop  id                gate 0 (release) ; "*" = tous
+    ~ressacDrones = IdentityDictionary.new;
+    ~ressacDronePairs = { |msg, from|
+        var out = List.new;
+        var i = from;
+        while ({ i + 1 < msg.size }) {
+            out.add(msg[i].asString.asSymbol);
+            out.add(msg[i + 1]);
+            i = i + 2;
+        };
+        out.asArray
+    };
+    ~ressacDroneRelease = { |id|
+        var node = ~ressacDrones[id];
+        if(node.notNil) {
+            ~ressacDrones.removeAt(id);
+            node.set(\gate, 0);
+        };
+    };
+    ~ressacDroneSpawn = { |id, def, args|
+        var node = Synth(def, args ++ [\out, 0, \gate, 1]);
+        ~ressacDrones[id] = node;
+        // Le nœud peut finir seul (release, enveloppe percussive) : on
+        // l'oublie alors, sinon un `set` tomberait sur un nœud mort.
+        node.onFree { if(~ressacDrones[id] === node) { ~ressacDrones.removeAt(id) } };
+        node
+    };
+    OSCdef(\ressacDroneStart, { |msg|
+        var id  = msg[1].asString.asSymbol;
+        var def = msg[2].asString.asSymbol;
+        var src = msg[3].asString;
+        var args = ~ressacDronePairs.value(msg, 4);
+        Routine {
+            var ok = true;
+            if(src.size > 0) {
+                try {
+                    src.interpret;
+                    s.sync;
+                } { |err|
+                    ok = false;
+                    NetAddr("127.0.0.1", 57121).sendMsg(
+                        '/ressac/synthError', def.asString, err.errorString);
+                    ("[ressac] drone build failed " ++ def ++ ": " ++ err.errorString).postln;
+                };
+            };
+            if(ok) {
+                ~ressacDroneRelease.value(id);
+                ~ressacDroneSpawn.value(id, def, args);
+                ("[ressac] drone " ++ id ++ " ▶ " ++ def).postln;
+            };
+        }.play(AppClock);
+    }, '/ressac/drone/start');
+    OSCdef(\ressacDroneSet, { |msg|
+        var id  = msg[1].asString.asSymbol;
+        var def = msg[2].asString.asSymbol;
+        var args = ~ressacDronePairs.value(msg, 3);
+        var node = ~ressacDrones[id];
+        if(node.isNil) {
+            ~ressacDroneSpawn.value(id, def, args);
+        } {
+            node.set(*args);
+        };
+    }, '/ressac/drone/set');
+    OSCdef(\ressacDroneStop, { |msg|
+        var id = msg[1].asString;
+        if(id == "*") {
+            ~ressacDrones.keys.copy.do { |k| ~ressacDroneRelease.value(k) };
+        } {
+            ~ressacDroneRelease.value(id.asSymbol);
+        };
+    }, '/ressac/drone/stop');
+
     // Direct synth-fire used by both T (in synth-edit mode) and pattern
     // events that target a user-defined synth. Bypasses SuperDirt's
     // auto-injection of freq/sustain/gain so the SynthDef's own param
@@ -285,6 +365,7 @@ s.waitForBoot({
         "[ressac] panic — freeing all nodes".postln;
         s.freeAll;
         ~ressacTestSynth = nil;
+        ~ressacDrones = IdentityDictionary.new;
         if(~ressacTrackSynth.notNil) { ~ressacTrackSynth.clear };
     }, '/ressac/panic');
 
