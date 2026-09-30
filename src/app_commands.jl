@@ -495,8 +495,7 @@ _register_regex!(r"^scope\s+reservoir\s+([\w-]+)$",
 # ── Modals (browse / lib / sccode / snip / guides) ───────────────────
 _register_literal!(m -> _open_help!(m),
                    "guide", "help", "?")
-_register_literal!(m -> _open_modal!(m, :tutorial),
-                   "tutorial", "tour", "start")
+_register_literal!(m -> _open_tutorial!(m), "tutorial", "tour", "start")
 _register_literal!(m -> _open_modal!(m, :synth_guide),
                    "synth-guide")
 _register_literal!(m -> _open_modal!(m, :dsl_guide),

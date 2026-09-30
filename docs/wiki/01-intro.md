@@ -45,7 +45,8 @@ C'est le raccourci à retenir quand on ne sait plus où est quelque chose.
 1. Lance SuperCollider avec le script de démarrage de Ressac
    (`just audio` ou équivalent — voir le README du projet).
 2. Lance la TUI : `julia --project=. scripts/live.jl`
-3. **Première fois ?** Tape `:tutorial` pour la visite guidée de 5 minutes.
+3. **Première fois ?** Tape `:tutorial` : une pane s'ouvre à côté des
+   patterns et avance toute seule au fil de ce que tu fais.
    Sinon :
    - `i` passe en insertion, tape une ligne
    - `Esc` puis `e` évalue la ligne courante, OU `E` évalue tout
@@ -95,7 +96,7 @@ en haut montre le mode, la surface focalisée et les workspaces.
 
 ## Commandes à connaître
 
-- `:tutorial` — visite guidée interactive
+- `:tutorial` — le tutoriel pas à pas (il suit ce que tu fais)
 - `:tap` — tape un rythme avec Espace ; Ressac détecte la période, règle
   le cps et écrit la ligne `@dN "…"`
 - `:browse` — tous les samples / instruments / synths, avec recherche

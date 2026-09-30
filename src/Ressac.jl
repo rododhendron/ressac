@@ -98,6 +98,7 @@ include("tk_patches.jl")         # correctifs Tachikoma appliqués à l'exécuti
 include("content_sccode.jl")     # sccode.org HTTP client
 include("content_wiki.jl")       # docs/wiki/*.md loader
 include("pane_wiki.jl")          # pane wiki (docs/wiki à côté des patterns)
+include("pane_tutorial.jl")      # tutoriel pas à pas, qui suit ce que fait le joueur
 include("pane_notes.jl")         # visualiseur de notes (piano-roll défilant)
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent

@@ -39,7 +39,6 @@ end
 _modal_lines(m::RessacApp) =
     m.modal === :synth_guide ? _SYNTH_GUIDE_LINES :
     m.modal === :dsl_guide   ? _DSL_GUIDE_LINES :
-    m.modal === :tutorial    ? _TUTORIAL_LINES :
     m.modal === :explain     ? m.explain_lines :
     m.modal === :listing     ? m.listing_lines :
     String[]
@@ -83,72 +82,6 @@ function _columnise(names::AbstractVector{<:AbstractString}; width::Int = 96, ga
     return out
 end
 
-"""
-    _TUTORIAL_LINES
-
-The 5-minute onboarding tour for users coming from GUI DAWs. Each
-"card" is a group of lines separated by a blank header; users scroll
-with j/k. Designed to be readable end-to-end in under 5 minutes
-without prior knowledge of vim or live-coding.
-"""
-const _TUTORIAL_LINES = String[
-    "── Visite guidée en 5 minutes : de zéro au premier beat ──",
-    "(j/k ou ↑/↓ pour défiler · q pour fermer · :wiki pour la doc complète)",
-    "",
-    "▓ CARTE 1 — Deux modes, comme vim",
-    "  Mode NORMAL (tu démarres ici) — les touches sont des commandes",
-    "  Mode INSERTION — les touches tapent du texte dans le buffer",
-    "",
-    "    i      passer en INSERTION (taper)",
-    "    Esc    revenir en NORMAL (commandes)",
-    "",
-    "  Le mode est affiché dans la status line en haut : NORMAL / INSERTION.",
-    "",
-    "▓ CARTE 2 — Faire un son",
-    "  En mode NORMAL, appuie sur :",
-    "",
-    "    E      évalue TOUS les blocs @dN du buffer (tu les entends)",
-    "    e      évalue seulement la ligne sous le curseur",
-    "",
-    "  Les lignes évaluées clignotent en vert. La tête de lecture",
-    "  (barre orangée) montre la note qui joue à l'instant.",
-    "",
-    "▓ CARTE 3 — Arrêter / mute / panic",
-    "",
-    "    m      mute le slot @dN sous le curseur (bascule)",
-    "    :hush  arrêt doux (les sons finissent naturellement)",
-    "    ,      pareil que :hush, en une touche",
-    "    !      PANIC : coupe tout son immédiatement",
-    "",
-    "▓ CARTE 4 — Découvrir des sons et des snippets",
-    "",
-    "    Space b   parcourir tous les sons (Tab change de catégorie)",
-    "    :snip     parcourir les snippets multi-lignes",
-    "    Space d   ligne de pattern à trous : @d_ p\"_\" (Tab entre les champs)",
-    "    Space g   pipe de gain à trous : |> gain(_)",
-    "    :starter house|trap|lofi|ambient   charge un starter de genre",
-    "",
-    "▓ CARTE 5 — Concevoir un son, puis l'utiliser",
-    "",
-    "    :design     workspace DESIGN : une pane synth (Ctrl-2)",
-    "    :lib        la librairie de synths (Enter ouvre une copie éditable)",
-    "    T           teste le synth de la pane focalisée",
-    "    U           l'utilise dans un pattern (@dN dans PLAY)",
-    "    gs          depuis un pattern, ouvre le synth sous le curseur",
-    "    :explore    workspace EXPLORE : l'explorateur génétique (Ctrl-3)",
-    "",
-    "▓ CARTE 6 — Où aller ensuite",
-    "",
-    "    ?           l'aide du contexte (touches de la pane focalisée)",
-    "    :wiki       la doc en profondeur (mini-notation, DSL, scope, thèmes)",
-    "    :doc gain   description + exemples pour un paramètre",
-    "    :tap        tape un rythme, Ressac écrit la ligne @dN",
-    "",
-    "Pour repartir de zéro : tout sélectionner (V puis G), d pour supprimer,",
-    "i pour insérer, tape tes patterns. Esc + e pour les entendre.",
-    "",
-    "q ferme cette visite. :tutorial pour y revenir.",
-]
 
 const _DSL_GUIDE_LINES = String[
     "── DSL de synthèse — Julia → SuperCollider ── (j/k défiler, q fermer)",
@@ -347,7 +280,6 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     isempty(lines) && return
     title = m.modal === :synth_guide ? "SYNTH GUIDE" :
             m.modal === :dsl_guide   ? "DSL GUIDE" :
-            m.modal === :tutorial    ? "TUTORIAL · 5-minute tour" :
             m.modal === :explain     ? "EXPLAIN" :
             m.modal === :listing     ? m.listing_title : "INFO"
     inner = _render_modal_block!(buf, area;

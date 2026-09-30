@@ -803,7 +803,7 @@ end
     @test app.modal === :help
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
     _exec_ex_command!(app, "tutorial")
-    @test app.modal === :tutorial
+    @test app.modal === :none && Ressac._find_pane(app, Ressac.TutorialPane) !== nothing
 end
 
 # ── Scope ex commands ──────────────────────────────────────────────
