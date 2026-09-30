@@ -30,7 +30,7 @@ end
     @test occursin("déjà dans ±1", hints[n.f1])            # Fold2(1) après un Tanh
     @test occursin("fréquence 0", hints[n.z])
     @test !haskey(hints, n.s) && !haskey(hints, n.f) && !haskey(hints, n.t)
-    @test !haskey(hints, n.id)                                # la sortie n'est jamais proposée
+    @test occursin("identité", hints[n.id])                  # même en sortie : la retirer remonte la sortie
     # un graphe sain : rien
     g2 = Ressac.Genome(); a = Ressac.add_node!(g2, :Saw, :ar, Ressac.Arg[Ressac.ControlRef(:freq)])
     b = Ressac.add_node!(g2, :RLPF, :ar, Ressac.Arg[Ressac.NodeRef(a), Ressac.ConstArg(800.0), Ressac.ConstArg(0.3)]); g2.output_id = b
@@ -106,5 +106,51 @@ end
         @test !p.measuring && isempty(p.impacts) && any(l -> occursin("indisponible", l), p.explain_lines)
     finally
         Ressac._PRUNE_ANALYZE[] = old_an; Ressac._WAVE_RENDER[] = old_render; Ressac._WAVE_SYNC[] = old_sync
+    end
+end
+
+@testset "élagage — :explain montre la section, :prune réécrit le bloc @synth de l'éditeur" begin
+    old_an = Ressac._PRUNE_ANALYZE[]
+    Ressac._PRUNE_ANALYZE[] = _fake_analyze
+    dir = mktempdir(); mkpath(joinpath(dir, "plugins", "user-synths")); oldwd = pwd(); cd(dir)
+    try
+        app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))
+        tb = Tachikoma.TestBackend(120, 40)
+        frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 120, 40), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+        Tachikoma.view(app, frame); Ressac._PANE_MODE.active = false; Ressac._active_editor(app).mode = :normal
+        ex(cmd) = (Tachikoma.update!(app, Tachikoma.KeyEvent(':')); foreach(c -> Tachikoma.update!(app, Tachikoma.KeyEvent(c)), cmd); Tachikoma.update!(app, Tachikoma.KeyEvent(:enter)))
+        ex("synth truc")
+        tab = Ressac._current_synth_tab(app)
+        src = "# mon synth\n@synth :truc (freq=220, sustain=0.5) begin\n" *
+              "    a = saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(1) |> fold2(1) |> fold2(1)\n" *
+              "    a + ugen(:Saw, 0.0)\nend\n\n# note finale\n"
+        Tachikoma.set_text!(tab.code_editor, src)
+        # :explain sur le buffer : la section ÉLAGAGE et ses indices
+        ex("explain")
+        @test app.modal === :explain
+        @test any(l -> occursin("ÉLAGAGE", l), app.explain_lines) && any(l -> occursin("fréquence 0", l), app.explain_lines)
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+        # :prune réécrit le bloc, garde les commentaires autour
+        ex("prune")
+        txt = Tachikoma.text(tab.code_editor)
+        @test startswith(txt, "# mon synth\n@synth :truc") && occursin("# note finale", txt)
+        @test count("fold2", txt) == 1 || !occursin("Fold2", txt) || count("Fold2", txt) <= 1
+        @test !occursin("ugen(:Saw, 0.0)", txt)
+        @test occursin("RLPF", txt) && occursin("retiré", app.logs[end])
+        g2 = Ressac.genome_from_dsl(txt)
+        @test g2 !== nothing && isempty(Ressac.static_prune_hints(g2))     # plus rien à élaguer
+        # remplacement de bloc : pas de @synth → texte inchangé
+        @test Ressac.replace_synth_block("x = 1\n", "@synth :y (freq=1) saw(:freq)") == "x = 1\n"
+        # sans mesure disponible, les indices statiques suffisent
+        Ressac._PRUNE_ANALYZE[] = gs -> error("nrt: sclang introuvable")
+        Tachikoma.set_text!(tab.code_editor, src)
+        ex("prune")
+        @test !occursin("ugen(:Saw, 0.0)", Tachikoma.text(tab.code_editor)) && occursin("mesure indisponible", app.logs[end])
+        # rien à retirer : le journal le dit, le texte ne bouge pas
+        clean = "@synth :truc (freq=220) saw(:freq) |> rlpf(800, 0.3)\n"
+        Tachikoma.set_text!(tab.code_editor, clean); ex("prune")
+        @test Tachikoma.text(tab.code_editor) == clean && occursin("rien", app.logs[end])
+    finally
+        cd(oldwd); Ressac._PRUNE_ANALYZE[] = old_an
     end
 end

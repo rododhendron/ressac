@@ -539,6 +539,7 @@ function _unwrap_safety(g::Genome, id::Int)
             a isa NodeRef && (nxt = a.id; break)
         end
         nxt == 0 && break
+        delete!(g.nodes, cur)              # la sécurité est remise au rendu ; laissée là, elle serait « hors chaîne »
         cur = nxt
     end
     return cur

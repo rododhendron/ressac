@@ -87,9 +87,13 @@ _register_literal!(m -> _sculpt_command!(m, ""), "sculpt")
 # `:prune [seuil]` — dans le studio sculpt, retire les nœuds dont l'impact
 # mesuré (P) est sous le seuil (0.02 par défaut).
 function _prune_command!(m::RessacApp, arg::AbstractString)
-    p = _focused_sculpt_pane(m)
-    p === nothing && (_push_app_log!(m, "[WARN] :prune — ouvre d'abord un studio sculpt (:sculpt, ou M dans l'explorateur)"); return)
     thr = isempty(strip(arg)) ? 0.02 : something(tryparse(Float64, strip(arg)), 0.02)
+    p = _focused_sculpt_pane(m)
+    if p === nothing
+        _focused_role(m) === :synth && return _prune_synth_buffer!(m, thr)
+        _push_app_log!(m, "[WARN] :prune — dans un studio sculpt (:sculpt, M) ou une pane synth DSL")
+        return
+    end
     if isempty(p.impacts)
         _push_app_log!(m, p.measuring ? "[INFO] :prune — la mesure est en cours, réessaie dans un instant" :
                                         "[WARN] :prune — mesure d'abord l'impact des nœuds avec P")
@@ -148,5 +152,44 @@ function _save_sculpt!(m::RessacApp, name::AbstractString; pane = nothing)
                          "params" => Dict{String,Any}(String(k) => v for (k, v) in p.genome.controls))))
     p.label = nm
     _push_app_log!(m, "[INFO] sculpt sauvé → $path")
+    return
+end
+
+"""
+    _prune_synth_buffer!(m, thr)
+
+`:prune` dans une pane synth DSL : le génome du texte, les nœuds que la
+structure désigne, puis — si sclang répond — ceux dont l'impact mesuré
+est sous `thr` ; le bloc `@synth` est réécrit (forme canonique, le reste
+du fichier intact). Le journal dit ce qui est parti.
+"""
+function _prune_synth_buffer!(m::RessacApp, thr::Real)
+    tab = _current_synth_tab(m)
+    tab === nothing && return
+    ed = tab.code_editor
+    text = TK.text(ed)
+    g = genome_from_dsl(text)
+    g === nothing && (_push_app_log!(m, "[WARN] :prune — le buffer n'est pas un synth DSL analysable"); return)
+    removed = static_prune!(g)
+    measured = Int[]
+    note = ""
+    try
+        imps = measure_impacts(g)
+        measured = prune!(g, imps; threshold = thr)
+    catch err
+        note = first(sprint(showerror, err), 60)
+    end
+    all_removed = vcat(removed, measured)
+    if isempty(all_removed)
+        _push_app_log!(m, isempty(note) ? "[INFO] :prune — rien sous $thr, tout s'entend" :
+                                          "[INFO] :prune — rien de suspect dans la structure (mesure indisponible : $note)")
+        return
+    end
+    row = ed.cursor_row
+    TK.set_text!(ed, replace_synth_block(text, render_dsl(g, Symbol(tab.name))))
+    ed.cursor_row = clamp(row, 1, length(ed.lines)); ed.cursor_col = 0
+    what = join(("#$id" for id in all_removed), " ")
+    _push_app_log!(m, "[INFO] :prune — $(length(all_removed)) nœud$(length(all_removed) > 1 ? "s" : "") retiré$(length(all_removed) > 1 ? "s" : "") ($what)" *
+                      (isempty(note) ? "" : " · mesure indisponible : $note") * " — T pour écouter, :w pour sauver")
     return
 end

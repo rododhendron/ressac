@@ -660,10 +660,12 @@ function _explain_command!(m::RessacApp, name::AbstractString)
     lines = if isempty(nm)
         ed = _active_editor(m)
         g = ed === nothing ? nothing : genome_from_dsl(TK.text(ed))
-        g === nothing ? ["(buffer courant : pas un synth DSL reconnu)"] : explain_genome(g)
+        g === nothing ? ["(buffer courant : pas un synth DSL reconnu)"] :
+                        vcat(explain_genome(g), prune_report_lines(g))
     else
         path = joinpath(pwd(), "plugins", "user-synths", "$nm.jl")
-        explain_synth_file(path)
+        g = isfile(path) ? genome_from_dsl(read(path, String)) : nothing
+        g === nothing ? explain_synth_file(path) : vcat(explain_genome(g), prune_report_lines(g))
     end
     m.explain_lines = vcat(["EXPLAIN · $(isempty(nm) ? "buffer courant" : nm)", ""], lines)
     _open_modal!(m, :explain)

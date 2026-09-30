@@ -202,6 +202,10 @@ function _sc_term!(p::_ScParser)
         va, vb = _sc_const(a), _sc_const(b)
         if va !== nothing && vb !== nothing
             a = ConstArg(op == '*' ? va * vb : (vb == 0 ? 0.0 : va / vb))
+        elseif op == '*' && vb == 1.0
+            # `x * 1` (ce que tanh_drive(1) écrit) : rien à faire
+        elseif op == '*' && va == 1.0
+            a = b
         elseif op == '*'
             # le signal d'abord, le facteur ensuite (comme MulAdd le lit)
             (va !== nothing) && ((a, b) = (b, a))
@@ -227,6 +231,10 @@ function _sc_expr!(p::_ScParser)
         if va !== nothing && vb !== nothing
             a = ConstArg(op == '+' ? va + vb : va - vb)
             continue
+        end
+        vb == 0.0 && continue                                            # `x + 0`, `x - 0` : rien
+        if va == 0.0 && op == '+'
+            a = b; continue
         end
         op == '-' && (b = vb !== nothing ? ConstArg(-vb) :
                           NodeRef(add_node!(p.g, :MulAdd, :ar, Arg[b, ConstArg(-1.0), ConstArg(0.0)])))

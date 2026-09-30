@@ -279,3 +279,19 @@ l'utilise dans un pattern. Voir `?` dans le studio.
 synth_source(:foo, saw(:freq); params=(freq=440,))
 # → renvoie la source SC du SynthDef sans l'envoyer
 ```
+
+## Comprendre et élaguer un synth
+
+`:explain` (ou `:explain nom`) décrit le son du buffer : la chaîne de
+la sortie vers la matière, le rôle de chaque nœud, pourquoi ça sonne
+comme ça, et une section ÉLAGAGE qui pointe ce qui ne s'entend pas
+(nœud hors de la chaîne, saturation redondante, source à 0 Hz…).
+
+`:prune` dans la pane synth retire ces nœuds, puis — si `sclang`
+répond — ceux dont l'impact mesuré est sous 0,02 (`:prune 0.05` pour
+élargir) : le son est rendu hors-ligne sans chaque nœud et comparé au
+complet. Le bloc `@synth` est réécrit sous sa forme canonique
+(`n1 = …`), le reste du fichier reste intact ; `T` pour écouter, `:w`
+pour sauver. Le studio sculpt (`:sculpt`) montre la même chose nœud
+par nœud, avec `P` pour mesurer et `d` pour retirer à la main.
+

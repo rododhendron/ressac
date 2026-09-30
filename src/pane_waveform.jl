@@ -125,31 +125,9 @@ function _sculpt_refresh_explain!(p::WaveformPane)
     return
 end
 
-# La section « ÉLAGAGE » de l'explication : indices statiques, impacts
-# mesurés (les plus faibles d'abord), et quoi faire.
-function _prune_lines(p::WaveformPane)
-    out = String["", "ÉLAGAGE (ce qui ne s'entend pas)"]
-    for id in sort!(collect(keys(p.hints)))
-        push!(out, "  ✂ #$id $(p.hints[id])")
-    end
-    if !isempty(p.impacts)
-        ranked = sort!(collect(p.impacts); by = x -> (x[2], x[1]))
-        for (id, imp) in first(ranked, 8)
-            haskey(p.genome.nodes, id) || continue
-            mark = imp < 0.02 ? "✂" : imp < 0.08 ? "·" : " "
-            push!(out, "  $mark #$id $(p.genome.nodes[id].ugen) — impact $(round(imp; digits = 3))")
-        end
-        push!(out, "  ✂ = inaudible (< 0.02) · Tab/d retire un nœud · :prune retire tous les ✂ mesurés")
-    elseif p.measuring
-        push!(out, "  mesure en cours (rendu hors-ligne de chaque nœud retiré)…")
-    elseif !isempty(p.prune_note)
-        push!(out, "  élagage mesuré indisponible : $(p.prune_note)")
-    else
-        isempty(p.hints) && push!(out, "  rien de suspect dans la structure")
-        push!(out, "  P mesure l'impact de chaque nœud (rendu hors-ligne)")
-    end
-    return out
-end
+# La section « ÉLAGAGE » de l'explication (voir genome_prune.jl).
+_prune_lines(p::WaveformPane) =
+    prune_report_lines(p.genome; impacts = p.impacts, measuring = p.measuring, note = p.prune_note)
 
 """
     _sculpt_measure_impacts!(p)
