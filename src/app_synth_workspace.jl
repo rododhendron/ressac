@@ -206,3 +206,43 @@ function _drain_synthdoc_request!(m::RessacApp)
     end
     return true
 end
+
+"""
+    _open_synth_text_in_design!(m, name, text; focus_studio = false) -> Bool
+
+Ouvre `text` comme synth `name` dans DESIGN : un onglet de plus dans la
+pane texte du workspace synth (le studio et la doc suivent), ou une pane
+à part si DESIGN n'a pas cette forme. Les ponts de l'explorateur (e, M).
+"""
+function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::AbstractString;
+                                     focus_studio::Bool = false)
+    _switch_workspace_named!(m, "DESIGN")
+    wsed = _synth_workspace_editor(m)
+    if wsed !== nothing
+        i = findfirst(b -> b.role === :synth && b.name == name, wsed.tabs)
+        if i === nothing
+            push!(wsed.tabs, EditorBuffer(; role = :synth, name = name, content = text, synth_mode = :dsl))
+            i = length(wsed.tabs)
+        else
+            TK.set_text!(wsed.tabs[i].code_editor, text)
+        end
+        wsed.current_tab = i
+        wsed.tabs[i].code_editor.mode = :normal
+        wsed.tabs[i].code_editor.focused = true
+        _focus_pane!(m, wsed)
+        _synth_workspace_sync!(m)
+        if focus_studio
+            parts = _synth_workspace_parts(m)
+            parts === nothing || (_focus_pane!(m, parts[2]); parts[3] === nothing || (parts[3].mode = :explain))
+        end
+        return true
+    end
+    pane = _place_pane!(m, :editor, Dict{String,Any}("buffer_role" => "synth", "name" => name))
+    if pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs)
+        eb = pane.tabs[pane.current_tab]
+        eb.synth_mode = :dsl
+        TK.set_text!(eb.code_editor, text)
+        eb.code_editor.mode = :normal
+    end
+    return true
+end

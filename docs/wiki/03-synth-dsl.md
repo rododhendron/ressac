@@ -372,9 +372,10 @@ nœud à l'autre et le studio suit, `Enter` ramène le focus sur son knob,
 s'entend pas.
 
 `:w` sauve, `U` l'utilise dans un pattern, `P` mesure l'impact de chaque
-nœud. Hors de DESIGN, `:sculpt` et `M` sur un candidat de l'explorateur
-ouvrent un studio seul, avec son explication à côté des knobs. Voir `?`
-dans le studio.
+nœud. `M` sur un candidat de l'explorateur l'amène dans DESIGN : son
+texte en onglet, le studio focalisé, l'explication dans la DOC. Hors de
+DESIGN, `:sculpt <nom>` ouvre un studio seul, avec son explication à côté
+des knobs. Voir `?` dans le studio.
 
 ## Inspecter sans jouer
 

@@ -220,24 +220,27 @@ end
         try
             app, tb, frame = _br_app()
             _bex(app, "explore")
-            _bkey(app, 'M')                                   # sculpter le candidat focalisé
+            _bkey(app, 'M')                                   # sculpter le candidat focalisé : dans DESIGN
+            @test _bws(app) == "DESIGN"
             sp = Ressac._focused_sculpt_pane(app)
-            @test sp !== nothing && sp.sculpt
-            @test app.zoom_leaf != 0
+            @test sp !== nothing && sp.sculpt && sp.linked
             @test !isempty(sp.explain_lines)
+            (ep, _, sdoc) = Ressac._synth_workspace_parts(app)
+            @test ep.tabs[ep.current_tab].name == "candidat_1"
+            @test occursin("@synth :candidat_1", Tachikoma.text(ep.tabs[ep.current_tab].code_editor))
+            @test sdoc.mode === :explain
             scr = _bscreen(app, tb, frame)
-            @test occursin("SCULPT · candidat", scr)
+            @test occursin("STUDIO ┄ candidat_1", scr)
             @test occursin("▸ global", scr) || occursin("▸ ", scr)   # knobs groupés
             @test occursin("SYNTHÈSE", scr) || occursin("EN SORTIE", scr) || occursin("À LA BASE", scr)
-            @test occursin("SCULPT", split(scr, "\n")[1])          # surface dans la status line
-            # les touches vont bien à la pane
+            # les touches vont bien au studio
             f0 = sp.focus
             _bkey(app, 'j')
             @test sp.focus == f0 + 1
-            # </> défile l'explication
-            last = Ressac._scroll_last(sp.explain_view)               # l'explication peut tenir dans la pane
-            _bkey(app, '>'); @test sp.explain_view.offset == min(1, last)
-            _bkey(app, '<'); @test sp.explain_view.offset == 0
+            # M de nouveau sur le même candidat : le même onglet, pas un de plus
+            ntabs = length(ep.tabs)
+            _bex(app, "explore"); _bkey(app, 'M')
+            @test length(Ressac._synth_workspace_parts(app)[1].tabs) == ntabs
             # :w <nom> sauve le sculpt (fichier avec génome embarqué)
             _bex(app, "w scusave")
             path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")

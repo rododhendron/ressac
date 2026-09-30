@@ -30,7 +30,12 @@ function _drain_explorer_sculpt!(m::RessacApp)
     req === nothing && return false
     _EXPLORER_SCULPT_REQUEST[] = nothing
     gser, label = req
-    _open_sculpt_pane!(m, gser, label)
+    # Le candidat se travaille dans DESIGN : son texte en onglet, le studio
+    # (focalisé) et l'explication le suivent.
+    name = replace(strip(replace(label, r"\s*#\s*" => "_")), r"[^\w]" => "_")
+    g = deserialize_genome(gser)
+    _open_synth_text_in_design!(m, name, _explorer_export_text(g, name); focus_studio = true)
+    _push_app_log!(m, "[INFO] $(label) dans DESIGN — le studio suit le texte, :w sauve, U l'utilise dans un pattern")
     return true
 end
 

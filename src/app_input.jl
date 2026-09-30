@@ -169,15 +169,7 @@ function _drain_explorer_export!(m::RessacApp)
     _EXPLORER_EXPORT_REQUEST[] = nothing
     name, dsl = req
     # Le candidat s'édite dans DESIGN (l'explorer reste dans EXPLORE).
-    _switch_workspace_named!(m, "DESIGN")
-    pane = _place_pane!(m, :editor,
-                        Dict{String,Any}("buffer_role" => "synth", "name" => name))
-    if pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs)
-        eb = pane.tabs[pane.current_tab]
-        eb.synth_mode = :dsl
-        TK.set_text!(eb.code_editor, dsl)
-        eb.code_editor.mode = :normal
-    end
+    _open_synth_text_in_design!(m, name, dsl)
     return true
 end
 
