@@ -252,7 +252,7 @@ end
         ed.cursor_row = 1; ed.cursor_col = 18
         scr = _nv_screen(app, tb, frame, 30)
         @test docp.name == "gain"
-        @test occursin("Multiplicateur", scr)
+        @test occursin("Volume multiplier", scr)
         # un synth : description, params, usage
         ed.cursor_row = 2; ed.cursor_col = 6
         scr = _nv_screen(app, tb, frame, 30)

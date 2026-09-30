@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 seq([p\"bd*2\", p\"sn\"])"]
 name = "seq"
-short = "Met les patterns bout à bout dans UN cycle (le fastcat de Tidal)."
+short = "Puts the patterns end to end in ONE cycle (Tidal's fastcat)."
 tags = ["tidal"]
 +++
 
 # seq
 
-Met les patterns bout à bout dans UN cycle (le fastcat de Tidal).
+Puts the patterns end to end in ONE cycle (Tidal's fastcat).

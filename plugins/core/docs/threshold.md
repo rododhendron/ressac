@@ -1,10 +1,12 @@
 +++
 examples = []
 name = "threshold"
-short = "Seuil du compresseur / gate (en dB ou en amplitude 0-1)."
-tags = []
+short = "Compressor / gate threshold (in dB or as an amplitude 0-1)."
+tags = ["glossary", "effects", "mix"]
 +++
 
 # threshold
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Compressor / gate threshold (in dB or as an amplitude 0-1).
+
+See also: compressor, decibel

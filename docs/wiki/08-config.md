@@ -11,6 +11,8 @@ optionnelles ; valeurs par défaut ci-dessous.
 theme = "cyberpunk"   # un thème intégré ou personnalisé
 fps   = 60
 keyboard = "auto"     # auto (détection), azerty, qwerty — voir plus bas
+hover = true          # bulle de glossaire au survol de la souris
+hover_lock_ms = 3000  # délai avant que la bulle se verrouille
 
 [input]
 t_hold_initial_ms = 250
@@ -91,3 +93,13 @@ sous Wayland), `setxkbmap -query` (X11 seulement), puis `LANG` (`fr`,
 `:keyboard azerty`, `:keyboard qwerty` ou `:keyboard auto` changent en
 session, `:keyboard` seul affiche l'état.
 
+## Glossaire au survol
+
+Les fiches et le glossaire (`plugins/core/docs`, en anglais) reconnaissent
+leurs termes dans tout texte affiché : ils sont soulignés. Poser la souris
+sur un terme ouvre une bulle avec sa définition ; elle se verrouille au bout
+de `hover_lock_ms` millisecondes, ou dès que la souris y entre. Verrouillée,
+elle laisse survoler ses propres termes, qui ouvrent chacun une bulle à côté.
+Sortir de toutes les bulles ferme tout ; `Esc` ou n'importe quelle touche
+aussi. `hover = false` coupe le mécanisme (et le suivi de la souris dans le
+terminal, mode 1003).

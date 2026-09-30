@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn cp\" |> iterBack(4)"]
 name = "iterBack"
-short = "Comme iter mais dans l'autre sens."
+short = "Like iter but the other way round."
 tags = ["tidal"]
 +++
 
 # iterBack
 
-Comme iter mais dans l'autre sens.
+Like iter but the other way round.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 cycleChoose([:bd, :sn])"]
 name = "cycleChoose"
-short = "Alias de choose : un tirage par cycle."
+short = "Alias of choose: one draw per cycle."
 tags = ["tidal"]
 +++
 
 # cycleChoose
 
-Alias de choose : un tirage par cycle.
+Alias of choose: one draw per cycle.

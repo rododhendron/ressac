@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "cut"
-short = "Groupe de coupe : les voix partageant le même entier positif se coupent mutuellement."
+short = "Cut group: voices sharing the same positive integer cut each other off."
 tags = []
 +++
 
 # cut
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Cut group: voices sharing the same positive integer cut each other off.

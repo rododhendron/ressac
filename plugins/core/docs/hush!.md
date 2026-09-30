@@ -1,10 +1,10 @@
 +++
 examples = ["hush!()"]
 name = "hush!"
-short = "Coupe tous les slots d'un coup (la virgule, ou :hush)."
+short = "Cuts every slot at once (the comma, or :hush)."
 tags = ["session"]
 +++
 
 # hush!
 
-Coupe tous les slots d'un coup (la virgule, ou :hush).
+Cuts every slot at once (the comma, or :hush).

@@ -1,10 +1,10 @@
 +++
 examples = ["unset_pattern!(live(), :d1)"]
 name = "unset_pattern!"
-short = "Vide un slot."
+short = "Empties a slot."
 tags = ["session"]
 +++
 
 # unset_pattern!
 
-Vide un slot.
+Empties a slot.

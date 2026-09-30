@@ -140,12 +140,12 @@ end
     @test card isa Vector{Ressac._MdLine} && !isempty(card)
     # la pane : changer de fiche remonte en haut, le contenu suit le nom
     p = Ressac.DocPane("gain")
-    tb = Tachikoma.TestBackend(40, 10)
-    Ressac.render!(p, Tachikoma.Rect(1, 1, 40, 10), tb.buf)
+    tb = Tachikoma.TestBackend(40, 6)                            # plus court que la fiche : ça défile
+    Ressac.render!(p, Tachikoma.Rect(1, 1, 40, 6), tb.buf)
     @test Tachikoma.find_text(tb, "gain") !== nothing && p.rendered == ("gain", 37)
     Ressac.handle_key!(p, Tachikoma.KeyEvent('j')); @test p.pane.offset == 1
     p.name = "fast"
-    Ressac.render!(p, Tachikoma.Rect(1, 1, 40, 10), tb.buf)
+    Ressac.render!(p, Tachikoma.Rect(1, 1, 40, 6), tb.buf)
     @test p.pane.offset == 0 && p.rendered == ("fast", 37)
     @test Tachikoma.find_text(tb, "fast") !== nothing
     @test Ressac.serialize(p)["scroll"] == 0

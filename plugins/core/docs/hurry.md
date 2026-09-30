@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> hurry(2)"]
 name = "hurry"
-short = "fast(n) et speed × n en même temps : les samples accélèrent ET montent."
+short = "fast(n) and speed × n at once: samples get faster AND higher."
 tags = ["tidal"]
 +++
 
 # hurry
 
-fast(n) et speed × n en même temps : les samples accélèrent ET montent.
+fast(n) and speed × n at once: samples get faster AND higher.

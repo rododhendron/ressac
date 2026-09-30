@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*8\" |> sometimesBy(0.3, rev)"]
 name = "sometimesBy"
-short = "Applique f avec la probabilité donnée, décidée par cycle."
+short = "Applies f with the given probability, decided per cycle."
 tags = ["tidal"]
 +++
 
 # sometimesBy
 
-Applique f avec la probabilité donnée, décidée par cycle.
+Applies f with the given probability, decided per cycle.

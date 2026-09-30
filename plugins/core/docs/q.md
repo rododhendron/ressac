@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "q"
-short = "Résonance / qualité du filtre (inverse de 'rq'). 0.1 = pic net, 0.5 = moyen, 1 = sans résonance. Plus de q = plus de sifflement."
+short = "Filter resonance / quality (inverse of 'rq'). 0.1 = sharp peak, 0.5 = medium, 1 = no resonance. More q = more whistle."
 tags = []
 +++
 
 # q
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Filter resonance / quality (inverse of 'rq'). 0.1 = sharp peak, 0.5 = medium, 1 = no resonance. More q = more whistle.

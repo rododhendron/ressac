@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "spread"
-short = "Largeur stéréo / désaccord."
+short = "Stereo width / detune."
 tags = []
 +++
 
 # spread
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Stereo width / detune.

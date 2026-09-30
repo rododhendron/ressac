@@ -1,10 +1,10 @@
 +++
 examples = ["clashes(live().patterns)"]
 name = "clashes"
-short = "Dit quelles voix se cognent : attaques simultanées, bandes qui se recouvrent. `:clash` l'affiche."
+short = "Tells which voices collide: simultaneous onsets, overlapping bands. `:clash` shows it."
 tags = ["mix"]
 +++
 
 # clashes
 
-Dit quelles voix se cognent : attaques simultanées, bandes qui se recouvrent. `:clash` l'affiche.
+Tells which voices collide: simultaneous onsets, overlapping bands. `:clash` shows it.

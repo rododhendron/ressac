@@ -1,10 +1,10 @@
 +++
 examples = ["list_scales()"]
 name = "list_scales"
-short = "Liste les noms de toutes les gammes enregistrées."
+short = "Lists the names of every registered scale."
 tags = ["tuning"]
 +++
 
 # list_scales
 
-Liste les noms de toutes les gammes enregistrées.
+Lists the names of every registered scale.

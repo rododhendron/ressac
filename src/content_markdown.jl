@@ -77,7 +77,7 @@ function _md_inline(s::AbstractString; base::TK.Style = TK.tstyle(:text))
     end
     flush!()
     isempty(out) && push!(out, TK.Span("", base))
-    return out
+    return _glossary_underline(out; base = base)
 end
 
 # Position du prochain `mark` à partir de `from`, hors segments en `code`.

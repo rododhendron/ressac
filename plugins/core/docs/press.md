@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*4\" |> press"]
 name = "press"
-short = "Décale chaque événement dans la seconde moitié de son créneau."
+short = "Shifts each event into the second half of its slot."
 tags = ["tidal"]
 +++
 
 # press
 
-Décale chaque événement dans la seconde moitié de son créneau.
+Shifts each event into the second half of its slot.

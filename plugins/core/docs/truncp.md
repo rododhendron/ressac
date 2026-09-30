@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn cp\" |> truncp(0.75)"]
 name = "truncp"
-short = "Ne joue que la première fraction t de chaque cycle (trunc de Tidal)."
+short = "Plays only the first fraction t of each cycle (Tidal's trunc)."
 tags = ["tidal"]
 +++
 
 # truncp
 
-Ne joue que la première fraction t de chaque cycle (trunc de Tidal).
+Plays only the first fraction t of each cycle (Tidal's trunc).

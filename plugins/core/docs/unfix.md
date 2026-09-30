@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn\" |> unfix(x -> x |> lpf(400), :s => :bd)"]
 name = "unfix"
-short = "Applique f aux événements dont les contrôles NE correspondent PAS."
+short = "Applies f to the events whose controls do NOT match."
 tags = ["tidal"]
 +++
 
 # unfix
 
-Applique f aux événements dont les contrôles NE correspondent PAS.
+Applies f to the events whose controls do NOT match.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd*4\" |> somecycles(rev)"]
 name = "somecycles"
-short = "Alias de someCycles (un cycle sur deux en moyenne)."
+short = "Alias of someCycles (every other cycle on average)."
 tags = ["tidal"]
 +++
 
 # somecycles
 
-Alias de someCycles (un cycle sur deux en moyenne).
+Alias of someCycles (every other cycle on average).

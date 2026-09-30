@@ -415,8 +415,19 @@ function _handle_docs(plugin_dir, data, plugin_name)
     dir_rel = get(data, "dir", "docs")
     docs_dir = isabspath(dir_rel) ? dir_rel : joinpath(plugin_dir, dir_rel)
     isdir(docs_dir) || return nothing
+    # Un niveau de sous-dossiers (docs/glossary/…) : mêmes fiches, rangées.
+    files = String[]
     for f in sort(readdir(docs_dir; join=false))
-        endswith(f, ".md") || continue
+        full = joinpath(docs_dir, f)
+        if isdir(full)
+            for g in sort(readdir(full; join=false))
+                endswith(g, ".md") && push!(files, joinpath(f, g))
+            end
+        elseif endswith(f, ".md")
+            push!(files, f)
+        end
+    end
+    for f in files
         path = abspath(joinpath(docs_dir, f))
         src = try
             read(path, String)

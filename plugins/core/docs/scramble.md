@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn cp\" |> scramble(4)"]
 name = "scramble"
-short = "Comme shuffle, mais chaque position tire un morceau au hasard (répétitions possibles)."
+short = "Like shuffle, but each position draws a piece at random (repeats possible)."
 tags = ["tidal"]
 +++
 
 # scramble
 
-Comme shuffle, mais chaque position tire un morceau au hasard (répétitions possibles).
+Like shuffle, but each position draws a piece at random (repeats possible).

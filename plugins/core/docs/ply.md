@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> ply(3)"]
 name = "ply"
-short = "Répète chaque événement n fois dans son propre créneau."
+short = "Repeats each event n times within its own slot."
 tags = ["tidal"]
 +++
 
 # ply
 
-Répète chaque événement n fois dans son propre créneau.
+Repeats each event n times within its own slot.

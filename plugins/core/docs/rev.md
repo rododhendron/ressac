@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 p\"bd hh sn hh\" |> rev            # hh sn hh bd"]
 name = "rev"
-short = "rev(p) — inverse les événements dans chaque cycle."
+short = "rev(p) — reverses the events within each cycle."
 tags = []
 +++
 
 # rev
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+rev(p) — reverses the events within each cycle.

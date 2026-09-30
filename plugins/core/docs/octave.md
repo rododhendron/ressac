@@ -1,10 +1,14 @@
 +++
 examples = []
 name = "octave"
-short = "Décalage d'octave."
-tags = []
+short = "Octave offset."
+tags = ["glossary", "pitch"]
 +++
 
 # octave
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Octave offset.
+
+Two notes an octave apart sound like the same note, higher. `octave(1)` moves a pattern up one, `speed(2)` on a sample plays it an octave higher and twice as fast.
+
+See also: semitone, frequency, harmonic series

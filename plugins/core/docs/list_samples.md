@@ -1,10 +1,10 @@
 +++
 examples = ["list_samples()"]
 name = "list_samples"
-short = "Liste les banques de samples chargées."
+short = "Lists the loaded sample banks."
 tags = ["registre"]
 +++
 
 # list_samples
 
-Liste les banques de samples chargées.
+Lists the loaded sample banks.

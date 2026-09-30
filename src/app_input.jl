@@ -20,6 +20,9 @@ can map (x, y) → which widget under the pointer. Behaviours:
   • Middle-click in modal row                    → highlight + activate (Enter)
 """
 function TK.update!(m::RessacApp, evt::TK.MouseEvent)
+    # La bulle de glossaire suit la souris (déplacements, clic dedans).
+    m.modal === :none && _hover_mouse!(m, evt) && return
+    evt.action === TK.mouse_move && return
     # Boutons du chrome (barre de touches, status line) — même sous un
     # modal, dont la barre montre les raccourcis.
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
@@ -762,6 +765,7 @@ end
 # L'ordre des étapes est la règle de priorité. À partir de la 6e, un
 # éditeur actif existe forcément (la 5e a tout renvoyé sinon).
 const _KEY_STAGES = (
+    _stage_hover!,
     _stage_command_line!,
     _stage_panic!,
     _stage_workspace!,

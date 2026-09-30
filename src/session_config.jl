@@ -9,6 +9,8 @@ using TOML
     theme::Symbol           = :kokaku   # any Tachikoma theme name OR a
                                         # Ressac custom (:cyberpunk, :solarpunk).
     keyboard::Symbol        = :auto     # :auto (détection), :azerty, :qwerty
+    hover::Bool             = true      # bulle de glossaire au survol de la souris
+    hover_lock_ms::Int      = 3000      # délai avant que la bulle se verrouille
     fps::Int                = 120       # render rate ceiling — higher fps
                                         # → lower input latency → tighter
                                         # :tap acquisition (~8ms vs ~16ms).
@@ -58,7 +60,7 @@ function _load_ressac_config!()
     if isfile(path)
         try
             data = TOML.parsefile(path)
-            _overlay_section!(cfg, data, "ui",   (:theme=>Symbol, :fps=>Int, :keyboard=>Symbol))
+            _overlay_section!(cfg, data, "ui",   (:theme=>Symbol, :fps=>Int, :keyboard=>Symbol, :hover=>Bool, :hover_lock_ms=>Int))
             _overlay_section!(cfg, data, "input",
                 (:t_hold_initial_ms=>Int, :t_hold_min_ms=>Int,
                  :t_hold_accel=>Float64,

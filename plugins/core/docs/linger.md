@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn cp\" |> linger(1//4)"]
 name = "linger"
-short = "Répète la première fraction f du cycle pour le remplir : linger(1//4) boucle le premier quart."
+short = "Repeats the first fraction f of the cycle to fill it: linger(1//4) loops the first quarter."
 tags = ["tidal"]
 +++
 
 # linger
 
-Répète la première fraction f du cycle pour le remplir : linger(1//4) boucle le premier quart.
+Repeats the first fraction f of the cycle to fill it: linger(1//4) loops the first quarter.

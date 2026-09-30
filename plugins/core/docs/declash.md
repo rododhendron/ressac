@@ -1,10 +1,10 @@
 +++
 examples = ["voix = declash([p\"bd*4\", :bass, :pad, \"hh*8\"]; duck_first = 1)"]
 name = "declash"
-short = "Applique fenêtre de fréquences, place stéréo et ducking à une liste de patterns d'un coup."
+short = "Applies frequency window, stereo placement and ducking to a list of patterns at once."
 tags = ["mix"]
 +++
 
 # declash
 
-Applique fenêtre de fréquences, place stéréo et ducking à une liste de patterns d'un coup.
+Applies frequency window, stereo placement and ducking to a list of patterns at once.

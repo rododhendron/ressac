@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "center"
-short = "Alias de centre (orthographe américaine)."
+short = "Alias of centre (American spelling)."
 tags = []
 +++
 
 # center
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Alias of centre (American spelling).

@@ -1,10 +1,15 @@
 +++
 examples = []
 name = "legato"
-short = "Chevauchement des notes (0 = aucun, 1 = tenue complète). Pour des lignes liées."
-tags = []
+short = "Note overlap (0 = none, 1 = fully held). For tied lines."
+tags = ["glossary", "pattern"]
+aliases = ["legato/staccato", "staccato"]
 +++
 
 # legato
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Note overlap (0 = none, 1 = fully held). For tied lines.
+
+`legato(1)` holds each note up to the next, `legato(0.2)` makes it a tick; `sustain` sets the length in seconds instead.
+
+See also: event, envelope

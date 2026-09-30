@@ -1,10 +1,10 @@
 +++
 examples = ["sample_info(:bd)"]
 name = "sample_info"
-short = "Renvoie la fiche d'une banque de samples (variantes, tags)."
+short = "Returns the card of a sample bank (variants, tags)."
 tags = ["registre"]
 +++
 
 # sample_info
 
-Renvoie la fiche d'une banque de samples (variantes, tags).
+Returns the card of a sample bank (variants, tags).

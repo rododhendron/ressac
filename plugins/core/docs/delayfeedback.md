@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "delayfeedback"
-short = "Régénération du delay (0-0.95). Haut = longues queues."
+short = "Delay regeneration (0-0.95). High = long tails."
 tags = []
 +++
 
 # delayfeedback
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Delay regeneration (0-0.95). High = long tails.

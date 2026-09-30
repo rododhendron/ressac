@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> stut(3, 0.5, 1//8)"]
 name = "stut"
-short = "Écho : n copies, chacune time cycle plus tard et gain × feedback à chaque fois."
+short = "Echo: n copies, each one time cycle later and gain × feedback every time."
 tags = ["tidal"]
 +++
 
 # stut
 
-Écho : n copies, chacune time cycle plus tard et gain × feedback à chaque fois.
+Echo: n copies, each one time cycle later and gain × feedback every time.

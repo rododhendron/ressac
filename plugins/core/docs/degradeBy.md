@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*16\" |> degradeBy(0.3)"]
 name = "degradeBy"
-short = "Laisse tomber chaque événement avec la probabilité donnée, de façon déterministe."
+short = "Drops each event with the given probability, deterministically."
 tags = ["tidal"]
 +++
 
 # degradeBy
 
-Laisse tomber chaque événement avec la probabilité donnée, de façon déterministe.
+Drops each event with the given probability, deterministically.

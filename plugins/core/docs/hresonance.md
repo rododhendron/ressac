@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "hresonance"
-short = "Résonance du passe-haut interne du synth."
+short = "Resonance of the synth's internal high-pass."
 tags = []
 +++
 
 # hresonance
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Resonance of the synth's internal high-pass.

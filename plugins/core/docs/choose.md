@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 choose([:bd, :sn, :cp])"]
 name = "choose"
-short = "Tire une valeur au sort dans la liste, une par cycle (déterministe)."
+short = "Picks one value from the list at random, one per cycle (deterministic)."
 tags = ["tidal"]
 +++
 
 # choose
 
-Tire une valeur au sort dans la liste, une par cycle (déterministe).
+Picks one value from the list at random, one per cycle (deterministic).

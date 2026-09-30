@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*8\" |> panwidth(2)"]
 name = "panwidth"
-short = "Largeur du panoramique multicanal."
+short = "Width of the multichannel pan."
 tags = ["fx"]
 +++
 
 # panwidth
 
-Largeur du panoramique multicanal.
+Width of the multichannel pan.

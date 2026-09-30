@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> brak"]
 name = "brak"
-short = "Un cycle sur deux, le pattern est tassé dans la première moitié et décalé d'un quart (breakbeat)."
+short = "Every other cycle, the pattern is squashed into the first half and shifted by a quarter (breakbeat)."
 tags = ["tidal"]
 +++
 
 # brak
 
-Un cycle sur deux, le pattern est tassé dans la première moitié et décalé d'un quart (breakbeat).
+Every other cycle, the pattern is squashed into the first half and shifted by a quarter (breakbeat).

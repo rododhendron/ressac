@@ -63,9 +63,10 @@ function _events_for_chord(chord::AbstractString)
     return out
 end
 
-@testset "pipeline — quatorze étapes ordonnées" begin
-    @test length(Ressac._KEY_STAGES) == 14
-    @test Ressac._KEY_STAGES[1] === Ressac._stage_command_line!
+@testset "pipeline — quinze étapes ordonnées" begin
+    @test length(Ressac._KEY_STAGES) == 15
+    @test Ressac._KEY_STAGES[1] === Ressac._stage_hover!            # la bulle de glossaire se ferme avant tout
+    @test Ressac._KEY_STAGES[2] === Ressac._stage_command_line!
     @test Ressac._KEY_STAGES[end] === Ressac._stage_editor!
     @test _events_for_chord("Ctrl-d") == [Tachikoma.KeyEvent(:ctrl, 'd')]
     @test _events_for_chord("PgDn")[1].key === :pagedown

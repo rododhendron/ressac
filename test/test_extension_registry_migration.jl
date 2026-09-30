@@ -1,16 +1,17 @@
 using Test
 using Ressac
 
-# Échantillons figés des docs de plugins (en français depuis 2026-09-21).
+# Échantillons figés des docs de plugins (cœur en anglais depuis 2026-10-01,
+# les plugins reservoir / chaos encore en français).
 # This is a smoke check, not exhaustive: 10 representative doc entries
 # and 3 starters spanning every routing bucket (core, reservoir, chaos).
 # Goal: catch a regression where a routing rule silently dropped content.
 
 const _MIGRATION_SAMPLE_DOCS = Dict{String,String}(
-    "gain" => "Multiplicateur de volume. 1 = neutre, 0.5 = moitié, 2 = double. Se compose en ×.",
-    "cps" => "Cycles par seconde — l'unité de tempo de Ressac. 0.5 = 1 cycle / 2 s (30 BPM à 4 temps/cycle), 0.8 ≈ 48 BPM, 0.3 = 18 BPM. cps!(x) le règle en live, :cps x depuis la TUI.",
-    "n" => "Décalage de note (demi-tons) pour un synth, ou index de variante pour une banque de samples.",
-    "fast" => "fast(n, p) ou `p |> fast(n)` — compresse le temps ×n. fast(2) joue deux fois par cycle.",
+    "gain" => "Volume multiplier. 1 = unity, 0.5 = half, 2 = double. Composes by ×.",
+    "cps" => "Cycles per second — Ressac's tempo unit. 0.5 = 1 cycle / 2 s (30 BPM at 4 beats per cycle), 0.8 ≈ 48 BPM, 0.3 = 18 BPM. cps!(x) sets it live, :cps x from the TUI.",
+    "n" => "Note offset (semitones) for a synth, or variant index for a sample bank.",
+    "fast" => "fast(n, p) or `p |> fast(n)` — compresses time ×n. fast(2) plays twice per cycle.",
     "Reservoir.adex" => "Construit un réservoir de neurones AdEx. kwargs : N, params=ADEX_*, σ_noise (bruit OU en pA), τ_noise (ms), inhibitory_fraction, p_connect, W_gain, V_init=:rest|:scattered, seed.",
     "Reservoir.spike_burst" => "Route I — chaque impulsion tire une bouffée de sinus à la fréquence du neurone. kwargs : drive, layout, layout_args, lo, hi, burst_dur, gain, synth.",
     "drive_const" => "drive_const(amp) → Function. Courant constant sur tous les neurones à chaque pas.",

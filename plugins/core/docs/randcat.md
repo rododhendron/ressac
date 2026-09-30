@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 randcat(\"bd*2\", \"hh*4\", \"sn cp\")"]
 name = "randcat"
-short = "À chaque cycle, joue un des patterns tiré au sort (déterministe)."
+short = "Each cycle, plays one of the patterns drawn at random (deterministic)."
 tags = ["tidal"]
 +++
 
 # randcat
 
-À chaque cycle, joue un des patterns tiré au sort (déterministe).
+Each cycle, plays one of the patterns drawn at random (deterministic).

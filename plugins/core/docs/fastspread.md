@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh\" |> fastspread(fast, [1, 2])"]
 name = "fastspread"
-short = "Applique f avec chaque valeur, tout dans un cycle."
+short = "Applies f with each value, all within one cycle."
 tags = ["tidal"]
 +++
 
 # fastspread
 
-Applique f avec chaque valeur, tout dans un cycle.
+Applies f with each value, all within one cycle.

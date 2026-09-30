@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :amen |> pitch1(1.5)"]
 name = "pitch1"
-short = "Premier paramètre du pitch shifter SuperDirt."
+short = "First parameter of the SuperDirt pitch shifter."
 tags = ["fx"]
 +++
 
 # pitch1
 
-Premier paramètre du pitch shifter SuperDirt.
+First parameter of the SuperDirt pitch shifter.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh\" |> contrast(fast(2), rev, Dict(:s => :hh))"]
 name = "contrast"
-short = "f aux événements qui correspondent, g aux autres."
+short = "f on the matching events, g on the others."
 tags = ["tidal"]
 +++
 
 # contrast
 
-f aux événements qui correspondent, g aux autres.
+f on the matching events, g on the others.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*16\" |> degrade"]
 name = "degrade"
-short = "Laisse tomber la moitié des événements (degradeBy(0.5)), de façon déterministe."
+short = "Drops half of the events (degradeBy(0.5)), deterministically."
 tags = ["tidal"]
 +++
 
 # degrade
 
-Laisse tomber la moitié des événements (degradeBy(0.5)), de façon déterministe.
+Drops half of the events (degradeBy(0.5)), deterministically.

@@ -1,10 +1,10 @@
 +++
 examples = ["tomini([0, 3, 7])", "tomini([[0, 3], 7, nothing])"]
 name = "tomini"
-short = "Écrit une collection Julia en mini-notation ; les listes imbriquées deviennent des groupes."
+short = "Writes a Julia collection as mini-notation; nested lists become groups."
 tags = ["maths"]
 +++
 
 # tomini
 
-Écrit une collection Julia en mini-notation ; les listes imbriquées deviennent des groupes.
+Writes a Julia collection as mini-notation; nested lists become groups.

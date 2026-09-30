@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :pad |> n(\"0 4 7\") |> transpose_cents(50)"]
 name = "transpose_cents"
-short = "Transpose de c cents (100 = un demi-ton), sur la note déjà posée."
+short = "Transposes by c cents (100 = a semitone), on top of the note already set."
 tags = ["tuning"]
 +++
 
 # transpose_cents
 
-Transpose de c cents (100 = un demi-ton), sur la note déjà posée.
+Transposes by c cents (100 = a semitone), on top of the note already set.

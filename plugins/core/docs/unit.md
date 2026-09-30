@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :amen |> speed(1) |> unit(\"c\")"]
 name = "unit"
-short = "Unité de speed : \"r\" (taux), \"c\" (cycles), \"s\" (secondes)."
+short = "Unit of speed: \"r\" (rate), \"c\" (cycles), \"s\" (seconds)."
 tags = ["tidal"]
 +++
 
 # unit
 
-Unité de speed : "r" (taux), "c" (cycles), "s" (secondes).
+Unit of speed: "r" (rate), "c" (cycles), "s" (seconds).

@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "rq"
-short = "Q réciproque des filtres SuperCollider (RLPF, RHPF). 1.0 = sans résonance, 0.1 = très résonant."
+short = "Reciprocal Q of the SuperCollider filters (RLPF, RHPF). 1.0 = no resonance, 0.1 = very resonant."
 tags = []
 +++
 
 # rq
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Reciprocal Q of the SuperCollider filters (RLPF, RHPF). 1.0 = no resonance, 0.1 = very resonant.

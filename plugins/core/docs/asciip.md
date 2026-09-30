@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*16\" |> mask(asciip(\"ab\"))"]
 name = "asciip"
-short = "Pattern booléen des bits ASCII d'un texte, 8 pas par caractère."
+short = "Boolean pattern from the ASCII bits of a text, 8 steps per character."
 tags = ["tidal"]
 +++
 
 # asciip
 
-Pattern booléen des bits ASCII d'un texte, 8 pas par caractère.
+Boolean pattern from the ASCII bits of a text, 8 steps per character.

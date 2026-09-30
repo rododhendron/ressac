@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 mono(stack(p\"bd*4\", p\"hh*3\"))"]
 name = "mono"
-short = "Monophonique : un événement qui démarre pendant un autre est ignoré."
+short = "Monophonic: an event starting while another plays is ignored."
 tags = ["tidal"]
 +++
 
 # mono
 
-Monophonique : un événement qui démarre pendant un autre est ignoré.
+Monophonic: an event starting while another plays is ignored.

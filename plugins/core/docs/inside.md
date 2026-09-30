@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn cp\" |> inside(2, rev)"]
 name = "inside"
-short = "Applique f à l'intérieur d'un cycle découpé en n : inside(2, rev) inverse chaque moitié."
+short = "Applies f inside a cycle divided by n: inside(2, rev) reverses each half."
 tags = ["tidal"]
 +++
 
 # inside
 
-Applique f à l'intérieur d'un cycle découpé en n : inside(2, rev) inverse chaque moitié.
+Applies f inside a cycle divided by n: inside(2, rev) reverses each half.

@@ -109,9 +109,11 @@ function live(; host::AbstractString = "127.0.0.1",
     end
     _ensure_default_workspace!(app)
     _request_alternate_keys()
+    cfg.hover && _request_mouse_motion()
     try
         Tachikoma.app(app; fps=cfg.fps)
     finally
+        cfg.hover && _release_mouse_motion()
         # Persist the workspace layout so the next launch restores the
         # panes the user had open (explorer, splits, …). Best-effort:
         # a failure here must not block a clean shutdown.

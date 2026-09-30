@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> early(1//8)"]
 name = "early"
-short = "Avance le pattern de t cycles (t fractionnaire)."
+short = "Moves the pattern t cycles earlier (t may be fractional)."
 tags = ["tidal"]
 +++
 
 # early
 
-Avance le pattern de t cycles (t fractionnaire).
+Moves the pattern t cycles earlier (t may be fractional).

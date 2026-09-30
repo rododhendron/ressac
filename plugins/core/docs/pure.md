@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "pure"
-short = "pure(v) — pattern qui émet v une fois par cycle. L'atome sur lequel tout se construit."
+short = "pure(v) — pattern that emits v once per cycle. The atom everything is built on."
 tags = []
 +++
 
 # pure
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+pure(v) — pattern that emits v once per cycle. The atom everything is built on.

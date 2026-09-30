@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :bd |> n(\"12 15\") |> sub(:n, 12)"]
 name = "sub"
-short = "Soustrait x au contrôle (le |- de Tidal)."
+short = "Subtracts x from the control (Tidal's |-)."
 tags = ["tidal"]
 +++
 
 # sub
 
-Soustrait x au contrôle (le |- de Tidal).
+Subtracts x from the control (Tidal's |-).

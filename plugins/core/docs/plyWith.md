@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> plyWith(3, gain(0.8))"]
 name = "plyWith"
-short = "Comme ply mais la i-ème copie reçoit f i fois."
+short = "Like ply but the i-th copy receives f i times."
 tags = ["tidal"]
 +++
 
 # plyWith
 
-Comme ply mais la i-ème copie reçoit f i fois.
+Like ply but the i-th copy receives f i times.

@@ -1,10 +1,10 @@
 +++
 examples = ["stop_live!()"]
 name = "stop_live!"
-short = "Arrête la session audio."
+short = "Stops the audio session."
 tags = ["session"]
 +++
 
 # stop_live!
 
-Arrête la session audio.
+Stops the audio session.

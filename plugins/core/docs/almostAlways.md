@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd*4\" |> almostAlways(fast(2))"]
 name = "almostAlways"
-short = "Applique f 90 % des cycles."
+short = "Applies f on 90% of cycles."
 tags = ["tidal"]
 +++
 
 # almostAlways
 
-Applique f 90 % des cycles.
+Applies f on 90% of cycles.

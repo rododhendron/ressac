@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 squeeze(\"0 1*2\", [\"bd sn\", \"hh*3\"])"]
 name = "squeeze"
-short = "Chaque événement de ipat joue le pattern d'index correspondant compressé dans son créneau."
+short = "Each event of ipat plays the pattern of matching index squeezed into its slot."
 tags = ["tidal"]
 +++
 
 # squeeze
 
-Chaque événement de ipat joue le pattern d'index correspondant compressé dans son créneau.
+Each event of ipat plays the pattern of matching index squeezed into its slot.

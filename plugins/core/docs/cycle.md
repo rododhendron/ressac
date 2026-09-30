@@ -1,10 +1,15 @@
 +++
 examples = []
 name = "cycle"
-short = "L'unité de temps de Ressac. Chaque pattern se répète une fois par cycle. Un `p\"a b c d\"` produit 4 événements répartis sur un cycle."
-tags = []
+short = "Ressac's unit of time. Every pattern repeats once per cycle. A `p\"a b c d\"` yields 4 events spread over one cycle."
+tags = ["glossary", "pattern"]
+aliases = ["cycles"]
 +++
 
 # cycle
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Ressac's unit of time. Every pattern repeats once per cycle. A `p"a b c d"` yields 4 events spread over one cycle.
+
+`p"a b c d"` fits four events in one cycle; `fast(2)` fits two cycles' worth. At 0.5 cps a cycle lasts two seconds.
+
+See also: cps, pattern, event

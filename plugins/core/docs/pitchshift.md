@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "pitchshift"
-short = "Transposition (demi-tons)."
+short = "Transposition (semitones)."
 tags = []
 +++
 
 # pitchshift
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Transposition (semitones).

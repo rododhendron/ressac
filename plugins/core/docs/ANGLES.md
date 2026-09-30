@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "<>"
-short = "<a b c> — alternance : a au cycle 0, b au cycle 1, c au cycle 2, puis on recommence."
+short = "<a b c> — alternation: a on cycle 0, b on cycle 1, c on cycle 2, then around again."
 tags = []
 +++
 
 # <>
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+<a b c> — alternation: a on cycle 0, b on cycle 1, c on cycle 2, then around again.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 stack(p\"bd*4\", p\"~ cp ~ cp\")     # layered drums"]
 name = "stack"
-short = "stack(p, q, ...) — joue les patterns en parallèle (les superpose)."
+short = "stack(p, q, ...) — plays the patterns in parallel (layers them)."
 tags = []
 +++
 
 # stack
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+stack(p, q, ...) — plays the patterns in parallel (layers them).

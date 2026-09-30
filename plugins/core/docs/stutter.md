@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> stutter(4, 1//16)"]
 name = "stutter"
-short = "Répète chaque cycle n fois à intervalle temps, sans modification."
+short = "Repeats each cycle n times at interval time, unchanged."
 tags = ["tidal"]
 +++
 
 # stutter
 
-Répète chaque cycle n fois à intervalle temps, sans modification.
+Repeats each cycle n times at interval time, unchanged.

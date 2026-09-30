@@ -1,10 +1,10 @@
 +++
 examples = ["instrument_info(:kicklourd)"]
 name = "instrument_info"
-short = "Renvoie la fiche d'un instrument préréglé."
+short = "Returns the card of a preset instrument."
 tags = ["registre"]
 +++
 
 # instrument_info
 
-Renvoie la fiche d'un instrument préréglé.
+Returns the card of a preset instrument.

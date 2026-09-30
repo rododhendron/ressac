@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "centre"
-short = "Valeur centrale autour de laquelle un LFO module. Avec `depth` pour des balayages symétriques."
+short = "Central value an LFO modulates around. With `depth` for symmetric sweeps."
 tags = []
 +++
 
 # centre
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Central value an LFO modulates around. With `depth` for symmetric sweeps.

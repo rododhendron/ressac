@@ -1,10 +1,10 @@
 +++
 examples = ["register_scale!(edo(:n24, 24))"]
 name = "register_scale!"
-short = "Enregistre une gamme sous son nom, pour l'utiliser ensuite par symbole."
+short = "Registers a scale under its name, to use it by symbol afterwards."
 tags = ["tuning"]
 +++
 
 # register_scale!
 
-Enregistre une gamme sous son nom, pour l'utiliser ensuite par symbole.
+Registers a scale under its name, to use it by symbol afterwards.

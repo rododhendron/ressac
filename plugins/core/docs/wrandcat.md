@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 wrandcat([(\"bd*2\", 3), (\"hh*4\", 1)])"]
 name = "wrandcat"
-short = "randcat pondéré : [(pattern, poids), ...]."
+short = "Weighted randcat: [(pattern, weight), ...]."
 tags = ["tidal"]
 +++
 
 # wrandcat
 
-randcat pondéré : [(pattern, poids), ...].
+Weighted randcat: [(pattern, weight), ...].

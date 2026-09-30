@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "()"
-short = "nom(k,n) — rythme euclidien : k coups sur n pas. p\"bd(3,8)\" = le 3-contre-8 classique."
+short = "name(k,n) — Euclidean rhythm: k hits over n steps. p\"bd(3,8)\" is the classic 3-against-8."
 tags = []
 +++
 
 # ()
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+name(k,n) — Euclidean rhythm: k hits over n steps. p"bd(3,8)" is the classic 3-against-8.

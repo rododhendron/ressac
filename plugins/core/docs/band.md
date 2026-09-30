@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :bass |> band(40, 250)", "@d2 :lead |> band(2000, 12000)"]
 name = "band"
-short = "Ne garde qu'une fenêtre de fréquences (passe-haut puis passe-bas) pour qu'une voix cesse d'en masquer une autre."
+short = "Keeps only a frequency window (high-pass then low-pass) so one voice stops masking another."
 tags = ["mix"]
 +++
 
 # band
 
-Ne garde qu'une fenêtre de fréquences (passe-haut puis passe-bas) pour qu'une voix cesse d'en masquer une autre.
+Keeps only a frequency window (high-pass then low-pass) so one voice stops masking another.

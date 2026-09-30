@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "*"
-short = "nom*N dans p\"…\" — répète nom N fois dans son pas. p\"bd*4\" = 4 coups/cycle."
+short = "name*N inside p\"…\" — repeats name N times within its step. p\"bd*4\" = 4 hits per cycle."
 tags = []
 +++
 
 # *
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+name*N inside p"…" — repeats name N times within its step. p"bd*4" = 4 hits per cycle.

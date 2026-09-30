@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "phaserrate"
-short = "Vitesse de balayage du phaser (Hz)."
+short = "Phaser sweep rate (Hz)."
 tags = []
 +++
 
 # phaserrate
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Phaser sweep rate (Hz).

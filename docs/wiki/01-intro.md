@@ -84,6 +84,7 @@ DESIGN ; depuis un synth ou un sculpt, `U` pose `@dN p"nom*4"` dans PLAY.
 | Touche   | Ce qu'elle fait                                         |
 |----------|---------------------------------------------------------|
 | `?`      | l'aide du contexte (les touches de la pane focalisée)   |
+| souris   | poser le pointeur sur un mot souligné ouvre sa fiche de glossaire |
 | `Espace` | leader — suivi d'une lettre, insère un snippet          |
 | `:`      | la ligne de commande (`:tap`, `:browse`, `:synth wob`…) |
 | `Esc`    | quitter l'insertion                                     |

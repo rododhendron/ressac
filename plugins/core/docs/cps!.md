@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "cps!"
-short = "cps!(x) — règle le tempo du scheduler en cycles/s. Équivaut à :cps x en ligne de commande."
+short = "cps!(x) — sets the scheduler tempo in cycles per second. Same as :cps x on the command line."
 tags = []
 +++
 
 # cps!
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+cps!(x) — sets the scheduler tempo in cycles per second. Same as :cps x on the command line.

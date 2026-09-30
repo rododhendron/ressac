@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :pad |> compress(0.4) |> compressRatio(4)"]
 name = "compressRatio"
-short = "Taux du compresseur SuperDirt."
+short = "SuperDirt compressor ratio."
 tags = ["fx"]
 +++
 
 # compressRatio
 
-Taux du compresseur SuperDirt.
+SuperDirt compressor ratio.

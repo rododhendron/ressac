@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :pad |> up(\"0 12\")"]
 name = "up"
-short = "Alias Tidal de note (demi-tons)."
+short = "Tidal alias of note (semitones)."
 tags = ["tidal"]
 +++
 
 # up
 
-Alias Tidal de note (demi-tons).
+Tidal alias of note (semitones).

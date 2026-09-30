@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"sn ~ sn ~\" |> ghost"]
 name = "ghost"
-short = "Ajoute des notes fantômes : copies décalées, plus douces, plus courtes, un peu plus aiguës."
+short = "Adds ghost notes: shifted copies, softer, shorter, slightly higher."
 tags = ["tidal"]
 +++
 
 # ghost
 
-Ajoute des notes fantômes : copies décalées, plus douces, plus courtes, un peu plus aiguës.
+Adds ghost notes: shifted copies, softer, shorter, slightly higher.

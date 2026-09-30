@@ -1,10 +1,10 @@
 +++
 examples = ["patvals(p\"0 3 7\")", "sum(patvals(p\"1 2 3\"))"]
 name = "patvals"
-short = "Les valeurs d'un pattern en types Julia, pour le relire et le transformer."
+short = "The values of a pattern as Julia types, to read it back and transform it."
 tags = ["maths"]
 +++
 
 # patvals
 
-Les valeurs d'un pattern en types Julia, pour le relire et le transformer.
+The values of a pattern as Julia types, to read it back and transform it.

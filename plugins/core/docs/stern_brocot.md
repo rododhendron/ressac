@@ -1,10 +1,10 @@
 +++
 examples = ["register_scale!(stern_brocot(depth = 4))"]
 name = "stern_brocot"
-short = "Gamme tirée de l'arbre de Stern-Brocot : dense et irrégulière."
+short = "Scale drawn from the Stern-Brocot tree: dense and irregular."
 tags = ["tuning"]
 +++
 
 # stern_brocot
 
-Gamme tirée de l'arbre de Stern-Brocot : dense et irrégulière.
+Scale drawn from the Stern-Brocot tree: dense and irregular.

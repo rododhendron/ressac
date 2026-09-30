@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "silence"
-short = "silence(T) — pattern vide de type T. Utile comme bouche-trou."
+short = "silence(T) — empty pattern of type T. Useful as a placeholder."
 tags = []
 +++
 
 # silence
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+silence(T) — empty pattern of type T. Useful as a placeholder.

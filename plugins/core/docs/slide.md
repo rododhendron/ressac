@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "slide"
-short = "Glissement de hauteur entre les notes."
+short = "Pitch glide between notes."
 tags = []
 +++
 
 # slide
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Pitch glide between notes.

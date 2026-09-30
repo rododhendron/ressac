@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :superhammond |> leslie(0.6)"]
 name = "leslie"
-short = "Quantité d'effet Leslie (haut-parleur rotatif)."
+short = "Amount of Leslie effect (rotating speaker)."
 tags = ["fx"]
 +++
 
 # leslie
 
-Quantité d'effet Leslie (haut-parleur rotatif).
+Amount of Leslie effect (rotating speaker).

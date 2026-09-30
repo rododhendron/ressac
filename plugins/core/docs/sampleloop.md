@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :amen |> sampleloop(2)"]
 name = "sampleloop"
-short = "Nombre de boucles du sample sur la durée de l'événement."
+short = "Number of sample loops over the event duration."
 tags = ["fx"]
 +++
 
 # sampleloop
 
-Nombre de boucles du sample sur la durée de l'événement.
+Number of sample loops over the event duration.

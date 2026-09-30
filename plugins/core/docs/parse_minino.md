@@ -1,10 +1,10 @@
 +++
 examples = ["basse = parse_minino(\"bd ~ bd bd\")", "@d1 basse |> gain(0.9)"]
 name = "parse_minino"
-short = "Analyse une chaîne de mini-notation et renvoie le pattern ; p\"…\" en est le raccourci."
+short = "Parses a mini-notation string and returns the pattern; p\"…\" is the shorthand."
 tags = ["outil"]
 +++
 
 # parse_minino
 
-Analyse une chaîne de mini-notation et renvoie le pattern ; p"…" en est le raccourci.
+Parses a mini-notation string and returns the pattern; p"…" is the shorthand.

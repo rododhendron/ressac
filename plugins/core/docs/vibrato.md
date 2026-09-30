@@ -1,10 +1,14 @@
 +++
 examples = []
 name = "vibrato"
-short = "Ampleur du vibrato."
-tags = []
+short = "Vibrato amount."
+tags = ["glossary", "effects", "modulation"]
 +++
 
 # vibrato
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Vibrato amount.
+
+`vibrato` sets its amount on a pattern; `vibrato_sig` builds it in the DSL. Slow and shallow is expressive, fast and deep is a siren.
+
+See also: LFO, tremolo, pitch

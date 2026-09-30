@@ -1,10 +1,10 @@
 +++
 examples = ["register_scale!(edo(:n19, 19))", "@d1 :pad |> n(0:6) |> scale(:n19)"]
 name = "edo"
-short = "Gamme à divisions égales : n pas dans une période (edo(:n19, 19) = 19 tons égaux)."
+short = "Equal-division scale: n steps in a period (edo(:n19, 19) = 19 equal tones)."
 tags = ["tuning"]
 +++
 
 # edo
 
-Gamme à divisions égales : n pas dans une période (edo(:n19, 19) = 19 tons égaux).
+Equal-division scale: n steps in a period (edo(:n19, 19) = 19 equal tones).

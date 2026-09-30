@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "depth"
-short = "Profondeur de modulation. Pour un LFO sur le cutoff : l'amplitude du balayage autour de `centre`."
+short = "Modulation depth. For an LFO on the cutoff: the amplitude of the sweep around `centre`."
 tags = []
 +++
 
 # depth
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Modulation depth. For an LFO on the cutoff: the amplitude of the sweep around `centre`.

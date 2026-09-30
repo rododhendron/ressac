@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :amen |> randslice(8)"]
 name = "randslice"
-short = "Joue chaque cycle une tranche aléatoire (sur n) du sample."
+short = "Plays a random slice (out of n) of the sample each cycle."
 tags = ["tidal"]
 +++
 
 # randslice
 
-Joue chaque cycle une tranche aléatoire (sur n) du sample.
+Plays a random slice (out of n) of the sample each cycle.

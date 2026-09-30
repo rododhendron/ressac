@@ -1,10 +1,10 @@
 +++
 examples = ["pat(0:7)", "pat(\"bd sn\")"]
 name = "pat"
-short = "Convertit n'importe quoi en pattern : chaîne, symbole, nombre, liste, range."
+short = "Turns anything into a pattern: string, symbol, number, list, range."
 tags = ["maths"]
 +++
 
 # pat
 
-Convertit n'importe quoi en pattern : chaîne, symbole, nombre, liste, range.
+Turns anything into a pattern: string, symbol, number, list, range.

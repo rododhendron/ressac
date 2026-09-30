@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :amen |> chopp(8)", "@d1 :amen |> chopp(16) |> rev"]
 name = "chopp"
-short = "Découpe chaque événement en n tranches consécutives du sample (alias exporté de chop)."
+short = "Cuts each event into n consecutive slices of the sample (exported alias of chop)."
 tags = ["tidal"]
 +++
 
 # chopp
 
-Découpe chaque événement en n tranches consécutives du sample (alias exporté de chop).
+Cuts each event into n consecutive slices of the sample (exported alias of chop).

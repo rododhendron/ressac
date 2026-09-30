@@ -1,10 +1,10 @@
 +++
 examples = ["live()"]
 name = "live"
-short = "Renvoie l'ordonnanceur de la session en cours."
+short = "Returns the scheduler of the running session."
 tags = ["session"]
 +++
 
 # live
 
-Renvoie l'ordonnanceur de la session en cours.
+Returns the scheduler of the running session.

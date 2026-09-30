@@ -1,10 +1,10 @@
 +++
 examples = ["restart_live!()"]
 name = "restart_live!"
-short = "Redémarre la session audio."
+short = "Restarts the audio session."
 tags = ["session"]
 +++
 
 # restart_live!
 
-Redémarre la session audio.
+Restarts the audio session.

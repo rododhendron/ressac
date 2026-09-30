@@ -1,10 +1,15 @@
 +++
 examples = ["@d1 p\"sn\" |> delay(0.6) |> delaytime(0.375) |> delayfeedback(0.5)"]
 name = "delay"
-short = "Envoi de delay. 0 = sec, 1 = mouillé."
-tags = []
+short = "Delay send. 0 = dry, 1 = wet."
+tags = ["glossary", "effects"]
+aliases = ["delay line"]
 +++
 
 # delay
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Delay send. 0 = dry, 1 = wet.
+
+`delay`, `delaytime`, `delayfeedback` on a pattern send to SuperDirt's delay; `delay_c`, `comb_c` in the DSL build one inside the synth. `stut` and `echo` make echoes out of pattern events instead of audio.
+
+See also: feedback, comb filter, reverb

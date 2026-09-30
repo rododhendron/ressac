@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*4\" |> pressBy(0.25)"]
 name = "pressBy"
-short = "Décale chaque événement de la fraction r de son créneau."
+short = "Shifts each event by the fraction r of its slot."
 tags = ["tidal"]
 +++
 
 # pressBy
 
-Décale chaque événement de la fraction r de son créneau.
+Shifts each event by the fraction r of its slot.

@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "~"
-short = "~ dans p\"…\" — silence (pas d'événement pour ce pas)."
+short = "~ inside p\"…\" — silence (no event on that step)."
 tags = []
 +++
 
 # ~
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+~ inside p"…" — silence (no event on that step).

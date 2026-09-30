@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "ratio"
-short = "Ratio du compresseur (1 = aucune compression, 4 = 4:1, ∞ = limiteur)."
+short = "Compressor ratio (1 = no compression, 4 = 4:1, ∞ = limiter)."
 tags = []
 +++
 
 # ratio
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Compressor ratio (1 = no compression, 4 = 4:1, ∞ = limiter).

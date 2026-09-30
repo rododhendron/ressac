@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :pad |> n(\"c'maj e'min\") |> arpeggiate", "@d1 arpeggiate(stack(\"bd\", \"hh\"))"]
 name = "arpeggiate"
-short = "Les événements simultanés sont joués l'un après l'autre, dans l'ordre d'empilement."
+short = "Simultaneous events are played one after the other, in stacking order."
 tags = ["tidal"]
 +++
 
 # arpeggiate
 
-Les événements simultanés sont joués l'un après l'autre, dans l'ordre d'empilement.
+Simultaneous events are played one after the other, in stacking order.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> compress(1//4, 3//4)"]
 name = "compress"
-short = "Tasse chaque cycle dans l'intervalle [b, e) du cycle, silence ailleurs."
+short = "Squashes each cycle into the interval [b, e) of the cycle, silence elsewhere."
 tags = ["tidal"]
 +++
 
 # compress
 
-Tasse chaque cycle dans l'intervalle [b, e) du cycle, silence ailleurs.
+Squashes each cycle into the interval [b, e) of the cycle, silence elsewhere.

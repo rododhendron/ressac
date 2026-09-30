@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "coarse"
-short = "Réduction du taux d'échantillonnage. Plus haut = repliement plus grossier."
+short = "Sample-rate reduction. Higher = coarser aliasing."
 tags = []
 +++
 
 # coarse
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Sample-rate reduction. Higher = coarser aliasing.

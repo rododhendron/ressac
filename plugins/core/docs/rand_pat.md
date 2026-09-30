@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*8\" |> pan(rand_pat() |> segment(8))"]
 name = "rand_pat"
-short = "Signal aléatoire continu entre 0 et 1 (le rand de Tidal)."
+short = "Continuous random signal between 0 and 1 (Tidal's rand)."
 tags = ["signal"]
 +++
 
 # rand_pat
 
-Signal aléatoire continu entre 0 et 1 (le rand de Tidal).
+Continuous random signal between 0 and 1 (Tidal's rand).

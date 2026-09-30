@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :pad |> bend(sine() |> range_pat(-50, 50))"]
 name = "bend"
-short = "Pitch bend variable dans le temps, la courbe étant donnée en cents."
+short = "Time-varying pitch bend, the curve given in cents."
 tags = ["fx"]
 +++
 
 # bend
 
-Pitch bend variable dans le temps, la courbe étant donnée en cents.
+Time-varying pitch bend, the curve given in cents.

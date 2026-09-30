@@ -1,10 +1,10 @@
 +++
 examples = ["lookup_scale(:major)"]
 name = "lookup_scale"
-short = "Renvoie la gamme enregistrée sous ce nom, ou rien."
+short = "Returns the scale registered under that name, or nothing."
 tags = ["tuning"]
 +++
 
 # lookup_scale
 
-Renvoie la gamme enregistrée sous ce nom, ou rien.
+Returns the scale registered under that name, or nothing.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*8\" |> pan(tri() |> segment(8))"]
 name = "tri"
-short = "Signal continu triangulaire, de -1 à 1 sur un cycle."
+short = "Continuous triangle signal, from -1 to 1 over one cycle."
 tags = ["signal"]
 +++
 
 # tri
 
-Signal continu triangulaire, de -1 à 1 sur un cycle.
+Continuous triangle signal, from -1 to 1 over one cycle.

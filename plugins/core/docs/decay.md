@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "decay"
-short = "Temps de decay en s. Le D de l'ADSR — du pic au niveau de sustain."
+short = "Decay time in s. The D of the ADSR — from the peak down to the sustain level."
 tags = []
 +++
 
 # decay
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Decay time in s. The D of the ADSR — from the peak down to the sustain level.

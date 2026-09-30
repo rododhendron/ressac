@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "delaytime"
-short = "Temps de delay en temps. 0.25 = double-croche, 0.5 = croche, 1 = noire."
+short = "Delay time in beats. 0.25 = sixteenth, 0.5 = eighth, 1 = quarter."
 tags = []
 +++
 
 # delaytime
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Delay time in beats. 0.25 = sixteenth, 0.5 = eighth, 1 = quarter.

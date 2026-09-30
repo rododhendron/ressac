@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "hold"
-short = "Durée au pic de l'enveloppe avant le release (s)."
+short = "Time spent at the envelope peak before the release (s)."
 tags = []
 +++
 
 # hold
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Time spent at the envelope peak before the release (s).

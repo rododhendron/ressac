@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :hh |> euclidInv(3, 8)"]
 name = "euclidInv"
-short = "Le complément d'euclid : joue les pas vides."
+short = "The complement of euclid: plays the empty steps."
 tags = ["tidal"]
 +++
 
 # euclidInv
 
-Le complément d'euclid : joue les pas vides.
+The complement of euclid: plays the empty steps.

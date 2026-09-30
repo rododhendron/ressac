@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 fastcat(\"bd*2\", \"hh sn\")"]
 name = "fastcat"
-short = "Enchaîne les patterns dans UN cycle (= seq). Chaînes acceptées."
+short = "Chains the patterns inside ONE cycle (= seq). Strings accepted."
 tags = ["tidal"]
 +++
 
 # fastcat
 
-Enchaîne les patterns dans UN cycle (= seq). Chaînes acceptées.
+Chains the patterns inside ONE cycle (= seq). Strings accepted.

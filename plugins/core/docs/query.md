@@ -1,10 +1,10 @@
 +++
 examples = ["query(p\"bd sn\", 0, 1)"]
 name = "query"
-short = "Liste les événements d'un pattern sur un intervalle de cycles — pour inspecter sans jouer."
+short = "Lists the events of a pattern over a range of cycles — to inspect without playing."
 tags = ["outil"]
 +++
 
 # query
 
-Liste les événements d'un pattern sur un intervalle de cycles — pour inspecter sans jouer.
+Lists the events of a pattern over a range of cycles — to inspect without playing.

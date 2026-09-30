@@ -1,10 +1,10 @@
 +++
 examples = ["list_patterns()"]
 name = "list_patterns"
-short = "Liste les patterns rangés (nom, code, étiquettes)."
+short = "Lists the stored patterns (name, code, tags)."
 tags = ["patterns"]
 +++
 
 # list_patterns
 
-Liste les patterns rangés (nom, code, étiquettes).
+Lists the stored patterns (name, code, tags).

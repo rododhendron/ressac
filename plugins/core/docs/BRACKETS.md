@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "[]"
-short = "[a b] dans p\"…\" — sous-groupe (un seul pas, divisé récursivement)."
+short = "[a b] inside p\"…\" — a subgroup (one step, divided recursively)."
 tags = []
 +++
 
 # []
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+[a b] inside p"…" — a subgroup (one step, divided recursively).

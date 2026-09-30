@@ -1,10 +1,15 @@
 +++
 examples = []
 name = "cutoff"
-short = "Fréquence du filtre interne du synth (Hz). Plus bas = plus sombre."
-tags = []
+short = "Frequency of the synth's internal filter (Hz). Lower = darker."
+tags = ["glossary", "synthesis", "effects"]
+aliases = ["cutoff frequency", "corner frequency"]
 +++
 
 # cutoff
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Frequency of the synth's internal filter (Hz). Lower = darker.
+
+`cutoff` and `lpf` on a pattern, the first argument of `rlpf` in the DSL. Sweep it with an LFO for a wobble, with an envelope for a pluck.
+
+See also: filter, resonance, low-pass filter

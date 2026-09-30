@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 slowcat(\"bd*4\", \"hh*8\")"]
 name = "slowcat"
-short = "Enchaîne les patterns un par cycle (= cat)."
+short = "Chains the patterns one per cycle (= cat)."
 tags = ["tidal"]
 +++
 
 # slowcat
 
-Enchaîne les patterns un par cycle (= cat).
+Chains the patterns one per cycle (= cat).

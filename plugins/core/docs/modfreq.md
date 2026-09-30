@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "modfreq"
-short = "Fréquence du modulateur en FM."
+short = "Frequency of the FM modulator."
 tags = []
 +++
 
 # modfreq
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Frequency of the FM modulator.

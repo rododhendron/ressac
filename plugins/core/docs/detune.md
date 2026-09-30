@@ -1,10 +1,15 @@
 +++
 examples = []
 name = "detune"
-short = "Désaccord (cents / 0-1)."
-tags = []
+short = "Detune (cents / 0-1)."
+tags = ["glossary", "synthesis"]
+aliases = ["detuning"]
 +++
 
 # detune
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Detune (cents / 0-1).
+
+The supersaw is six sawtooths detuned by a few cents. `detune` on a pattern, `[:freq, :freq * 1.01]` in the DSL.
+
+See also: cent, unison, chorus

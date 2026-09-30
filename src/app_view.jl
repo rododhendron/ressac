@@ -416,6 +416,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
             _render_modal!(m, marea, buf)
         end
     end
+    _render_hover!(m, buf)
 end
 
 

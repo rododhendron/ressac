@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> superimpose(fast(2))"]
 name = "superimpose"
-short = "Le pattern plus f(pattern) par-dessus."
+short = "The pattern plus f(pattern) on top."
 tags = ["tidal"]
 +++
 
 # superimpose
 
-Le pattern plus f(pattern) par-dessus.
+The pattern plus f(pattern) on top.

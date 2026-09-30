@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :amen |> speedup(1.5)"]
 name = "speedup"
-short = "Accélération progressive de la lecture du sample."
+short = "Progressive acceleration of the sample playback."
 tags = ["fx"]
 +++
 
 # speedup
 
-Accélération progressive de la lecture du sample.
+Progressive acceleration of the sample playback.

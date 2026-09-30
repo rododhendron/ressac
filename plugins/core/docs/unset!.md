@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "unset!"
-short = "unset!(:dN) — arrête le slot dN. Équivaut à commenter la ligne avec `m`."
+short = "unset!(:dN) — stops slot dN. Same as commenting the line out with `m`."
 tags = []
 +++
 
 # unset!
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+unset!(:dN) — stops slot dN. Same as commenting the line out with `m`.

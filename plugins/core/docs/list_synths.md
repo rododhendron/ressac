@@ -1,10 +1,10 @@
 +++
 examples = ["list_synths()"]
 name = "list_synths"
-short = "Liste les synths disponibles."
+short = "Lists the available synths."
 tags = ["registre"]
 +++
 
 # list_synths
 
-Liste les synths disponibles.
+Lists the available synths.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 p\"oh*8\" |> hpf(6000) |> gain(0.5)   # tight click hat"]
 name = "hpf"
-short = "Passe-haut (Hz). Coupe tout en dessous. 200 = enlève le grondement, 1000 = fin."
+short = "High-pass (Hz). Cuts everything below. 200 = removes rumble, 1000 = thin."
 tags = []
 +++
 
 # hpf
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+High-pass (Hz). Cuts everything below. 200 = removes rumble, 1000 = thin.

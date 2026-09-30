@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "mix"
-short = "Mélange sec/mouillé d'un effet (0 = sec, 1 = mouillé)."
+short = "Dry/wet mix of an effect (0 = dry, 1 = wet)."
 tags = []
 +++
 
 # mix
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Dry/wet mix of an effect (0 = dry, 1 = wet).

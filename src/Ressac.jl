@@ -73,6 +73,7 @@ include("tk_scroll.jl")         # ScrollPane partagé : défilement, molette, ba
 include("tk_picker.jl")         # saisie de filtre + liste (TextInput + SelectableList)
 include("pane_log.jl")
 include("content_markdown.jl")  # rendu markdown partagé (wiki, fiches)
+include("content_glossary.jl")  # glossaire : index des termes, soulignement, bulles
 include("pane_doc.jl")
 include("pane_scope.jl")
 include("pane_tuning.jl")
@@ -109,6 +110,7 @@ include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
 include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
+include("app_hover.jl")          # bulle de glossaire au survol (avant les étapes clavier)
 include("app_input.jl")          # TK.update! clavier/souris, routage panes/modaux
 include("app_editor.jl")         # motions vim, nudge, raccourcis pattern
 include("tui_pattern_editor.jl") # playhead + édition contextuelle de mininotation

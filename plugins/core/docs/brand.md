@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*8\" |> mask(brand() |> segment(8))"]
 name = "brand"
-short = "Pattern booléen aléatoire continu (50 %)."
+short = "Continuous random boolean pattern (50%)."
 tags = ["tidal"]
 +++
 
 # brand
 
-Pattern booléen aléatoire continu (50 %).
+Continuous random boolean pattern (50%).

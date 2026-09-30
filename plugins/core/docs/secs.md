@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd sn\" |> slow(secs(2))         # deux secondes par cycle, quel que soit le cps", "@d1 \"hh*4\" |> delaytime(secs(0.25))"]
 name = "secs"
-short = "Des secondes en cycles, au tempo courant (lu à chaque requête)."
+short = "Seconds as cycles, at the current tempo (read on every query)."
 tags = ["tidal"]
 +++
 
 # secs
 
-Convertit des secondes en cycles au cps courant, lu à chaque requête : un changement de tempo est suivi. Nombre, chaîne ou pattern. (`sec` est la sécante de Julia, d'où le nom.)
+Converts seconds to cycles at the current cps, read on every query: a tempo change is followed. Number, string or pattern. (`sec` is Julia's secant, hence the name.)

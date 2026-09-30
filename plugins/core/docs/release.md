@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "release"
-short = "Temps d'extinction après la fin de la note (s). 0.1 = staccato, 0.5 = normal, 2 = longue queue."
+short = "Fade-out time after the note ends (s). 0.1 = staccato, 0.5 = normal, 2 = long tail."
 tags = []
 +++
 
 # release
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Fade-out time after the note ends (s). 0.1 = staccato, 0.5 = normal, 2 = long tail.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :superpiano |> midinote(\"60 64 67\")"]
 name = "midinote"
-short = "Note MIDI (60 = do central)."
+short = "MIDI note (60 = middle C)."
 tags = ["tidal"]
 +++
 
 # midinote
 
-Note MIDI (60 = do central).
+MIDI note (60 = middle C).

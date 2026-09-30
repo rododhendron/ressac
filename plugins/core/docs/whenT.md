@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd*8\" |> whenT(t -> t - floor(t) < 1//2, fast(2))"]
 name = "whenT"
-short = "Applique f aux événements dont le début (en cycles) vérifie test."
+short = "Applies f to the events whose start (in cycles) satisfies test."
 tags = ["tidal"]
 +++
 
 # whenT
 
-Applique f aux événements dont le début (en cycles) vérifie test.
+Applies f to the events whose start (in cycles) satisfies test.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn\" |> when(c -> c % 3 == 0, rev)"]
 name = "when"
-short = "Applique f sur les cycles où test(cycle) est vrai."
+short = "Applies f on the cycles where test(cycle) is true."
 tags = ["tidal"]
 +++
 
 # when
 
-Applique f sur les cycles où test(cycle) est vrai.
+Applies f on the cycles where test(cycle) is true.

@@ -1,10 +1,10 @@
 +++
 examples = ["mutate_pattern(\"@d1 p\\\"bd ~ sn bd\\\" |> gain(0.9)\")"]
 name = "mutate_pattern"
-short = "Une variation d'un bloc : un pas de la mini-notation change, ou un maillon de la chaîne d'effets."
+short = "One variation of a block: a mini-notation step changes, or a link of the effect chain."
 tags = ["patterns"]
 +++
 
 # mutate_pattern
 
-Une variation d'un bloc : un pas de la mini-notation change, ou un maillon de la chaîne d'effets.
+One variation of a block: a mini-notation step changes, or a link of the effect chain.

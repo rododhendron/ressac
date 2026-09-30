@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "freqshift"
-short = "Décalage de fréquence (Hz, signé)."
+short = "Frequency shift (Hz, signed)."
 tags = []
 +++
 
 # freqshift
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Frequency shift (Hz, signed).

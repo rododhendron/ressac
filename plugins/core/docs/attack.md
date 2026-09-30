@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "attack"
-short = "Temps pour atteindre le volume plein après le déclenchement (s). 0.01 = instantané, 0.5 = fondu doux."
+short = "Time to reach full volume after the trigger (s). 0.01 = instant, 0.5 = soft fade-in."
 tags = []
 +++
 
 # attack
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Time to reach full volume after the trigger (s). 0.01 = instant, 0.5 = soft fade-in.

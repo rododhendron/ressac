@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn hh\" |> jux(rev)", "@d1 \"bd*4\" |> jux(fast(2))"]
 name = "jux"
-short = "Stéréo : le pattern tel quel à gauche, f(pattern) à droite."
+short = "Stereo: the pattern as is on the left, f(pattern) on the right."
 tags = ["tidal"]
 +++
 
 # jux
 
-Stéréo : le pattern tel quel à gauche, f(pattern) à droite.
+Stereo: the pattern as is on the left, f(pattern) on the right.

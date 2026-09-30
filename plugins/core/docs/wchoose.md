@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 wchoose([(:bd, 3), (:sn, 1)])"]
 name = "wchoose"
-short = "Un choix pondéré par cycle : [(valeur, poids), ...]."
+short = "A weighted choice per cycle: [(value, weight), ...]."
 tags = ["tidal"]
 +++
 
 # wchoose
 
-Un choix pondéré par cycle : [(valeur, poids), ...].
+A weighted choice per cycle: [(value, weight), ...].

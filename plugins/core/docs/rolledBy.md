@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :pad |> n(\"c'maj e'min\") |> rolledBy(1//2)"]
 name = "rolledBy"
-short = "Roule les accords : la i-ème note (par hauteur) part plus tard, de i/k × t × durée."
+short = "Rolls chords: the i-th note (by pitch) starts later, by i/k × t × duration."
 tags = ["tidal"]
 +++
 
 # rolledBy
 
-Roule les accords : la i-ème note (par hauteur) part plus tard, de i/k × t × durée.
+Rolls chords: the i-th note (by pitch) starts later, by i/k × t × duration.

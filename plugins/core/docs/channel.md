@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :bd |> channel(1)"]
 name = "channel"
-short = "Canal de sortie."
+short = "Output channel."
 tags = ["tidal"]
 +++
 
 # channel
 
-Canal de sortie.
+Output channel.

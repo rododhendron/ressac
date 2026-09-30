@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 n \"0 3 7\" |> s \"superpiano\"", "@d1 s \"bd:3 sn\""]
 name = "s"
-short = "Le son (sample ou synth) ; bd:3 pose aussi n."
+short = "The sound (sample or synth); bd:3 also sets n."
 tags = ["tidal"]
 +++
 
 # s
 
-Le son (sample ou synth) ; bd:3 pose aussi n.
+The sound (sample or synth); bd:3 also sets n.

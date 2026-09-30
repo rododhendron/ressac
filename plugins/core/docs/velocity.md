@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "velocity"
-short = "Vélocité de la note (0-1). Souvent transformée en amplitude ou en cutoff."
+short = "Note velocity (0-1). Often mapped to amplitude or cutoff."
 tags = []
 +++
 
 # velocity
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Note velocity (0-1). Often mapped to amplitude or cutoff.

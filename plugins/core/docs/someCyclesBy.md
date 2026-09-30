@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"bd hh sn hh\" |> someCyclesBy(0.3, fast(2))"]
 name = "someCyclesBy"
-short = "Applique f à une proportion prob de cycles entiers (tirage stable par cycle)."
+short = "Applies f to a proportion prob of whole cycles (draw stable per cycle)."
 tags = ["tidal"]
 +++
 
 # someCyclesBy
 
-Applique f à une proportion prob de cycles entiers (tirage stable par cycle).
+Applies f to a proportion prob of whole cycles (draw stable per cycle).

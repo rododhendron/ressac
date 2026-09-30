@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :drum |> n(runp(8))"]
 name = "runp"
-short = "Pattern des entiers 0..n-1, un par pas (le run de Tidal)."
+short = "Pattern of the integers 0..n-1, one per step (Tidal's run)."
 tags = ["tidal"]
 +++
 
 # runp
 
-Pattern des entiers 0..n-1, un par pas (le run de Tidal).
+Pattern of the integers 0..n-1, one per step (Tidal's run).

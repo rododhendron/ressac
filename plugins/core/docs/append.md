@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 append(\"bd*4\", \"sn*2\")"]
 name = "append"
-short = "Alterne deux patterns, un cycle chacun."
+short = "Alternates two patterns, one cycle each."
 tags = ["tidal"]
 +++
 
 # append
 
-Alterne deux patterns, un cycle chacun.
+Alternates two patterns, one cycle each.

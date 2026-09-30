@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "accelerate"
-short = "Glissement de hauteur sur la note (demi-tons/s). Positif = monte, négatif = descend."
+short = "Pitch glide over the note (semitones/s). Positive rises, negative falls."
 tags = []
 +++
 
 # accelerate
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+Pitch glide over the note (semitones/s). Positive rises, negative falls.

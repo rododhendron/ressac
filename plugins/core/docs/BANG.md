@@ -1,10 +1,10 @@
 +++
 examples = []
 name = "!"
-short = "nom!N — donne à nom N fois le poids (occupe N pas)."
+short = "name!N — gives name N times the weight (it takes N steps)."
 tags = []
 +++
 
 # !
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+name!N — gives name N times the weight (it takes N steps).

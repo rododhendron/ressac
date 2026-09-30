@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :superhammond |> leslie(0.6) |> lesliespeed(4)"]
 name = "lesliespeed"
-short = "Vitesse du rotor aigu du Leslie."
+short = "Speed of the Leslie's treble rotor."
 tags = ["fx"]
 +++
 
 # lesliespeed
 
-Vitesse du rotor aigu du Leslie.
+Speed of the Leslie's treble rotor.

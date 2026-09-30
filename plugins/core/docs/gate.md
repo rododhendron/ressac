@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 gate(:bd, p\"1 0 1 0 1 0 1 0\")"]
 name = "gate"
-short = "gate(:nom, p\"1 0 0 1 …\") — substitue :nom à chaque événement non silencieux de p. Alias court pour un masque rythmique."
+short = "gate(:name, p\"1 0 0 1 …\") — substitutes :name for every non-silent event of p. Short alias for a rhythmic mask."
 tags = []
 +++
 
 # gate
 
-(Migrated from inline `_PARAM_DOCS`. Body intentionally empty for now.)
+gate(:name, p"1 0 0 1 …") — substitutes :name for every non-silent event of p. Short alias for a rhythmic mask.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 :pad |> pump(4, 0.7)"]
 name = "pump"
-short = "Ducking de gain façon sidechain : un creux au début de chaque pas, puis remontée."
+short = "Sidechain-style gain ducking: a dip at the start of each step, then recovery."
 tags = ["fx"]
 +++
 
 # pump
 
-Ducking de gain façon sidechain : un creux au début de chaque pas, puis remontée.
+Sidechain-style gain ducking: a dip at the start of each step, then recovery.

@@ -1,10 +1,10 @@
 +++
 examples = ["@d1 \"hh*8\" |> pan(cosine() |> segment(8))"]
 name = "cosine"
-short = "Signal continu en cosinus, une période par cycle, de -1 à 1."
+short = "Continuous cosine signal, one period per cycle, from -1 to 1."
 tags = ["signal"]
 +++
 
 # cosine
 
-Signal continu en cosinus, une période par cycle, de -1 à 1.
+Continuous cosine signal, one period per cycle, from -1 to 1.
