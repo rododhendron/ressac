@@ -572,7 +572,12 @@ _register_regex!(r"^(?:sccode-tag|sctag)\s+(\S+)$",
 _register_literal!(m -> _toggle_recording!(m),       "rec", "record")
 _register_literal!(m -> _export_current_synth!(m),   "export", "export-synth")
 _register_regex!(r"^export(?:-synth)?\s+(\S+)$",
-    (m, mt) -> _export_current_synth!(m; duration = parse(Float64, mt.captures[1])))
+    (m, mt) -> begin
+        d = tryparse(Float64, mt.captures[1])
+        d === nothing ?
+            _push_app_log!(m, "[ERROR] :export attend une durée en secondes (:export 4) — pour sauver le synth sous un nom, :w $(mt.captures[1])") :
+            _export_current_synth!(m; duration = d)
+    end)
 _register_regex!(r"^rec(?:ord)?\s+start\s+(\S+)$",
     (m, mt) -> _start_recording!(m, mt.captures[1]))
 _register_regex!(r"^rec(?:ord)?\s+start$",
@@ -952,6 +957,17 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
         end
     end
     m.ex_history_idx = 0   # any new command resets the navigation cursor
+    # Une commande qui lève ne doit jamais faire tomber l'application :
+    # elle se lit dans le log, la session continue.
+    try
+        _dispatch_ex_command!(m, s)
+    catch err
+        _push_app_log!(m, "[ERROR] :$s — $(first(sprint(showerror, err), 160))")
+    end
+    return
+end
+
+function _dispatch_ex_command!(m::RessacApp, s::String)
     # 1. Literal exact-match (O(1))
     h = get(_LITERAL_DISPATCH, s, nothing)
     h !== nothing && (h(m); return)

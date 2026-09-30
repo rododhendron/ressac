@@ -404,8 +404,14 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     if m.keydebug
         _push_app_log!(m, "[KEY] $(evt.key) char=$(repr(evt.char)) action=$(evt.action)")
     end
-    for stage in _KEY_STAGES
-        stage(m, evt) && return
+    # Dernier filet : une touche dont l'action lève se lit dans le log,
+    # l'application ne tombe pas.
+    try
+        for stage in _KEY_STAGES
+            stage(m, evt) && return
+        end
+    catch err
+        _push_app_log!(m, "[ERROR] touche $(keyname(evt)) — $(first(sprint(showerror, err), 160))")
     end
     return
 end

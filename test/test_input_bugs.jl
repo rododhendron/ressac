@@ -137,3 +137,22 @@ end
     @test length(ed.token_cache) == 3
     @test first(ed.token_cache[3]).kind == Tachikoma.tok_macro
 end
+
+# ── Une commande ou une touche qui lève ne fait pas tomber l'application ──
+@testset "robustesse — :export ouaaha et une action qui lève finissent dans le log" begin
+    app = _ib_app()
+    n0 = length(app.logs)
+    _ib_ex(app, "export ouaaha")
+    @test length(app.logs) > n0
+    @test occursin("[ERROR] :export attend une durée", app.logs[end]) && occursin(":w ouaaha", app.logs[end])
+    # un handler qui lève : attrapé, loggé, la session continue
+    Ressac._register_literal!(m -> error("boum"), "boum-test")
+    _ib_ex(app, "boum-test")
+    @test occursin("[ERROR] :boum-test — boum", app.logs[end])
+    delete!(Ressac._LITERAL_DISPATCH, "boum-test")
+    # une touche dont l'action lève : pareil
+    Ressac.bind!(:global, "Ctrl-y", "test"; action = m -> error("touche cassée"))
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'y'))
+    @test occursin("[ERROR] touche Ctrl-y", app.logs[end]) && occursin("touche cassée", app.logs[end])
+    filter!(b -> !("Ctrl-y" in b.keys), Ressac._KEYMAP[:global])
+end
