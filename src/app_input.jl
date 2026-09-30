@@ -34,6 +34,13 @@ function TK.update!(m::RessacApp, evt::TK.MouseEvent)
         _rack_wheel!(m, evt) || _workspace_scroll_to_pane!(m, evt) || _mouse_wheel!(m, evt)
         return
     end
+    # Glisser / relâcher : la pane focalisée (sa barre de défilement, sa
+    # table) — sans changer le focus.
+    if evt.action === TK.mouse_drag || evt.action === TK.mouse_release
+        pane = _focused_pane_impl(m)
+        pane === nothing || handle_mouse!(pane, evt)
+        return
+    end
     # Left-click routing.
     if evt.action === TK.mouse_press && evt.button === TK.mouse_left
         # Focused editor — fast path (still the most common click).

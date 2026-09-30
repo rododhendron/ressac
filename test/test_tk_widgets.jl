@@ -119,3 +119,55 @@ end
     @test isempty(Ressac._picker_query(app.palette)) && app.palette.list.selected == 1
     Tachikoma.update!(app, _ev(:escape)); @test app.modal === :none
 end
+
+@testset "aide et guides — touches colorées, code coloré, molette et barre" begin
+    app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))
+    tb = Tachikoma.TestBackend(120, 40)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 120, 40), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    Tachikoma.view(app, frame); Ressac._PANE_MODE.active = false; Ressac._active_editor(app).mode = :normal
+    # les lignes de guide : titre, code — explication, prose avec `code`
+    t = Ressac._guide_spans("▓ MINI-NOTATION")
+    @test length(t) == 1 && t[1].style.bold
+    c = Ressac._guide_spans("  p\"bd ~ sn ~\"       — `~` est un silence")
+    @test any(sp -> sp.style == Tachikoma.token_style(Tachikoma.tok_string), c)     # la chaîne colorée
+    @test any(sp -> sp.content == "~" && sp.style == Ressac._md_style(:code), c)     # le `~` en code
+    pr = Ressac._guide_spans("   Sans aucun override SuperDirt — tes `freq = 220` sont actifs.")
+    @test any(sp -> sp.content == "freq = 220" && sp.style == Ressac._md_style(:code), pr)
+    @test Ressac._guide_spans("") == Tachikoma.Span[]
+    # l'aide : une ligne de raccourci a sa touche en accent
+    _ev(c) = Tachikoma.KeyEvent(c)
+    Tachikoma.update!(app, _ev('?')); Tachikoma.view(app, frame)
+    @test app.modal === :help
+    entries = Ressac._help_entries(app)
+    row = findfirst(e -> e[1] === :row, entries)
+    sp = Ressac._help_spans(entries[row]...)
+    @test sp[1].style.fg == Tachikoma.tstyle(:accent).fg && sp[2].style.fg == Tachikoma.tstyle(:text).fg
+    @test Ressac._help_lines(app)[row][1] == entries[row][2] * entries[row][3]
+    # la molette au-dessus de la modale fait défiler l'aide, pas ce qu'il y a dessous
+    a = app.modal_view.last_area
+    @test a.height > 0
+    wp = Ressac._find_pane(app, Ressac.WikiPane)
+    off0 = wp === nothing ? 0 : wp.pane.offset
+    Tachikoma.update!(app, _wheel(a.x + 2, a.y + 2, false))
+    @test app.modal_view.offset == 1
+    @test wp === nothing || wp.pane.offset == off0
+    # un clic en bas de la barre saute plus loin ; un glisser suit
+    sb = app.modal_view._sb_state.rect
+    @test sb.width == 1
+    Tachikoma.update!(app, _click(sb.x, sb.y + sb.height - 1))
+    @test app.modal_view.offset > 1
+    Tachikoma.update!(app, _ev(:escape)); @test app.modal === :none
+    # une pane : glisser sur sa barre fait défiler (l'événement va à la pane focalisée)
+    if wp !== nothing
+        Ressac._focus_pane!(app, wp); Tachikoma.view(app, frame)
+        r = wp.pane._sb_state.rect
+        if r.width == 1
+            Tachikoma.update!(app, _click(r.x, r.y))
+            drag = Tachikoma.MouseEvent(r.x, r.y + r.height - 1, Tachikoma.mouse_left, Tachikoma.mouse_drag, false, false, false)
+            Tachikoma.update!(app, drag)
+            rel = Tachikoma.MouseEvent(r.x, r.y + r.height - 1, Tachikoma.mouse_left, Tachikoma.mouse_release, false, false, false)
+            Tachikoma.update!(app, rel)
+            @test wp.pane.offset > 0
+        end
+    end
+end

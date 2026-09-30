@@ -28,12 +28,45 @@ mixer) reçoivent clic et molette ; les autres l'ignorent.
 """
 function _modal_mouse!(m::RessacApp, evt::TK.MouseEvent)
     lst = _modal_list(m)
-    lst === nothing && return false
+    if lst === nothing
+        # Modale à texte (aide, guides, explication, liste) : molette et
+        # barre vont à son ScrollPane ; le reste est avalé, la modale
+        # possède la souris.
+        TK.handle_mouse!(m.modal_view, evt)
+        return true
+    end
     # Un clic sur la ligne déjà sélectionnée vaut Entrée ; sinon la liste
     # sélectionne ou défile.
     _list_click_hits_selected(lst, evt) &&
         return dispatch!(((modal_scope(m), m),), TK.KeyEvent(:enter))
-    return TK.handle_mouse!(lst, evt)
+    TK.handle_mouse!(lst, evt)
+    return true
+end
+
+# ── Le style des lignes de guide ─────────────────────────────────────
+# Les guides et la référence sont des lignes écrites à la main : titres
+# `▓ …` / `── … ──`, lignes de code (`p"…"`, `@d1 …`, `:commande`) avec
+# un ` — ` qui les explique, et de la prose avec du `code` entre
+# accents graves. On les colore comme le wiki, sans les reformater.
+_guide_is_title(t) = startswith(t, "▓") || startswith(t, "──")
+_guide_is_code(t) = startswith(t, "p\"") || startswith(t, "@d") || startswith(t, ":") ||
+                    startswith(t, "@synth") || occursin("|>", t) || occursin(r"^[a-z_]+\(", t)
+
+function _guide_spans(line::AbstractString)
+    s = String(line)
+    t = lstrip(s)
+    isempty(t) && return TK.Span[]
+    ind = " " ^ (length(s) - length(t))
+    _guide_is_title(t) && return TK.Span[TK.Span(s, TK.tstyle(:accent, bold = true))]
+    if _guide_is_code(t)
+        # `code   — explication` : le code coloré, l'explication en texte.
+        parts = split(t, " — "; limit = 2)
+        out = TK.Span[TK.Span(ind, TK.tstyle(:text))]
+        append!(out, _md_code_line(String(parts[1]), typemax(Int) ÷ 4))
+        length(parts) == 2 && append!(out, vcat(TK.Span[TK.Span(" — ", TK.tstyle(:text_dim))], _md_inline(String(parts[2]))))
+        return out
+    end
+    return vcat(TK.Span[TK.Span(ind, TK.tstyle(:text))], _md_inline(t))
 end
 
 _modal_lines(m::RessacApp) =
@@ -287,7 +320,7 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         title_right = _modal_hint_text(m, :modal_text),
         w_max = 100,
         h_target = min(length(lines) + 2, area.height - 4))
-    TK.set_content!(m.modal_view, [_span_line(l) for l in lines])
+    TK.set_content!(m.modal_view, [_guide_spans(l) for l in lines])
     TK.render(m.modal_view, inner, buf)
 end
 
@@ -458,42 +491,57 @@ Lignes (texte, style) de l'aide : sections du registre puis la
 référence statique (_GUIDE_REFERENCE_LINES). Styles : :title, :group,
 :row, :dim, :note, :ref.
 """
-function _help_lines(m::RessacApp)
-    out = Tuple{String,Symbol}[]
+# Les entrées de l'aide : (genre, touches, libellé). Les touches sont
+# vides hors des lignes de raccourci.
+function _help_entries(m::RessacApp)
+    out = Tuple{Symbol,String,String}[]
     secs = help_sections(m.help_scopes; targets = _help_targets(m))
     for sec in secs
-        push!(out, ("▸ " * sec.title, :title))
+        push!(out, (:title, "", "▸ " * sec.title))
         kw = 0
         for g in sec.groups, r in g.rows
             kw = max(kw, textwidth(r.keys))
         end
         kw = min(kw, 22)
         for g in sec.groups
-            push!(out, ("  " * g.title, :group))
+            push!(out, (:group, "", "  " * g.title))
             for r in g.rows
-                push!(out, ("    " * rpad(r.keys, kw) * "  " * r.label, r.dim ? :dim : :row))
+                push!(out, (r.dim ? :dim : :row, "    " * rpad(r.keys, kw), "  " * r.label))
             end
         end
         for n in sec.notes
-            push!(out, ("  " * n, :note))
+            push!(out, (:note, "", "  " * n))
         end
-        push!(out, ("", :row))
+        push!(out, (:row, "", ""))
     end
-    push!(out, (m.help_expanded ? "▸ Référence" : "▸ Référence   (Tab : toutes les sections de touches)", :title))
+    push!(out, (:title, "", m.help_expanded ? "▸ Référence" : "▸ Référence   (Tab : toutes les sections de touches)"))
     for l in _GUIDE_REFERENCE_LINES
-        push!(out, (l, startswith(l, "▓") ? :group : :ref))
+        push!(out, (startswith(l, "▓") ? :group : :ref, "", l))
     end
     return out
 end
 
+# La même chose en lignes de texte (tests, recherche).
+_help_lines(m::RessacApp) = [(keys * label, kind) for (kind, keys, label) in _help_entries(m)]
+
+# La ligne écran d'une entrée : touche en accent, libellé en texte, la
+# référence colorée comme un guide.
+function _help_spans(kind::Symbol, keys::String, label::String)
+    kind === :ref && return _guide_spans(label)
+    (kind === :row || kind === :dim) && return TK.Span[
+        TK.Span(keys, TK.tstyle(:accent, bold = kind === :row)),
+        TK.Span(label, kind === :dim ? TK.tstyle(:text_dim) : TK.tstyle(:text))]
+    return _span_line(label, _help_style(kind))
+end
+
 function _render_help_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    lines = _help_lines(m)
+    lines = _help_entries(m)
     inner = _render_modal_block!(buf, area;
         title = "AIDE",
         title_right = _modal_hint_text(m, :modal_help),
         w_max = 100,
         h_target = min(length(lines) + 2, area.height - 4))
-    TK.set_content!(m.modal_view, [_span_line(txt, _help_style(kind)) for (txt, kind) in lines])
+    TK.set_content!(m.modal_view, [_help_spans(kind, keys, label) for (kind, keys, label) in _help_entries(m)])
     TK.render(m.modal_view, inner, buf)
     return
 end
