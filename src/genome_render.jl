@@ -40,6 +40,7 @@ function _emit_special(g::Genome, n::UGenNode)
     n.ugen === :EnvAsr   && return "Env.asr($(join((A(i) for i in 1:length(n.args)), ", ")))"
     n.ugen === :EnvAdsr  && return "Env.adsr($(join((A(i) for i in 1:length(n.args)), ", ")))"
     n.ugen === :Raw      && return "Silent.ar"   # un bloc écrit à la main : pas re-rendable
+    (n.ugen === :Silent && isempty(n.args)) && return "Silent.ar"   # ce que l'export en fait
     return nothing
 end
 
@@ -258,6 +259,13 @@ const _DSL_STAGES = Dict{Symbol,Tuple{String,Vector{Int}}}(
     :Tanh => ("tanh_drive", Int[]), :Decay => ("decay", [2]), :Decay2 => ("decay2", [2, 3]))
 const _DSL_ENV_FNS = Dict{Symbol,String}(:EnvPerc => "env_perc", :EnvLinen => "env_linen",
                                          :EnvAsr => "env_asr", :EnvAdsr => "env_adsr")
+# Position SC → mot-clé du wrapper et sa valeur par défaut (voir les
+# signatures env_* dans synth_dsl.jl : le curve `:lin` d'env_linen vaut 0 en SC).
+const _DSL_ENV_KWS = Dict{Symbol,Vector{Tuple{Int,String,Float64}}}(
+    :EnvPerc  => [(3, "level", 1.0), (4, "curve", -4.0)],
+    :EnvLinen => [(4, "level", 1.0), (5, "curve", 0.0)],
+    :EnvAsr   => [(4, "curve", -4.0)],
+    :EnvAdsr  => [(5, "peak", 1.0), (6, "curve", -4.0)])
 
 # Un argument : constante, contrôle, ou l'expression d'un nœud. Comme
 # opérande d'un `+`/`*` (operand = true), une chaîne de pipes ou une
@@ -307,8 +315,7 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     if u === :MulAdd
         # `x * EnvGen(Env.perc(…), 1)` : c'est `x |> env_perc(…)`.
         mul = n.args[2]
-        if mul isa NodeRef && haskey(g.nodes, mul.id) && g.nodes[mul.id].ugen === :EnvGen &&
-           length(n.args) >= 3 && n.args[3] isa ConstArg && n.args[3].value == 0.0
+        if mul isa NodeRef && haskey(g.nodes, mul.id) && g.nodes[mul.id].ugen === :EnvGen && length(n.args) >= 3
             eg = g.nodes[mul.id]
             env = !isempty(eg.args) && eg.args[1] isa NodeRef ? get(g.nodes, eg.args[1].id, nothing) : nothing
             gate_ok = length(eg.args) < 2 || (eg.args[2] isa ConstArg && eg.args[2].value == 1.0)
@@ -316,7 +323,21 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
                 fn = _DSL_ENV_FNS[env.ugen]
                 pos = env.ugen === :EnvPerc ? [1, 2] : env.ugen === :EnvLinen ? [1, 2, 3] :
                       env.ugen === :EnvAsr ? [1, 2, 3] : [1, 2, 3, 4]
-                return "$(A(1)) |> $fn($(_dsl_call_args(g, env, pos, vars)))"
+                # Les mots-clés du wrapper (level, curve, peak) quand ils
+                # s'écartent de leurs défauts — `env_perc(0, :sustain; curve = -5)`.
+                kws = String[]
+                for (i, key, default) in _DSL_ENV_KWS[env.ugen]
+                    i <= length(env.args) || continue
+                    a = env.args[i]
+                    (a isa ConstArg && a.value == default) && continue
+                    push!(kws, "$key = $(_dsl_arg(g, a, vars))")
+                end
+                kwstr = isempty(kws) ? "" : "; " * join(kws, ", ")
+                piped = "$(A(1)) |> $fn($(_dsl_call_args(g, env, pos, vars))$kwstr)"
+                # `(x * env) + c` (le parseur SC replie l'addition dans le MulAdd) :
+                # `(x |> env_perc(…)) + c`, parenthésé car `|>` lie moins fort que `+`.
+                (n.args[3] isa ConstArg && n.args[3].value == 0.0) && return piped
+                return "($piped) + $(O(3))"
             end
         end
         # `SinOsc.kr(r).range(lo, hi)` est devenu MulAdd(lfo, (hi-lo)/2, (hi+lo)/2) : `lfo(r; low, high)`.
@@ -324,7 +345,9 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
         if src !== nothing && src.ugen === :SinOscKR && n.args[2] isa ConstArg && length(n.args) >= 3 &&
            n.args[3] isa ConstArg && !haskey(vars, n.args[1].id)
             mm, aa = n.args[2].value, n.args[3].value
-            return "lfo($(_dsl_call_args(g, src, [1], vars)); low = $(_fmt_const(aa - mm)), high = $(_fmt_const(aa + mm)))"
+            # arrondi : (hi - lo) / 2 doit redonner mm sans bruit flottant
+            lo = round(aa - mm; sigdigits = 12); hi = round(aa + mm; sigdigits = 12)
+            return "lfo($(_dsl_call_args(g, src, [1], vars)); low = $(_fmt_const(lo)), high = $(_fmt_const(hi)))"
         end
         m = _fmt_const(n.args[2] isa ConstArg ? n.args[2].value : 1.0)
         add = length(n.args) >= 3 && n.args[3] isa ConstArg && n.args[3].value == 0.0 ? "" : " + $(O(3))"
@@ -340,14 +363,20 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
         end
     end
     if haskey(_DSL_ENV_FNS, u)
-        return "SynthDSL.Sig(\"Env.$(lowercase(String(u)[4:end]))($(join((A(i) for i in 1:length(n.args)), ", ")))\")"
+        # Une spec Env hors du motif `x * EnvGen` : du SC brut, donc les
+        # contrôles s'y écrivent sans `:`.
+        S(i) = (a = n.args[i]; a isa ControlRef ? String(a.name) : A(i))
+        return "SynthDSL.Sig(\"Env.$(lowercase(String(u)[4:end]))($(join((S(i) for i in 1:length(n.args)), ", ")))\")"
     end
     if u === :SinOscKR && length(n.args) >= 1
         return "lfo($(A(1)))"
     elseif u === :LFPulseKR
         return "ugen(:LFPulse, $(_dsl_call_args(g, n, 1:length(n.args), vars)); rate = :kr)"
     end
-    if haskey(_DSL_SOURCES, u)
+    # Un wrapper ne vaut que pour la forme qu'il écrit : même taux (un
+    # `Saw.kr` n'est pas `saw`) et pas d'arguments en plus (mul/add).
+    if haskey(_DSL_SOURCES, u) && (n.rate === :ar || u in (:SinOscKR, :Line, :XLine)) &&
+       length(n.args) <= length(_DSL_SOURCES[u][2])
         (fn, idxs) = _DSL_SOURCES[u]
         return "$fn($(_dsl_call_args(g, n, idxs, vars)))"
     end
@@ -355,7 +384,8 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     # (`(a + b) |> f`), une chaîne de pipes continue telle quelle.
     H(i) = (e = A(i); (occursin(r" [+*/] ", e) && !occursin(" |> ", e)) ? "(" * e * ")" : e)
     si = _dsl_input_slot(n)
-    if haskey(_DSL_STAGES, u) && si !== nothing && si <= length(n.args)
+    if haskey(_DSL_STAGES, u) && si !== nothing && si <= length(n.args) && n.rate === :ar &&
+       length(n.args) <= length(_DSL_STAGES[u][2]) + 1
         (fn, idxs) = _DSL_STAGES[u]
         args = u === :Tanh ? "1" : _dsl_call_args(g, n, idxs, vars)
         return "$(H(si)) |> $fn($args)"
@@ -450,7 +480,16 @@ end
 function render_dsl(g::Genome, name::Symbol)
     fr  = _fmt_const(control(g, :freq))
     sus = _fmt_const(control(g, :sustain))
-    head = string("@synth :", name, " (freq=", fr, ", sustain=", sus, ") ")
+    # freq et sustain d'abord, puis tout autre contrôle du génome (un
+    # `:damp` lu dans le texte doit rester déclaré, sinon la relecture
+    # le prend pour un symbole SC inconnu et perd le terme).
+    extra = String[]
+    for k in sort!(collect(keys(g.controls)))
+        k in (:freq, :sustain, :gain, :auto_env, :auto_gain, :pan) && continue
+        push!(extra, string(k, "=", _fmt_const(control(g, k))))
+    end
+    head = string("@synth :", name, " (freq=", fr, ", sustain=", sus,
+                  isempty(extra) ? "" : ", " * join(extra, ", "), ") ")
     if _has_feedback(g)
         return string(head, "feedback() do fb\n", _dsl_body_lines(g, "    "), "\nend\n")
     end

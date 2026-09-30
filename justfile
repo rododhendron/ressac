@@ -13,6 +13,11 @@ test:
 test-nrt:
     RESSAC_NRT_TESTS=1 QT_QPA_PLATFORM=minimal julia --project=. -e 'using Pkg; Pkg.test()'
 
+# Opt-in : passe la collection de synths de l'utilisateur (plugins/user-synths)
+# dans les tests DSL/livedoc — la suite par défaut ne lit que test/fixtures/synths.
+test-user-synths:
+    RESSAC_USER_SYNTHS_TESTS=1 julia --project=. -e 'using Test; include("test/test_dsl_livedoc.jl")'
+
 # Run tests with line coverage tracking, then summarise per file.
 # Drops .cov files next to every src/*.jl. Cleans stale ones first so the
 # report doesn't double-count old + new runs.

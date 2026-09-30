@@ -425,6 +425,9 @@ cpsmidi(x) = Sig("($(sc_arg(x))).cpsmidi")
 
 # `x |> ugen(:RLPF, 800, 0.3)` : la même chose pour un UGen sans wrapper.
 ugen(s::Sig, name::Symbol, args...; rate::Symbol = :ar) = ugen(name, s, args...; rate = rate)
+# Une constante en tête de pipe (`400.0 |> ugen(:AllpassC, …)`) : le rendu
+# la passe en DC.ar si le slot est audio.
+ugen(s::Real, name::Symbol, args...; rate::Symbol = :ar) = ugen(name, s, args...; rate = rate)
 
 """
     safe(level = 0.95) -> étape

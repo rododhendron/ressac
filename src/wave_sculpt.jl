@@ -237,6 +237,9 @@ end
 function _bypass_input_slot(n::UGenNode)
     si = _audio_input_slot(n)
     si === nothing || return si
+    # Une forme méthode SC (`(x).round(q)`, `.fold2(a)`…) : le receveur est
+    # toujours le premier argument, même quand c'est un contrôle.
+    haskey(SynthDSL._UGEN_METHOD_FORMS, n.ugen) && !isempty(n.args) && return 1
     spec = ugen_spec(n.ugen)
     (spec !== nothing && spec.role === :math) || return nothing
     return findfirst(a -> a isa NodeRef, n.args)
