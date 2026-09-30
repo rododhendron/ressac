@@ -45,8 +45,9 @@ using Ressac
         @test occursin("@synth :myseed", d)
         @test occursin("begin\n", d)            # real DSL block, not a string
         @test !occursin("Sig(\"", d)            # no giant inlined SC string
-        @test occursin("ugen(:RLPF", d)
-        @test occursin("ugen(:Saw, :freq)", d)
+        @test occursin("|> rlpf(", d)
+        @test occursin("saw(:freq)", d) && !occursin("ugen(:Saw", d)
+        @test occursin("|> safe()", d)
         # the emitted DSL must actually parse, expand and build a SynthDef
         src = Core.eval(Ressac.SynthDSL, Meta.parse(Ressac.SynthDSL._dsl_preprocess(d)))
         @test occursin("RLPF.ar", src)

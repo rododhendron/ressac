@@ -235,7 +235,8 @@ end
             _bkey(app, 'j')
             @test sp.focus == f0 + 1
             # </> défile l'explication
-            _bkey(app, '>'); @test sp.explain_view.offset == 1
+            last = Ressac._scroll_last(sp.explain_view)               # l'explication peut tenir dans la pane
+            _bkey(app, '>'); @test sp.explain_view.offset == min(1, last)
             _bkey(app, '<'); @test sp.explain_view.offset == 0
             # :w <nom> sauve le sculpt (fichier avec génome embarqué)
             _bex(app, "w scusave")

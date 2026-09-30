@@ -228,54 +228,203 @@ function _topo_order(g::Genome)
     return order
 end
 
-# ── Export DSL propre : bloc begin/end multi-ligne (variables nommées) ──
-# Le feedback est représenté par le combinateur `feedback() do fb … end`
-# du DSL : les nœuds FbIn renvoient simplement la variable `fb`.
-_dsl_arg(g, a::Arg, vars) =
+# ── Export DSL : le vocabulaire des wrappers, en pipes ────────────────
+# Le graphe s'écrit comme on l'écrirait à la main : une chaîne
+# `saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)`, les nœuds lus par
+# plusieurs autres deviennent des variables `nK`, et un UGen sans
+# wrapper passe par `ugen(:Nom, …)` — pipable lui aussi. Le feedback est
+# le combinateur `feedback() do fb … end` du DSL.
+
+# UGen → (wrapper, indices des arguments dans l'ordre du wrapper). Pour
+# une étape, l'entrée (slot audio) n'y figure pas : elle vient du pipe.
+const _DSL_SOURCES = Dict{Symbol,Tuple{String,Vector{Int}}}(
+    :Saw => ("saw", [1]), :SinOsc => ("sin_osc", [1, 2]), :Pulse => ("pulse", [1, 2]), :LFTri => ("tri", [1]),
+    :WhiteNoise => ("white", Int[]), :PinkNoise => ("pink", Int[]), :BrownNoise => ("brown", Int[]),
+    :Dust => ("dust", [1]), :LFNoise0 => ("lf_noise0", [1]), :LFNoise1 => ("lf_noise1", [1]),
+    :LFNoise2 => ("lf_noise2", [1]), :Line => ("line", [1, 2, 3]), :XLine => ("x_line", [1, 2, 3]),
+    :SinOscKR => ("lfo", [1]), :Impulse => ("impulse_ar", [1]), :Crackle => ("crackle", [1]))
+const _DSL_STAGES = Dict{Symbol,Tuple{String,Vector{Int}}}(
+    :RLPF => ("rlpf", [2, 3]), :LPF => ("low_pass", [2]), :HPF => ("high_pass", [2]), :BPF => ("band_pass", [2, 3]),
+    :BRF => ("band_reject", [2, 3]), :RHPF => ("rhpf", [2, 3]), :MoogFF => ("moog_ff", [2, 3]),
+    :BLowPass => ("b_low_pass", [2, 3]), :BHiPass => ("b_high_pass", [2, 3]), :BPeakEQ => ("b_peak_eq", [2, 3, 4]),
+    :BLowShelf => ("b_low_shelf", [2, 3, 4]), :BHiShelf => ("b_high_shelf", [2, 3, 4]),
+    :FreeVerb => ("free_verb", [2, 3, 4]), :CombC => ("comb_c", [3, 4, 2]), :CombL => ("comb_l", [3, 4, 2]),
+    :CombN => ("comb_n", [3, 4, 2]), :AllpassC => ("allpass_c", [3, 4, 2]), :AllpassL => ("allpass_l", [3, 4, 2]),
+    :AllpassN => ("allpass_n", [3, 4, 2]), :DelayC => ("delay_c", [3, 2]), :DelayL => ("delay_l", [3, 2]),
+    :DelayN => ("delay_n", [3, 2]), :LeakDC => ("leak_dc", [2]), :Decimator => ("decimator", [2, 3]),
+    :Pan2 => ("stereo_pan", [2, 3]), :LinPan2 => ("stereo_pan_lin", [2, 3]), :Median => ("median", [1]),
+    :Fold2 => ("fold2", [2]), :Clip2 => ("clip2", [2]), :Round => ("round_q", [2]), :Softclip => ("soft_clip", Int[]),
+    :Cubed => ("cubic", Int[]), :Fold => ("fold", [2, 3]), :Wrap => ("wrap", [2, 3]), :Clip => ("clip", [2, 3]),
+    :Tanh => ("tanh_drive", Int[]), :Decay => ("decay", [2]), :Decay2 => ("decay2", [2, 3]))
+const _DSL_ENV_FNS = Dict{Symbol,String}(:EnvPerc => "env_perc", :EnvLinen => "env_linen",
+                                         :EnvAsr => "env_asr", :EnvAdsr => "env_adsr")
+
+# Un argument : constante, contrôle, ou l'expression d'un nœud. Comme
+# opérande d'un `+`/`*` (operand = true), une chaîne de pipes ou une
+# autre opération prend des parenthèses ; comme argument d'un appel ou
+# tête d'un pipe, non.
+_dsl_arg(g, a::Arg, vars; operand::Bool = false) =
     a isa ConstArg   ? _fmt_const(a.value) :
     a isa ControlRef ? ":$(a.name)" :
-    a isa NodeRef    ? get(vars, a.id, "ugen(:Silent)") : "0"
+    a isa NodeRef    ? _dsl_node_ref(g, a.id, vars; operand = operand) : "0"
+
+# Une expression composée : une chaîne de pipes ou une opération de
+# surface (pas celle qui est entre parenthèses ou dans un appel).
+function _dsl_is_compound(e::AbstractString)
+    occursin(" |> ", e) && return true
+    depth = 0
+    for (i, c) in enumerate(e)
+        c == '(' && (depth += 1); c == ')' && (depth -= 1)
+        depth == 0 && c in ('+', '*', '/') && i > 1 && return true
+    end
+    return false
+end
+
+function _dsl_node_ref(g::Genome, id::Int, vars::Dict{Int,String}; operand::Bool = false)
+    haskey(vars, id) && return vars[id]
+    haskey(g.nodes, id) || return "ugen(:Silent)"
+    e = _dsl_node_expr(g, g.nodes[id], vars)
+    operand && _dsl_is_compound(e) && return "(" * e * ")"
+    return e
+end
+
+# Le slot d'entrée d'une étape (voir _bypass_input_slot), ou nothing.
+_dsl_input_slot(n::UGenNode) = _bypass_input_slot(n)
+
+# Les arguments d'un wrapper à partir des indices, sans les valeurs par défaut de queue.
+_dsl_call_args(g, n, idxs, vars) = join((_dsl_arg(g, n.args[i], vars) for i in idxs if i <= length(n.args)), ", ")
 
 function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     A(i) = _dsl_arg(g, n.args[i], vars)
-    n.ugen === :Mix       && return "$(A(1)) + $(A(2))"
-    n.ugen === :MulAdd    && return "($(A(1)) * $(A(2))) + $(A(3))"
-    n.ugen === :Tanh      && return "$(A(1)) |> tanh_drive(1)"
-    n.ugen === :Fold2     && return "$(A(1)) |> fold2($(A(2)))"
-    n.ugen === :Clip2     && return "$(A(1)) |> clip2($(A(2)))"
-    n.ugen === :Round     && return "$(A(1)) |> round_q($(A(2)))"
-    n.ugen === :SinOscKR  && return "ugen(:SinOsc, $(A(1)); rate = :kr)"
-    n.ugen === :LFPulseKR && return "ugen(:LFPulse, $(A(1)), $(A(2)), $(A(3)); rate = :kr)"
-    n.ugen === :Softclip  && return "$(A(1)) |> soft_clip()"
-    n.ugen === :Cubed     && return "$(A(1)) |> cubic()"
-    n.ugen === :Midicps   && return "midicps($(A(1)))"
-    n.ugen === :Cpsmidi   && return "cpsmidi($(A(1)))"
-    n.ugen === :Fold      && return "$(A(1)) |> fold($(A(2)), $(A(3)))"
-    n.ugen === :Wrap      && return "$(A(1)) |> wrap($(A(2)), $(A(3)))"
-    n.ugen === :Clip      && return "$(A(1)) |> clip($(A(2)), $(A(3)))"
-    n.ugen === :Div       && return "$(A(1)) / $(A(2))"
-    n.ugen in (:EnvPerc, :EnvLinen, :EnvAsr, :EnvAdsr) &&
-        return "SynthDSL.Sig(\"Env.$(lowercase(String(n.ugen)[4:end]))($(join((A(i) for i in 1:length(n.args)), ", ")))\")"
-    n.ugen === :Raw       && return "ugen(:Silent)"
-    spec = ugen_spec(n.ugen)
+    u = n.ugen
+    u === :FbIn && return "fb"
+    u === :Raw && return "ugen(:Silent)"
+    O(i) = _dsl_arg(g, n.args[i], vars; operand = true)
+    u === :Mix && return "$(O(1)) + $(O(2))"
+    u === :Div && return "$(O(1)) / $(O(2))"
+    u === :Midicps && return "midicps($(A(1)))"
+    u === :Cpsmidi && return "cpsmidi($(A(1)))"
+    if u === :MulAdd
+        # `x * EnvGen(Env.perc(…), 1)` : c'est `x |> env_perc(…)`.
+        mul = n.args[2]
+        if mul isa NodeRef && haskey(g.nodes, mul.id) && g.nodes[mul.id].ugen === :EnvGen &&
+           length(n.args) >= 3 && n.args[3] isa ConstArg && n.args[3].value == 0.0
+            eg = g.nodes[mul.id]
+            env = !isempty(eg.args) && eg.args[1] isa NodeRef ? get(g.nodes, eg.args[1].id, nothing) : nothing
+            gate_ok = length(eg.args) < 2 || (eg.args[2] isa ConstArg && eg.args[2].value == 1.0)
+            if env !== nothing && haskey(_DSL_ENV_FNS, env.ugen) && gate_ok
+                fn = _DSL_ENV_FNS[env.ugen]
+                pos = env.ugen === :EnvPerc ? [1, 2] : env.ugen === :EnvLinen ? [1, 2, 3] :
+                      env.ugen === :EnvAsr ? [1, 2, 3] : [1, 2, 3, 4]
+                return "$(A(1)) |> $fn($(_dsl_call_args(g, env, pos, vars)))"
+            end
+        end
+        # `SinOsc.kr(r).range(lo, hi)` est devenu MulAdd(lfo, (hi-lo)/2, (hi+lo)/2) : `lfo(r; low, high)`.
+        src = n.args[1] isa NodeRef ? get(g.nodes, n.args[1].id, nothing) : nothing
+        if src !== nothing && src.ugen === :SinOscKR && n.args[2] isa ConstArg && length(n.args) >= 3 &&
+           n.args[3] isa ConstArg && !haskey(vars, n.args[1].id)
+            mm, aa = n.args[2].value, n.args[3].value
+            return "lfo($(_dsl_call_args(g, src, [1], vars)); low = $(_fmt_const(aa - mm)), high = $(_fmt_const(aa + mm)))"
+        end
+        m = _fmt_const(n.args[2] isa ConstArg ? n.args[2].value : 1.0)
+        add = length(n.args) >= 3 && n.args[3] isa ConstArg && n.args[3].value == 0.0 ? "" : " + $(O(3))"
+        mulstr = n.args[2] isa ConstArg ? m : O(2)
+        return "$(O(1)) * $mulstr$add"
+    end
+    # `((x) * k).tanh` : `x |> tanh_drive(k)`.
+    if u === :Tanh && !isempty(n.args) && n.args[1] isa NodeRef && !haskey(vars, n.args[1].id)
+        src = get(g.nodes, n.args[1].id, nothing)
+        if src !== nothing && src.ugen === :MulAdd && length(src.args) >= 3 && src.args[2] isa ConstArg &&
+           src.args[3] isa ConstArg && src.args[3].value == 0.0
+            return "$(_dsl_arg(g, src.args[1], vars)) |> tanh_drive($(_fmt_const(src.args[2].value)))"
+        end
+    end
+    if haskey(_DSL_ENV_FNS, u)
+        return "SynthDSL.Sig(\"Env.$(lowercase(String(u)[4:end]))($(join((A(i) for i in 1:length(n.args)), ", ")))\")"
+    end
+    if u === :SinOscKR && length(n.args) >= 1
+        return "lfo($(A(1)))"
+    elseif u === :LFPulseKR
+        return "ugen(:LFPulse, $(_dsl_call_args(g, n, 1:length(n.args), vars)); rate = :kr)"
+    end
+    if haskey(_DSL_SOURCES, u)
+        (fn, idxs) = _DSL_SOURCES[u]
+        return "$fn($(_dsl_call_args(g, n, idxs, vars)))"
+    end
+    # La tête d'un pipe : une somme ou un produit prend des parenthèses
+    # (`(a + b) |> f`), une chaîne de pipes continue telle quelle.
+    H(i) = (e = A(i); (occursin(r" [+*/] ", e) && !occursin(" |> ", e)) ? "(" * e * ")" : e)
+    si = _dsl_input_slot(n)
+    if haskey(_DSL_STAGES, u) && si !== nothing && si <= length(n.args)
+        (fn, idxs) = _DSL_STAGES[u]
+        args = u === :Tanh ? "1" : _dsl_call_args(g, n, idxs, vars)
+        return "$(H(si)) |> $fn($args)"
+    end
+    # Sans wrapper : ugen(:Nom, …), pipable quand il a une entrée.
+    spec = ugen_spec(u)
     parts = String[]
     for (i, a) in enumerate(n.args)
+        i == si && continue
         code = _dsl_arg(g, a, vars)
-        if spec !== nothing && i <= length(spec.slots) &&
-           spec.slots[i].kind === :audio && !_is_audio_expr(g, a)
+        if spec !== nothing && i <= length(spec.slots) && spec.slots[i].kind === :audio && !_is_audio_expr(g, a)
             code = (a isa NodeRef && haskey(g.nodes, a.id) && g.nodes[a.id].rate === :kr) ?
                    "ugen(:K2A, $code)" : "ugen(:DC, $code)"
         end
         push!(parts, code)
     end
     rate = n.rate === :kr ? "; rate = :kr" : ""
-    return "ugen(:$(n.ugen), $(join(parts, ", "))$rate)"
+    tail = isempty(parts) ? "" : ", " * join(parts, ", ")
+    si === nothing && return "ugen(:$(u)$(tail)$rate)"
+    return "$(H(si)) |> ugen(:$(u)$(tail)$rate)"
 end
 
-# Lignes du corps DSL (`var = expr`), indentées de `pad`. Les FbIn sont
-# liés à `fb` (fourni par le combinateur feedback) et n'émettent rien.
+# Combien de nœuds lisent chaque nœud : lu deux fois, il devient une variable.
+function _dsl_refcounts(g::Genome)
+    counts = Dict{Int,Int}()
+    for n in values(g.nodes), a in n.args
+        a isa NodeRef && (counts[a.id] = get(counts, a.id, 0) + 1)
+    end
+    return counts
+end
+
+# Les morceaux d'une chaîne de pipes, coupée aux ` |> ` de surface
+# seulement (pas ceux entre parenthèses).
+function _dsl_split_pipes(expr::String)
+    parts = String[]; depth = 0; start = 1; i = 1
+    cs = collect(expr)
+    while i <= length(cs)
+        c = cs[i]
+        c == '(' && (depth += 1); c == ')' && (depth -= 1)
+        if depth == 0 && c == ' ' && i + 3 <= length(cs) && cs[i+1] == '|' && cs[i+2] == '>' && cs[i+3] == ' '
+            push!(parts, String(cs[start:i-1])); start = i + 4; i += 4; continue
+        end
+        i += 1
+    end
+    push!(parts, String(cs[start:end]))
+    return parts
+end
+
+# Coupe une longue chaîne de pipes en lignes, les suivantes indentées.
+function _dsl_wrap_pipes(expr::String, pad::String; width::Int = 78)
+    length(expr) <= width && return expr
+    parts = _dsl_split_pipes(expr)
+    length(parts) == 1 && return expr
+    lines = String[String(parts[1])]
+    for p in parts[2:end]
+        if length(lines[end]) + 4 + length(p) <= width
+            lines[end] *= " |> " * p
+        else
+            push!(lines, pad * "    |> " * p)
+        end
+    end
+    return join(lines, "\n")
+end
+
+# Lignes du corps DSL, indentées de `pad` : les nœuds partagés d'abord
+# (`nK = …`), puis la chaîne de sortie, puis la sécurité.
 function _dsl_body_lines(g::Genome, pad::String)
     order = _topo_order(g)
+    counts = _dsl_refcounts(g)
     vars = Dict{Int,String}()
     for id in order
         g.nodes[id].ugen === :FbIn && (vars[id] = "fb")
@@ -283,13 +432,18 @@ function _dsl_body_lines(g::Genome, pad::String)
     lines = String[]
     k = 0
     for id in order
-        g.nodes[id].ugen === :FbIn && continue
+        n = g.nodes[id]
+        n.ugen === :FbIn && continue
+        id == g.output_id && continue
+        get(counts, id, 0) >= 2 || continue
         k += 1
+        expr = _dsl_node_expr(g, n, vars)
         vars[id] = "n$k"
-        push!(lines, "$(pad)n$k = $(_dsl_node_expr(g, g.nodes[id], vars))")
+        push!(lines, "$(pad)n$k = " * _dsl_wrap_pipes(expr, pad))
     end
-    out = g.output_id == 0 ? "ugen(:Silent)" : vars[g.output_id]
-    push!(lines, "$(pad)ugen(:Limiter, ugen(:LeakDC, ugen(:Sanitize, $out)), 0.95)")
+    out = g.output_id == 0 ? "ugen(:Silent)" : _dsl_node_ref(g, g.output_id, vars)
+    (occursin(r" [+*/] ", out) && !occursin(" |> ", out)) && (out = "(" * out * ")")   # `(a + b) |> safe()`
+    push!(lines, pad * _dsl_wrap_pipes(out * " |> safe()", pad))
     return join(lines, "\n")
 end
 

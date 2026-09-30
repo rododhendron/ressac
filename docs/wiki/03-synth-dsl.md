@@ -69,6 +69,41 @@ pilote en live depuis les patterns : `@d1 :acid |> n("0 3 5")`.
 | Buffers    | `play_buf buf_rd`                                                 |
 | Demand     | `demand_seq demand_white t_rand`                                  |
 
+## Le `|>` d'Elixir
+
+Dans `@synth`, `x |> f(a, b)` insère `x` comme premier argument : c'est
+le pipe d'Elixir. Les fonctions du DSL sont écrites pour ça
+(`saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)`), et **n'importe quelle
+fonction** dont le premier argument est un signal se pipe aussi, y
+compris les tiennes et `ugen` :
+
+```julia
+mon_drive(s, k) = s |> tanh_drive(k) |> soft_clip
+@synth :x (freq=220) saw(:freq) |> mon_drive(3) |> ugen(:RLPF, 800, 0.3)
+```
+
+- une fonction nue se pipe : `saw(:freq) |> soft_clip` ;
+- `_` choisit la place et appelle la fonction telle quelle :
+  `saw(:freq) |> ugen(:Pan2, _, 0.2, 1)` ;
+- les mots-clés restent : `|> env_perc(0.01, 0.4; level = 0.8)` ;
+- un nombre ou un contrôle pipé devient un signal : `4.0 |> clip2(1.0)`,
+  `:freq |> round_q(q)`.
+
+Et la **capture** d'Elixir : `&rlpf(&1, 800, 0.3)` est la fonction
+`x -> rlpf(x, 800, 0.3)`, `&(&1 + &2)` en prend deux. Pratique pour nommer
+une étape et la réutiliser :
+
+```julia
+@synth :x (freq=220) begin
+    drive = &tanh_drive(&1, 2)
+    saw(:freq) |> drive |> low_pass(1200)
+end
+```
+
+Toutes les fonctions du DSL prennent le signal en premier argument :
+hors de `@synth` (au REPL), `|>` est celui de Julia et on écrit
+`rlpf(x, 800, 0.3)`.
+
 ## Arithmétique sur Sig
 
 `+ - * /` sont surchargés pour `Sig × Sig`, `Sig × Real`, `Sig × Symbol`,

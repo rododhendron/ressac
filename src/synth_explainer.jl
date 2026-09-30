@@ -571,7 +571,7 @@ le DSL pour produire le son — et rend le signal final. `fb` (forme
 corps ne s'évalue pas ou ne finit pas sur un signal.
 """
 function _dsl_eval_body(body::Expr)
-    ex = Expr(:let, Expr(:block, :(fb = $(SynthDSL).Sig("fb"))), body)
+    ex = Expr(:let, Expr(:block, :(fb = $(SynthDSL).Sig("fb"))), SynthDSL._elixir_pipes(body))
     v = try
         Base.invokelatest(Core.eval, SynthDSL, ex)
     catch

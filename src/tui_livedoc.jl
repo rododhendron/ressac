@@ -552,7 +552,7 @@ const _DSL_DOCS = Dict{String,String}(
     "ugen"    => "ugen(name, args...; rate=\"ar\") — constructeur brut pour un UGen sans helper DSL.",
     "register_synth!" => "register_synth!(entry::SynthEntry) — installe un synth dans le registre global (appelé par @synth).",
     "env"     => "env(levels, times; curve=:lin) — construit une spec Env SC brute comme Sig. À donner à env_gen pour un contrôle total.",
-    "env_gen" => "env_gen(envspec; gate=1, level_scale=1, level_bias=0, time_scale=1, done_action=2) — wrapper EnvGen.kr brut, expose chaque argument. Pipe : `sig |> env_gen(e)`.",
+    "env_gen" => "env_gen(sig, envspec; gate=1, level_scale=1, level_bias=0, time_scale=1, done_action=2) — wrapper EnvGen.kr brut, expose chaque argument. Pipe : `sig |> env_gen(e)`.",
 )
 
 """

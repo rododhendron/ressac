@@ -101,7 +101,7 @@ end
     @test occursin(".softclip", sc) && occursin(".clip(-0.5, 0.5)", sc) && occursin("(60.0).midicps", sc)
     @test occursin("Env.perc(", sc) && !occursin("Softclip.ar", sc) && !occursin("Midicps.ar", sc) && !occursin("EnvPerc", sc)
     dsl = Ressac.render_dsl(g, :h)
-    @test occursin("|> soft_clip()", dsl) && occursin("midicps(", dsl) && occursin("Env.perc", dsl)
+    @test occursin("|> soft_clip()", dsl) && occursin("midicps(", dsl) && occursin("|> env_perc(0.01, 0.4", dsl)
     g2 = Ressac.genome_from_dsl(dsl)                        # l'export se relit…
     @test g2 !== nothing && Ressac.render_synthdef(g2, :h) == sc   # …et rend le même SC
     @test (Core.eval(Ressac.SynthDSL, Ressac.SynthDSL._dsl_parse_all(dsl)); true)   # …et s'évalue (T)
@@ -112,4 +112,29 @@ end
         @test !any(s -> s.name in (:Raw, :Midicps, :Cpsmidi, :Div, :K2A, :DC, :Klang), Ressac.catalog_by_role(role))
     end
     @test Ressac.ugen_spec(:Midicps) !== nothing                # mais restent connus (knobs, explication)
+end
+
+
+@testset "export en pipes — le vocabulaire des wrappers, aller-retour exact" begin
+    srcs = ["@synth :a (freq=220, sustain=0.5) saw(:freq) |> rlpf(line(3000, 500, :sustain), 0.18) |> tanh_drive(2)",
+            "@synth :b (freq=220) begin\n  a = saw(:freq) + saw(:freq * 1.007)\n  a |> low_pass(lfo(0.2; low = 300, high = 2000)) |> env_perc(0.01, 0.4) |> stereo_pan(0.2)\nend",
+            "@synth :c (freq=110) begin\n  x = pulse(:freq, 0.3) |> moog_ff(1200, 2)\n  (x |> comb_c(0.25, 2.0)) + x\nend",
+            "@synth :f (freq=200) feedback() do fb\n  saw(:freq) + fb * 0.3 |> soft_clip()\nend"]
+    for src in srcs
+        g = Ressac.genome_from_dsl(src)
+        @test g !== nothing
+        dsl = Ressac.render_dsl(g, :x)
+        @test !occursin("ugen(:Saw", dsl) && !occursin("ugen(:RLPF", dsl)      # le vocabulaire, pas la forme brute
+        @test occursin("|> safe()", dsl)
+        g2 = Ressac.genome_from_dsl(dsl)
+        @test g2 !== nothing && Ressac.render_synthdef(g2, :x) == Ressac.render_synthdef(g, :x)
+    end
+    dsl = Ressac.render_dsl(Ressac.genome_from_dsl(srcs[1]), :a)
+    @test occursin("saw(:freq) |> rlpf(line(3000.0, 500.0, :sustain), 0.18) |> tanh_drive(2.0)", dsl)
+    dsl = Ressac.render_dsl(Ressac.genome_from_dsl(srcs[2]), :b)
+    @test occursin("|> env_perc(0.01, 0.4", dsl) && occursin("|> stereo_pan(0.2", dsl) && occursin("lfo(0.2)", dsl) || occursin("lfo(", dsl)
+    @test occursin("n1 = ", dsl) || !occursin("n2 = ", dsl)                    # une variable seulement si partagé
+    dsl = Ressac.render_dsl(Ressac.genome_from_dsl(srcs[3]), :c)
+    @test occursin("n1 = pulse(:freq, 0.3) |> moog_ff(1200.0, 2.0)", dsl)        # x est lu deux fois : variable
+    @test occursin("comb_c(0.25, 2.0", dsl)
 end

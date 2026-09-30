@@ -609,7 +609,7 @@ end
         p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "pluck", "rng" => 3))
         txt = Ressac._explorer_yank_text(p)
         @test occursin("@synth", txt)
-        @test occursin("ugen(", txt)        # clean multi-line DSL, not a Sig string
+        @test occursin(" |> ", txt) && occursin("|> safe()", txt)   # le vocabulaire du DSL, en pipes, pas un Sig brut
         @test !occursin("Sig(\"", txt)
     end
 

@@ -58,7 +58,7 @@ export grain_buf, warp1
 export stereo_pan, stereo_pan_lin, stereo_balance, stereo_rotate, splay, mix_sigs
 # Distortion / shaping
 export tanh_drive, soft_clip, cubic, clip, fold, wrap, decimator, fold2, clip2, round_q, feedback
-export midicps, cpsmidi
+export midicps, cpsmidi, safe
 export amp, offset, abs_sig, sqrt_sig, pow_sig
 # Envelopes
 export env_perc, env_linen, env_adsr, env_asr, env_cutoff, env_sine
@@ -106,7 +106,7 @@ sc_sym(s::AbstractString) = startswith(s, "\\") ? String(s) : "\\" * String(s)
 
 """
     ugen(name::Symbol, args...; rate::Symbol = :ar) -> Sig
-    ugen(args...; rate::Symbol = :ar) -> (name::Symbol -> Sig)
+    x |> ugen(name::Symbol, args...; rate) -> Sig      (dans @synth : x en premier)
 
 Escape hatch for any SuperCollider UGen that isn't wrapped explicitly.
 
@@ -115,10 +115,10 @@ Direct form:
     ugen(:Pluck, white(), 1, 0.5, 0.4, 0.95)
     # → Sig("Pluck.ar(WhiteNoise.ar, 1, 0.5, 0.4, 0.95)")
 
-Curried form for piping the UGen name:
+Piped form inside @synth (Elixir style, the signal first):
 
-    :Pluck |> ugen(white(), 1, 0.5, 0.4, 0.95)
-    # same Sig as above
+    white() |> ugen(:Pluck, 1, 0.5, 0.4, 0.95)
+    # → Sig("Pluck.ar(WhiteNoise.ar, 1, 0.5, 0.4, 0.95)")
 
 Pass `rate=:kr` for control-rate UGens.
 """
@@ -143,8 +143,6 @@ function ugen(name::Symbol, args...; rate::Symbol = :ar)
     Sig(string(name, ".", rate, "(", join(sc_arg.(args), ", "), ")"))
 end
 
-ugen(args...; rate::Symbol = :ar) =
-    (name::Symbol) -> ugen(name, args...; rate = rate)
 
 # ════════════════════════════════════════════════════════════════════
 # Audio-rate oscillators
@@ -288,41 +286,39 @@ lag3_kr(input, lag)      = Sig("Lag3.kr($(sc_arg(input)), $(sc_arg(lag)))")
 # Filters (pipe-curried)
 # ════════════════════════════════════════════════════════════════════
 
-low_pass(cutoff)             = (s::SigLike) -> Sig("LPF.ar($(sc_arg(s)), $(sc_arg(cutoff)))")
-high_pass(cutoff)            = (s::SigLike) -> Sig("HPF.ar($(sc_arg(s)), $(sc_arg(cutoff)))")
-band_pass(cutoff, q=0.5)     = (s::SigLike) -> Sig("BPF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
-band_reject(cutoff, q=0.5)   = (s::SigLike) -> Sig("BRF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
-rlpf(cutoff, q=0.5)          = (s::SigLike) -> Sig("RLPF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
-rhpf(cutoff, q=0.5)          = (s::SigLike) -> Sig("RHPF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
-moog_ff(cutoff, gain=2)      = (s::SigLike) -> Sig("MoogFF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(gain)))")
-leak_dc(coef=0.995)          = (s::SigLike) -> Sig("LeakDC.ar($(sc_arg(s)), $(sc_arg(coef)))")
-median(length=3)             = (s::SigLike) -> Sig("Median.ar($(sc_arg(length)), $(sc_arg(s)))")
-slope_kr()                   = (s::SigLike) -> Sig("Slope.kr($(sc_arg(s)))")
-b_low_pass(freq, rq=0.7)     = (s::SigLike) -> Sig("BLowPass.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rq)))")
-b_high_pass(freq, rq=0.7)    = (s::SigLike) -> Sig("BHiPass.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rq)))")
-b_peak_eq(freq, rq=0.7, db=0)  = (s::SigLike) -> Sig("BPeakEQ.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rq)), $(sc_arg(db)))")
-b_low_shelf(freq, rs=0.7, db=0)  = (s::SigLike) -> Sig("BLowShelf.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rs)), $(sc_arg(db)))")
-b_high_shelf(freq, rs=0.7, db=0) = (s::SigLike) -> Sig("BHiShelf.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rs)), $(sc_arg(db)))")
+low_pass(s::SigLike, cutoff) = Sig("LPF.ar($(sc_arg(s)), $(sc_arg(cutoff)))")
+high_pass(s::SigLike, cutoff) = Sig("HPF.ar($(sc_arg(s)), $(sc_arg(cutoff)))")
+band_pass(s::SigLike, cutoff, q=0.5) = Sig("BPF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
+band_reject(s::SigLike, cutoff, q=0.5) = Sig("BRF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
+rlpf(s::SigLike, cutoff, q=0.5) = Sig("RLPF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
+rhpf(s::SigLike, cutoff, q=0.5) = Sig("RHPF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(q)))")
+moog_ff(s::SigLike, cutoff, gain=2) = Sig("MoogFF.ar($(sc_arg(s)), $(sc_arg(cutoff)), $(sc_arg(gain)))")
+leak_dc(s::SigLike, coef=0.995) = Sig("LeakDC.ar($(sc_arg(s)), $(sc_arg(coef)))")
+median(s::SigLike, length=3) = Sig("Median.ar($(sc_arg(length)), $(sc_arg(s)))")
+slope_kr(s::SigLike) = Sig("Slope.kr($(sc_arg(s)))")
+b_low_pass(s::SigLike, freq, rq=0.7) = Sig("BLowPass.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rq)))")
+b_high_pass(s::SigLike, freq, rq=0.7) = Sig("BHiPass.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rq)))")
+b_peak_eq(s::SigLike, freq, rq=0.7, db=0) = Sig("BPeakEQ.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rq)), $(sc_arg(db)))")
+b_low_shelf(s::SigLike, freq, rs=0.7, db=0) = Sig("BLowShelf.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rs)), $(sc_arg(db)))")
+b_high_shelf(s::SigLike, freq, rs=0.7, db=0) = Sig("BHiShelf.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(rs)), $(sc_arg(db)))")
 
 # ════════════════════════════════════════════════════════════════════
 # Delays / reverb
 # ════════════════════════════════════════════════════════════════════
 
-delay_n(time, max=1)     = (s::SigLike) -> Sig("DelayN.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)))")
-delay_l(time, max=1)     = (s::SigLike) -> Sig("DelayL.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)))")
-delay_c(time, max=1)     = (s::SigLike) -> Sig("DelayC.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)))")
-comb_n(time, decay, max=1) = (s::SigLike) -> Sig("CombN.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
-comb_l(time, decay, max=1) = (s::SigLike) -> Sig("CombL.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
-comb_c(time, decay, max=1) = (s::SigLike) -> Sig("CombC.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
-allpass_n(time, decay, max=1) = (s::SigLike) -> Sig("AllpassN.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
-allpass_l(time, decay, max=1) = (s::SigLike) -> Sig("AllpassL.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
-allpass_c(time, decay, max=1) = (s::SigLike) -> Sig("AllpassC.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
-free_verb(mix=0.33, room=0.5, damp=0.5) =
-    (s::SigLike) -> Sig("FreeVerb.ar($(sc_arg(s)), $(sc_arg(mix)), $(sc_arg(room)), $(sc_arg(damp)))")
-g_verb(roomsize=10, revtime=3, damping=0.5, inbw=0.5, spread=15, drylevel=1, earlyref=0.7, taillevel=0.5) =
-    (s::SigLike) -> Sig("GVerb.ar($(sc_arg(s)), $(sc_arg(roomsize)), $(sc_arg(revtime)), $(sc_arg(damping)), $(sc_arg(inbw)), $(sc_arg(spread)), $(sc_arg(drylevel)), $(sc_arg(earlyref)), $(sc_arg(taillevel)))")
-decay(time=1)           = (s::SigLike) -> Sig("Decay.ar($(sc_arg(s)), $(sc_arg(time)))")
-decay2(attack=0.01, release=1) = (s::SigLike) -> Sig("Decay2.ar($(sc_arg(s)), $(sc_arg(attack)), $(sc_arg(release)))")
+delay_n(s::SigLike, time, max=1) = Sig("DelayN.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)))")
+delay_l(s::SigLike, time, max=1) = Sig("DelayL.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)))")
+delay_c(s::SigLike, time, max=1) = Sig("DelayC.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)))")
+comb_n(s::SigLike, time, decay, max=1) = Sig("CombN.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
+comb_l(s::SigLike, time, decay, max=1) = Sig("CombL.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
+comb_c(s::SigLike, time, decay, max=1) = Sig("CombC.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
+allpass_n(s::SigLike, time, decay, max=1) = Sig("AllpassN.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
+allpass_l(s::SigLike, time, decay, max=1) = Sig("AllpassL.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
+allpass_c(s::SigLike, time, decay, max=1) = Sig("AllpassC.ar($(sc_arg(s)), $(sc_arg(max)), $(sc_arg(time)), $(sc_arg(decay)))")
+free_verb(s::SigLike, mix=0.33, room=0.5, damp=0.5) = Sig("FreeVerb.ar($(sc_arg(s)), $(sc_arg(mix)), $(sc_arg(room)), $(sc_arg(damp)))")
+g_verb(s::SigLike, roomsize=10, revtime=3, damping=0.5, inbw=0.5, spread=15, drylevel=1, earlyref=0.7, taillevel=0.5) = Sig("GVerb.ar($(sc_arg(s)), $(sc_arg(roomsize)), $(sc_arg(revtime)), $(sc_arg(damping)), $(sc_arg(inbw)), $(sc_arg(spread)), $(sc_arg(drylevel)), $(sc_arg(earlyref)), $(sc_arg(taillevel)))")
+decay(s::SigLike, time=1) = Sig("Decay.ar($(sc_arg(s)), $(sc_arg(time)))")
+decay2(s::SigLike, attack=0.01, release=1) = Sig("Decay2.ar($(sc_arg(s)), $(sc_arg(attack)), $(sc_arg(release)))")
 
 # ── Modulated delay effects ──────────────────────────────────────
 # chorus  : sum of input + LFO-modulated short delay copy (~10ms)
@@ -335,7 +331,7 @@ decay2(attack=0.01, release=1) = (s::SigLike) -> Sig("Decay2.ar($(sc_arg(s)), $(
 Pipe-friendly chorus. `rate` Hz LFO sweeps the delay time around
 ~10ms ±depth. `mix` (0..1) is the wet/dry blend.
 """
-chorus(rate=0.5, depth=0.002, mix=0.5) = (s::SigLike) -> Sig(
+chorus(s::SigLike, rate=0.5, depth=0.002, mix=0.5) = Sig(
     "(($(sc_arg(s)) * (1 - $(sc_arg(mix)))) + " *
     "DelayL.ar($(sc_arg(s)), 0.05, 0.01 + " *
     "SinOsc.kr($(sc_arg(rate))).range(0, $(sc_arg(depth)))) * $(sc_arg(mix)))")
@@ -346,7 +342,7 @@ chorus(rate=0.5, depth=0.002, mix=0.5) = (s::SigLike) -> Sig(
 Short comb filter with LFO-swept delay around ~5ms. Higher
 `feedback` (0..0.95) gives the metallic flange resonance.
 """
-flanger(rate=0.2, depth=0.005, feedback=0.3) = (s::SigLike) -> Sig(
+flanger(s::SigLike, rate=0.2, depth=0.005, feedback=0.3) = Sig(
     "CombC.ar($(sc_arg(s)), 0.05, 0.005 + " *
     "SinOsc.kr($(sc_arg(rate))).range(0, $(sc_arg(depth))), $(sc_arg(feedback)))")
 
@@ -357,7 +353,7 @@ flanger(rate=0.2, depth=0.005, feedback=0.3) = (s::SigLike) -> Sig(
 A classic 70s phaser sound. `depth` is the swing of the centre
 frequency around 800 Hz.
 """
-phaser(rate=0.3, depth=800) = (s::SigLike) -> Sig(
+phaser(s::SigLike, rate=0.3, depth=800) = Sig(
     "(0..3).inject($(sc_arg(s)), { |sig, i| " *
     "AllpassC.ar(sig, 0.005, " *
     "(SinOsc.kr($(sc_arg(rate)) * (1 + i*0.1)).range(200, 200 + $(sc_arg(depth))) * 1).reciprocal, " *
@@ -396,50 +392,48 @@ warp1(buf, pointer=0.5, freq_scale=1, window_size=0.1, env_buf=-1,
 # Spatial
 # ════════════════════════════════════════════════════════════════════
 
-stereo_pan(pos=0, level=1)      = (s::SigLike) -> Sig("Pan2.ar($(sc_arg(s)), $(sc_arg(pos)), $(sc_arg(level)))")
-stereo_pan_lin(pos=0, level=1)  = (s::SigLike) -> Sig("LinPan2.ar($(sc_arg(s)), $(sc_arg(pos)), $(sc_arg(level)))")
-stereo_balance(other, pos=0, level=1) = (s::SigLike) -> Sig("Balance2.ar($(sc_arg(s)), $(sc_arg(other)), $(sc_arg(pos)), $(sc_arg(level)))")
-stereo_rotate(other, angle=0)   = (s::SigLike) -> Sig("Rotate2.ar($(sc_arg(s)), $(sc_arg(other)), $(sc_arg(angle)))")
-splay(spread=1, level=1)  = (s::SigLike) -> Sig("Splay.ar($(sc_arg(s)), $(sc_arg(spread)), $(sc_arg(level)))")
+stereo_pan(s::SigLike, pos=0, level=1) = Sig("Pan2.ar($(sc_arg(s)), $(sc_arg(pos)), $(sc_arg(level)))")
+stereo_pan_lin(s::SigLike, pos=0, level=1) = Sig("LinPan2.ar($(sc_arg(s)), $(sc_arg(pos)), $(sc_arg(level)))")
+stereo_balance(s::SigLike, other, pos=0, level=1) = Sig("Balance2.ar($(sc_arg(s)), $(sc_arg(other)), $(sc_arg(pos)), $(sc_arg(level)))")
+stereo_rotate(s::SigLike, other, angle=0) = Sig("Rotate2.ar($(sc_arg(s)), $(sc_arg(other)), $(sc_arg(angle)))")
+splay(s::SigLike, spread=1, level=1) = Sig("Splay.ar($(sc_arg(s)), $(sc_arg(spread)), $(sc_arg(level)))")
 mix_sigs(sigs::Vector{Sig}) = Sig("Mix.ar([" * join((s.code for s in sigs), ", ") * "])")
 
 # ════════════════════════════════════════════════════════════════════
 # Distortion / shaping
 # ════════════════════════════════════════════════════════════════════
 
-tanh_drive(amount=1)  = (s::SigLike) -> Sig("(($(sc_arg(s))) * $(sc_arg(amount))).tanh")
-soft_clip()           = (s::SigLike) -> Sig("$(sc_arg(s)).softclip")
-cubic()               = (s::SigLike) -> Sig("$(sc_arg(s)).cubed")
-clip(low=-1, high=1)  = (s::SigLike) -> Sig("$(sc_arg(s)).clip($(sc_arg(low)), $(sc_arg(high)))")
-fold(low=-1, high=1)  = (s::SigLike) -> Sig("$(sc_arg(s)).fold($(sc_arg(low)), $(sc_arg(high)))")
-wrap(low=-1, high=1)  = (s::SigLike) -> Sig("$(sc_arg(s)).wrap($(sc_arg(low)), $(sc_arg(high)))")
-decimator(rate=11025, bits=8) =
-    (s::SigLike) -> Sig("Decimator.ar($(sc_arg(s)), $(sc_arg(rate)), $(sc_arg(bits)))")
+tanh_drive(s::SigLike, amount=1) = Sig("(($(sc_arg(s))) * $(sc_arg(amount))).tanh")
+soft_clip(s::SigLike) = Sig("$(sc_arg(s)).softclip")
+cubic(s::SigLike) = Sig("$(sc_arg(s)).cubed")
+clip(s::SigLike, low=-1, high=1) = Sig("$(sc_arg(s)).clip($(sc_arg(low)), $(sc_arg(high)))")
+fold(s::SigLike, low=-1, high=1) = Sig("$(sc_arg(s)).fold($(sc_arg(low)), $(sc_arg(high)))")
+wrap(s::SigLike, low=-1, high=1) = Sig("$(sc_arg(s)).wrap($(sc_arg(low)), $(sc_arg(high)))")
+decimator(s::SigLike, rate=11025, bits=8) = Sig("Decimator.ar($(sc_arg(s)), $(sc_arg(rate)), $(sc_arg(bits)))")
 
-abs_sig()  = (s::SigLike) -> Sig("$(sc_arg(s)).abs")
-sqrt_sig() = (s::SigLike) -> Sig("$(sc_arg(s)).sqrt")
-pow_sig(p) = (s::SigLike) -> Sig("$(sc_arg(s)).pow($(sc_arg(p)))")
+abs_sig(s::SigLike) = Sig("$(sc_arg(s)).abs")
+sqrt_sig(s::SigLike) = Sig("$(sc_arg(s)).sqrt")
+pow_sig(s::SigLike, p) = Sig("$(sc_arg(s)).pow($(sc_arg(p)))")
 
 # Symmetric fold/clip + quantize (used by the explorer's clean DSL export).
-fold2(amount=1)  = (s::SigLike) -> Sig("($(sc_arg(s))).fold2($(sc_arg(amount)))")
-clip2(amount=1)  = (s::SigLike) -> Sig("($(sc_arg(s))).clip2($(sc_arg(amount)))")
+fold2(s::SigLike, amount=1) = Sig("($(sc_arg(s))).fold2($(sc_arg(amount)))")
+clip2(s::SigLike, amount=1) = Sig("($(sc_arg(s))).clip2($(sc_arg(amount)))")
 
 # Conversions de hauteur : note MIDI ↔ fréquence (méthodes SC).
 midicps(x) = Sig("($(sc_arg(x))).midicps")
 cpsmidi(x) = Sig("($(sc_arg(x))).cpsmidi")
 
-# Forme directe des mises en forme : `saw(:freq) |> clip` (sans
-# parenthèses) et `clip(saw(:freq), 0.5)` valent `|> clip()` et
-# `|> clip(0.5)`. Leurs paramètres sont des nombres, donc un signal en
-# premier argument est le signal à traiter. Pas pour les filtres (leur
-# premier argument est une fréquence, qui peut être un LFO), ni pour
-# `fold2`, `clip2`, `round_q` : leur paramètre unique est souvent un
-# signal (`x |> round_q(lfo)`), c'est ce que l'export d'un génome écrit.
-for f in (:clip, :fold, :wrap, :soft_clip, :cubic, :tanh_drive,
-          :decimator, :leak_dc, :chorus, :flanger, :phaser, :free_verb)
-    @eval $f(s::Sig, args...; kw...) = $f(args...; kw...)(s)
-end
-round_q(quant=0.1) = (s::SigLike) -> Sig("($(sc_arg(s))).round($(sc_arg(quant)))")
+# `x |> ugen(:RLPF, 800, 0.3)` : la même chose pour un UGen sans wrapper.
+ugen(s::Sig, name::Symbol, args...; rate::Symbol = :ar) = ugen(name, s, args...; rate = rate)
+
+"""
+    safe(level = 0.95) -> étape
+
+La chaîne de sécurité de Ressac : Sanitize (pas de NaN), LeakDC (pas de
+composante continue), Limiter. Les exports la mettent en bout de chaîne.
+"""
+safe(s::SigLike, level = 0.95) = Sig("Limiter.ar(LeakDC.ar(Sanitize.ar($(sc_arg(s)))), $(sc_arg(level)))")
+round_q(s::SigLike, quant=0.1) = Sig("($(sc_arg(s))).round($(sc_arg(quant)))")
 
 """
     feedback(builder) -> Sig
@@ -466,28 +460,28 @@ end
 # Envelopes (multiply into the signal chain)
 # ════════════════════════════════════════════════════════════════════
 
-env_perc(attack, release; level=1, curve=-4) = (s::SigLike) ->
+env_perc(s::SigLike, attack, release; level=1, curve=-4) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.perc($(sc_arg(attack)), $(sc_arg(release)), $(sc_arg(level)), $(sc_arg(curve))), doneAction: 2))")
 
-env_linen(attack, sustain, release; level=1, curve=:lin) = (s::SigLike) ->
+env_linen(s::SigLike, attack, sustain, release; level=1, curve=:lin) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.linen($(sc_arg(attack)), $(sc_arg(sustain)), $(sc_arg(release)), $(sc_arg(level)), $(sc_sym(curve))), doneAction: 2))")
 
-env_adsr(attack, decay, sustain_level, release; gate=:gate, curve=-4, peak=1) = (s::SigLike) ->
+env_adsr(s::SigLike, attack, decay, sustain_level, release; gate=:gate, curve=-4, peak=1) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.adsr($(sc_arg(attack)), $(sc_arg(decay)), $(sc_arg(sustain_level)), $(sc_arg(release)), $(sc_arg(peak)), $(sc_arg(curve))), $(sc_arg(gate)), doneAction: 2))")
 
-env_asr(attack, sustain_level, release; gate=:gate, curve=-4) = (s::SigLike) ->
+env_asr(s::SigLike, attack, sustain_level, release; gate=:gate, curve=-4) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.asr($(sc_arg(attack)), $(sc_arg(sustain_level)), $(sc_arg(release)), $(sc_arg(curve))), $(sc_arg(gate)), doneAction: 2))")
 
-env_cutoff(release; gate=:gate, curve=:lin) = (s::SigLike) ->
+env_cutoff(s::SigLike, release; gate=:gate, curve=:lin) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.cutoff($(sc_arg(release)), 1, $(sc_sym(curve))), $(sc_arg(gate)), doneAction: 2))")
 
-env_sine(dur=1, level=1) = (s::SigLike) ->
+env_sine(s::SigLike, dur=1, level=1) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.sine($(sc_arg(dur)), $(sc_arg(level))), doneAction: 2))")
 
-env_dadsr(delay, attack, decay, sustain_level, release; gate=:gate, peak=1, curve=-4) = (s::SigLike) ->
+env_dadsr(s::SigLike, delay, attack, decay, sustain_level, release; gate=:gate, peak=1, curve=-4) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.dadsr($(sc_arg(delay)), $(sc_arg(attack)), $(sc_arg(decay)), $(sc_arg(sustain_level)), $(sc_arg(release)), $(sc_arg(peak)), $(sc_arg(curve))), $(sc_arg(gate)), doneAction: 2))")
 
-env_pairs(times::AbstractVector, levels::AbstractVector; curve=:lin) = (s::SigLike) ->
+env_pairs(s::SigLike, times::AbstractVector, levels::AbstractVector; curve=:lin) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env($(sc_arg(levels)), $(sc_arg(times)), $(sc_sym(curve))), doneAction: 2))")
 
 """
@@ -528,11 +522,11 @@ EnvGen argument:
 `envspec` is a Sig holding an `Env` construction — build one with
 `env(...)` or wrap a raw `Sig("Env.perc(0.01, 1)")`.
 
-Returns a pipe-style multiplier: `saw(:freq) |> env_gen(my_env)`.
+Multiplies the signal by the envelope: `saw(:freq) |> env_gen(my_env)`.
 """
-function env_gen(envspec; gate=1, level_scale=1, level_bias=0,
+function env_gen(s::SigLike, envspec; gate=1, level_scale=1, level_bias=0,
                  time_scale=1, done_action=2)
-    return (s::SigLike) -> Sig("($(sc_arg(s)) * EnvGen.kr(" *
+    return Sig("($(sc_arg(s)) * EnvGen.kr(" *
         "$(sc_arg(envspec)), $(sc_arg(gate)), $(sc_arg(level_scale)), " *
         "$(sc_arg(level_bias)), $(sc_arg(time_scale)), " *
         "doneAction: $(sc_arg(done_action))))")
@@ -544,15 +538,12 @@ end
 
 trig_kr(input, dur=0.1)  = Sig("Trig.kr($(sc_arg(input)), $(sc_arg(dur)))")
 t_delay(input, delay)    = Sig("TDelay.kr($(sc_arg(input)), $(sc_arg(delay)))")
-pitch_shift(window=0.2, pitch=1.0, pitch_disp=0, time_disp=0) =
-    (s::SigLike) -> Sig("PitchShift.ar($(sc_arg(s)), $(sc_arg(window)), $(sc_arg(pitch)), $(sc_arg(pitch_disp)), $(sc_arg(time_disp)))")
-freq_shift(freq=0, phase=0) =
-    (s::SigLike) -> Sig("FreqShift.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(phase)))")
-vibrato_sig(rate=6, depth=0.02, delay=0.1, onset=0.0) =
-    (s::SigLike) -> Sig("Vibrato.ar($(sc_arg(s)), $(sc_arg(rate)), $(sc_arg(depth)), $(sc_arg(delay)), $(sc_arg(onset)))")
+pitch_shift(s::SigLike, window=0.2, pitch=1.0, pitch_disp=0, time_disp=0) = Sig("PitchShift.ar($(sc_arg(s)), $(sc_arg(window)), $(sc_arg(pitch)), $(sc_arg(pitch_disp)), $(sc_arg(time_disp)))")
+freq_shift(s::SigLike, freq=0, phase=0) = Sig("FreqShift.ar($(sc_arg(s)), $(sc_arg(freq)), $(sc_arg(phase)))")
+vibrato_sig(s::SigLike, rate=6, depth=0.02, delay=0.1, onset=0.0) = Sig("Vibrato.ar($(sc_arg(s)), $(sc_arg(rate)), $(sc_arg(depth)), $(sc_arg(delay)), $(sc_arg(onset)))")
 
-to_kr() = (s::SigLike) -> Sig("A2K.kr($(sc_arg(s)))")
-to_ar() = (s::SigLike) -> Sig("K2A.ar($(sc_arg(s)))")
+to_kr(s::SigLike) = Sig("A2K.kr($(sc_arg(s)))")
+to_ar(s::SigLike) = Sig("K2A.ar($(sc_arg(s)))")
 
 # Buffers
 play_buf(channels::Int, buf, rate=1, trigger=1, start=0, loop=0, doneAction=0) =
@@ -589,8 +580,8 @@ Base.:-(a::Sig)            = Sig("($(a.code).neg)")
 Base.:/(a::Sig, b::Real)   = Sig("($(a.code) / $b)")
 Base.:/(a::Sig, b::Sig)    = Sig("($(a.code) / $(b.code))")
 
-amp(x)    = (s::Sig) -> s * x
-offset(x) = (s::Sig) -> s + x
+amp(s::Sig, x)    = s * x
+offset(s::Sig, x) = s + x
 
 # Make Sig scalar-broadcastable so `[:freq, :freq + 1] .+ sin_osc(35)`
 # treats the Sig modulator as a single value to add to every channel,
@@ -930,9 +921,70 @@ function _dsl_synth_expr(src::AbstractString)
     return nothing
 end
 
+# ── Le `|>` d'Elixir dans @synth ────────────────────────────────────
+# `x |> f(a, b)` devient `f(x, a, b)` : la valeur de gauche est le premier
+# argument. Les fonctions du DSL sont écrites ainsi (le signal d'abord),
+# et n'importe quelle fonction dont le premier argument est un signal se
+# pipe — les tiennes, `ugen(:Nom, …)`. `_` choisit la place
+# (`x |> f(a, _)`), une fonction nue se pipe (`x |> soft_clip`), les
+# mots-clés restent. Seul `@synth` réécrit : hors de lui, `|>` est celui
+# de Julia et on écrit `rlpf(x, 800, 0.3)`.
+# `_` ou `&1` dans le pipe : la valeur pipée, là où on la met.
+_is_hole(a) = a === :_ || (a isa Expr && a.head === :& && length(a.args) == 1 && a.args[1] == 1)
+_has_placeholder(args) = any(_is_hole, args)
+_fill_placeholder(args, lhs) = [_is_hole(a) ? lhs : a for a in args]
+
+# La capture d'Elixir : `&rlpf(&1, 800, 0.3)` est la fonction `x -> rlpf(x,
+# 800, 0.3)`, `&(&1 + &2)` prend deux arguments. Utile pour nommer une
+# étape (`drive = &tanh_drive(&1, 2)`, puis `x |> drive`).
+_capture_index(a) = (a isa Expr && a.head === :& && length(a.args) == 1 && a.args[1] isa Integer) ? Int(a.args[1]) : 0
+function _capture_max(ex)
+    k = _capture_index(ex)
+    k > 0 && return k
+    ex isa Expr || return 0
+    ex.head === :& && return 0                     # une capture imbriquée a ses propres &k
+    return maximum((_capture_max(a) for a in ex.args); init = 0)
+end
+function _capture_fill(ex, syms)
+    k = _capture_index(ex)
+    k > 0 && return syms[k]
+    ex isa Expr || return ex
+    return Expr(ex.head, map(a -> _capture_fill(a, syms), ex.args)...)
+end
+function _elixir_capture(ex)
+    n = _capture_max(ex.args[1])
+    n == 0 && return ex
+    syms = [gensym("cap$k") for k in 1:n]
+    body = _capture_fill(ex.args[1], syms)
+    return Expr(:->, Expr(:tuple, syms...), body)
+end
+
+function _elixir_pipes(ex)
+    ex isa Expr || return ex
+    if ex.head === :& && length(ex.args) == 1 && !(ex.args[1] isa Integer)
+        return _elixir_capture(_elixir_pipes(ex.args[1]) |> x -> Expr(:&, x))
+    end
+    if ex.head === :call && length(ex.args) == 3 && ex.args[1] === :|>
+        lhs = _elixir_pipes(ex.args[2])
+        rhs = _elixir_pipes(ex.args[3])
+        if rhs isa Symbol || (rhs isa Expr && rhs.head === :. && length(rhs.args) == 2)
+            return Expr(:call, rhs, lhs)
+        elseif rhs isa Expr && rhs.head === :call
+            f = rhs.args[1]
+            params = length(rhs.args) >= 2 && rhs.args[2] isa Expr && rhs.args[2].head === :parameters ? rhs.args[2] : nothing
+            rest = params === nothing ? rhs.args[2:end] : rhs.args[3:end]
+            rest = _has_placeholder(rest) ? _fill_placeholder(rest, lhs) : vcat(Any[lhs], rest)
+            return params === nothing ? Expr(:call, f, rest...) : Expr(:call, f, params, rest...)
+        end
+        return Expr(:call, :|>, lhs, rhs)                # une fermeture, une variable : Julia
+    end
+    ex.head in (:quote, :macrocall) && return ex
+    return Expr(ex.head, map(_elixir_pipes, ex.args)...)
+end
+
 macro synth(args...)
     isempty(args) && return :(error("@synth: needs a body"))
-    body = args[end]
+    body = _elixir_pipes(args[end])
     rest = args[1:end-1]
     # If the first arg is a QuoteNode (`:alias`) it's the alias.
     # Otherwise we're in the file-derived form.

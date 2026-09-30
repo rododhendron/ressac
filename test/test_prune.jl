@@ -136,7 +136,7 @@ end
         @test startswith(txt, "# mon synth\n@synth :truc") && occursin("# note finale", txt)
         @test count("fold2", txt) == 1 || !occursin("Fold2", txt) || count("Fold2", txt) <= 1
         @test !occursin("ugen(:Saw, 0.0)", txt)
-        @test occursin("RLPF", txt) && occursin("retiré", app.logs[end])
+        @test occursin("|> rlpf(", txt) && occursin("retiré", app.logs[end])
         g2 = Ressac.genome_from_dsl(txt)
         @test g2 !== nothing && isempty(Ressac.static_prune_hints(g2))     # plus rien à élaguer
         # remplacement de bloc : pas de @synth → texte inchangé

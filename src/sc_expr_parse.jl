@@ -171,6 +171,7 @@ function _sc_method(p::_ScParser, a::Arg, meth::String, args::Vector{Arg})
         return NodeRef(add_node!(g, ug, :ar, Arg[a, get(args, 1, ConstArg(1.0))]))
     elseif meth == "range" && length(args) == 2 && _sc_const(args[1]) !== nothing && _sc_const(args[2]) !== nothing
         lo, hi = _sc_const(args[1]), _sc_const(args[2])
+        (lo, hi) == (-1.0, 1.0) && return a                          # ce que lfo() écrit par défaut : rien
         # un LFO en [-1, 1] ramené à [lo, hi] : x * (hi - lo)/2 + (hi + lo)/2
         return NodeRef(add_node!(g, :MulAdd, :kr, Arg[a, ConstArg((hi - lo) / 2), ConstArg((hi + lo) / 2)]))
     elseif meth == "value"
@@ -261,5 +262,44 @@ function genome_from_sc(code::AbstractString, controls; g::Genome = Genome())
     root = try _sc_expr!(p) catch; return nothing end
     root isa NodeRef || return nothing
     g.output_id = _unwrap_safety(g, root.id)
+    _merge_identical_nodes!(g)
+    return g
+end
+
+# Les UGens dont deux instances ne donnent pas le même signal : jamais fusionnées.
+const _STOCHASTIC = Set{Symbol}((:WhiteNoise, :PinkNoise, :BrownNoise, :GrayNoise, :ClipNoise, :Dust, :Dust2,
+    :LFNoise0, :LFNoise1, :LFNoise2, :Crackle, :Logistic, :LorenzL, :HenonL, :LatoocarfianL, :CuspL, :QuadL,
+    :GbmanL, :StandardL, :FBSineL, :Raw, :FbIn))
+
+"""
+    _merge_identical_nodes!(g)
+
+Le texte SC n'a pas de variables : `x = saw(:freq) |> rlpf(…)` lu deux
+fois donne deux sous-arbres identiques. On les fusionne (même UGen,
+même taux, mêmes arguments), sauf les sources aléatoires, pour que
+l'export retrouve la variable partagée.
+"""
+function _merge_identical_nodes!(g::Genome)
+    seen = Dict{Tuple{Symbol,Symbol,Vector{Arg}},Int}()
+    alias = Dict{Int,Int}()
+    for id in _topo_order(g)
+        n = g.nodes[id]
+        args = Arg[a isa NodeRef ? NodeRef(get(alias, a.id, a.id)) : a for a in n.args]
+        n.args = args
+        n.ugen in _STOCHASTIC && continue
+        key = (n.ugen, n.rate, args)
+        if haskey(seen, key)
+            alias[id] = seen[key]
+            delete!(g.nodes, id)
+        else
+            seen[key] = id
+        end
+    end
+    isempty(alias) && return g
+    for n in values(g.nodes), j in eachindex(n.args)
+        a = n.args[j]
+        a isa NodeRef && haskey(alias, a.id) && (n.args[j] = NodeRef(alias[a.id]))
+    end
+    g.output_id = get(alias, g.output_id, g.output_id)
     return g
 end
