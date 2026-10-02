@@ -1,6 +1,7 @@
 using Test
 using TOML
 using Ressac
+using Sockets
 
 # Same mock used by test_scheduler.jl — captures OSC bytes in a vector
 # so tests don't actually open a UDP socket. Redefining locally here
@@ -343,6 +344,50 @@ end
             delete!(ENV, "RESSAC_CACHE_DIR")
             rm(tmp_root; recursive=true, force=true)
             rm(plugin_dir; recursive=true, force=true)
+        end
+    end
+end
+
+@testset "port 57121 occupé — la découverte le dit et n'attend pas" begin
+    # Le cas vécu : un sclang de trop s'était posé sur 57121 (57120 pris),
+    # avalait toutes les réponses, et chaque boot attendait 3 s + 120 s.
+    prev_sock = Ressac._SCOPE_LISTENER_SOCKET[]
+    prev_sched = Ressac._LIVE_SCHEDULER[]
+    blocker = Sockets.UDPSocket()
+    bound = try
+        Sockets.bind(blocker, Sockets.ip"127.0.0.1", Ressac._SCOPE_LISTEN_PORT)
+    catch
+        false
+    end
+    if !bound && prev_sock !== nothing
+        # la suite écoute déjà sur le port : on simule l'échec en libérant le Ref
+        close(blocker); blocker = Sockets.UDPSocket()
+    end
+    Ressac._SCOPE_LISTENER_SOCKET[] = nothing
+    mktempdir() do tmp
+        ENV["RESSAC_CACHE_DIR"] = tmp
+        try
+            Ressac._LIVE_SCHEDULER[] = Ressac.Scheduler(MockOSCClient(); cps = 0.5)
+            plugin_dir = joinpath(@__DIR__, "..", "plugins", "sc-discoverer")
+            t0 = time()
+            if prev_sock === nothing || bound
+                @test_logs (:error, r"port UDP 57121 indisponible") begin
+                    Main._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
+                end
+            else
+                # le port est tenu par la suite elle-même : même garde, même message
+                @test_logs (:error, r"port UDP 57121 indisponible") begin
+                    Main._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
+                end
+            end
+            @test time() - t0 < 2.0                           # pas de 3 s + 120 s
+            @test !isempty(Ressac._SCOPE_LISTENER_ERROR[])
+        finally
+            Ressac._LIVE_SCHEDULER[] = prev_sched
+            Ressac._SCOPE_LISTENER_SOCKET[] = prev_sock
+            Ressac._SCOPE_LISTENER_ERROR[] = ""
+            delete!(ENV, "RESSAC_CACHE_DIR")
+            close(blocker)
         end
     end
 end

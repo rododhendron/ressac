@@ -184,17 +184,31 @@ function _app_scope_set!(type::Symbol)
     return true
 end
 
+# Pourquoi le port d'écoute n'a pas pu être pris ("" quand tout va bien).
+# Un autre processus sur 57121 (un sclang de trop, lancé quand 57120
+# était déjà pris) avale toutes les réponses de SC : scope, mètres,
+# découverte des UGens. Mieux vaut le dire que d'attendre en silence.
+const _SCOPE_LISTENER_ERROR = Ref{String}("")
+
 function _ensure_app_scope_listener!()
-    _SCOPE_LISTENER_SOCKET[] !== nothing && return
+    _SCOPE_LISTENER_SOCKET[] !== nothing && return true
     try
         sock = UDPSocket()
-        bind(sock, ip"127.0.0.1", _SCOPE_LISTEN_PORT)
+        bind(sock, ip"127.0.0.1", _SCOPE_LISTEN_PORT) ||
+            error("bind refusé")
         _SCOPE_LISTENER_SOCKET[] = sock
         _SCOPE_LISTENER_RUNNING[] = true
         _SCOPE_LISTENER_TASK[] = Threads.@spawn _app_scope_listener_loop()
-    catch
+        _SCOPE_LISTENER_ERROR[] = ""
+        return true
+    catch err
+        _SCOPE_LISTENER_ERROR[] = "port UDP $(_SCOPE_LISTEN_PORT) indisponible ($(sprint(showerror, err))) — " *
+            "un autre processus l'occupe ? `ss -ulnp | grep $(_SCOPE_LISTEN_PORT)` ; un sclang de trop se tue par son pid"
+        return false
     end
 end
+
+_scope_listener_ok() = _SCOPE_LISTENER_SOCKET[] !== nothing
 
 function _app_scope_listener_loop()
     sock = _SCOPE_LISTENER_SOCKET[]

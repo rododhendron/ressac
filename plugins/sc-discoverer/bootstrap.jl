@@ -153,14 +153,29 @@ function _handle_sc_discover(plugin_dir, data, plugin_name;
     # not running yet, so any ack from SC would hit a closed port and
     # be dropped. Force it on now so our OSC roundtrip + discovery
     # ack can actually land.
-    Ressac._ensure_app_scope_listener!()
     cache_dir = _sc_cache_dir()
     scd_path = joinpath(plugin_dir, "discover.scd")
+    cached = isfile(joinpath(cache_dir, "cache_meta.toml"))
+    if !Ressac._ensure_app_scope_listener!() && sc_meta_override === nothing
+        # Sans port d'écoute, aucune réponse de SC n'arrivera : on ne va
+        # pas attendre deux minutes pour rien. Le cache reste utilisé.
+        @error "sc-autodiscover: " * Ressac._SCOPE_LISTENER_ERROR[] *
+               (cached ? " — les docs UGen en cache servent telles quelles" : " — pas de docs UGen (pas de cache)")
+        return nothing
+    end
+    t0 = time()
     sc_meta = sc_meta_override === nothing ?
               _sc_meta_roundtrip(timeout = 3.0) :
               sc_meta_override
     if _sc_cache_valid(cache_dir, scd_path; sc_meta = sc_meta)
         @info "sc-autodiscover: cache fresh, skipping discovery"
+        return nothing
+    end
+    if sc_meta === nothing && cached
+        # SC ne répond pas (pas encore prêt, ou pas lancé) : les docs en
+        # cache valent mieux qu'une découverte à l'aveugle qui ne pourra
+        # pas se conclure. :sc-rediscover la force plus tard.
+        @warn "sc-autodiscover: SC n'a pas répondu en 3 s — docs UGen en cache gardées (:sc-rediscover pour forcer)"
         return nothing
     end
     @info "sc-autodiscover: cache invalid, running discovery (may take ~10s)"
@@ -180,7 +195,7 @@ function _handle_sc_discover(plugin_dir, data, plugin_name;
             @error "sc-autodiscover: discovery timed out after $(discovery_timeout)s"
             return nothing
         end
-        @info "sc-autodiscover: discovered $result UGens"
+        @info "sc-autodiscover: discovered $result UGens in $(round(time() - t0; digits = 1)) s"
         # Capture SC state for cache_meta. Prefer in this order:
         #   1. sc_meta_override (tests)
         #   2. the sc_meta we already obtained at the top (it's the

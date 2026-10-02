@@ -99,6 +99,10 @@ function live(; host::AbstractString = "127.0.0.1",
     end
     app = RessacApp(; scheduler=sched)
     _push_app_log!(app, "[INFO] clavier : $kb_layout ($kb_source) — :keyboard azerty|qwerty|auto pour changer")
+    # Le port d'écoute des réponses de SC (scope, mètres, découverte) :
+    # s'il est pris, tout ce qui vient de SC se perd — on le dit au boot.
+    _ensure_app_scope_listener!() ||
+        _push_app_log!(app, "[ERROR] " * _SCOPE_LISTENER_ERROR[])
     # Sub-project 10: restore the last persisted workspace layout if
     # any. Wrapped so a corrupted file doesn't block boot — the
     # default workspace fallback handles the empty/error case.
