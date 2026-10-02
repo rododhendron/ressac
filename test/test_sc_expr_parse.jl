@@ -130,7 +130,10 @@ end
         @test g2 !== nothing && Ressac.render_synthdef(g2, :x) == Ressac.render_synthdef(g, :x)
     end
     dsl = Ressac.render_dsl(Ressac.genome_from_dsl(srcs[1]), :a)
-    @test occursin("saw(:freq) |> rlpf(line(3000.0, 500.0, :sustain), 0.18) |> tanh_drive(2.0)", dsl)
+    # trois étapes ou plus : une par ligne
+    @test occursin("    saw(:freq)\n        |> rlpf(line(3000.0, 500.0, :sustain), 0.18)\n        |> tanh_drive(2.0)\n        |> safe()", dsl)
+    # deux étapes : sur une ligne
+    @test occursin("saw(:freq) |> safe()", Ressac.render_dsl(Ressac.genome_from_dsl("@synth :d (freq=220) saw(:freq)"), :d))
     dsl = Ressac.render_dsl(Ressac.genome_from_dsl(srcs[2]), :b)
     @test occursin("|> env_perc(0.01, 0.4", dsl) && occursin("|> stereo_pan(0.2", dsl) && occursin("lfo(0.2)", dsl) || occursin("lfo(", dsl)
     @test occursin("n1 = ", dsl) || !occursin("n2 = ", dsl)                    # une variable seulement si partagé

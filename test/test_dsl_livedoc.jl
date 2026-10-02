@@ -121,3 +121,41 @@ if get(ENV, "RESSAC_USER_SYNTHS_TESTS", "") == "1"
     @info "synths de l'utilisateur" n = length(items)
     _ld_check_corpus("plugins/user-synths", items)
 end
+
+# Le SC que le texte exporté compile (ce que l'éditeur envoie à SC) doit
+# donner de l'audio à chaque entrée audio : un filtre qui reçoit un
+# contrôle nu (`BLowShelf.ar(freq, …)`) est refusé par sclang (« input is
+# not audio rate ») et l'éditeur reste muet alors que l'explorateur joue.
+function _ld_bare_audio_inputs(src::AbstractString)
+    bad = String[]
+    for mt in eachmatch(r"\b([A-Z]\w*)\.ar\(\s*([A-Za-z_]\w*|[0-9.]+)\s*[,)]", src)
+        u = Symbol(mt.captures[1])
+        spec = Ressac.ugen_spec(u)
+        spec === nothing && continue
+        isempty(spec.slots) && continue
+        spec.slots[1].kind === :audio || continue
+        push!(bad, mt.match)
+    end
+    return bad
+end
+
+@testset "export → le SC de l'éditeur donne de l'audio à chaque entrée audio" begin
+    @test _ld_bare_audio_inputs("RLPF.ar(freq, 800, 0.3)") == ["RLPF.ar(freq,"]
+    @test isempty(_ld_bare_audio_inputs("RLPF.ar(DC.ar(freq), 800, 0.3)"))
+    @test isempty(_ld_bare_audio_inputs("SinOsc.ar(freq, 0)"))             # une source : freq n'est pas audio
+    old = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = nothing
+    try
+        for (name, text) in vcat(_ld_fixture_items(), _ld_library_items())
+            g = Ressac.genome_from_dsl(text)
+            g === nothing && continue
+            out = Ressac.render_dsl(g, :x)
+            editor_sc = Core.eval(_LD_S, _LD_S._dsl_parse_all(out))
+            @testset "$name" begin
+                @test isempty(_ld_bare_audio_inputs(editor_sc))
+            end
+        end
+    finally
+        Ressac._LIVE_SCHEDULER[] = old
+    end
+end

@@ -58,6 +58,7 @@ function _node_is_audio(g::Genome, id::Int, seen::Set{Int} = Set{Int}())
     push!(seen, id)
     n = g.nodes[id]
     n.ugen === :FbIn && return true
+    (n.ugen === :DC || n.ugen === :K2A) && return n.rate === :ar   # c'est leur raison d'être
     spec = ugen_spec(n.ugen)
     spec === nothing && return n.rate === :ar
     spec.role === :math && return any(a -> _is_audio_expr(g, a, seen), n.args)
@@ -388,7 +389,12 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
        length(n.args) <= length(_DSL_STAGES[u][2]) + 1
         (fn, idxs) = _DSL_STAGES[u]
         args = u === :Tanh ? "1" : _dsl_call_args(g, n, idxs, vars)
-        return "$(H(si)) |> $fn($args)"
+        # Un filtre audio veut de l'audio en entrée : un contrôle ou une
+        # constante en tête de pipe passe par DC (K2A pour un nœud kr),
+        # comme le rendu SC du génome — sinon sclang refuse le SynthDef
+        # (« input is not audio rate ») et l'éditeur reste muet.
+        head = _dsl_audio_head(g, n.args[si], H(si), u)
+        return "$head |> $fn($args)"
     end
     # Sans wrapper : ugen(:Nom, …), pipable quand il a une entrée.
     spec = ugen_spec(u)
@@ -405,7 +411,20 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     rate = n.rate === :kr ? "; rate = :kr" : ""
     tail = isempty(parts) ? "" : ", " * join(parts, ", ")
     si === nothing && return "ugen(:$(u)$(tail)$rate)"
-    return "$(H(si)) |> ugen(:$(u)$(tail)$rate)"
+    return "$(_dsl_audio_head(g, n.args[si], H(si), u)) |> ugen(:$(u)$(tail)$rate)"
+end
+
+# La tête d'un pipe vers un slot audio : `ugen(:DC, x)` si `x` ne porte
+# pas d'audio (K2A pour un nœud de contrôle). Les formes méthode
+# (`(x).round(q)`, tanh, fold…) acceptent un scalaire : rien à faire.
+function _dsl_audio_head(g::Genome, a::Arg, code::String, u::Symbol)
+    haskey(SynthDSL._UGEN_METHOD_FORMS, u) && return code
+    spec = ugen_spec(u)
+    si = _bypass_input_slot(UGenNode(0, u, :ar, Arg[a]))
+    (spec === nothing || si === nothing || si > length(spec.slots) || spec.slots[si].kind !== :audio) && return code
+    _is_audio_expr(g, a) && return code
+    kr = a isa NodeRef && haskey(g.nodes, a.id) && g.nodes[a.id].rate === :kr
+    return (kr ? "ugen(:K2A, " : "ugen(:DC, ") * code * ")"
 end
 
 # Combien de nœuds lisent chaque nœud : lu deux fois, il devient une variable.
@@ -436,8 +455,17 @@ end
 
 # Coupe une longue chaîne de pipes en lignes, les suivantes indentées.
 function _dsl_wrap_pipes(expr::String, pad::String; width::Int = 78)
-    length(expr) <= width && return expr
     parts = _dsl_split_pipes(expr)
+    # Trois étapes ou plus : une par ligne, pour lire la chaîne de haut
+    # en bas. Moins : sur une ligne tant qu'elle tient.
+    if length(parts) >= 3
+        lines = String[String(parts[1])]
+        for p in parts[2:end]
+            push!(lines, pad * "    |> " * p)
+        end
+        return join(lines, "\n")
+    end
+    length(expr) <= width && return expr
     length(parts) == 1 && return expr
     lines = String[String(parts[1])]
     for p in parts[2:end]
