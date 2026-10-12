@@ -126,7 +126,7 @@ end
     _in_sandbox() do
         app, tb, frame = _br_app()
         _bex(app, "synth kick")
-        @test _bws(app) == "PLAY"                              # :synth ouvre dans le workspace courant
+        @test _bws(app) == "DESIGN"                            # :synth vit dans DESIGN (pont)
         _bkey(app, 'U')
         @test _bws(app) == "PLAY"
         @test Ressac._focused_role(app) === :patterns
@@ -136,21 +136,21 @@ end
         @test strip(ed.lines[ed.cursor_row] |> String) == "@d4 p\"kick*4\""
         @test haskey(Ressac._SYNTH_REGISTRY, :kick)             # enregistré → jouable
         @test occursin("ajouté", app.logs[end])
-        # depuis DESIGN aussi (sketch)
+        # depuis DESIGN aussi (l'onglet courant : kick)
         _bex(app, "design")
         _bkey(app, 'U')
         @test _bws(app) == "PLAY"
-        @test occursin("@d5 p\"sketch*4\"", Tachikoma.text(Ressac._active_editor(app)))
+        @test occursin("@d5 p\"kick*4\"", Tachikoma.text(Ressac._active_editor(app)))
     end
 end
 
 @testset ":sculpt — accepte la forme une-ligne ; refuse un synth SC brut avec un message clair" begin
     _in_sandbox() do
         app, tb, frame = _br_app()
-        _bex(app, "synth zorglub")                             # starter une-ligne
+        _bex(app, "synth zorglub")                             # starter une-ligne, dans DESIGN
         _bex(app, "sculpt")
-        @test Ressac._focused_sculpt_pane(app) !== nothing        # pane sculpt ouverte…
-        @test app.zoom_leaf == Ressac.current_workspace(app.workspaces).focused_pane   # …et zoomée
+        @test Ressac._focused_sculpt_pane(app) !== nothing        # le studio du workspace a le focus
+        @test _bws(app) == "DESIGN"
         Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')); _bkey(app, 'c'); _bkey(app, :escape)
         Ressac._PANE_MODE.active = false
         @test Ressac._focused_sculpt_pane(app) === nothing         # Ctrl-w c ferme la pane
@@ -359,9 +359,9 @@ end
     _bkey(app, :escape)
     @test app.quit
     app2, _, _ = _br_app()
-    _bex(app2, "vsplit log")
+    _bex(app2, "vsplit log")                                  # depuis n'importe quelle pane
     _bkey(app2, :escape); _bkey(app2, :escape)
-    @test !app2.quit
+    @test app2.quit
     # en insertion, Échap reste « retour au mode normal »
     app3, _, _ = _br_app()
     _bkey(app3, 'i'); _bkey(app3, :escape)

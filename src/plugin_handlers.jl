@@ -363,7 +363,9 @@ function _load_synth_file!(sched, plugin_name, path)
         # touched anything.
         _INSTALLING_SYNTH[] = true
         try
-            Base.include(SynthDSL, path)
+            # Même lecture que l'éditeur (T) : les lignes qui commencent par
+            # `|>` sont recollées avant le parseur de Julia.
+            Base.include_string(SynthDSL, SynthDSL._dsl_preprocess(read(path, String)), path)
         catch err
             @error "plugin '$plugin_name' [synthdefs]: .jl eval failed for '$path': $(sprint(showerror, err))"
         finally

@@ -174,6 +174,17 @@ function _sc_method(p::_ScParser, a::Arg, meth::String, args::Vector{Arg})
         (lo, hi) == (-1.0, 1.0) && return a                          # ce que lfo() écrit par défaut : rien
         # un LFO en [-1, 1] ramené à [lo, hi] : x * (hi - lo)/2 + (hi + lo)/2
         return NodeRef(add_node!(g, :MulAdd, :kr, Arg[a, ConstArg((hi - lo) / 2), ConstArg((hi + lo) / 2)]))
+    elseif meth == "range" && length(args) == 2
+        # bornes calculées (`.range(base, base + depth)`) : la même formule, en nœuds
+        lo, hi = args[1], args[2]
+        # dans la forme que le parseur redonne lui-même (constantes
+        # repliées, « / 2 » écrit « × 0.5 ») pour que l'export se relise à l'identique
+        neg_lo = _sc_const(lo) !== nothing ? ConstArg(-_sc_const(lo)) :
+                 NodeRef(add_node!(g, :MulAdd, :kr, Arg[lo, ConstArg(-1.0), ConstArg(0.0)]))
+        half(x) = NodeRef(add_node!(g, :MulAdd, :kr, Arg[x, ConstArg(0.5), ConstArg(0.0)]))
+        mm = half(NodeRef(add_node!(g, :Mix, :kr, Arg[hi, neg_lo])))
+        aa = half(NodeRef(add_node!(g, :Mix, :kr, Arg[hi, lo])))
+        return NodeRef(add_node!(g, :MulAdd, :kr, Arg[a, mm, aa]))
     elseif meth == "value"
         return a                                                     # `{ … }.value` : le bloc opaque
     end

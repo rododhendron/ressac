@@ -119,7 +119,7 @@ end
     _hkey(app, :tab)
     @test app.help_expanded
     @test length(app.help_scopes) > n_ctx
-    @test :explorer in app.help_scopes && :modal_mixer in app.help_scopes
+    @test :modal_mixer in app.help_scopes && !(:explorer in app.help_scopes)   # tout… du mode PLAY
     _screen(app, tb, frame)                                  # l'aide rendue : son ScrollPane a son contenu
     last = Ressac._help_last(app)
     @test last > 0
@@ -150,14 +150,13 @@ end
     @test occursin("? aide", bar)
     @test occursin("e évaluer", bar)
     @test occursin("Space snippet", bar)
-    _hex(app, "synth kick")
+    _hex(app, "synth kick")                                  # :synth emmène dans DESIGN
     bar = _bottom_bar(app, tb, frame)
     @test occursin("t tester", bar)
-    @test occursin("Tab patterns⟷synth", bar)              # PLAY : patterns + synth présents
-    _hex(app, "design")                                      # DESIGN : pas de pane patterns
+    @test !occursin("Tab patterns", bar)                     # DESIGN : pas de pane patterns
+    _hex(app, "design")
     bar = _bottom_bar(app, tb, frame)
     @test occursin("t tester", bar)
-    @test !occursin("Tab patterns", bar)
     _hex(app, "play")
     @test !occursin("e évaluer", bar)
     app2, tb2, frame2 = _help_app()

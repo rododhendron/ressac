@@ -112,6 +112,7 @@ end
 @testset "élagage — :explain montre la section, :prune réécrit le bloc @synth de l'éditeur" begin
     old_an = Ressac._PRUNE_ANALYZE[]
     Ressac._PRUNE_ANALYZE[] = _fake_analyze
+    old_wr = Ressac._WAVE_RENDER[]
     dir = mktempdir(); mkpath(joinpath(dir, "plugins", "user-synths")); oldwd = pwd(); cd(dir)
     try
         app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))
@@ -119,17 +120,20 @@ end
         frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 120, 40), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
         Tachikoma.view(app, frame); Ressac._PANE_MODE.active = false; Ressac._active_editor(app).mode = :normal
         ex(cmd) = (Tachikoma.update!(app, Tachikoma.KeyEvent(':')); foreach(c -> Tachikoma.update!(app, Tachikoma.KeyEvent(c)), cmd); Tachikoma.update!(app, Tachikoma.KeyEvent(:enter)))
+        Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0], 44100)
         ex("synth truc")
         tab = Ressac._current_synth_tab(app)
         src = "# mon synth\n@synth :truc (freq=220, sustain=0.5) begin\n" *
               "    a = saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(1) |> fold2(1) |> fold2(1)\n" *
               "    a + ugen(:Saw, 0.0)\nend\n\n# note finale\n"
         Tachikoma.set_text!(tab.code_editor, src)
-        # :explain sur le buffer : la section ÉLAGAGE et ses indices
+        # :explain sur le buffer : l'onglet explication de la DOC (DESIGN), avec ÉLAGAGE et ses indices
         ex("explain")
-        @test app.modal === :explain
-        @test any(l -> occursin("ÉLAGAGE", l), app.explain_lines) && any(l -> occursin("fréquence 0", l), app.explain_lines)
-        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+        parts = Ressac._synth_workspace_parts(app)
+        @test parts !== nothing && parts[3].mode === :explain
+        lines = parts[3].explain_lines
+        @test any(l -> occursin("ÉLAGAGE", l), lines) && any(l -> occursin("fréquence 0", l), lines)
+        Ressac._focus_pane!(app, parts[1])
         # :prune réécrit le bloc, garde les commentaires autour
         ex("prune")
         txt = Tachikoma.text(tab.code_editor)
@@ -151,6 +155,6 @@ end
         Tachikoma.set_text!(tab.code_editor, clean); ex("prune")
         @test Tachikoma.text(tab.code_editor) == clean && occursin("rien", app.logs[end])
     finally
-        cd(oldwd); Ressac._PRUNE_ANALYZE[] = old_an
+        cd(oldwd); Ressac._PRUNE_ANALYZE[] = old_an; Ressac._WAVE_RENDER[] = old_wr
     end
 end

@@ -27,8 +27,9 @@ _km_reservoir(m::RessacApp) = _km_normal(m) &&
 scope!(:global, "Partout")
 bind!(:global, "?", "aide"; group = :help, action = _open_help!)
 bind!(:global, "!", "panic (coupe tout)"; short = "panic", group = :audio, action = _panic!)
-bind!(:global, "Esc", "sur la dernière pane : quitter (deux fois)"; group = :misc, hint = false,
-      when = m -> _km_normal(m) && !m.visual_active && m.modal === :none && _pane_count(m) <= 1,
+bind!(:global, "Esc", "quitter Ressac (Échap deux fois)"; group = :misc, hint = false,
+      when = m -> _km_normal(m) && !m.visual_active && m.modal === :none && !_PANE_MODE.active &&
+                  !m.pending_leader && !m.placeholder_active,
       action = _esc_quit_step!)
 bind!(:global, ",", "hush (laisse finir les queues)"; short = "hush", group = :audio,
       when = _km_normal, action = _hush!)
@@ -154,9 +155,11 @@ bind!(:patterns, "g s", "ouvrir le synth sous le curseur (DESIGN)"; group = :nav
 
 # ── :synth ─────────────────────────────────────────────────────────
 scope!(:synth, "Pane synth")
-bind!(:synth, ["t", "T", "Space"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
+bind!(:synth, ["t", "T"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
       repeat = true, when = _km_synth,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
+bind!(:synth, "Space", "snippet DSL…"; group = :edit, when = _km_synth,
+      action = m -> (m.pending_leader = true))
 bind!(:synth, "D", "drone : tenir le synth / le relâcher"; short = "drone", group = :audio,
       when = _km_synth, action = _drone_toggle!)
 bind!(:synth, "K", "doc du mot sous le curseur (pane DOC)"; short = "doc", group = :help,
@@ -192,6 +195,26 @@ for (c, _) in _LEADER_LABELS
               action = m -> _expand_snippet!(m, _km_ed(m), _prefill_slot(tpl, _km_ed(m))))
     end
 end
+
+# Space dans une pane synth : des maillons du DSL, insérés en bout de chaîne.
+scope!(:leader_synth, "Space + … (synth)")
+const _LEADER_SYNTH = [
+    ('s', "saw(:freq)", "source saw"), ('o', "sin_osc(:freq)", "source sin_osc"),
+    ('p', "pulse(:freq, \$1)", "source pulse"), ('w', "white()", "bruit blanc"),
+    ('l', "|> rlpf(\$1, 0.3)", "passe-bas résonnant"), ('h', "|> high_pass(\$1)", "passe-haut"),
+    ('b', "|> band_pass(\$1, 0.5)", "passe-bande"), ('m', "|> moog_ff(\$1, 2.0)", "filtre Moog"),
+    ('e', "|> env_perc(0.01, \$1)", "enveloppe percussive"), ('a', "|> env_adsr(0.01, 0.2, 0.6, \$1)", "enveloppe ADSR"),
+    ('t', "|> tanh_drive(\$1)", "saturation"), ('f', "|> fold2(\$1)", "repliement"), ('c', "|> clip2(\$1)", "écrêtage"),
+    ('r', "|> free_verb(0.3, \$1)", "réverb"), ('d', "|> comb_c(\$1, 2.0)", "comb / delay"),
+    ('L', "lfo(\$1; low = 400, high = 2000)", "LFO"), ('n', "|> lfo(\$1)", "LFO (brut)"),
+    ('g', "|> amp(\$1)", "amplitude"), ('S', "|> safe()", "sécurité"),
+    ('u', "|> ugen(:\$1)", "UGen sans wrapper"),
+]
+for (c, tpl, label) in _LEADER_SYNTH
+    bind!(:leader_synth, "Space $c", label; group = :edit, short = label,
+          action = m -> _expand_snippet!(m, _km_ed(m), tpl))
+end
+bind!(:leader_synth, "Space ?", "▸ aide"; group = :help, action = _open_help!)
 
 # ── Scopes documentaires (dispatch explicite dans app_input.jl) ────
 scope!(:pane_mode, "Mode pane (Ctrl-w, reste actif)")

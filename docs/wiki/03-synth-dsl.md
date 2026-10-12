@@ -345,6 +345,18 @@ de batterie façon 909 : `@d1 "k909 ~ s909 ~"`.
 synth (une copie éditable de la recette — modifie et `T` pour entendre).
 `:synth <nom>` fait pareil directement, et `gs` depuis un pattern.
 
+## Depuis un SynthDef SuperCollider
+
+Un synth écrit à la main en SuperCollider (`.scd`) s'ouvre dans DESIGN
+comme un autre ; `:todsl` le réécrit en DSL : les arguments deviennent
+les paramètres du `@synth`, chaque `var` est remplacée par son
+expression, le signal envoyé à `Out.ar` devient la chaîne de pipes. Le
+studio suit aussitôt, `T` teste, `:w` sauve en `.jl`, `u` annule.
+
+Dans un synth, `Espace` puis une lettre insère un maillon du DSL en bout
+de chaîne : `s` saw, `o` sin_osc, `l` rlpf, `e` env_perc, `t` tanh_drive,
+`f` fold2, `r` free_verb, `L` lfo… (`Espace ?` les liste).
+
 ## Sculpter un son
 
 Dans le workspace DESIGN, le **STUDIO** (en haut à droite) suit le texte :

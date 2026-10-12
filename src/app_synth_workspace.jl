@@ -183,6 +183,48 @@ function _patch_literal(text::AbstractString, old::Float64, new::Float64)
     return text[1:prevind(text, mt.offset)] * _fmt_literal(new) * text[stop:end]
 end
 
+"""
+    _ensure_synth_workspace!(m) -> Bool
+
+Le workspace courant a la forme texte | studio / doc : si le studio lié ou
+la DOC manquent (disposition d'avant, pane fermée), on les repose autour
+de la pane texte — les onglets de synths sont gardés. Vrai si quelque
+chose a été refait.
+"""
+function _ensure_synth_workspace!(m::RessacApp)
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return false
+    _synth_workspace_parts(m) === nothing || return false
+    wm = m.workspaces
+    # la pane texte : celle qui porte des synths, sinon la première pane éditeur
+    leaf_ed = nothing
+    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+        tab isa EditorPane && any(b -> b.role === :synth, tab.tabs) && (leaf_ed = leaf; break)
+    end
+    if leaf_ed === nothing
+        for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+            tab isa EditorPane && (leaf_ed = leaf; break)
+        end
+    end
+    if leaf_ed === nothing
+        ep = _pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "sketch"))
+        eb = ep.tabs[1]; eb.synth_mode = :dsl
+        TK.set_text!(eb.code_editor, _STARTER_DSL("sketch")); eb.code_editor.mode = :normal
+        leaf_ed = PaneLeaf(wm.next_pane_id, PaneImpl[ep], 1); wm.next_pane_id += 1
+    end
+    for leaf in _all_leaves(ws.tree)
+        leaf === leaf_ed && continue
+        for tab in leaf.tabs; try; on_close!(tab); catch; end; end
+    end
+    ws.tree = leaf_ed
+    ws.focused_pane = leaf_ed.id
+    empty!(ws.floats)
+    m.zoom_leaf = 0
+    _synth_workspace_panes!(ws, wm)
+    _push_app_log!(m, "[INFO] DESIGN remis en forme : texte | studio / doc")
+    return true
+end
+
 # La pane texte du workspace synth, pour y ajouter un onglet.
 function _synth_workspace_editor(m::RessacApp)
     parts = _synth_workspace_parts(m)

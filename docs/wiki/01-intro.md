@@ -78,8 +78,17 @@ charley : `Esc` puis `E` et tu entends quelque chose.
   synths et le studio **sculpt** (les paramètres d'un son manipulés
   directement sur son onde).
 
+Chaque mode a son vocabulaire : `?` puis `Tab` liste toutes les touches
+du mode courant, la palette (`Ctrl-p`) et la complétion de `:` ne
+proposent que ses commandes. Une commande d'un autre mode y emmène
+d'abord (`:synth wob` depuis PLAY ouvre DESIGN). `:play!`, `:design!`,
+`:explore!` remettent un workspace à neuf, panes bien placées ; `:reset`
+fait pareil pour le workspace courant. `:design` remet la forme texte |
+studio / doc si une pane manque.
+
 Les ponts : depuis un pattern, `gs` ouvre le synth sous le curseur dans
-DESIGN ; depuis un synth ou un sculpt, `U` pose `@dN p"nom*4"` dans PLAY.
+DESIGN ; depuis un synth ou un sculpt, `U` pose `@dN p"nom*4"` dans PLAY ;
+depuis l'explorateur, `M` et `e` amènent un candidat dans DESIGN.
 
 ## Se repérer
 
@@ -87,9 +96,9 @@ DESIGN ; depuis un synth ou un sculpt, `U` pose `@dN p"nom*4"` dans PLAY.
 |----------|---------------------------------------------------------|
 | `?`      | l'aide du contexte (les touches de la pane focalisée)   |
 | souris   | poser le pointeur sur un mot souligné ouvre sa fiche de glossaire |
-| `Espace` | leader — suivi d'une lettre, insère un snippet          |
+| `Espace` | leader — suivi d'une lettre, insère un snippet (pattern ou maillon DSL dans un synth) |
 | `:`      | la ligne de commande (`:tap`, `:browse`, `:synth wob`…) |
-| `Esc`    | quitter l'insertion                                     |
+| `Esc`    | quitter l'insertion ; deux fois en mode normal : quitter Ressac |
 | `e`      | évaluer la ligne courante                               |
 | `E`      | évaluer TOUS les blocs `@dN`                            |
 | `m`      | mute / démute le slot sous le curseur                   |

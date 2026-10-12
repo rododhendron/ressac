@@ -552,7 +552,7 @@ function _try_ex_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
     if sp === nothing
         # Verb completion.
         partial = buf
-        ranked = _fuzzy_rank(partial, _all_ex_verbs())
+        ranked = _fuzzy_rank(partial, _ex_verbs_for_mode(m))
         isempty(ranked) && return false
         top = first(ranked, 200)
         splice = _make_ex_verb_splicer(m, ed)

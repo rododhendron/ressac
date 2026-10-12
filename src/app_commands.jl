@@ -117,7 +117,7 @@ function _command_completion_candidates(m::RessacApp, query::AbstractString)
     q = String(query)
     sp = findfirst(' ', q)
     if sp === nothing
-        return first(_fuzzy_rank(q, _all_ex_verbs()), 200)
+        return first(_fuzzy_rank(q, _ex_verbs_for_mode(m)), 200)
     end
     verb = q[1:sp-1]
     rest = q[sp+1:end]
@@ -179,7 +179,7 @@ function _esc_quit_step!(m::RessacApp)
         _quit!(m)
     else
         m.esc_quit_at = now
-        _push_app_log!(m, "[INFO] Échap encore pour quitter Ressac (dernière pane) — :qa quitte tout de suite")
+        _push_app_log!(m, "[INFO] Échap encore pour quitter Ressac — :qa quitte tout de suite")
     end
     return
 end
@@ -228,7 +228,8 @@ _register_regex!(r"^xfade\s+(\d+)$", (m, mt) -> _set_transition!(m, :xfade, max(
 
 # ── Synth tabs ───────────────────────────────────────────────────────
 _register_literal!(m -> _open_sandbox_synth!(m),     "synth", "scratch", "sandbox")
-_register_literal!(m -> _close_synth_pane!(m),       "back")
+# `:back` : retour à PLAY (DESIGN reste tel quel, ses onglets aussi).
+_register_literal!(m -> _switch_workspace_named!(m, "PLAY"), "back")
 _register_literal!(m -> _close_active_synth_tab!(m), "close")
 _register_literal!(m -> _list_synth_tabs!(m),        "tabs")
 _register_literal!(m -> _cycle_synth_tab!(m; dir=+1),  "tabnext", "tabn")
@@ -646,6 +647,11 @@ _register_literal!(m -> _cycle_log_tail!(m), "log")
 _register_literal!(m -> _switch_workspace_named!(m, "PLAY"),    "play")
 _register_literal!(m -> _switch_workspace_named!(m, "DESIGN"),  "design")
 _register_literal!(m -> _switch_workspace_named!(m, "EXPLORE"), "explore")
+# `:play!` / `:design!` / `:explore!` : le workspace à neuf, panes bien placées.
+_register_literal!(m -> _reset_workspace!(m, "PLAY"),    "play!")
+_register_literal!(m -> _reset_workspace!(m, "DESIGN"),  "design!")
+_register_literal!(m -> _reset_workspace!(m, "EXPLORE"), "explore!")
+_register_literal!(m -> (ws = current_workspace(m.workspaces); ws === nothing || _reset_workspace!(m, ws.name)), "reset")
 _register_literal!(m -> _toggle_zoom!(m), "zoom")
 _register_regex!(r"^log\s+(\d+)$", (m, mt) -> _cycle_log_tail!(m, parse(Int, mt.captures[1])))
 
@@ -684,6 +690,7 @@ function _explain_command!(m::RessacApp, name::AbstractString)
     return
 end
 _register_literal!(m -> _explain_command!(m, ""), "explain")
+_register_literal!(m -> _todsl_command!(m), "todsl", "to-dsl", "sc2dsl")
 _register_regex!(r"^explain\s+([\w.-]+)$",
     (m, mt) -> _explain_command!(m, mt.captures[1]))
 
@@ -968,6 +975,8 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
 end
 
 function _dispatch_ex_command!(m::RessacApp, s::String)
+    # 0. Une commande d'un autre mode y emmène d'abord.
+    _mode_bridge!(m, s)
     # 1. Literal exact-match (O(1))
     h = get(_LITERAL_DISPATCH, s, nothing)
     h !== nothing && (h(m); return)

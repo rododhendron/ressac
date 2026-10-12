@@ -422,7 +422,7 @@ end
 
 # Ordre canonique des sections en mode « tout ».
 const _HELP_ALL_SCOPES = Symbol[
-    :global, :editor, :patterns, :leader, :placeholder, :synth, :visual, :insert, :pane_mode,
+    :global, :editor, :patterns, :leader, :placeholder, :synth, :leader_synth, :visual, :insert, :pane_mode,
     :explorer, :waveform, :sculpt, :drone, :synthdoc, :log, :doc, :wiki, :notes, :tuning, :tutorial, :tap, :piano,
     :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets, :modal_patterns,
     :modal_evolve, :modal_palette,
@@ -435,7 +435,10 @@ const _HELP_ALL_SCOPES = Symbol[
 Sections de l'aide pour le contexte courant (ou toutes si `help_expanded`).
 """
 function _help_scopes(m::RessacApp)
-    m.help_expanded && return Symbol[s for s in _HELP_ALL_SCOPES if !isempty(bindings(s))]
+    if m.help_expanded
+        mode = _workspace_mode(m)
+        return Symbol[s for s in _HELP_ALL_SCOPES if !isempty(bindings(s)) && _scope_in_mode(s, mode)]
+    end
     if m.help_return !== :none                       # aide ouverte depuis un modal
         return Symbol[get(_MODAL_SCOPES, m.help_return, :modal_text), :modal_help]
     end
@@ -443,7 +446,7 @@ function _help_scopes(m::RessacApp)
     ps = pane === nothing ? :none : pane_scope(pane)
     ps !== :none && return Symbol[ps, :global, :pane_mode, :modal_help]
     role = _focused_role(m)
-    role === :synth && return Symbol[:synth, :editor, :global, :visual, :insert, :pane_mode, :modal_help]
+    role === :synth && return Symbol[:synth, :leader_synth, :editor, :global, :visual, :insert, :pane_mode, :modal_help]
     return Symbol[:patterns, :leader, :editor, :global, :visual, :insert, :pane_mode, :modal_help]
 end
 
@@ -514,7 +517,8 @@ function _help_entries(m::RessacApp)
         end
         push!(out, (:row, "", ""))
     end
-    push!(out, (:title, "", m.help_expanded ? "▸ Référence" : "▸ Référence   (Tab : toutes les sections de touches)"))
+    push!(out, (:title, "", m.help_expanded ? "▸ Référence — tout $(_mode_label(_workspace_mode(m)))" :
+                                              "▸ Référence   (Tab : toutes les touches de $(_mode_label(_workspace_mode(m))))"))
     for l in _GUIDE_REFERENCE_LINES
         push!(out, (startswith(l, "▓") ? :group : :ref, "", l))
     end

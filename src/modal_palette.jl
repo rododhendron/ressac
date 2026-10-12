@@ -40,7 +40,7 @@ function _palette_items(m::RessacApp)
     out = _PaletteItem[]
     # Toutes les commandes réellement enregistrées, pas une liste tenue à
     # la main : la palette ne peut pas dériver du registre.
-    for name in _all_ex_verbs()
+    for name in _ex_verbs_for_mode(m)
         push!(out, _PaletteItem(:cmd, ":" * name, "", mm -> _handle_ex_command!(mm, name)))
     end
     for (reg, what) in ((_SAMPLE_REGISTRY, "sample"), (_INSTRUMENT_REGISTRY, "instrument"),

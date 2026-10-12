@@ -743,15 +743,16 @@ _synth_names(app) = [b.name for (_, b) in Ressac._all_synth_buffers(app)]
 @testset ":synth <name> opens a synth pane in the workspace" begin
     app, _ = _new_app()
     @test isempty(_synth_names(app))
-    _exec_ex_command!(app, "synth wob")
-    @test _synth_names(app) == ["wob"]
+    _exec_ex_command!(app, "synth wob")                      # :synth emmène dans DESIGN : sketch + wob
+    @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+    @test "wob" in _synth_names(app)
 end
 
 @testset ":synth + :tabnext + :close + :back lifecycle" begin
     app, frame = _new_app()
     _exec_ex_command!(app, "synth one")
     _exec_ex_command!(app, "synth two")
-    @test Set(_synth_names(app)) == Set(["one", "two"])
+    @test Set(_synth_names(app)) == Set(["sketch", "one", "two"])
     ws = Ressac.current_workspace(app.workspaces)
     # Focused on the most-recently-opened synth pane.
     @test Ressac._focused_role(app) === :synth
@@ -760,9 +761,10 @@ end
     @test Ressac._focused_role(app) === :synth
     _exec_ex_command!(app, "tabnext")
     @test Ressac._focused_role(app) === :synth
-    _exec_ex_command!(app, "close")     # close the focused synth pane
-    @test length(_synth_names(app)) == 1
-    _exec_ex_command!(app, "back")      # close all remaining synth panes
+    _exec_ex_command!(app, "close")     # close the current synth tab
+    @test length(_synth_names(app)) == 2
+    _exec_ex_command!(app, "back")      # back to PLAY, DESIGN intact
+    @test Ressac.current_workspace(app.workspaces).name == "PLAY"
     @test isempty(_synth_names(app))
 end
 
@@ -856,9 +858,12 @@ end
                                 "  n1 = ugen(:Saw, :freq)\n" *
                                 "  ugen(:RLPF, n1, 300, 0.2)\nend\n")
         Ressac._handle_ex_command!(app, "explain")
-        @test app.modal === :explain
-        @test any(l -> occursin("SYNTHÈSE", l) || occursin("EN SORTIE", l), app.explain_lines)
-        @test any(l -> occursin("RLPF", l) || occursin("Saw", l), app.explain_lines)
+        # un @synth dans la pane patterns de PLAY : :explain vit dans DESIGN, où la
+        # DOC prend l'explication — le buffer de PLAY n'est pas un synth, donc
+        # l'explication concerne le sketch de DESIGN
+        @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+        parts = Ressac._synth_workspace_parts(app)
+        @test parts !== nothing && parts[3].mode === :explain
     end
 end
 
@@ -1509,18 +1514,17 @@ end
                 Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100))
                 app, frame = _new_app()
                 try
-                    _exec_ex_command!(app, "sculpt scutest")
+                    _exec_ex_command!(app, "sculpt scutest")   # dans DESIGN : le studio lié
                     sp = Ressac._focused_sculpt_pane(app)
-                    @test sp isa Ressac.WaveformPane && sp.sculpt
-                    @test !isempty(sp.explain_lines)          # explication chargée dans la pane
-                    @test app.zoom_leaf != 0                  # zoomée
+                    @test sp isa Ressac.WaveformPane && sp.sculpt && sp.linked
+                    @test !isempty(sp.explain_lines)          # explication chargée
                     @test (Tachikoma.view(app, frame); true)  # le studio se rend
                     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
                     Tachikoma.update!(app, Tachikoma.KeyEvent('z'))
                     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
                     Ressac._PANE_MODE.active = false
-                    @test app.zoom_leaf == 0
-                    @test Ressac._focused_sculpt_pane(app) !== nothing   # toujours là, dézoomée
+                    @test app.zoom_leaf != 0                  # z zoome le studio
+                    @test Ressac._focused_sculpt_pane(app) !== nothing
                 finally
                     Ressac._WAVE_RENDER[] = old
                 end

@@ -630,7 +630,8 @@ function _stage_editor_normal!(m::RessacApp, evt::TK.KeyEvent)
         # Modificateur seul (Maj avant un E majuscule…) : on attend.
         (evt.key !== :char || evt.char == '\0') && return true
         m.pending_leader = false
-        dispatch!(((:leader, m),), evt; prefix = "Space")
+        scope = _focused_role(m) === :synth ? :leader_synth : :leader
+        dispatch!(((scope, m),), evt; prefix = "Space")
         return true
     end
     # `f` / `t` en attente : le caractère suivant est la cible.

@@ -107,6 +107,7 @@ include("pane_tutorial.jl")      # tutoriel pas à pas, qui suit ce que fait le 
 include("pane_notes.jl")         # visualiseur de notes (piano-roll défilant)
 include("pane_drone.jl")         # MODULATION : arguments des drones vivants
 include("genome_graph_view.jl")  # le graphe d'un synth en cellules de texte
+include("sc_synthdef.jl")        # SynthDef SC écrit à la main → DSL (:todsl)
 include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication · graphe
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
@@ -127,6 +128,7 @@ include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION
 include("app_synth_workspace.jl")# workspace synth : texte ⟷ studio ⟷ doc
 include("app_transport.jl")      # rec / export / panic / hush
 include("app_commands.jl")       # tables ex + commandes + historique
+include("app_modes.jl")          # PLAY / DESIGN / EXPLORE : scopes et commandes par mode
 include("app_modal.jl")          # infra modaux + guide/tutorial/explain
 include("modal_browser.jl")      # :browse
 include("modal_mixer.jl")        # :mixer
@@ -243,6 +245,88 @@ using PrecompileTools
 
 struct _PrecompileSink end
 send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
+
+"""
+    _precompile_tour!(sched)
+
+La TUI entière, telle qu'un joueur la traverse dans ses premières
+minutes : PLAY (frappe, évaluation, souris, molette, aide, palette, mode
+pane), DESIGN (onglets, studio lié, DOC à trois onglets, drone,
+modulation), EXPLORE, redimensionnement, survol du glossaire. Tout ce
+qui passe ici ne gèle plus au premier geste. Aucun sous-processus : NRT
+coupé, rendu d'onde factice. Appelé par la précompilation du paquet et
+par scripts/precompile_workload.jl (sysimage).
+"""
+function _precompile_tour!(sched)
+try
+    _NRT_ALLOWED[] = false
+    old_render = _WAVE_RENDER[]; old_sync = _WAVE_SYNC[]
+    _WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100)); _WAVE_SYNC[] = true
+    _LIVE_SCHEDULER[] = sched
+    app = RessacApp(; scheduler = sched)
+    W, H = 160, 44
+    tb = Tachikoma.TestBackend(W, H)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, W, H),
+                            Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    paint!() = (Tachikoma.reset!(tb.buf); Tachikoma.view(app, frame); nothing)
+    key!(c::Char) = (Tachikoma.update!(app, Tachikoma.KeyEvent(c)); nothing)
+    key!(k::Symbol) = (Tachikoma.update!(app, Tachikoma.KeyEvent(k)); nothing)
+    ctrl!(c::Char) = (Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, c)); nothing)
+    ex!(cmd) = (key!(':'); foreach(key!, cmd); key!(:enter); nothing)
+    mouse!(x, y, b, a) = (Tachikoma.update!(app, Tachikoma.MouseEvent(x, y, b, a, false, false, false)); nothing)
+    paint!()
+    _PANE_MODE.active = false
+    # PLAY : déplacements, insertion, évaluation, mute, commandes, aide, palette
+    for k in (:left, :right, :up, :down, :pagedown, :pageup); key!(k); end
+    key!('G'); key!('o'); foreach(key!, "@d7 \"bd hh\" |> gain(0.5)"); key!(:escape); paint!()
+    key!('e'); key!('E'); key!('m'); key!('m'); key!(','); paint!()
+    key!(' '); key!('g'); key!(:escape); key!(:escape)
+    key!('?'); paint!(); key!(:tab); paint!(); key!('j'); key!(:escape)
+    ctrl!('p'); paint!(); foreach(key!, "syn"); key!(:escape)
+    ex!("mixer"); paint!(); key!(:escape)
+    ex!("browse"); paint!(); key!(:escape)
+    ex!("wiki"); paint!()
+    mouse!(10, 5, Tachikoma.mouse_left, Tachikoma.mouse_press)
+    mouse!(10, 5, Tachikoma.mouse_scroll_down, Tachikoma.mouse_press)
+    mouse!(W - 10, 10, Tachikoma.mouse_none, Tachikoma.mouse_move)
+    paint!()
+    # mode pane : scinder, naviguer, redimensionner, fermer
+    ctrl!('w'); key!('v'); key!('h'); key!('>'); key!('='); key!('c'); key!(:escape)
+    _PANE_MODE.active = false
+    # DESIGN : texte | studio / doc, onglets, studio lié, DOC, drone, modulation
+    ex!("design"); paint!()
+    ex!("synth _pc_sketch"); paint!()
+    key!('G'); key!('o'); foreach(key!, "# note"); key!(:escape); paint!()
+    key!('T'); key!('D'); paint!(); key!('D')
+    key!(' '); key!('l'); key!(:escape); key!(:escape)
+    ex!("explain"); paint!(); key!(:right); paint!(); key!('l'); key!(:left); key!(:left)
+    ex!("sculpt"); paint!(); key!('j'); key!('l'); key!('h'); paint!(); key!('G'); paint!()
+    key!('='); key!('1'); key!(:escape)
+    ex!("todsl")
+    ctrl!('w'); key!('h'); key!(:escape); _PANE_MODE.active = false
+    key!('g'); key!('t'); paint!()
+    # EXPLORE : l'explorateur et son studio
+    ex!("explore"); paint!()
+    for k in ('j', 'k', 'l', 'h'); key!(k); end
+    paint!()
+    ex!("play"); paint!()
+    # le bilan du boot, l'aide contextuelle de chaque mode
+    ex!("design"); key!('?'); paint!(); key!(:escape)
+    ex!("explore"); key!('?'); paint!(); key!(:escape)
+    ex!("play")
+    _WAVE_RENDER[] = old_render; _WAVE_SYNC[] = old_sync
+    drone_stop_all!(); empty!(_DRONES)
+catch
+    # Best-effort: precompile failures only cost first-call latency.
+finally
+    _LIVE_SCHEDULER[] = nothing
+    _NRT_ALLOWED[] = true
+    empty!(_SYNTH_REGISTRY); empty!(_SYNTH_ALIASES)
+    _DRONE_CAPTURE[] = nothing
+    _PANE_MODE.active = false
+end
+
+end
 
 @compile_workload begin
     # Mini-notation: cover the parser's main branches.
@@ -368,31 +452,7 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
         empty!(_SYNTH_REGISTRY)
     end
 
-    # Warm the new Tachikoma TUI: build RessacApp, dispatch the
-    # keystrokes that typically arrive in the first few seconds (arrows,
-    # i, Esc, :, e, quit chord), render through a TestBackend. Cold-JIT
-    # compile of these paths used to make the first arrow press lag
-    # visibly — now they're precompiled.
-    try
-        ressac_app = RessacApp(; scheduler=sched)
-        tb = Tachikoma.TestBackend(80, 24)
-        frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 80, 24),
-                                Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
-        Tachikoma.view(ressac_app, frame)
-        # Arrow keys
-        for k in (:left, :right, :up, :down)
-            Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(k, '\0', Tachikoma.key_press))
-        end
-        # Mode toggles
-        Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(:i, 'i', Tachikoma.key_press))
-        Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(:escape, '\0', Tachikoma.key_press))
-        # Eval trigger
-        Tachikoma.update!(ressac_app, Tachikoma.KeyEvent(:e, 'e', Tachikoma.key_press))
-        # Render once more after some state changes
-        Tachikoma.view(ressac_app, frame)
-    catch
-        # Best-effort: precompile failures only cost first-call latency.
-    end
+    _precompile_tour!(sched)
 
     # Fuzzy-match + completion engine warmup (callable from RessacApp;
     # LiveModel-rendered overlays + dispatcher exercise that lived here

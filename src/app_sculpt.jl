@@ -207,3 +207,28 @@ function _prune_synth_buffer!(m::RessacApp, thr::Real)
                       (isempty(note) ? "" : " · mesure indisponible : $note") * " — T pour écouter, :w pour sauver")
     return
 end
+
+# ── :todsl — un SynthDef SC brut devient du DSL ──────────────────────
+function _todsl_command!(m::RessacApp)
+    tab = _current_synth_tab(m)
+    tab === nothing && (_push_app_log!(m, "[ERROR] :todsl — ouvre d'abord un synth (:synth <nom>)"); return)
+    ed = tab.code_editor
+    text = TK.text(ed)
+    if tab.synth_mode === :dsl && !occursin("SynthDef(", text)
+        _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » est déjà en DSL")
+        return
+    end
+    r = synthdef_to_dsl(text)
+    if r === nothing
+        _push_app_log!(m, "[ERROR] :todsl — pas de SynthDef(\\nom, { |args| … Out.ar(out, …) }) reconnaissable dans « $(tab.name) »")
+        return
+    end
+    (_, dsl) = r
+    header = "# converti depuis SuperCollider par :todsl — T teste, :w sauve en .jl, u annule\n\n"
+    TK._push_undo!(ed; force = true)
+    TK.set_text!(ed, header * _align_dsl_synth_name(dsl, tab.name))
+    ed.cursor_row = 3; ed.cursor_col = 0
+    tab.synth_mode = :dsl
+    _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » en DSL : le studio suit, T teste, :w sauve en .jl (u annule)")
+    return
+end

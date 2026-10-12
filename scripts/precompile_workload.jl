@@ -1,69 +1,47 @@
 # scripts/precompile_workload.jl
 #
-# Replayed once during sysimage build so PackageCompiler captures
-# every hot inference path into the binary. Goal: every code path
-# touched on a typical `live()` startup + the first eval cycle gets
-# specialised AOT, so the cold start is dominated by the OS file
-# read rather than Julia's type inference.
-#
-# Add new workloads here as the user-facing surface grows. Keep them
-# cheap (no audio, no SC server) — this runs as part of the build,
-# not at runtime.
+# Le parcours rejoué pendant la construction de la sysimage (just
+# sysimage) : le même que la précompilation du paquet
+# (`Ressac._precompile_tour!`), plus un tour du DSL et des patterns, pour
+# que tout ce qu'un joueur touche dans ses premières minutes soit déjà
+# compilé. Aucun sous-processus, aucun socket : un faux client OSC.
 
 using Ressac
 using Ressac.SynthDSL
+Ressac._NRT_ALLOWED[] = false       # jamais de sclang pendant une compilation
 
-# ── Mini-notation: cover every parser branch ──
-patterns = String[
-    "bd hh sn hh",
-    "bd ~ ~ bd ~ ~ ~ ~",
-    "bd(3,8) cp(1,8,4)",
-    "bd? hh?0.3 sn _ hh",
-    "[bd bd] <sn cp> bd*4",
-    "bd:0 bd:1 bd:2",
-    "hh*16",
-    "bd!3 ~ sn",
-]
-parsed = [Ressac.parse_minino(p) for p in patterns]
-
-# ── Combinators: one query each so the dispatch table specialises ──
-p = pure(:bd)
-queries = []
-push!(queries, p(0//1, 4//1))
-push!(queries, (p |> fast(2))(0//1, 1//1))
-push!(queries, (p |> slow(2))(0//1, 4//1))
-push!(queries, (p |> rev)(0//1, 1//1))
-push!(queries, every(4, fast(2), p)(0//1, 8//1))
-push!(queries, jux(rev, p)(0//1, 2//1))
-push!(queries, off(1//4, fast(2), p)(0//1, 2//1))
-push!(queries, degrade(p)(0//1, 4//1))
-push!(queries, degradeBy(0.3, p)(0//1, 4//1))
-push!(queries, sometimes(fast(2), p)(0//1, 8//1))
-push!(queries, often(rev, p)(0//1, 4//1))
-push!(queries, rarely(slow(2), p)(0//1, 4//1))
-push!(queries, palindrome(p)(0//1, 4//1))
-push!(queries, iter(4, p)(0//1, 8//1))
-push!(queries, chunk(4, fast(2), p)(0//1, 4//1))
-push!(queries, stack(pure(:bd), pure(:hh))(0//1, 1//1))
-push!(queries, cat([pure(:bd), pure(:hh)])(0//1, 4//1))
-
-# ── Controls: every chain helper through one query ──
-for op in (gain(0.8), pan(0.5), lpf(2000), hpf(200), speed(0.5),
-           room(0.5), delay(0.5), shape(0.3), n(p"0 3 5"),
-           degree(p"0 2 4 7"), pump(8, 0.6))
-    push!(queries, (pure(:bd) |> op)(0//1, 1//1))
+# ── Patterns + scheduler ─────────────────────────────────────────────
+sched = Ressac.Scheduler(Ressac._PrecompileSink(); cps = 0.5)
+sched.t_start = 0.0
+for src in ("bd hh sn hh", "<bd sn cp>", "bd(3,8)", "bd*4 [hh hh] ~", "bd!2 sn")
+    p = Ressac.parse_minino(src)
+    Ressac.set_pattern!(sched, :d1, p |> Ressac.fast(2) |> Ressac.gain(0.8) |> Ressac.lpf("<400 800>"))
+    Ressac._step!(sched, 0.0); Ressac._step!(sched, 0.5)
 end
+Ressac.hush!(sched)
 
-# ── DSL synth compile (no OSC sent — just the codegen path) ──
-sig = saw(:freq) |> rlpf(800, 0.3) |> env_perc(0.001, :sustain)
-src = build_synth(:_warmup_synth, sig; params = (freq = 220, sustain = 0.3))
+# ── DSL : wrappers, pipe Elixir, compilation, génome, export ─────────
+Ressac._LIVE_SCHEDULER[] = nothing
+for text in ("@synth :pc_a (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)",
+             "@synth :pc_b (freq=110) begin\n  sin_osc(:freq) |> env_perc(0.01, :sustain) |> free_verb(0.3, 0.6)\nend",
+             "@synth :pc_c (freq=440) [sin_osc(:freq), sin_osc(:freq + 1)] .|> env_linen(0.01, :sustain, 0.1)")
+    try
+        Core.eval(SynthDSL, SynthDSL._dsl_parse_all(text))
+        g = Ressac.genome_from_dsl(text)
+        g === nothing && continue
+        Ressac.render_dsl(g, :pc)
+        Ressac.render_synthdef(g, :pc)
+        Ressac.explain_genome(g)
+        Ressac.graph_lines(g)
+        Ressac.static_prune_hints(g)
+    catch
+    end
+end
+try
+    Ressac.synthdef_to_dsl("SynthDef(\\pc_d, { |out, freq = 50, sustain = 1| var sig = Saw.ar(freq); Out.ar(out, Pan2.ar(sig, 0)) }).add;")
+catch
+end
+empty!(Ressac._SYNTH_REGISTRY); empty!(Ressac._SYNTH_ALIASES)
 
-# ── Scheduler smoke (no OSC sink, just type inference) ──
-struct _NullOSC end
-Ressac.send_osc(::_NullOSC, ::Vector{UInt8}) = nothing
-sched = Ressac.Scheduler(_NullOSC(); cps = 0.5)
-sched.t_start = time()
-sched.patterns[:d1] = pure(:bd) |> gain(0.8)
-Ressac._step!(sched, 0.1)
-
-@info "Precompile workload done — $(length(queries)) queries warmed up."
+# ── La TUI entière ───────────────────────────────────────────────────
+Ressac._precompile_tour!(sched)

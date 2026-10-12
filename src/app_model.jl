@@ -454,7 +454,13 @@ function _focused_editor_rect(m::RessacApp)
     rects = _workspace_rects(m, ws, m._last_ws_area)
     r_nt = get(rects, leaf.id, nothing)
     r_nt === nothing && return nothing
-    return _inner_rect_simple(_nt_to_rect(r_nt))
+    inner = _inner_rect_simple(_nt_to_rect(r_nt))
+    # Plusieurs onglets : la bande d'onglets prend la première ligne
+    # (voir render!(::EditorPane)), le texte commence en dessous.
+    if length(pane.tabs) > 1 && inner.height >= 2
+        return TK.Rect(inner.x, inner.y + 1, inner.width, inner.height - 1)
+    end
+    return inner
 end
 
 TK.should_quit(m::RessacApp) = m.quit
@@ -585,6 +591,34 @@ function _switch_workspace_named!(m::RessacApp, name::AbstractString)
     end
     ws = current_workspace(wm)
     ws === nothing || _fill_workspace!(ws, wm)
+    name == "DESIGN" && _ensure_synth_workspace!(m)
+    return true
+end
+
+"""
+    _reset_workspace!(m, name)
+
+Refait le workspace `name` à neuf : l'arbre est vidé puis rempli comme
+au premier démarrage (PLAY : patterns + wiki + doc ; DESIGN : texte |
+studio / doc ; EXPLORE : l'explorateur). Les panes ouvertes sont perdues.
+"""
+function _reset_workspace!(m::RessacApp, name::AbstractString)
+    wm = m.workspaces
+    idx = findfirst(w -> w.name == name, wm.workspaces)
+    idx === nothing && create_workspace!(wm, name)
+    idx === nothing || cmd_workspace_switch!(wm, idx)
+    ws = current_workspace(wm)
+    ws === nothing && return false
+    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+        try; on_close!(tab); catch; end
+    end
+    ws.tree = PaneLeaf(wm.next_pane_id, PaneImpl[], 0)
+    wm.next_pane_id += 1
+    ws.focused_pane = ws.tree.id
+    empty!(ws.floats)
+    m.zoom_leaf = 0
+    _fill_workspace!(ws, wm)
+    _push_app_log!(m, "[INFO] $(name) remis à neuf")
     return true
 end
 

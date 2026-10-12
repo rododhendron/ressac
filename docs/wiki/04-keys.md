@@ -24,7 +24,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 
 | Touche | Action |
 |---|---|
-| `Esc` | sur la dernière pane : quitter (deux fois) |
+| `Esc` | quitter Ressac (Échap deux fois) |
 | `:` | commande |
 | `/` | rechercher |
 
@@ -188,8 +188,14 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 
 | Touche | Action |
 |---|---|
-| `t / T / Space` | tester le synth (maintenir = rafale) |
+| `t / T` | tester le synth (maintenir = rafale) |
 | `D` | drone : tenir le synth / le relâcher |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Space` | snippet DSL… |
 
 **Aide**
 
@@ -209,6 +215,39 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 |---|---|
 | `g t` | synth suivant |
 | `g T` | synth précédent |
+
+## Space + … (synth)
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Space s` | source saw |
+| `Space o` | source sin_osc |
+| `Space p` | source pulse |
+| `Space w` | bruit blanc |
+| `Space l` | passe-bas résonnant |
+| `Space h` | passe-haut |
+| `Space b` | passe-bande |
+| `Space m` | filtre Moog |
+| `Space e` | enveloppe percussive |
+| `Space a` | enveloppe ADSR |
+| `Space t` | saturation |
+| `Space f` | repliement |
+| `Space c` | écrêtage |
+| `Space r` | réverb |
+| `Space d` | comb / delay |
+| `Space L` | LFO |
+| `Space n` | LFO (brut) |
+| `Space g` | amplitude |
+| `Space S` | sécurité |
+| `Space u` | UGen sans wrapper |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `Space ?` | ▸ aide |
 
 ## Sélection visuelle (v / V)
 

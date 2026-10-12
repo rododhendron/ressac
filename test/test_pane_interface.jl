@@ -62,6 +62,10 @@ function _reload_core_pane_kinds()
     Ressac.register_pane_kind!(:tutorial, Ressac._tutorial_pane_ctor)
     Ressac.register_pane_kind!(:drone, Ressac._drone_pane_ctor)
     Ressac.register_pane_kind!(:synthdoc, Ressac._synthdoc_pane_ctor)
+    # DESIGN a besoin du studio, EXPLORE de l'explorateur : sans eux, tout
+    # pont vers ces workspaces (`:synth` depuis PLAY) échoue en silence.
+    Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
+    Ressac.register_pane_kind!(:explorer, Ressac._synth_explorer_pane_ctor)
 end
 
 @testset "pane_editor — :editor kind" begin

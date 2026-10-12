@@ -674,7 +674,7 @@ insertion, pane focalisée (+ global), éditeur (rôle + éditeur + global).
 """
 function _keybar_layers(m::RessacApp)
     m.modal !== :none && return ((modal_scope(m), m),), ""
-    m.pending_leader && return ((:leader, m),), "Space"
+    m.pending_leader && return (((_focused_role(m) === :synth ? :leader_synth : :leader), m),), "Space"
     _PANE_MODE.active && return ((:pane_mode, m),), "Ctrl-w"
     m.tap_recording && return ((:tap, m),), ""
     m.piano_active && return ((:piano, m),), ""
@@ -864,7 +864,7 @@ après délai), `:pane_mode` (Ctrl-w, après délai), ou `:none`.
 """
 function _whichkey_state(m::RessacApp)
     m.modal !== :none && return (:none, "", (), false)
-    m.pending_leader && return (:leader, "Space", ((:leader, m),), true)
+    m.pending_leader && (sc = _focused_role(m) === :synth ? :leader_synth : :leader; return (sc, "Space", ((sc, m),), true))
     _PANE_MODE.active && return (:pane_mode, "Ctrl-w", ((:pane_mode, m),), false)
     ed = _active_editor(m)
     if ed !== nothing && ed.mode === :normal && ed.pending_key == 'g' &&
