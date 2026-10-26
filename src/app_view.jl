@@ -294,7 +294,6 @@ function TK.view(m::RessacApp, f::TK.Frame)
     m.paused && return
     m.tick += 1
     _ensure_default_workspace!(m)
-    _tutorial_tick!(m)                 # le tutoriel avance quand l'étape est faite
     # Tick every editor in the tree so cursor blink animates. The
     # per-pane render in _render_tree_inner! also syncs .tick, but
     # doing it up-front covers panes scrolled out of the current
@@ -314,6 +313,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
     end
     _update_live_doc!(m)
     _synth_workspace_sync!(m)         # texte ⟷ studio ⟷ doc du workspace synth
+    _tutorial_tick!(m)                # le tutoriel avance quand l'étape est faite (après la synchro : il lit le texte)
     buf = f.buffer
 
     area = f.area

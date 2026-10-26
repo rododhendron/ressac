@@ -70,12 +70,42 @@ _tscreen(app, tb, frame) = (Tachikoma.view(app, frame); join((Tachikoma.row_text
         _tk(app, :escape)
         _tk(app, '?'); _tscreen(app, tb, frame); @test p.step == 13
         _tk(app, :escape)
-        @test occursin("Et ensuite", _tscreen(app, tb, frame)) && !p.finished
+        @test occursin("Concevoir un son", _tscreen(app, tb, frame)) && !p.finished
+        # ── chapitre DESIGN : le tutoriel suit le joueur ──
+        oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
+        Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
+        dir = mktempdir(); mkpath(joinpath(dir, "plugins", "user-synths")); oldwd = pwd(); cd(dir)
+        empty!(Ressac._DRONES)
+        try
+            _tex(app, "design"); _tscreen(app, tb, frame)
+            @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+            q = Ressac._find_pane(app, Ressac.TutorialPane)
+            @test q !== nothing && q !== p && q.step == 14                   # une pane tutoriel s'est ouverte ici
+            @test Ressac._focused_role(app) === :synth                       # le focus est resté au texte
+            @test occursin("Trois panes", _tscreen(app, tb, frame))
+            _tk(app, 'T'); _tscreen(app, tb, frame); @test q.step == 15
+            (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
+            ed = ep.tabs[ep.current_tab].code_editor
+            Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)\n"); ed.mode = :normal
+            _tscreen(app, tb, frame); @test q.step == 16
+            Ressac._focus_pane!(app, studio)
+            _tscreen(app, tb, frame); @test q.step == 16                      # le studio focalisé ne suffit pas
+            i = findfirst(k -> k.name === :freq && k.kind === :control, studio.knobs); studio.focus = i
+            _tk(app, 'l'); _tscreen(app, tb, frame); @test q.step == 17
+            _tk(app, 'Y'); _tscreen(app, tb, frame); @test q.step == 18
+            _tk(app, 'D'); _tscreen(app, tb, frame); @test Ressac.drone_running(:sketch) && q.step == 18
+            _tk(app, 'D'); _tscreen(app, tb, frame); @test q.step == 19
+            _tk(app, 'U'); _tscreen(app, tb, frame)
+            @test Ressac.current_workspace(app.workspaces).name == "PLAY" && p.step == 20   # la pane de PLAY est à jour
+            @test occursin("Et ensuite", _tscreen(app, tb, frame)) && !p.finished
+        finally
+            cd(oldwd); Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds; empty!(Ressac._DRONES)
+        end
         # n sur la dernière étape termine ; p revient ; r recommence
         Ressac._focus_pane!(app, p)
         _tk(app, 'n'); @test p.finished
         @test occursin("Terminé", _tscreen(app, tb, frame))
-        _tk(app, 'p'); @test !p.finished && p.step == 13
+        _tk(app, 'p'); @test !p.finished && p.step == 20
         _tk(app, 'r'); @test p.step == 1
         # sauter des étapes au clavier, défiler
         _tk(app, 'n'); _tk(app, 'n'); @test p.step == 3
