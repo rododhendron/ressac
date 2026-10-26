@@ -40,9 +40,9 @@ This repo is organised around **local files with clear
 responsibilities** rather than a tight module hierarchy. The
 top-level rules:
 
-- **One concern per file** — `modal_*.jl` per modal, `pattern_editor.jl`
-  for the playhead + pattern ops, `input_modes.jl` for tap+piano,
-  `autocomplete.jl` for completion, etc. When a file passes ~500 LOC,
+- **One concern per file** — `modal_*.jl` per modal, `editor_pattern.jl`
+  for the playhead + pattern ops, `app_tap_piano.jl` for tap+piano,
+  `editor_autocomplete.jl` for completion, etc. When a file passes ~500 LOC,
   ask whether it has two concerns hiding inside.
 - **No unnecessary abstractions** — three similar lines is better than
   a premature helper. Add structure when the same shape appears in
@@ -102,9 +102,9 @@ The mental flow that works in this codebase:
    pattern op → `pattern_editor.jl`. New control → `controls.jl`. New
    combinator → `combinators.jl`. New DSL UGen → `synth_dsl.jl`. New
    snippet → `snippets.jl`. New starter → `tui_docs.jl::_STARTER_PACKS`.
-3. **Register dispatch if needed** — ex-commands in `app.jl::_register_*!`,
-   leader snippets in `leader_snippets.jl::_LEADER_SNIPPETS`, key
-   handlers in `app.jl::update!`.
+3. **Register dispatch if needed** — ex-commands in `app_commands.jl`
+   (`_register_*!`), leader snippets in `editor_snippets.jl`, keys in
+   `app_keymap.jl` or the pane's own `bind!` calls.
 4. **Update the wiki** — at minimum the `02-patterns` or `06-modes`
    page if it's user-visible.
 5. **Add a test.**
@@ -132,28 +132,34 @@ Quick map:
 
 ```
 src/
-  app.jl                 main loop + dispatch + render orchestration
-  scheduler.jl           real-time scheduling loop (the hot path)
-  core.jl                Pattern{T} + Event{T} types
-  combinators.jl         pure, fast, slow, jux, off, every, …
-  algebra.jl             stack, cat, mask
-  controls.jl            gain, lpf, pan, n, pump, …
-  mininotation.jl        the p"…" parser
-  synth_dsl.jl           Julia → SuperCollider DSL
-  synth_library.jl       built-in synth recipes
-  snippets.jl            named multi-line snippet templates
-  modal_*.jl             one file per modal (browser / mixer / …)
-  pattern_editor.jl      playhead, zoom/shift/silence/subdivide
-  input_modes.jl         tap + piano
-  leader_snippets.jl     Space-leader expansion + placeholder nav
-  autocomplete.jl        Tab + ghost + ex-command completion
-  editor_ops.jl          vim word motions + visual + . repeat
-  osc.jl                 OSC encode/decode (no networking)
-  plugins.jl             plugin loader + the three live registries
-  tui_scope.jl           scope listener (UDP 57121) + external trigger
-
-docs/wiki/                in-app docs (browsable via :wiki)
-install/                  per-OS one-shot installer scripts
+  Ressac.jl                include order + exports (the only file map)
+  core_*.jl                Pattern{T}, mini-notation, combinators, controls, tuning
+  io_osc.jl / io_scheduler.jl   OSC encoding · the real-time loop
+  io_scope.jl              OSC listener (UDP 57121): scope, meters, SC replies
+  live_boot.jl / live_api.jl    start_live!, live(), @dN, cps!
+  plugin_*.jl / extension_registry.jl   plugins, docs and snippets registries
+  synth_dsl.jl             Julia → SuperCollider DSL
+  synth_library.jl         built-in synth recipes
+  genome_*.jl, ga_*.jl     the GA explorer: genome, validity, render, export, prune
+  wave_sculpt.jl           knobs and structural edits on a genome
+  pane_*.jl                one file per pane kind (editor, log, doc, waveform, drone…)
+  modal_*.jl               one file per modal (browser, mixer, palette…)
+  workspace_*.jl           split tree, commands, resize, persistence, pane mode
+  keymap.jl                the key registry: scopes, layers, mixins, help sections
+  app_model.jl             RessacApp and its accessors
+  app_layers.jl            the key stack (transient → modal → pane → mode → global)
+  app_key_engines.jl       the key engines (typing, vim, leader, piano, tap…)
+  app_input.jl             mouse, routing to the focused pane, request drains
+  app_ex_registry.jl       ex-command tables, registration, dispatch, history
+  app_commands.jl          the ex commands themselves
+  app_livedoc.jl           :doc, K, the DOC pane that follows the cursor
+  app_modes.jl             PLAY / DESIGN / EXPLORE: commands per mode
+  app_keymap.jl            the app's bindings (global, editor, modes, leader…)
+  app_view.jl              TK.view: chrome, tree, modal, hover
+  app_*.jl (others)        one concern each: patterns, synth, drone, sculpt, scope…
+  editor_*.jl              the text editor: pattern ops, snippets, autocomplete, vim ops, fuzzy
+  content_*.jl             markdown, glossary, wiki pages, livedoc tables
+  tk_*.jl                  Tachikoma helpers (scroll panes, pickers, patches)
 scripts/                  live.jl, build_sysimage.jl, sc-setup.scd
 test/                     629 tests
 ```

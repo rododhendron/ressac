@@ -42,8 +42,7 @@ the caller's responsibility (editor insert at cursor).
 
 Bad kinds warn + skip; the rest of the spec still applies.
 
-`snippet_name` is consumed by Task 13's user-config override stack;
-in Task 12 it's a noop kwarg.
+`snippet_name` feeds the user-config override stack.
 """
 function apply_snippet_panes!(wm::WorkspaceManager, panes_spec::AbstractVector,
                               mode::Symbol; snippet_name::AbstractString = "")
@@ -53,7 +52,7 @@ function apply_snippet_panes!(wm::WorkspaceManager, panes_spec::AbstractVector,
     # User config override: if ~/.config/ressac/config.toml (loaded
     # into _RESSAC_CONFIG) defines [panes.snippets."<name>"].panes,
     # that spec wins over the plugin's. Last-wins, matching the
-    # sub-project 7 convention.
+    # same convention as docs and snippets.
     if !isempty(snippet_name)
         cfg = _RESSAC_CONFIG[]
         if haskey(cfg.panes_overrides, snippet_name)

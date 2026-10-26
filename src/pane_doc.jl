@@ -1,5 +1,5 @@
 # src/pane_doc.jl
-# :doc pane — renders a DocEntry from the sub-project 7 registry.
+# :doc pane — renders a DocEntry from the extension registry.
 
 mutable struct DocPane <: PaneImpl
     name::String              # the DocEntry name (registry key)

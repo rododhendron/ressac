@@ -1,6 +1,6 @@
 # src/genome_operators.jl
 # Opérateurs = fonctions (Genome[, rng]) -> mutent en place, puis repair!.
-# Paramétrique (étape 1) + structurel/croisement (étape 2, Task 6).
+# Paramétrique, structurel, croisement.
 using Random
 
 _copy_genome(g::Genome) = deserialize_genome(serialize_genome(g))

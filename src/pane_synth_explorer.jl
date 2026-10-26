@@ -8,11 +8,11 @@ const _GA_GEN_SIZE = 9
 const _GA_GRID_COLS = 3
 
 # Seam app-level : le pane n'a pas de handle WorkspaceManager. On poste
-# (nom, dsl) ici ; le routeur de touches de l'app (tui_app.jl) draine.
+# (nom, dsl) ici ; l'app draine après chaque touche (app_input.jl).
 const _EXPLORER_EXPORT_REQUEST = Ref{Union{Nothing,Tuple{String,String}}}(nothing)
 
 # Seam : ouvrir l'onde du candidat focalisé dans un pane :waveform.
-# Porte (génome sérialisé, label) ; drainé par tui_app (_drain_explorer_waveform!).
+# Porte (génome sérialisé, label) ; drainé par l'app (_drain_explorer_waveform!).
 const _EXPLORER_WAVEFORM_REQUEST = Ref{Union{Nothing,Tuple{Any,String}}}(nothing)
 
 # Seam : ouvrir le candidat focalisé en mode SCULPT (pane :waveform sculpt).
@@ -660,7 +660,7 @@ function handle_key!(p::SynthExplorerPane, evt)
         return _explorer_param_key!(p, evt)
     end
     if p.keyboard_mode
-        return _explorer_keyboard_key!(p, evt)    # Task 11
+        return _explorer_keyboard_key!(p, evt)
     end
     # Mode principal : tout passe par le registre (scope :explorer).
     return dispatch!(((:explorer, p),), evt)

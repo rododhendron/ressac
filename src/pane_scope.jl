@@ -56,7 +56,7 @@ handle_key!(::ScopePane, evt) = false
 
 title(p::ScopePane) = "scope:$(p.subtype)"
 
-# Per-subtype dispatch — extracted from tui_app's legacy
+# Per-subtype dispatch — one renderer per scope kind,
 # `_render_app_scope` body. The reservoir variants read the attached
 # reservoir + span from the module-level `_APP_SCOPE_*` singletons, so
 # they render here without an app handle just like the OSC-fed scopes.

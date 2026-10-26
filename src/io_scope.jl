@@ -115,7 +115,7 @@ const _APP_SCOPE_RESERVOIR_NAME = Ref{Symbol}(:none)
 # width. Part of the singleton scope state (one attached reservoir →
 # one span), so it lives here alongside its siblings rather than on
 # RessacApp — that lets the workspace ScopePane render without an app
-# handle. The +/- keys adjust it; the legacy chrome reads it too.
+# handle. The +/- keys adjust it; the status line reads it too.
 const _APP_SCOPE_RESERVOIR_SPAN = Ref{Float64}(1.5)
 # History ring size — large enough to cover a few seconds of activity
 # at typical step rates (1000 Hz → 4 s @ 4000 entries). Memory cost is
@@ -158,8 +158,7 @@ const _APP_ORBIT_PEAK    = Ref{Vector{Float32}}(zeros(Float32, 12))
 const _APP_ORBIT_PEAK_TS = Ref{Vector{Float64}}(zeros(Float64, 12))
 const _PEAK_HOLD_SEC     = 1.5
 
-# LiveModel scope dispatch / listener / packet decoder removed in
-# phase-3 cleanup. The new path lives below: `_app_scope_set!`,
+# The scope path: `_app_scope_set!`,
 # `_app_scope_listener_loop`, the rendering helpers, and the external
 # OSC trigger / RMS receivers.
 
@@ -293,8 +292,7 @@ end
 # Rendering helpers
 # ---------------------------------------------------------------------
 
-# `_scope_panel_height` + `_ScopePanel` widget (LiveModel-bound)
-# removed in phase-3 cleanup. RessacApp has its own scope renderers
+# RessacApp has its own scope renderers
 # (`_app_render_amp`, `_app_render_wave`, `_app_render_spectrum` in
 # app.jl) which use Tachikoma's buffer API directly.
 

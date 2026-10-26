@@ -95,7 +95,7 @@ register_section_handler!(:julia, _handle_julia)
     _handle_samples(plugin_dir, section_data, plugin_name)
 
 Process `[samples]`: a multi-shape section that may contain any of
-`roots`, `bank`, and `metadata`. Backward-compatible with sub-project 1's
+`roots`, `bank`, and `metadata`. Backward-compatible with the original
 roots-only manifests.
 
 - `roots = [...]`: scan each path's subdirectories the SuperDirt way

@@ -68,7 +68,7 @@ end
     cmd_workspace_switch!(wm, idx)
 
 Jump to workspace at `idx` (1-based). No-op if out of range. Bound
-to Ctrl-1..9 in Task 15.
+to Ctrl-1..9.
 """
 function cmd_workspace_switch!(wm::WorkspaceManager, idx::Int)
     1 <= idx <= length(wm.workspaces) || return

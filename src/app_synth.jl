@@ -358,7 +358,7 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
             _push_app_log!(m, "[ERROR] éval DSL : $(sprint(showerror, err))")
         end
     else
-        # SC raw mode (legacy): ship the buffer verbatim.
+        # SuperCollider brut (.scd) : on envoie le buffer tel quel.
         src = _align_synthdef_name(src, tab.name)
         send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay",
                                               Any[tab.name, src, extra...])))

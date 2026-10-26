@@ -34,7 +34,7 @@ mutable struct Population
     energy_target::Float64      # cible d'énergie (ressort de parcimonie)
     stiffness::Float64          # raideur du ressort (faible = oscille/déborde)
 end
-# Compat : restauration de session (Task 14) passe 4 args positionnels.
+# Compat : la restauration de session passe 4 args positionnels.
 Population(c::Vector{Candidate}, b::Genome, g::Int, r::Float64) =
     Population(c, b, g, r, length(c), 0.5, 1, :bayesian,
                maximum((x.id for x in c); init = 0) + 1,

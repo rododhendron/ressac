@@ -27,7 +27,7 @@ function _snip_context(m::RessacApp)
     return :patterns
 end
 
-# Category for a SnippetEntry = first tag (legacy `.category` was a
+# Category for a SnippetEntry = first tag (the old `.category` was a
 # single string; SnippetEntry stores `tags::Vector{Symbol}`). Empty
 # string when no tags are declared.
 _snip_category_of(s::SnippetEntry) =

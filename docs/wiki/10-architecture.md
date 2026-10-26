@@ -81,10 +81,14 @@ src/
 
   ── L'application (chaque fichier prend un m::RessacApp) ──
   app_model.jl             ★ RessacApp + accesseurs (_active_editor,
-                             _focused_role, …) + workspace par défaut
-  app_input.jl             ★ TK.update! clavier/souris : barre de
-                             commande → panic → mode pane → modal →
-                             pane focalisée → flux patterns
+                             _focused_pane_impl…), workspaces par défaut
+  app_layers.jl            ★ la pile des couches de touches et le résolveur
+  app_key_engines.jl         TK.update! clavier : les moteurs (frappe, vim, leader…)
+  app_input.jl               TK.update! souris, routage vers la pane, drains
+  app_ex_registry.jl         commandes ex : tables, enregistrement, dispatch, historique
+  app_commands.jl            les commandes ex et leurs handlers
+  app_livedoc.jl             :doc, K, la pane DOC qui suit le curseur
+  app_modes.jl               PLAY / DESIGN / EXPLORE : commandes par mode
   app_editor.jl              motions vim, nudge des nombres, raccourcis
   app_patterns.jl            mute/solo, preview, eval @dN + cascade
   app_scope.jl               :scope + rendu des 12 vues
@@ -93,14 +97,14 @@ src/
   app_commands.jl            tables ex (littéral/regex/spécial) + commandes
   app_modal.jl               infra modaux + guide/tutoriel/explain
   app_view.jl              ★ TK.view : chrome + arbre de panes + modal
-  tui_pattern_editor.jl      playhead, zoom/shift/subdivise dans p"…"
-  tui_leader_snippets.jl     Space-leader : templates + placeholders
-  tui_autocomplete.jl        Tab : identifiants, ghost, commandes
-  tui_editor_ops.jl          opérations texte pures
-  tui_input_modes.jl         tap / piano / bpm
-  tui_hints.jl               candidats de complétion
-  tui_livedoc.jl             docs UGen/params, _GUIDE_LINES
-  tui_scope.jl               écoute OSC des scopes, _APP_SCOPE_*
+  editor_pattern.jl      playhead, zoom/shift/subdivise dans p"…"
+  editor_snippets.jl     Space-leader : templates + placeholders
+  editor_autocomplete.jl        Tab : identifiants, ghost, commandes
+  editor_vim_ops.jl          opérations texte pures
+  app_tap_piano.jl         tap / piano / bpm
+  editor_fuzzy.jl               candidats de complétion
+  content_livedoc.jl             docs UGen/params, _GUIDE_LINES
+  io_scope.jl               écoute OSC des scopes, _APP_SCOPE_*
   modal_*.jl                 browse, mixer, lib, sculpt, wiki, snip, sccode
 
   ── Contenu / configuration ──
@@ -126,15 +130,15 @@ _SAMPLE_REGISTRY / _INSTRUMENT_REGISTRY / _SYNTH_REGISTRY
            :w à chaud).
   Lus par : browse, complétion, ghost, snippets, event_to_osc.
 
-_APP_SCOPE_TYPE, _APP_SCOPE_DATA, _APP_SPECTROGRAM_HISTORY   tui_scope.jl
+_APP_SCOPE_TYPE, _APP_SCOPE_DATA, _APP_SPECTROGRAM_HISTORY   io_scope.jl
   Écrits par : le listener OSC (/ressac/scope/*), déclenché par :scope.
   Lus par : _render_app_scope (app_scope.jl) à chaque frame.
 
-_GHOST_USAGE                                         tui_autocomplete.jl
+_GHOST_USAGE                                         editor_autocomplete.jl
   Fréquence d'usage des complétions, persistée dans
   ~/.config/ressac/ghost_usage.json.
 
-_LEADER_SNIPPETS / _LEADER_ACTIONS / _LEADER_LABELS  tui_leader_snippets.jl
+_LEADER_SNIPPETS / _LEADER_ACTIONS / _LEADER_LABELS  editor_snippets.jl
   Constantes, lues par le dispatcher Space-leader et le footer.
 
 _EVAL_MODE                                           live_api.jl
@@ -202,7 +206,7 @@ Plus quelques canaux annexes :
 /dirt/loadSampleFolder   :import-wav — SC charge une nouvelle banque.
 ```
 
-Entrant (UDP 57121, écouté par tui_scope.jl) :
+Entrant (UDP 57121, écouté par io_scope.jl) :
 
 ```
 /ressac/scope/amp        RMS par frame (60 Hz)

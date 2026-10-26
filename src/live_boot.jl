@@ -1,10 +1,6 @@
-# Entry point for the multi-line TUI. The real work lives in
-# `tui_model.jl`, `tui_buffer.jl`, `tui_eval.jl`, `tui_search.jl`,
-# `tui_bindings.jl`, and `tui_view.jl`, which are all included by
-# `Ressac.jl` before this file. This module just defines the public
-# session-management API: `start_live!`, `stop_live!`, `restart_live!`,
-# `live`, plus the implicit-scheduler helpers (`d!`, `unset!`,
-# `hush_all!`, `cps!`).
+# The live session: `start_live!`, `stop_live!`, `restart_live!`, `live`
+# (which boots the Tachikoma app on a RessacApp), plus the
+# implicit-scheduler helpers (`d!`, `unset!`, `hush_all!`, `cps!`).
 
 const _LIVE_SCHEDULER = Ref{Union{Scheduler,Nothing}}(nothing)
 
@@ -73,8 +69,7 @@ end
     live(; host, port, cps, lookahead)
 
 Boot the Tachikoma-based TUI on top of an active (or freshly-started)
-scheduler. The legacy `_ressac_app!(::LiveModel)` loop was removed in
-the phase-3 LiveModel cleanup — `Tachikoma.app(RessacApp(...))` is now
+scheduler. `Tachikoma.app(RessacApp(...))` is
 the single entry point.
 """
 function live(; host::AbstractString = "127.0.0.1",

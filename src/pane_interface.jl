@@ -43,7 +43,7 @@ function title end
     default_mode(p) -> Symbol
 
 `:tile` or `:float`. Override only for kinds that should float by
-default (e.g. transient pickers in future sub-projects).
+default (e.g. transient pickers).
 """
 default_mode(::PaneImpl) = :tile
 
@@ -80,7 +80,7 @@ const _PANE_KINDS = Dict{Symbol,Function}()
 
 Register `ctor(args::Dict)::PaneImpl` under `name`. Shadowing an
 existing entry emits a warning but is allowed (so plugins can
-override core deliberately, matching the sub-project 7 convention).
+override core deliberately, like docs and snippets).
 """
 function register_pane_kind!(name::Symbol, ctor::Function)
     if haskey(_PANE_KINDS, name)
@@ -105,7 +105,7 @@ end
 
 
 # ── Shared chrome helpers for PaneImpl render! ─────────────────────
-# `_render_pane_block!` in tui_app.jl wants an `m::RessacApp` to read
+# `_render_pane_block!` in app_view.jl wants an `m::RessacApp` to read
 # theme/focus state. PaneImpl render! receives only (pane, area, buf)
 # — no app reference. These simpler variants draw a neutral border so
 # every pane kind looks consistent inside a workspace tile.

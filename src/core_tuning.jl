@@ -344,7 +344,7 @@ function stern_brocot(name::Symbol = :sb; depth::Integer = 5)
 end
 
 # ── Built-in library: the ~60 12-EDO scales ─────────────────────────
-# Carried over from the legacy core_controls system, now reified as
+# Formerly in core_controls, now reified as
 # Scale values. Cents = semitone * 100. Period = 1200 (octave).
 
 const _BUILTIN_12EDO_SCALES = Dict{Symbol,Vector{Int}}(

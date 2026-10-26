@@ -364,7 +364,7 @@ end
     _focused_role(m) -> Symbol
 
 `:patterns` / `:synth` for an editor pane, `:other` for a non-editor
-pane (log / doc / scope / tuning) or no focus. Replaces the legacy
+pane (log / doc / scope / tuning) or no focus. Replaces the old
 `m.focus` field — the workspace tree is now authoritative.
 """
 function _focused_role(m::RessacApp)
@@ -471,11 +471,7 @@ TK.should_quit(m::RessacApp) = m.quit
 Make sure the workspace manager has at least one workspace with a
 :editor pane. Idempotent — safe to call multiple times.
 
-In Task 8 of the sub-project 9 implementation, this is invoked by
-start_live! (and on first access) so the workspace tree exists for
-later tasks (split commands, persistence). The legacy view() path
-still drives the visible UI; Task 15 swaps view to dispatch through
-the workspace manager and removes the legacy m.layout_* fields.
+Invoked at boot and on every workspace switch.
 """
 # Les trois façons de travailler. Créés au premier rendu ; chacun se
 # remplit à la demande (première visite) : PLAY = patterns, DESIGN = une

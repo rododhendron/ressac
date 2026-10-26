@@ -25,7 +25,7 @@ const ControlPattern = Pattern{ControlMap}
 Lift a single `Pattern{Symbol}` event value into the ControlMap shape:
 `:bd` → `{:s => :bd}`; `Symbol("bd:1")` → `{:s => :bd, :n => 1}`.
 
-Used by `_lift_to_control` to bridge the legacy sample-name DSL with
+Used by `_lift_to_control` to bridge the sample-name form with
 the new effect DSL. The `:N` suffix split is what the K preview already
 does (see `_WORD_RX` in tui_bindings.jl) — same convention, same parse.
 """

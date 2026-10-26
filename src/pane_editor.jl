@@ -105,7 +105,7 @@ function handle_key!(p::EditorPane, evt)
     1 <= p.current_tab <= length(p.tabs) || return false
     # Delegate straight to the underlying TK.CodeEditor. The eval
     # shortcuts (`e` for patterns slots, `T` for synth SC) are routed
-    # at the app level in tui_app.jl — they need the RessacApp +
+    # at the app level (app_view.jl) — they need the RessacApp +
     # scheduler, which the PaneImpl contract doesn't carry — so there
     # are no per-pane eval stubs here.
     return TK.handle_key!(p.tabs[p.current_tab].code_editor, evt)

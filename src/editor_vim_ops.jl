@@ -66,7 +66,7 @@ function _word_back_bounds(line::AbstractString, col::Int; big::Bool=false)
 end
 
 function _vim_word_motion!(ed::TK.CodeEditor, ch::Char)
-    # Forward to the multi-line-aware implementation in tui_app.jl.
+    # Forward to the multi-line-aware implementation (app_editor.jl).
     # The original single-line version stopped at EOL — `w` could get
     # stuck on the last char of a line rather than wrapping.
     kind = (ch == 'W' || ch == 'B') ? :big : :small
@@ -118,7 +118,7 @@ function _vim_op_motion!(m::RessacApp, ed::TK.CodeEditor, op::Char, motion::Char
         return
     end
     # Word motions (w/b/W/B/e/E) — delegate to the multi-line-aware,
-    # scroll-preserving impl in tui_app.jl.
+    # scroll-preserving impl (app_editor.jl).
     if motion in ('w', 'b', 'W', 'B', 'e', 'E')
         _op_with_motion!(m, ed, op, motion)
     end

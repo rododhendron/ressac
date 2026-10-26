@@ -8,8 +8,8 @@ The full design is in `docs/journal/20260518_plan_dev.md`.
 """
 module Ressac
 
-# Module-wide Tachikoma alias — hoisted here so pane impls loaded
-# before tui_app.jl can reference TK.CodeEditor / TK.Rect.
+# Module-wide Tachikoma alias, hoisted here so every file can write
+# TK.CodeEditor / TK.Rect.
 using Tachikoma
 using Random
 const TK = Tachikoma
@@ -30,7 +30,7 @@ include("io_osc.jl")             # OSC wire format (encode/decode)
 include("io_scheduler.jl")       # real-time loop + locked snapshots
 
 # ─── Shared TUI helpers (used by autocomplete + modals + app) ─────
-include("tui_hints.jl")          # _fuzzy_score, _COMMAND_NAMES (complétion)
+include("editor_fuzzy.jl")       # _fuzzy_score, _COMMAND_NAMES (complétion)
 include("keymap.jl")             # registre de bindings (pur) — barre, aide, which-key
 
 # ─── Live session lifecycle ───────────────────────────────────────
@@ -65,7 +65,7 @@ include("ga_analysis.jl")        # genetic distance, clustering, gene distributi
 # ─── Extension registry — plugin-contributed docs + snippets ──────
 include("extension_registry.jl")
 
-# ─── Pane interface — sub-project 9 foundation ─────────────────────
+# ─── Pane interface ─────────────────────
 include("pane_interface.jl")
 include("workspace_manager.jl")
 include("pane_editor.jl")
@@ -89,9 +89,9 @@ include("snippet_panes.jl")
 include("command_line.jl")       # CommandLine widget — ':' / '/' chrome
 
 # ─── Static docs / starter packs / scope state ────────────────────
-include("tui_livedoc.jl")        # _GUIDE_REFERENCE_LINES, _SYNTH_GUIDE_LINES,
+include("content_livedoc.jl")    # docs des UGens SC, _lookup_livedoc, guide du DSL,
                                  # livedoc lookups
-include("tui_scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
+include("io_scope.jl")           # écoute OSC 57121 : scope, mètres, réponses SC,
                                  # external OSC triggers
 
 # ─── Content / configuration / theming ────────────────────────────
@@ -114,20 +114,23 @@ include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication �
 include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
 include("app_hover.jl")          # bulle de glossaire au survol (avant les étapes clavier)
 include("app_layers.jl")         # la pile des couches de touches, le résolveur
-include("app_input.jl")          # TK.update! clavier/souris, routage panes/modaux
+include("app_input.jl")          # TK.update! souris, routage vers la pane focalisée, drains
+include("app_key_engines.jl")    # TK.update! clavier : les moteurs (la pile : app_layers.jl)
 include("app_editor.jl")         # motions vim, nudge, raccourcis pattern
-include("tui_pattern_editor.jl") # playhead + édition contextuelle de mininotation
-include("tui_leader_snippets.jl")# Space-leader : templates + placeholders
-include("tui_autocomplete.jl")   # Tab : identifiants, ghost, commandes ex
-include("tui_editor_ops.jl")     # opérations texte pures (mots, lignes)
-include("tui_input_modes.jl")    # tap / piano / bpm
+include("editor_pattern.jl")     # playhead + édition contextuelle de mininotation
+include("editor_snippets.jl")    # Space-leader : templates + placeholders
+include("editor_autocomplete.jl")# Tab : identifiants, ghost, commandes ex
+include("editor_vim_ops.jl")     # opérations texte pures (mots, lignes)
+include("app_tap_piano.jl")      # tap / piano / bpm
 include("app_patterns.jl")       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
 include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION
 include("app_synth_workspace.jl")# workspace synth : texte ⟷ studio ⟷ doc
 include("app_transport.jl")      # rec / export / panic / hush
-include("app_commands.jl")       # tables ex + commandes + historique
+include("app_ex_registry.jl")    # commandes ex : tables, enregistrement, dispatch, historique
+include("app_commands.jl")       # les commandes ex et leurs handlers
+include("app_livedoc.jl")        # :doc, K, la pane DOC qui suit le curseur
 include("app_modes.jl")          # PLAY / DESIGN / EXPLORE : scopes et commandes par mode
 include("app_modal.jl")          # infra modaux + guide/tutorial/explain
 include("modal_browser.jl")      # :browse
@@ -382,7 +385,7 @@ end
         _EVAL_MODE[] = (:immediate, 0)
     end
 
-    # (LiveModel dispatcher + TUI.view warmup removed in the phase-1
+    # (The TUI warmup is `_precompile_tour!` below ;
     # cleanup that deleted tui_view.jl / tui_bindings.jl / tui_browser.jl.
     # RessacApp coverage is below — exhaustive enough that first-keystroke
     # JIT cost is comparable.)
@@ -455,8 +458,6 @@ end
     _precompile_tour!(sched)
 
     # Fuzzy-match + completion engine warmup (callable from RessacApp;
-    # LiveModel-rendered overlays + dispatcher exercise that lived here
-    # removed in phase-1 cleanup).
     try
         _fuzzy_score("sa", "samples")
         _fuzzy_score("xy", "samples")
@@ -497,7 +498,7 @@ end
         empty!(_INSTRUMENT_REGISTRY)
     end
 
-    # Module-level hot paths still worth warming (no LiveModel needed):
+    # Module-level hot paths still worth warming:
     # mouse-wheel literal bump + gate combinator. Scale-degree
     # warming lands in Step C once `scale()` / `note()` exist.
     try

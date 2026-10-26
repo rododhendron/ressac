@@ -165,7 +165,7 @@ end
 
 Render the global log tail (or the completion picker when active)
 into `area`. Extracted from `view()` so the new workspace dispatcher
-(sub-project 10) can call it as a chrome row independently of the
+can call it as a chrome row independently of the
 workspace area. Behavior-preserving extraction — no visible change.
 """
 function _render_global_log_tail!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
@@ -203,8 +203,8 @@ _nt_to_rect(nt::NamedTuple) = TK.Rect(nt.x, nt.y, nt.w, nt.h)
 Walk the workspace tree and call each leaf's render! against its
 computed rect. Containers recurse. As a side effect, populates
 `_focused_editor_rect(m)` from the leaf currently holding `_active_editor(m)`
-(via its EditorPane wrapper) so legacy overlay paths (eval flash,
-playhead, ghost) and the mouse handler keep working until Task 6
+(via its EditorPane wrapper) so the overlays (eval flash, playhead,
+ghost) and the mouse handler find it.
 rewires them through `_compute_rects` directly.
 """
 function _render_tree!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
