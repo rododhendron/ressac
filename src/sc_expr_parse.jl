@@ -40,8 +40,6 @@ end
 
 # Le nœud d'un argument : un ConstArg/ControlRef est enveloppé pour
 # qu'une sortie soit toujours un nœud.
-_sc_node_id(p::_ScParser, a::Arg) =
-    a isa NodeRef ? a.id : add_node!(p.g, :MulAdd, :ar, Arg[a, ConstArg(1.0), ConstArg(0.0)])
 
 _sc_const(a::Arg) = a isa ConstArg ? a.value : nothing
 

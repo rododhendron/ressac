@@ -173,7 +173,7 @@ end
         @test !isempty(mk)
         for scope in keys(Ressac._KEYMAP)
             Ressac.scope_layer(scope) === :pane || continue
-            Ressac._scope_in_mode(scope, mode) || continue
+            Ressac.scope_in_mode(scope, mode) || continue
             # :editor documente le moteur vim du texte ; qu'un geste de mode
             # passe avant une motion (t/T « jusqu'au caractère » dans DESIGN)
             # est le prix assumé, pas un conflit de registre

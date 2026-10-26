@@ -196,7 +196,6 @@ in workspace_manager.jl); pane render! consumes Rect via `.width` /
 `.height` accessors.
 """
 _nt_to_rect(nt::NamedTuple) = TK.Rect(nt.x, nt.y, nt.w, nt.h)
-_rect_to_nt(r::TK.Rect)     = (x = r.x, y = r.y, w = r.width, h = r.height)
 
 """
     _render_tree!(node, rects, buf, m)

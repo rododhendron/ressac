@@ -79,12 +79,6 @@ end
 
 _dr_stop_all!(::DronePane) = drone_stop_all!()
 
-# T : réévaluer le drone courant depuis son texte (l'éditeur s'en charge).
-function _dr_reeval!(p::DronePane)
-    d = _dr_current(p)
-    d === nothing && return
-    _DRONE_PANE_REQUEST[] = (:reeval, d.id)
-end
 
 # ── Rendu ────────────────────────────────────────────────────────────
 _dr_fmt(v::Float64) = (isinteger(v) && abs(v) < 1e7) ? string(Int(v)) : string(round(v; sigdigits = 5))

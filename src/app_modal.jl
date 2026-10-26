@@ -481,7 +481,6 @@ function _close_help!(m::RessacApp)
     return
 end
 
-_toggle_help!(m::RessacApp) = m.modal === :help ? _close_help!(m) : _open_help!(m)
 
 """
     _help_lines(m) -> Vector{Tuple{String,Symbol}}

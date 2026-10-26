@@ -279,11 +279,6 @@ function _acoustic_cues(d::AbstractVector)
     return cues
 end
 
-_control_role(c::Symbol) =
-    c === :freq    ? " — hauteur jouée (point de greffe interne libre)" :
-    c === :sustain ? " — durée de la note" :
-    c === :gain    ? " — volume" :
-    c === :release ? " — temps de relâche" : ""
 
 # ── Décomposition en composantes jouables (Phase 2) ────────────────
 # Chaque composante = un sous-graphe enraciné sur un nœud → un Genome

@@ -1,5 +1,4 @@
 using Tachikoma
-const _WIKI_TK = Tachikoma
 
 # Wiki — navigable in-app documentation, sourced from docs/wiki/*.md.
 #

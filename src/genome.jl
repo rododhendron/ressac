@@ -23,7 +23,6 @@ mutable struct Genome
 end
 Genome() = Genome(Dict{Int,UGenNode}(), 0, 1, default_controls())
 
-const CONTROL_NAMES = (:freq, :sustain, :gain)
 
 # Contrôles éditables d'un son + leurs valeurs par défaut.
 default_controls() = Dict{Symbol,Float64}(

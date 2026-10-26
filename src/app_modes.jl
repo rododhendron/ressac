@@ -30,8 +30,6 @@ _mode_label(mode::Symbol) = get(_WORKSPACE_OF_MODE, mode, "PLAY")
 
 # Les scopes de touches d'un mode : déclarés avec chaque `scope!(…; modes = …)`,
 # voir keymap.jl (`scope_in_mode`, `scopes_for_mode`).
-_scope_in_mode(scope::Symbol, mode::Symbol) = scope_in_mode(scope, mode)
-
 # ── Commandes par mode ────────────────────────────────────────────────
 const _COMMAND_MODES = Dict{String,Tuple{Vararg{Symbol}}}()
 function _command_modes!(modes::Tuple{Vararg{Symbol}}, verbs::AbstractString...)

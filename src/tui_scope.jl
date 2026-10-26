@@ -208,7 +208,6 @@ function _ensure_app_scope_listener!()
     end
 end
 
-_scope_listener_ok() = _SCOPE_LISTENER_SOCKET[] !== nothing
 
 function _app_scope_listener_loop()
     sock = _SCOPE_LISTENER_SOCKET[]

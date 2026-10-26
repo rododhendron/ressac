@@ -103,7 +103,6 @@ function _pane_new(kind::Symbol, args::AbstractDict)
     return ctor(args)
 end
 
-list_pane_kinds() = sort!(collect(keys(_PANE_KINDS)))
 
 # ── Shared chrome helpers for PaneImpl render! ─────────────────────
 # `_render_pane_block!` in tui_app.jl wants an `m::RessacApp` to read

@@ -1,7 +1,8 @@
 # src/app_input.jl
-# Entrée : TK.update! clavier et souris, routage vers la barre de
-# commande, le mode pane, les modaux, la pane focalisée, puis le flux
-# legacy de la pane patterns. Drains des requêtes postées par les panes.
+# Entrée : TK.update! souris, les moteurs du clavier (ce qui n'est pas une
+# touche nommée du registre — voir app_layers.jl pour la pile des
+# couches), le routage vers la pane focalisée, les drains des requêtes
+# postées par les panes.
 
 """
     TK.update!(m::RessacApp, evt::TK.MouseEvent)
@@ -155,7 +156,6 @@ function _drain_requests!(m::RessacApp)
     _drain_explorer_waveform!(m)
     _drain_explorer_sculpt!(m)
     _drain_sculpt_use!(m)
-    _drain_drone_request!(m)
     _drain_synthdoc_request!(m)
     return
 end
@@ -376,22 +376,6 @@ function _click_into_editor!(ed::TK.CodeEditor, rect::TK.Rect, x::Int, y::Int)
     ed.cursor_row, ed.cursor_col = rc
 end
 
-"""
-    _click_tab_bar!(m, x)
-
-A click in the tab strip switches to the tab nearest the click
-column. The TabBar lays tabs out left-to-right with single-space
-padding, so we approximate by dividing the x offset by the average
-tab width.
-"""
-function _click_tab_bar!(m::RessacApp, x::Int)
-    # Synth tab strip was rendered inside the legacy view layout that
-    # sub-projet 10 removed. The strip will come back when the synth
-    # side panel is folded into the workspace tree as a pane kind;
-    # until then, this handler is a no-op so the mouse handler
-    # doesn't crash if a stale code path still calls it.
-    return
-end
 
 # ═══════════════════════════════════════════════════════════════════════
 # Le clavier : `_active_layers(m)` (app_layers.jl) rend la pile du moment,

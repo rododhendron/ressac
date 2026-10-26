@@ -89,7 +89,6 @@ include("snippet_panes.jl")
 include("command_line.jl")       # CommandLine widget — ':' / '/' chrome
 
 # ─── Static docs / starter packs / scope state ────────────────────
-include("tui_docs.jl")           # stub — content now lives in plugins/{core,…}/
 include("tui_livedoc.jl")        # _GUIDE_REFERENCE_LINES, _SYNTH_GUIDE_LINES,
                                  # livedoc lookups
 include("tui_scope.jl")          # scope listener + _APP_ORBIT_RMS/PEAK,
