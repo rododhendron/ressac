@@ -114,6 +114,7 @@ include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication �
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
 include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
 include("app_hover.jl")          # bulle de glossaire au survol (avant les étapes clavier)
+include("app_layers.jl")         # la pile des couches de touches, le résolveur
 include("app_input.jl")          # TK.update! clavier/souris, routage panes/modaux
 include("app_editor.jl")         # motions vim, nudge, raccourcis pattern
 include("tui_pattern_editor.jl") # playhead + édition contextuelle de mininotation

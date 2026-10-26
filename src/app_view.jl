@@ -672,22 +672,7 @@ Couches du registre à afficher dans la barre de touches selon le
 contexte : modal ouvert, leader Space, mode pane, tap/piano/visuel,
 insertion, pane focalisée (+ global), éditeur (rôle + éditeur + global).
 """
-function _keybar_layers(m::RessacApp)
-    m.modal !== :none && return ((modal_scope(m), m),), ""
-    m.pending_leader && return (((_focused_role(m) === :synth ? :leader_synth : :leader), m),), "Space"
-    _PANE_MODE.active && return ((:pane_mode, m),), "Ctrl-w"
-    m.tap_recording && return ((:tap, m),), ""
-    m.piano_active && return ((:piano, m),), ""
-    m.visual_active && return ((:visual, m),), ""
-    pane = _focused_pane_impl(m)
-    if pane !== nothing && pane_scope(pane) !== :none
-        return ((pane_scope(pane), pane), (:global, m)), ""
-    end
-    ed = _active_editor(m)
-    ed === nothing && return ((:global, m),), ""
-    ed.mode === :insert && return ((:insert, m),), ""
-    return _editor_layers(m), ""
-end
+_keybar_layers(m::RessacApp) = _visible_layers(m)
 
 """
     _render_footer(m, area, buf)
@@ -864,14 +849,10 @@ après délai), `:pane_mode` (Ctrl-w, après délai), ou `:none`.
 """
 function _whichkey_state(m::RessacApp)
     m.modal !== :none && return (:none, "", (), false)
-    m.pending_leader && (sc = _focused_role(m) === :synth ? :leader_synth : :leader; return (sc, "Space", ((sc, m),), true))
-    _PANE_MODE.active && return (:pane_mode, "Ctrl-w", ((:pane_mode, m),), false)
-    ed = _active_editor(m)
-    if ed !== nothing && ed.mode === :normal && ed.pending_key == 'g' &&
-       _focused_pane_impl(m) isa EditorPane
-        return (:g, "g", _editor_layers(m), false)
-    end
-    return (:none, "", (), false)
+    layers, prefix = _visible_layers(m)
+    isempty(prefix) && return (:none, "", (), false)
+    kind = prefix == "Space" ? :leader : prefix == "Ctrl-w" ? :pane_mode : :g
+    return (kind, prefix, layers, prefix == "Space")
 end
 
 """

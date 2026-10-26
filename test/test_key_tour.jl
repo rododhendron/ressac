@@ -63,11 +63,31 @@ function _events_for_chord(chord::AbstractString)
     return out
 end
 
-@testset "pipeline — quinze étapes ordonnées" begin
-    @test length(Ressac._KEY_STAGES) == 15
-    @test Ressac._KEY_STAGES[1] === Ressac._stage_hover!            # la bulle de glossaire se ferme avant tout
-    @test Ressac._KEY_STAGES[2] === Ressac._stage_command_line!
-    @test Ressac._KEY_STAGES[end] === Ressac._stage_editor!
+@testset "la pile des couches — selon le contexte" begin
+    app, _ = _new_app()
+    names(a) = [l.scope === :none ? Symbol("engine:" * string(nameof(l.engine))) : l.scope for l in Ressac._active_layers(a)]
+    # PLAY, éditeur en mode normal : pré-moteurs, registre (rôle, éditeur, mode, global), moteurs de l'éditeur
+    @test names(app) == [Symbol("engine:_pre_engine!"), Symbol("engine:_open_transient_engine!"),
+                         Symbol("engine:_vim_record_engine!"), :patterns, :editor, :mode_play, :global,
+                         Symbol("engine:_editor_normal_engine!"), Symbol("engine:_editor_engine!")]
+    @test Ressac._active_layers(app)[end].exclusive
+    # Espace : le leader seul, préfixe « Space »
+    Tachikoma.update!(app, Tachikoma.KeyEvent(' '))
+    @test names(app)[end] === :leader && Ressac._active_layers(app)[end].prefix == "Space"
+    @test Ressac._visible_layers(app) == ([(:leader, app)], "Space")
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    # insertion : une seule couche exclusive
+    Tachikoma.update!(app, Tachikoma.KeyEvent('i'))
+    @test names(app)[end] === :insert && Ressac._visible_layers(app)[1] == [(:insert, app)]
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    # une modale : exclusive, moteur d'abord
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'p'))
+    top = Ressac._active_layers(app)[end]
+    @test top.scope === :modal_palette && top.exclusive && top.engine_first
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    # une pane qui n'est pas l'éditeur : pane → mode → global, jamais l'éditeur
+    _exec_ex_command!(app, "vsplit log")
+    @test names(app)[end-2:end] == [:log, :mode_play, :global]
     @test _events_for_chord("Ctrl-d") == [Tachikoma.KeyEvent(:ctrl, 'd')]
     @test _events_for_chord("PgDn")[1].key === :pagedown
     @test _events_for_chord("Space d") == [Tachikoma.KeyEvent(' '), Tachikoma.KeyEvent('d')]

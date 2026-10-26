@@ -161,7 +161,7 @@ function _hover_mouse!(m::RessacApp, evt::TK.MouseEvent)
 end
 
 # Une touche ferme la bulle ; Esc est consommé, le reste continue.
-function _stage_hover!(m::RessacApp, evt::TK.KeyEvent)
+function _hover_engine!(m::RessacApp, evt::TK.KeyEvent)
     m.hover === nothing && return false
     evt.action === TK.key_press || return false
     _hover_close!(m)

@@ -259,12 +259,6 @@ bind!(:piano, ["[", "]"], "octave − / +"; group = :audio)
 bind!(:piano, "Enter", "valider l'enregistrement"; group = :audio)
 bind!(:piano, "Esc", "quitter"; group = :audio)
 
-# Ordre des couches dispatchées depuis le flux éditeur.
-function _editor_layers(m::RessacApp)
-    role = _focused_role(m)
-    return ((role === :synth ? :synth : :patterns, m), (:editor, m), (:global, m))
-end
-
 # Entrée en mode visuel (v / V), partagée par les deux bindings.
 function _visual_enter!(m::RessacApp, kind::Symbol)
     ed = _km_ed(m)

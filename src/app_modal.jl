@@ -431,12 +431,23 @@ function _help_scopes(m::RessacApp)
     if m.help_return !== :none                       # aide ouverte depuis un modal
         return Symbol[get(_MODAL_SCOPES, m.help_return, :modal_text), :modal_help]
     end
-    pane = _focused_pane_impl(m)
-    ps = pane === nothing ? :none : pane_scope(pane)
-    ps !== :none && return Symbol[ps, :global, :pane_mode, :modal_help]
+    layers, _ = _visible_layers(m)
+    out = Symbol[]
+    for (sc, _) in layers
+        sc in out || push!(out, sc)
+    end
+    # ce qui s'ouvre d'une touche depuis là : le leader, le visuel,
+    # l'insertion, le mode pane, l'aide
     role = _focused_role(m)
-    role === :synth && return Symbol[:synth, :leader_synth, :editor, :global, :visual, :insert, :pane_mode, :modal_help]
-    return Symbol[:patterns, :leader, :editor, :global, :visual, :insert, :pane_mode, :modal_help]
+    if _focused_pane_impl(m) isa EditorPane
+        for sc in (role === :synth ? :leader_synth : :leader, :visual, :insert)
+            sc in out || push!(out, sc)
+        end
+    end
+    for sc in (:pane_mode, :modal_help)
+        sc in out || push!(out, sc)
+    end
+    return out
 end
 
 # Scopes dont la cible des prédicats est une PANE (pas l'app).
