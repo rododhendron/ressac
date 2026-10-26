@@ -99,7 +99,7 @@ scheduler isn't running, or if SC doesn't reply within `timeout`
 seconds.
 
 The listener is installed into `Ressac._OSC_AD_HOC_HANDLERS` (a
-process-wide table consumed by `tui_scope.jl`'s listener loop) and
+process-wide table consumed by `io_scope.jl`'s listener loop) and
 removed in the `finally`.
 """
 function _sc_meta_roundtrip(; timeout::Real = 3.0)
