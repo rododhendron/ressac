@@ -8,3 +8,7 @@ tags = ["mix"]
 # duck
 
 Sidechain driven by a real pattern: the gain dips on every onset of the trigger, then recovers.
+
+Ducks the gain on every onset of another pattern and lets it recover: `duck("bd*4")` on a bass is the kick/bass sidechain. `pump` fakes it without a trigger.
+
+See also: sidechain, pump, gain

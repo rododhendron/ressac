@@ -10,6 +10,6 @@ aliases = ["cutoff frequency", "corner frequency"]
 
 Frequency of the synth's internal filter (Hz). Lower = darker.
 
-`cutoff` and `lpf` on a pattern, the first argument of `rlpf` in the DSL. Sweep it with an LFO for a wobble, with an envelope for a pluck.
+The frequency where the synth's own low-pass starts to act, in Hz. Lower is darker. Sweep it with a pattern (`cutoff("<400 800 1600 800>")`) for the classic acid line, or with an LFO on a drone. In the DSL it is whatever argument you feed to `rlpf`.
 
-See also: filter, resonance, low-pass filter
+See also: low-pass filter, resonance, lpf

@@ -8,3 +8,7 @@ tags = ["tidal"]
 # seq
 
 Puts the patterns end to end in ONE cycle (Tidal's fastcat).
+
+Puts patterns end to end inside one cycle: `seq("bd*2", "sn")` plays two kicks then a snare, all in a cycle. `cat` gives each its own cycle.
+
+See also: cat, fastcat, timeCat

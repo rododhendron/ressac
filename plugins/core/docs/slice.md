@@ -8,3 +8,7 @@ tags = ["tidal"]
 # slice
 
 Plays slice ipat (out of n) of the sample, structure from ipat.
+
+Plays the slice `i` out of `n` of the sample, with the structure of the index pattern: `slice(8, "0 2 7 3")` rearranges a break by hand. `splice` does the same and stretches each slice to fill its slot.
+
+See also: striate, splice, granular

@@ -8,3 +8,7 @@ tags = ["tidal"]
 # up
 
 Tidal alias of note (semitones).
+
+Tidal's name for `note`: transposes in semitones.
+
+See also: note, n

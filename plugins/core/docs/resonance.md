@@ -10,6 +10,6 @@ aliases = ["Q", "q factor", "emphasis"]
 
 Filter resonance (0-1). Higher = more peak at the cutoff; 0.5+ starts to whistle.
 
-`resonance` (0-1) on a pattern; `q` or `rq` in SuperCollider terms (rq is the inverse: 1 = none, 0.1 = screaming). High resonance plus a moving cutoff is the acid sound.
+A boost right at the cutoff, 0 to 1. At 0.2 the filter just gets a little edge; at 0.5 it starts to whistle; near 1 it screams and can self-oscillate. High resonance plus a moving cutoff is the acid sound.
 
-See also: cutoff, filter, low-pass filter
+See also: cutoff, filter, q

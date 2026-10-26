@@ -8,3 +8,7 @@ tags = ["control"]
 # note
 
 Transposes in semitones (alias up). On a SuperDirt sample, changes the playback speed.
+
+Transposes in semitones, like `n` on a synth. On a SuperDirt sample it changes the playback speed, so a drum pitched up also gets shorter. `note("c e g")` accepts note names; `up` is Tidal's alias.
+
+See also: n, speed, pitch

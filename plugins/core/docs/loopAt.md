@@ -8,3 +8,7 @@ tags = ["tidal"]
 # loopAt
 
 Stretches a sample over n cycles (speed and unit adjusted).
+
+Fits a sample to n cycles by adjusting its speed: `loopAt(2, "break")` makes a two-bar break land exactly on the grid whatever the tempo.
+
+See also: speed, sample, cps

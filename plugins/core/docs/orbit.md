@@ -10,6 +10,6 @@ aliases = ["orbits"]
 
 SuperDirt orbit (independent effect bus).
 
-Each slot has an orbit by default so effects on one voice do not smear another; `orbit(1)` moves a pattern to another bus.
+Which effect bus the slot plays on. Each slot has its own by default (slot d1 → orbit 0), so a wet reverb on one voice never touches another. Setting the same orbit on two slots makes them share reverb and delay.
 
-See also: reverb, delay, compressor
+See also: orbit, room, delay

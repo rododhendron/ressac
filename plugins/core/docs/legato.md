@@ -10,6 +10,6 @@ aliases = ["legato/staccato", "staccato"]
 
 Note overlap (0 = none, 1 = fully held). For tied lines.
 
-`legato(1)` holds each note up to the next, `legato(0.2)` makes it a tick; `sustain` sets the length in seconds instead.
+How long each note lasts relative to its slot: 1 holds it until the next, 0.2 clips it short, 1.5 lets notes overlap. It sets `sustain` as a fraction of the event length, so it follows the tempo; `sustain` sets seconds.
 
-See also: event, envelope
+See also: sustain, legato, envelope

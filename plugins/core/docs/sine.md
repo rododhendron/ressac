@@ -10,6 +10,6 @@ aliases = ["sine wave", "sinusoid"]
 
 Continuous sine signal, one period per cycle, from -1 to 1.
 
-`sin_osc(:freq)` in the DSL; `sine()` as a pattern is the same shape running once per cycle, from -1 to 1, handy for slow modulation.
+A continuous sine, one period per cycle, from -1 to 1. With `segment` it becomes events; with `range_pat` it maps to a control range: `lpf(sine() |> range_pat(400, 2000) |> segment(16))` is a filter sweep.
 
-See also: waveform, harmonic, LFO
+See also: segment, range_pat, LFO

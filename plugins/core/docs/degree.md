@@ -10,6 +10,6 @@ aliases = ["scale degree"]
 
 degree(x) — like n(x) but x is a degree of the current :scale (`:scale minor` first).
 
-Writing degrees instead of semitones keeps a melody inside the key when you change the scale. `degree("0 2 4")` uses the current `:scale`.
+Like `n`, but the number is a degree of the current `:scale`: `degree("0 2 4")` is a triad in whatever key is set, and changing the scale changes the melody without rewriting it.
 
-See also: scale, semitone
+See also: scale, n, degree

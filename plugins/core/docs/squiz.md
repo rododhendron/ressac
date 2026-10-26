@@ -8,3 +8,7 @@ tags = ["tidal"]
 # squiz
 
 Granular-style pitch compression.
+
+A granular-style pitch compression: small values (1.5) thicken a sound, larger ones (4) make it a chirp.
+
+See also: granular, speed

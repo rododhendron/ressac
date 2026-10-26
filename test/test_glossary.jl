@@ -50,7 +50,7 @@ _gl_click(app, x, y) = Tachikoma.update!(app, Tachikoma.MouseEvent(x, y, Tachiko
     @test Ressac.glossary_term("overtones") == "harmonic"
     @test Ressac.glossary_term("cutoff") == "cutoff"                     # fusionné dans la fiche du contrôle
     @test Ressac.lookup_doc("cutoff").short == "Frequency of the synth's internal filter (Hz). Lower = darker."
-    @test occursin("Sweep it with an LFO", Ressac.lookup_doc("cutoff").body)
+    @test occursin("acid", Ressac.lookup_doc("cutoff").body)
     @test Ressac.glossary_term("banana") === nothing
 
     t = "a low-pass filter tames the distortion"

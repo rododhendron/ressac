@@ -10,4 +10,6 @@ aliases = ["playback speed"]
 
 Playback speed. 0.5 = an octave down and slower, 2 = an octave up and faster. Composes by ×.
 
-See also: sample, octave
+The playback rate of a sample. 2 is an octave up and twice as short, 0.5 an octave down and twice as long, -1 plays it backwards. Composes by multiplication like `gain`. A tiny wobble (`speed("1 0.98 1 1.02")`) is a cheap turntable feel; `hurry` changes speed and tempo together.
+
+See also: sample, octave, hurry, loopAt

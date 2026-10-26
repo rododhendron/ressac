@@ -8,3 +8,7 @@ tags = ["tidal"]
 # within
 
 Applies f only to the portion [start, end) of each cycle.
+
+Applies `f` only to a portion of each cycle: `within(0.5, 1, fast(2))` doubles the second half. Use it to make the end of a bar busier than its start.
+
+See also: whenmod, chunk, inside

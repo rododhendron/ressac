@@ -8,3 +8,7 @@ tags = []
 # n
 
 Note offset (semitones) for a synth, or variant index for a sample bank.
+
+On a synth, `n` is a note offset in semitones from the synth's `freq`: `n("0 3 7")` plays a minor triad arpeggio. On a sample bank, `n` picks the file: `:bd |> n("0 3 5")` plays `bd:0`, `bd:3`, `bd:5`. Negative numbers go down; `n("<0 -12>")` alternates octaves. With a `:scale` set, prefer `degree`, which stays in key.
+
+See also: note, degree, scale, semitone

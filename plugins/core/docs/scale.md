@@ -10,6 +10,6 @@ aliases = ["scales", "mode"]
 
 Reads the values as degrees of a scale and converts them to semitones.
 
-`scale("minor", "0 2 4")` turns degrees into semitones. Ressac ships equal temperaments (`edo`), just scales built from ratios (`from_ratios`) and stranger ones (Bohlen-Pierce, Fibonacci, Stern-Brocot).
+Reads the values of a pattern as degrees of a scale and converts them to semitones: `scale("minor", "0 2 4 7")`. Ressac's scales include the usual modes, equal temperaments (`edo`) and just scales built from ratios.
 
-See also: degree, temperament, just intonation, semitone
+See also: scale, degree, toScale, semitone
