@@ -389,3 +389,51 @@ end
         delete!(Ressac._SYNTH_REGISTRY, :tickdrone)
     end
 end
+
+@testset "MODULATION — ce que le pattern fait au drone, en direct" begin
+    app, tb, frame, mock = _dr_app()
+    old = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    empty!(Ressac._DRONES)
+    now = Ref(1000.0)
+    oldclock = Ressac._DRONE_CLOCK[]
+    Ressac._DRONE_CLOCK[] = () -> now[]
+    Ressac.register_synth!(Ressac.SynthEntry(:livedrone, "user-dsl",
+        Dict{String,Any}("params" => Dict{String,Any}("freq" => 220, "cutoff" => 800))))
+    try
+        pat = :livedrone |> Ressac.drone() |> Ressac.set(:cutoff, "<400 800 1600>")
+        for (i, ev) in enumerate(pat(0 // 1, 3 // 1))
+            msg = Ressac._inject_orbit!(Ressac.event_to_osc(ev; cps = 0.5), :d2)
+            Ressac._drone_mirror!(:d2, msg)
+        end
+        d = Ressac.drone_get(:d2)
+        @test d.origin === :slot
+        @test Ressac.drone_driven(d, :cutoff) && !Ressac.drone_driven(d, :freq)
+        @test d.trail[:cutoff] == [400.0, 800.0, 1600.0]
+        @test Ressac._dr_sparkline(d.trail[:cutoff], 12) == "▁▃█"
+        p = Ressac._place_pane!(app, :drone, Dict{String,Any}())
+        scr = _drscreen(app, tb, frame)
+        @test occursin("MODULATION · d2 ▶ livedrone ┄ piloté par @d2", scr)
+        @test occursin(r"cutoff\s+1600.*≈ ▁▃█", scr)
+        # un tirage manuel sur un argument piloté : on prévient
+        Ressac._focus_pane!(app, p)
+        p.focus = findfirst(==(:cutoff), d.names)
+        _drkey(app, 'l')
+        @test occursin("piloté par @d2", p.note)
+        scr = _drscreen(app, tb, frame)
+        @test occursin("le pattern reprend la main", scr)
+        # une seconde plus tard sans événement : plus piloté, la trace disparaît
+        now[] += 2.0
+        @test !Ressac.drone_driven(d, :cutoff)
+        scr = _drscreen(app, tb, frame)
+        @test !occursin("≈ ▁▃█", scr)
+        # la trace est bornée
+        for i in 1:40; Ressac._drone_touch!(d, :cutoff, Float64(i)); end
+        @test length(d.trail[:cutoff]) == Ressac._DRONE_TRAIL
+    finally
+        Ressac._LIVE_SCHEDULER[] = old
+        Ressac._DRONE_CLOCK[] = oldclock
+        empty!(Ressac._DRONES)
+        delete!(Ressac._SYNTH_REGISTRY, :livedrone)
+    end
+end

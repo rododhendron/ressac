@@ -25,6 +25,25 @@ mutable struct Drone
     defaults::Dict{Symbol,Float64}
     values::Dict{Symbol,Float64}
     origin::Symbol
+    touched::Dict{Symbol,Float64}          # dernier `set` venu du pattern, par argument (time())
+    trail::Dict{Symbol,Vector{Float64}}    # les dernières valeurs posées par le pattern
+end
+Drone(id, def, synth, names, defaults, values, origin) =
+    Drone(id, def, synth, names, defaults, values, origin, Dict{Symbol,Float64}(), Dict{Symbol,Vector{Float64}}())
+
+const _DRONE_TRAIL = 16
+const _DRONE_CLOCK = Ref{Function}(time)   # remplaçable dans les tests
+
+# Un argument est « piloté » s'il a reçu un set du pattern il y a moins d'une seconde.
+drone_driven(d::Drone, key::Symbol; within::Real = 1.0) =
+    (t = get(d.touched, key, -Inf); _DRONE_CLOCK[]() - t <= within)
+
+function _drone_touch!(d::Drone, key::Symbol, v::Float64)
+    d.touched[key] = _DRONE_CLOCK[]()
+    tr = get!(d.trail, key, Float64[])
+    push!(tr, v)
+    length(tr) > _DRONE_TRAIL && popfirst!(tr)
+    return
 end
 
 # Le registre est touché par l'interface (pane, D) et par le scheduler
@@ -179,12 +198,15 @@ function _drone_mirror!(slot::Symbol, msg::OSCMessage)
             end
             vals = copy(defaults)
             for (k, v) in pairs; vals[k] = v; end
-            push!(_DRONES, Drone(slot, def, synth, names, defaults, vals, :slot))
+            d = Drone(slot, def, synth, names, defaults, vals, :slot)
+            for (k, v) in pairs; _drone_touch!(d, k, v); end
+            push!(_DRONES, d)
         else
             d = _DRONES[i]
             for (k, v) in pairs
                 k in d.names || (push!(d.names, k); d.defaults[k] = 0.0)
                 d.values[k] = v
+                _drone_touch!(d, k, v)
             end
         end
     end

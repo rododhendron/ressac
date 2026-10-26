@@ -11,9 +11,10 @@ mutable struct DronePane <: PaneImpl
     value_edit::Bool
     value_buf::String
     rows::Vector{Tuple{Int,Int,Int}}   # (y, x, largeur) des lignes d'arguments au dernier rendu
+    note::String          # un mot en bas de la pane (argument piloté…)
 end
 
-_drone_pane_ctor(::AbstractDict) = DronePane(1, 1, false, "", Tuple{Int,Int,Int}[])
+_drone_pane_ctor(::AbstractDict) = DronePane(1, 1, false, "", Tuple{Int,Int,Int}[], "")
 
 _dr_has(p::DronePane) = !isempty(drone_list())
 
@@ -48,6 +49,7 @@ function _dr_nudge!(p::DronePane, steps::Int)
     d, k = _dr_arg(p)
     d === nothing && return
     drone_set!(d, k, drone_step(d.values[k], d.defaults[k], steps))
+    drone_driven(d, k) && (p.note = "$(k) est piloté par @$(d.id) : le pattern reprend la main au prochain événement")
 end
 
 function _dr_reset!(p::DronePane)
@@ -90,6 +92,16 @@ _dr_fmt(v::Float64) = (isinteger(v) && abs(v) < 1e7) ? string(Int(v)) : string(r
 # Jauge : la position de la valeur par rapport au défaut (┼). Trois
 # octaves de part et d'autre en log pour les grandeurs positives, ±3× le
 # défaut en linéaire sinon.
+# La trace des dernières valeurs posées par le pattern, en barres.
+const _DR_SPARK = ('▁', '▂', '▃', '▄', '▅', '▆', '▇', '█')
+function _dr_sparkline(vals::Vector{Float64}, width::Int)
+    (isempty(vals) || width < 2) && return ""
+    v = vals[max(1, end - width + 1):end]
+    lo, hi = minimum(v), maximum(v)
+    span = hi - lo
+    return String([span <= 0 ? '▄' : _DR_SPARK[clamp(1 + round(Int, 7 * (x - lo) / span), 1, 8)] for x in v])
+end
+
 function _dr_gauge(cur::Float64, default::Float64, width::Int)
     width < 5 && return ""
     r = if cur > 0 && default > 0
@@ -108,7 +120,8 @@ function render!(p::DronePane, area, buf)
     lst = drone_list()
     d = _dr_current(p)
     head = d === nothing ? "MODULATION" :
-           "MODULATION · $(d.id) ▶ $(d.synth)" * (length(lst) > 1 ? "  ($(p.current)/$(length(lst)) ⇥)" : "")
+           "MODULATION · $(d.id) ▶ $(d.synth)" * (d.origin === :slot ? " ┄ piloté par @$(d.id)" : "") *
+           (length(lst) > 1 ? "  ($(p.current)/$(length(lst)) ⇥)" : "")
     _render_pane_block_simple!(rect, head, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 4 || inner.height < 1) && return
@@ -139,9 +152,21 @@ function render!(p::DronePane, area, buf)
         gw = inner.width - length(line) - 2
         gauge = (focused && p.value_edit) ? "" : _dr_gauge(cur, def, min(gw, 31))
         text = first(line * "  " * gauge, inner.width)
-        st = focused ? TK.tstyle(:accent) : (cur == def ? TK.tstyle(:text_dim) : TK.tstyle(:text))
+        driven = drone_driven(d, k)
+        st = focused ? TK.tstyle(:accent) : driven ? TK.tstyle(:success) :
+             (cur == def ? TK.tstyle(:text_dim) : TK.tstyle(:text))
         TK.set_string!(buf, inner.x, y, text, st)
+        # ce que le pattern vient de poser : la trace, à droite de la jauge
+        if driven
+            spark = _dr_sparkline(get(d.trail, k, Float64[]), 12)
+            x = inner.x + length(text) + 2
+            x + length(spark) + 2 <= inner.x + inner.width &&
+                TK.set_string!(buf, x, y, "≈ " * spark, TK.tstyle(:success))
+        end
         push!(p.rows, (y, inner.x, inner.width))
+    end
+    if !isempty(p.note) && length(d.names) + 1 < inner.height
+        TK.set_string!(buf, inner.x, inner.y + inner.height - 1, first("  " * p.note, inner.width), TK.tstyle(:warning))
     end
     return
 end
