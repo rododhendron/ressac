@@ -104,20 +104,11 @@ serialize(p::WikiPane) = Dict{String,Any}("idx" => p.idx, "scroll" => p.pane.off
 register_pane_kind!(:wiki, _wiki_pane_ctor)
 
 scope!(:wiki, "Wiki (pane)")
-bind!(:wiki, ["j", "↓"], "défiler"; group = :nav, repeat = true,
-      action = p -> _scroll!(p.pane, :down))
-bind!(:wiki, ["k", "↑"], "remonter"; group = :nav, repeat = true, when = p -> p.pane.offset > 0,
-      action = p -> _scroll!(p.pane, :up))
+mixin_scroll_nav!(:wiki, p -> p.pane; page_synonyms = true, hint = true, labels = (down = "défiler", up = "remonter"))
 bind!(:wiki, ["n", "]", "→"], "page du wiki suivante"; group = :nav,
       action = p -> (isempty(p.pages) || _wiki_show!(p, mod1(p.idx + 1, length(p.pages)))))
 bind!(:wiki, ["p", "[", "←"], "page du wiki précédente"; group = :nav,
       action = p -> (isempty(p.pages) || _wiki_show!(p, mod1(p.idx - 1, length(p.pages)))))
-bind!(:wiki, ["d", "PgDn"], "défiler d'un écran"; group = :nav, hint = false, repeat = true,
-      action = p -> _scroll!(p.pane, :pagedown))
-bind!(:wiki, ["u", "PgUp"], "remonter d'un écran"; group = :nav, hint = false, repeat = true,
-      action = p -> _scroll!(p.pane, :pageup))
-bind!(:wiki, ["g", "G"], "début / fin de page"; group = :nav, hint = false,
-      action = (p, evt) -> _scroll!(p.pane, evt.char == 'g' ? :home : :end_key))
 bind!(:wiki, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "aller à la page N"; group = :nav, hint = false,
       action = (p, evt) -> (n = Int(evt.char - '0');
                             1 <= n <= length(p.pages) && _wiki_show!(p, n)))

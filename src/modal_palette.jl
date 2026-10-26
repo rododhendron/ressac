@@ -144,7 +144,7 @@ function _render_palette_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     _picker_render!(m.palette, inner, buf; right_text = "$n")
 end
 
-scope!(:modal_palette, "Palette (Ctrl-p)")
+scope!(:modal_palette, "Palette (Ctrl-p)"; layer = :modal)
 bind!(:modal_palette, "Enter", "ouvrir / insérer / lancer"; short = "valider", group = :edit,
       action = m -> _palette_run!(m))
 bind!(:modal_palette, ["↓", "Ctrl-n"], "suivant"; group = :nav, hint = false, repeat = true,

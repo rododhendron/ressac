@@ -285,19 +285,8 @@ function _bind_modal_common!(scope::Symbol; nav::Bool = true)
     bind!(scope, "?", "aide"; group = :help, action = _open_help!)
 end
 
-scope!(:modal_text, "Texte (guide, tutoriel, explication)")
-bind!(:modal_text, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :down))
-bind!(:modal_text, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :up))
-bind!(:modal_text, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :pagedown))
-bind!(:modal_text, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :pageup))
-bind!(:modal_text, "G", "fin"; group = :nav, hint = false,
-      action = m -> _scroll!(m.modal_view, :end_key))
-bind!(:modal_text, "g", "début"; group = :nav, hint = false,
-      action = m -> _scroll_top!(m.modal_view))
+scope!(:modal_text, "Texte (guide, tutoriel, explication)"; layer = :modal)
+mixin_scroll_nav!(:modal_text, m -> m.modal_view; up_when = _always)
 bind!(:modal_text, ["Esc", "q"], "fermer"; group = :nav,
       action = m -> (m.modal = :none; _scroll_top!(m.modal_view)))
 
@@ -558,17 +547,8 @@ _help_style(kind::Symbol) =
                       TK.tstyle(:text)
 
 _help_last(m::RessacApp) = _scroll_last(m.modal_view)
-scope!(:modal_help, "Aide")
-bind!(:modal_help, ["j", "↓"], "défiler"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :down))
-bind!(:modal_help, ["k", "↑"], "remonter"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :up))
-bind!(:modal_help, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :pagedown))
-bind!(:modal_help, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> _scroll!(m.modal_view, :pageup))
-bind!(:modal_help, ["g", "G"], "début / fin"; group = :nav, hint = false,
-      action = (m, evt) -> _scroll!(m.modal_view, evt.char == 'g' ? :home : :end_key))
+scope!(:modal_help, "Aide"; layer = :modal)
+mixin_scroll_nav!(:modal_help, m -> m.modal_view; up_when = _always)
 bind!(:modal_help, "Tab", "toutes les sections ⟷ contexte"; short = "tout", group = :help,
       action = m -> (m.help_expanded = !m.help_expanded; m.help_scopes = _help_scopes(m); _scroll_top!(m.modal_view)))
 bind!(:modal_help, ["?", "Esc", "q"], "fermer l'aide"; short = "fermer", group = :help, action = _close_help!)

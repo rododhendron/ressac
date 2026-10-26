@@ -129,3 +129,39 @@ end
     @test Ressac.hint_text(((:t_bar, false), (:t_bar_g, false)); max_width = 12) == "e évaluer"
     Ressac.clear_scope!(:t_bar); Ressac.clear_scope!(:t_bar_g)
 end
+
+@testset "couches et mixins — un vocabulaire déclaré une fois" begin
+    @test Ressac.scope_layer(:global) === :global
+    @test Ressac.scope_layer(:modal_lib) === :modal
+    @test Ressac.scope_layer(:leader) === :transient && Ressac.scope_layer(:pane_mode) === :transient
+    @test Ressac.scope_layer(:doc) === :pane && Ressac.scope_layer(:sculpt) === :pane
+    @test_throws ArgumentError Ressac.scope!(:t_bad, "x"; layer = :nope)
+    # scroll_nav : les mêmes touches partout, les variantes par options
+    keys(scope) = Set(k for b in Ressac.bindings(scope) if b.action !== nothing for k in b.keys)
+    base = Set(["j", "↓", "k", "↑", "PgDn", "Ctrl-d", "PgUp", "Ctrl-u", "g", "G"])
+    @test base ⊆ keys(:doc) && base ⊆ keys(:wiki) && base ⊆ keys(:log) && base ⊆ keys(:tutorial)
+    @test base ⊆ keys(:modal_text) && base ⊆ keys(:modal_help) && base ⊆ keys(:synthdoc)
+    @test "d" in keys(:doc) && "u" in keys(:wiki) && !("d" in keys(:log))
+    # list_nav
+    for sc in (:modal_browse, :modal_lib, :modal_snippets, :modal_patterns, :modal_sccode, :modal_mixer, :modal_evolve)
+        @test base ⊆ keys(sc)
+    end
+    # knob_nav
+    knobs = Set(["j", "k", "h", "l", "→", "←", "=", "Tab", "S-Tab"])
+    @test knobs ⊆ keys(:sculpt) && knobs ⊆ keys(:drone) && "0" in keys(:drone) && "L" in keys(:drone)
+    # un mixin sur un scope de test
+    Ressac.clear_scope!(:t_mix)
+    mutable struct _TMix; sp::Tachikoma.ScrollPane; end
+    Ressac.mixin_scroll_nav!(:t_mix, t -> t.sp)
+    @test length(Ressac.bindings(:t_mix)) == 6
+    t = _TMix(Ressac._scrollpane())
+    Tachikoma.set_content!(t.sp, [string(i) for i in 1:50]); t.sp.last_area = Tachikoma.Rect(1, 1, 20, 5)
+    @test Ressac.dispatch!(((:t_mix, t),), Tachikoma.KeyEvent('j'))
+    @test t.sp.offset == 1
+    @test Ressac.dispatch!(((:t_mix, t),), Tachikoma.KeyEvent('G'))
+    @test t.sp.offset > 1
+    @test Ressac.dispatch!(((:t_mix, t),), Tachikoma.KeyEvent('g'))
+    @test t.sp.offset == 0
+    @test !Ressac.dispatch!(((:t_mix, t),), Tachikoma.KeyEvent('k'))      # en haut : k indisponible
+    Ressac.clear_scope!(:t_mix)
+end

@@ -24,7 +24,7 @@ _km_reservoir(m::RessacApp) = _km_normal(m) &&
     (_APP_SCOPE_TYPE[] === :reservoir || _APP_SCOPE_TYPE[] === Symbol("reservoir-graph"))
 
 # ── :global — partout où l'on n'est pas en train de taper du texte ──
-scope!(:global, "Partout")
+scope!(:global, "Partout"; layer = :global)
 bind!(:global, "?", "aide"; group = :help, action = _open_help!)
 bind!(:global, "!", "panic (coupe tout)"; short = "panic", group = :audio, action = _panic!)
 bind!(:global, "Esc", "quitter Ressac (Échap deux fois)"; group = :misc, hint = false,
@@ -71,7 +71,7 @@ bind!(:global, "-", "réservoir : plus lent"; group = :view, hint = false, when 
                      _push_app_log!(m, "[INFO] fenêtre du scope réservoir = $(round(_APP_SCOPE_RESERVOIR_SPAN[]; digits=2)) s (plus lente)")))
 
 # ── :editor — commun aux panes patterns et synth (mode normal) ─────
-scope!(:editor, "Éditeur (patterns et synth)")
+scope!(:editor, "Éditeur (patterns et synth)"; layer = :pane)
 # Tab n'a de sens que si les DEUX panes existent dans le workspace courant
 # (dans DESIGN, sans pane patterns, il ne ferait rien).
 _km_can_swap(m::RessacApp) = _km_normal_ed(m) && _synth_pane_open(m) &&
@@ -128,7 +128,7 @@ bind!(:editor, "x", "supprimer le caractère"; group = :edit, hint = false)
 bind!(:editor, "u", "annuler"; group = :edit, hint = false)
 
 # ── :patterns ──────────────────────────────────────────────────────
-scope!(:patterns, "Pane patterns")
+scope!(:patterns, "Pane patterns"; layer = :pane)
 bind!(:patterns, "e", "évaluer la ligne"; short = "évaluer", group = :eval, when = _km_patterns,
       action = _eval_current_line!)
 bind!(:patterns, "E", "tout évaluer"; group = :eval, when = _km_patterns,
@@ -154,7 +154,7 @@ bind!(:patterns, "g s", "ouvrir le synth sous le curseur (DESIGN)"; group = :nav
       when = _km_patterns, action = _goto_synth_under_cursor!)
 
 # ── :synth ─────────────────────────────────────────────────────────
-scope!(:synth, "Pane synth")
+scope!(:synth, "Pane synth"; layer = :pane)
 bind!(:synth, ["t", "T"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
       repeat = true, when = _km_synth,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
@@ -174,7 +174,7 @@ bind!(:synth, "g T", "synth précédent"; group = :nav, hint = false,
       action = m -> _cycle_synth_tab!(m; dir = -1))
 
 # ── :leader — Space + touche (pane patterns) ───────────────────────
-scope!(:leader, "Space + …")
+scope!(:leader, "Space + …"; layer = :transient)
 const _LEADER_FR = Dict{Char,String}(
     'd' => "slot @dN", 'g' => "gain", 'l' => "lpf", 'h' => "hpf", 'p' => "pan",
     'f' => "fast", 's' => "slow", 'r' => "room", 'n' => "n()", 'e' => "every",
@@ -197,7 +197,7 @@ for (c, _) in _LEADER_LABELS
 end
 
 # Space dans une pane synth : des maillons du DSL, insérés en bout de chaîne.
-scope!(:leader_synth, "Space + … (synth)")
+scope!(:leader_synth, "Space + … (synth)"; layer = :transient)
 const _LEADER_SYNTH = [
     ('s', "saw(:freq)", "source saw"), ('o', "sin_osc(:freq)", "source sin_osc"),
     ('p', "pulse(:freq, \$1)", "source pulse"), ('w', "white()", "bruit blanc"),
@@ -217,7 +217,7 @@ end
 bind!(:leader_synth, "Space ?", "▸ aide"; group = :help, action = _open_help!)
 
 # ── Scopes documentaires (dispatch explicite dans app_input.jl) ────
-scope!(:pane_mode, "Mode pane (Ctrl-w, reste actif)")
+scope!(:pane_mode, "Mode pane (Ctrl-w, reste actif)"; layer = :transient)
 bind!(:pane_mode, "Ctrl-w s", "split horizontal"; group = :layout)
 bind!(:pane_mode, "Ctrl-w v", "split vertical"; group = :layout)
 bind!(:pane_mode, ["Ctrl-w h", "Ctrl-w j", "Ctrl-w k", "Ctrl-w l"], "focus ← ↓ ↑ → (ou flèches)"; group = :nav)
@@ -229,16 +229,16 @@ bind!(:pane_mode, "Ctrl-w =", "des parts égales"; group = :layout)
 bind!(:pane_mode, "Ctrl-w r", "tourner la coupe (horizontal ⟷ vertical)"; group = :layout)
 bind!(:pane_mode, ["Ctrl-w Esc", "Ctrl-w Enter", "Ctrl-w Ctrl-w"], "quitter le mode pane"; group = :layout)
 
-scope!(:visual, "Sélection visuelle (v / V)")
+scope!(:visual, "Sélection visuelle (v / V)"; layer = :transient)
 bind!(:visual, ["j", "k", "h", "l"], "étendre la sélection"; group = :select)
 bind!(:visual, ["d", "y", "c"], "supprimer / copier / changer"; group = :edit)
 bind!(:visual, "m", "mute les slots sélectionnés"; group = :audio)
 bind!(:visual, "e", "évaluer le bloc"; group = :eval)
 bind!(:visual, "Esc", "annuler"; group = :select)
 
-scope!(:insert, "Mode insertion")
+scope!(:insert, "Mode insertion"; layer = :transient)
 bind!(:insert, "Esc", "retour au mode normal"; group = :edit)
-scope!(:placeholder, "Snippet avec des trous (après Space + lettre)")
+scope!(:placeholder, "Snippet avec des trous (après Space + lettre)"; layer = :transient)
 bind!(:placeholder, "Tab", "trou suivant"; group = :edit)
 bind!(:placeholder, "S-Tab", "trou précédent"; group = :edit)
 bind!(:placeholder, "i", "remplir le trou (insertion)"; group = :edit)
@@ -247,12 +247,12 @@ bind!(:placeholder, "Esc", "sortir des trous"; group = :edit)
 bind!(:insert, "Tab", "compléter (ghost, identifiants) · placeholder suivant"; group = :edit)
 bind!(:insert, "S-Tab", "placeholder précédent"; group = :edit)
 
-scope!(:tap, "Tap (:tap / :bpm)")
+scope!(:tap, "Tap (:tap / :bpm)"; layer = :transient)
 bind!(:tap, "Space", "frapper"; group = :audio)
 bind!(:tap, "Enter", "valider"; group = :audio)
 bind!(:tap, "Esc", "annuler"; group = :audio)
 
-scope!(:piano, "Piano (:piano)")
+scope!(:piano, "Piano (:piano)"; layer = :transient)
 bind!(:piano, "z x c v b n m ,", "notes (rangée du bas = naturelles)"; group = :audio)
 bind!(:piano, "s d g h j", "dièses"; group = :audio)
 bind!(:piano, ["[", "]"], "octave − / +"; group = :audio)

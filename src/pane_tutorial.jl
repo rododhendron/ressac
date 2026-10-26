@@ -293,9 +293,7 @@ serialize(p::TutorialPane) = Dict{String,Any}("step" => p.step)
 register_pane_kind!(:tutorial, _tutorial_pane_ctor)
 
 scope!(:tutorial, "Tutoriel")
-bind!(:tutorial, ["j", "↓"], "défiler"; group = :nav, repeat = true, action = p -> _scroll!(p.view, :down))
-bind!(:tutorial, ["k", "↑"], "remonter"; group = :nav, repeat = true, when = p -> p.view.offset > 0,
-      action = p -> _scroll!(p.view, :up))
+mixin_scroll_nav!(:tutorial, p -> p.view; hint = true, labels = (down = "défiler", up = "remonter"))
 bind!(:tutorial, "n", "sauter l'étape"; short = "sauter", group = :nav,
       action = p -> (p.finished || (p.step >= length(_TUTO_STEPS) ? (p.finished = true) : (p.step += 1; _scroll_top!(p.view)))))
 bind!(:tutorial, "p", "étape précédente"; short = "précédente", group = :nav, when = p -> p.step > 1 || p.finished,

@@ -250,7 +250,7 @@ end
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
 _browser_cur(m::RessacApp) = (e = _browser_entries(m); 1 <= m.browser_cursor <= length(e) ? e[m.browser_cursor] : nothing)
-scope!(:modal_browse, "Sons (samples, instruments, synths)")
+scope!(:modal_browse, "Sons (samples, instruments, synths)"; layer = :modal)
 bind!(:modal_browse, "Enter", "insérer dans le pattern"; short = "insérer", group = :edit,
       action = m -> (e = _browser_cur(m); e === nothing || _browser_insert!(m, e); m.modal = :none))
 bind!(:modal_browse, ["K", "Space"], "écouter"; group = :audio,
@@ -266,18 +266,14 @@ bind!(:modal_browse, ["h", "←"], "précédent"; group = :nav, hint = false, re
       action = m -> _browser_move!(m, -1))
 bind!(:modal_browse, ["l", "→"], "suivant"; group = :nav, hint = false, repeat = true,
       action = m -> _browser_move!(m, 1))
-bind!(:modal_browse, ["j", "↓"], "ligne suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> _browser_move!(m, m.browser_cols))
-bind!(:modal_browse, ["k", "↑"], "ligne précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> _browser_move!(m, -m.browser_cols))
-bind!(:modal_browse, ["Ctrl-d", "PgDn"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> _browser_move!(m, m.browser_cols * m.browser_rows))
-bind!(:modal_browse, ["Ctrl-u", "PgUp"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> _browser_move!(m, -m.browser_cols * m.browser_rows))
-bind!(:modal_browse, "g", "premier"; group = :nav, hint = false,
-      action = m -> (m.browser_cursor = 1))
-bind!(:modal_browse, "G", "dernier"; group = :nav, hint = false,
-      action = m -> (m.browser_cursor = max(1, length(_browser_entries(m)))))
+# Une grille : une ligne = `browser_cols` entrées, un écran = rows × cols.
+mixin_list_nav!(:modal_browse, (m, key) ->
+    key === :down     ? _browser_move!(m, m.browser_cols) :
+    key === :up       ? _browser_move!(m, -m.browser_cols) :
+    key === :pagedown ? _browser_move!(m, m.browser_cols * m.browser_rows) :
+    key === :pageup   ? _browser_move!(m, -m.browser_cols * m.browser_rows) :
+    key === :home     ? (m.browser_cursor = 1) :
+                        (m.browser_cursor = max(1, length(_browser_entries(m)))))
 bind!(:modal_browse, "Bksp", "effacer le filtre"; group = :edit, hint = false,
       when = m -> !isempty(_browser_query(m)),
       action = m -> (TK.handle_key!(m.browser_search, TK.KeyEvent(:backspace)); m.browser_cursor = 1))

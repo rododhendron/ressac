@@ -43,6 +43,15 @@ hint_label(b::Binding) = isempty(b.short) ? b.label : b.short
 
 const _KEYMAP = Dict{Symbol,Vector{Binding}}()
 const _SCOPE_TITLES = Dict{Symbol,String}()
+# La couche d'un scope. Une touche descend les couches actives jusqu'à
+# la première qui la connaît :
+#   :transient  exclusif, le temps d'un geste (saisie, leader, mode pane, visuel…)
+#   :modal      la modale ouverte
+#   :pane       ce qui n'a de sens que dans la pane focalisée
+#   :mode       PLAY / DESIGN / EXPLORE, quelle que soit la pane
+#   :global     partout
+const _SCOPE_LAYER = Dict{Symbol,Symbol}()
+const _LAYER_KINDS = (:transient, :modal, :pane, :mode, :global)
 const _SCOPE_NOTES = Dict{Symbol,Vector{String}}()   # texte libre en fin de section d'aide
 const _GROUP_TITLES = Dict{Symbol,String}(
     :nav => "Naviguer", :edit => "Éditer", :audio => "Jouer / écouter",
@@ -55,12 +64,19 @@ const _GROUP_TITLES = Dict{Symbol,String}(
 _always(_) = true
 
 """
-    scope!(scope, title)
+    scope!(scope, title; layer = :pane)
 
-Déclare (ou renomme) un scope avec son titre affiché dans l'aide.
+Déclare (ou renomme) un scope avec son titre affiché dans l'aide, et sa
+couche (voir `_SCOPE_LAYER`).
 """
-scope!(scope::Symbol, title::AbstractString) = (_SCOPE_TITLES[scope] = String(title); scope)
+function scope!(scope::Symbol, title::AbstractString; layer::Symbol = :pane)
+    layer in _LAYER_KINDS || throw(ArgumentError("scope!: couche inconnue $layer"))
+    _SCOPE_TITLES[scope] = String(title)
+    _SCOPE_LAYER[scope] = layer
+    return scope
+end
 scope_title(scope::Symbol) = get(_SCOPE_TITLES, scope, String(scope))
+scope_layer(scope::Symbol) = get(_SCOPE_LAYER, scope, :pane)
 scope_notes!(scope::Symbol, lines) = (_SCOPE_NOTES[scope] = String[String(l) for l in lines]; scope)
 scope_notes(scope::Symbol) = get(_SCOPE_NOTES, scope, String[])
 
@@ -331,4 +347,94 @@ function hint_text(layers; prefix::AbstractString = "", max_width::Int = 0, sep:
         out = cand
     end
     return out
+end
+
+# ── Mixins : les vocabulaires partagés, déclarés une fois ─────────────
+# Treize panes et modales redéfinissaient chacune j/k/PgUp/PgDn/g/G avec
+# de petites variantes. Un mixin attache ce vocabulaire à un scope ; la
+# pane ne déclare plus que ce qui lui est propre.
+
+"""
+    mixin_scroll_nav!(scope, view; before, down_when, up_when, end_action,
+                      page_synonyms = false, hint = false)
+
+Défiler un `TK.ScrollPane` (`view(cible)`) : j/↓ k/↑ par ligne, PgDn/Ctrl-d
+PgUp/Ctrl-u par écran (plus d/u avec `page_synonyms`), g/G haut/bas.
+`before(cible)` court avant chaque geste (une synchronisation) ;
+`end_action` remplace le G par défaut (le journal recolle au bas).
+"""
+function mixin_scroll_nav!(scope::Symbol, view::Function;
+                           before::Function = _ -> nothing,
+                           down_when::Function = _always,
+                           up_when::Function = t -> view(t).offset > 0,
+                           end_action::Union{Nothing,Function} = nothing,
+                           page_synonyms::Bool = false, hint::Bool = false,
+                           labels = (down = "descendre", up = "remonter"))
+    go(key) = t -> (before(t); _scroll!(view(t), key))
+    pd = page_synonyms ? ["d", "PgDn", "Ctrl-d"] : ["PgDn", "Ctrl-d"]
+    pu = page_synonyms ? ["u", "PgUp", "Ctrl-u"] : ["PgUp", "Ctrl-u"]
+    bind!(scope, ["j", "↓"], labels.down; group = :nav, hint = hint, repeat = true, when = down_when, action = go(:down))
+    bind!(scope, ["k", "↑"], labels.up; group = :nav, hint = hint, repeat = true, when = up_when, action = go(:up))
+    bind!(scope, pd, "descendre d'un écran"; group = :nav, hint = false, repeat = true, when = down_when, action = go(:pagedown))
+    bind!(scope, pu, "remonter d'un écran"; group = :nav, hint = false, repeat = true, when = up_when, action = go(:pageup))
+    bind!(scope, "g", "haut"; group = :nav, hint = false, action = go(:home))
+    bind!(scope, "G", "bas"; group = :nav, hint = false, when = down_when,
+          action = end_action === nothing ? go(:end_key) : end_action)
+    return scope
+end
+
+"""
+    mixin_list_nav!(scope, nav; before, home_end = true, page = true)
+
+Parcourir une liste : j/↓ k/↑, PgDn/Ctrl-d PgUp/Ctrl-u, g/G. `nav(cible,
+key)` déplace la sélection (`_picker_nav!`, `_list_nav!`…) ; `before`
+court avant (une synchronisation).
+"""
+function mixin_list_nav!(scope::Symbol, nav::Function;
+                         before::Function = _ -> nothing,
+                         home_end::Bool = true, page::Bool = true)
+    go(key) = t -> (before(t); nav(t, key))
+    bind!(scope, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true, action = go(:down))
+    bind!(scope, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true, action = go(:up))
+    if page
+        bind!(scope, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true, action = go(:pagedown))
+        bind!(scope, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true, action = go(:pageup))
+    end
+    if home_end
+        bind!(scope, "g", "premier"; group = :nav, hint = false, action = go(:home))
+        bind!(scope, "G", "dernier"; group = :nav, hint = false, action = go(:end_key))
+    end
+    return scope
+end
+
+"""
+    mixin_knob_nav!(scope; has, next, prev, more, less, big_more, big_less,
+                    value, reset, tab_next, tab_prev, labels)
+
+Un knob parmi d'autres : j/↓ k/↑ le suivant / le précédent, l/→ h/←
+plus / moins (L/H grands pas), = saisir une valeur, 0 le défaut, Tab /
+S-Tab le groupe suivant / précédent. Chaque geste est une fonction de
+la cible ; `nothing` = pas de touche.
+"""
+function mixin_knob_nav!(scope::Symbol; has::Function = _always,
+                         next, prev, more, less,
+                         big_more = nothing, big_less = nothing,
+                         value = nothing, reset = nothing,
+                         tab_next = nothing, tab_prev = nothing,
+                         labels = (next = "suivant", prev = "précédent", more = "plus", less = "moins",
+                                   tab = "groupe suivant", tab_short = "groupe", value = "saisir une valeur",
+                                   reset = "revenir au défaut", reset_short = "défaut"))
+    bind!(scope, ["j", "↓"], labels.next; group = :nav, when = has, repeat = true, action = next)
+    bind!(scope, ["k", "↑"], labels.prev; group = :nav, when = has, repeat = true, action = prev)
+    if tab_next !== nothing
+        bind!(scope, "Tab", labels.tab; short = labels.tab_short, group = :nav, when = has, action = tab_next)
+        bind!(scope, "S-Tab", "précédent (groupe)"; group = :nav, hint = false, when = has, action = tab_prev)
+    end
+    bind!(scope, ["l", "→"], labels.more; group = :edit, when = has, repeat = true, action = more)
+    bind!(scope, ["h", "←"], labels.less; group = :edit, when = has, repeat = true, action = less)
+    big_more === nothing || bind!(scope, "L", labels.more * " (grand pas)"; group = :edit, hint = false, when = has, repeat = true, action = big_more)
+    big_less === nothing || bind!(scope, "H", labels.less * " (grand pas)"; group = :edit, hint = false, when = has, repeat = true, action = big_less)
+    value === nothing || bind!(scope, "=", labels.value; short = "valeur", group = :edit, when = has, action = value)
+    reset === nothing || bind!(scope, "0", labels.reset; short = labels.reset_short, group = :edit, when = has, action = reset)
+    return scope
 end

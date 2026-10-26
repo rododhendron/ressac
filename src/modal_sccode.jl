@@ -225,18 +225,11 @@ end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
-scope!(:modal_sccode, "sccode.org")
+scope!(:modal_sccode, "sccode.org"; layer = :modal)
 bind!(:modal_sccode, "Enter", "charger dans une pane synth"; short = "charger", group = :file, action = _load_sccode_filtered!)
 bind!(:modal_sccode, "Space", "aperçu"; group = :view, action = _preview_sccode_filtered!)
 bind!(:modal_sccode, ["n", "p"], "page suivante / précédente"; group = :nav,
       action = (m, evt) -> _sccode_paginate!(m, evt.char == 'n' ? +1 : -1))
 bind!(:modal_sccode, "/", "rechercher"; group = :edit, action = m -> _picker_search!(m.sccode, true))
-bind!(:modal_sccode, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> (_sccode_sync!(m); _picker_nav!(m.sccode, :down)))
-bind!(:modal_sccode, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> (_sccode_sync!(m); _picker_nav!(m.sccode, :up)))
-bind!(:modal_sccode, ["PgDn", "Ctrl-d"], "page d'écran suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (_sccode_sync!(m); _picker_nav!(m.sccode, :pagedown)))
-bind!(:modal_sccode, ["PgUp", "Ctrl-u"], "page d'écran précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (_sccode_sync!(m); _picker_nav!(m.sccode, :pageup)))
+mixin_list_nav!(:modal_sccode, (m, key) -> _picker_nav!(m.sccode, key); before = _sccode_sync!)
 _bind_modal_common!(:modal_sccode; nav = false)

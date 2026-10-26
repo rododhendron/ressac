@@ -190,7 +190,7 @@ function _patterns_delete_selected!(m::RessacApp)
 end
 
 # ── Registre de touches ────────────────────────────────────────────
-scope!(:modal_patterns, "Patterns rangés")
+scope!(:modal_patterns, "Patterns rangés"; layer = :modal)
 bind!(:modal_patterns, "Enter", "charger"; short = "charger", group = :edit,
       action = m -> _patterns_load_selected!(m))
 bind!(:modal_patterns, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "charger sur le slot N";
@@ -198,18 +198,7 @@ bind!(:modal_patterns, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "charger s
       action = (m, evt) -> _patterns_load_selected!(m, Int(evt.char - '0')))
 bind!(:modal_patterns, "/", "chercher"; short = "chercher", group = :nav,
       action = m -> _picker_search!(m.pats, true))
-bind!(:modal_patterns, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :down)))
-bind!(:modal_patterns, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :up)))
-bind!(:modal_patterns, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :pagedown)))
-bind!(:modal_patterns, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :pageup)))
-bind!(:modal_patterns, "g", "premier"; group = :nav, hint = false,
-      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :home)))
-bind!(:modal_patterns, "G", "dernier"; group = :nav, hint = false,
-      action = m -> (_patterns_sync!(m); _picker_nav!(m.pats, :end_key)))
+mixin_list_nav!(:modal_patterns, (m, key) -> _picker_nav!(m.pats, key); before = _patterns_sync!)
 bind!(:modal_patterns, "x", "supprimer"; group = :edit,
       action = m -> _patterns_delete_selected!(m))
 _bind_modal_common!(:modal_patterns)

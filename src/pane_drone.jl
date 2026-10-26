@@ -188,26 +188,15 @@ title(p::DronePane) = "modulation"
 register_pane_kind!(:drone, _drone_pane_ctor)
 
 scope!(:drone, "Modulation (drones)")
-bind!(:drone, ["j", "↓"], "argument suivant"; group = :nav, when = _dr_has, repeat = true,
-      action = p -> _dr_move!(p, +1))
-bind!(:drone, ["k", "↑"], "argument précédent"; group = :nav, when = _dr_has, repeat = true,
-      action = p -> _dr_move!(p, -1))
-bind!(:drone, "Tab", "drone suivant"; short = "drone", group = :nav, when = _dr_has,
-      action = p -> _dr_cycle!(p, +1))
-bind!(:drone, "S-Tab", "drone précédent"; group = :nav, hint = false, when = _dr_has,
-      action = p -> _dr_cycle!(p, -1))
-bind!(:drone, ["l", "→"], "moduler +"; group = :edit, when = _dr_has, repeat = true,
-      action = p -> _dr_nudge!(p, +1))
-bind!(:drone, ["h", "←"], "moduler −"; group = :edit, when = _dr_has, repeat = true,
-      action = p -> _dr_nudge!(p, -1))
-bind!(:drone, "L", "moduler + (grand pas)"; group = :edit, hint = false, when = _dr_has, repeat = true,
-      action = p -> _dr_nudge!(p, +6))
-bind!(:drone, "H", "moduler − (grand pas)"; group = :edit, hint = false, when = _dr_has, repeat = true,
-      action = p -> _dr_nudge!(p, -6))
-bind!(:drone, "=", "saisir une valeur"; short = "valeur", group = :edit, when = _dr_has,
-      action = p -> _dr_begin_value!(p))
-bind!(:drone, "0", "revenir au défaut"; short = "défaut", group = :edit, when = _dr_has,
-      action = p -> _dr_reset!(p))
+mixin_knob_nav!(:drone; has = _dr_has,
+    next = p -> _dr_move!(p, +1), prev = p -> _dr_move!(p, -1),
+    tab_next = p -> _dr_cycle!(p, +1), tab_prev = p -> _dr_cycle!(p, -1),
+    more = p -> _dr_nudge!(p, +1), less = p -> _dr_nudge!(p, -1),
+    big_more = p -> _dr_nudge!(p, +6), big_less = p -> _dr_nudge!(p, -6),
+    value = p -> _dr_begin_value!(p), reset = p -> _dr_reset!(p),
+    labels = (next = "argument suivant", prev = "argument précédent", more = "moduler +", less = "moduler −",
+              tab = "drone suivant", tab_short = "drone", value = "saisir une valeur",
+              reset = "revenir au défaut", reset_short = "défaut"))
 bind!(:drone, ["T", "t"], "réévaluer le drone depuis son texte"; short = "réévaluer", group = :audio, when = _dr_has,
       action = p -> _dr_reeval!(p))
 bind!(:drone, ["D", "x"], "relâcher ce drone"; short = "relâcher", group = :audio, when = _dr_has,

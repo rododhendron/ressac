@@ -242,7 +242,7 @@ end
 #    doivent exister au moment du bind!) ──
 _mixer_cur(m::RessacApp) = (s = _mixer_sync!(m); i = m.mixer_table.selected; 1 <= i <= length(s) ? s[i] : nothing)
 _mixer_has_cur(m::RessacApp) = _mixer_cur(m) !== nothing
-scope!(:modal_mixer, "Mixer")
+scope!(:modal_mixer, "Mixer"; layer = :modal)
 bind!(:modal_mixer, "m", "mute / unmute"; short = "mute", group = :audio, when = _mixer_has_cur,
       action = m -> (slot = _mixer_cur(m);
                      haskey(_APP_MUTED_PATTERNS, slot) ? _unmute_pattern_slot!(m, slot) :
@@ -255,8 +255,5 @@ bind!(:modal_mixer, ["+", "-"], "gain ±0.1"; group = :edit, when = _mixer_has_c
 bind!(:modal_mixer, ["*", "/"], "gain ±0.5"; group = :edit, hint = false, when = _mixer_has_cur,
       action = (m, evt) -> _mixer_nudge_gain!(m, _mixer_cur(m), evt.char == '*' ? 0.5 : -0.5))
 bind!(:modal_mixer, ["!", "."], "panic"; group = :audio, hint = false, action = _panic!)
-bind!(:modal_mixer, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> (_mixer_sync!(m); _list_nav!(m.mixer_table, :down)))
-bind!(:modal_mixer, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> (_mixer_sync!(m); _list_nav!(m.mixer_table, :up)))
+mixin_list_nav!(:modal_mixer, (m, key) -> _list_nav!(m.mixer_table, key); before = _mixer_sync!)
 _bind_modal_common!(:modal_mixer; nav = false)

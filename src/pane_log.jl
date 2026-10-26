@@ -61,16 +61,10 @@ handle_key!(p::LogPane, evt) = evt isa TK.KeyEvent && dispatch!(((:log, p),), ev
 handle_mouse!(p::LogPane, evt::TK.MouseEvent) = (_log_sync!(p); TK.handle_mouse!(p.pane, evt))
 pane_scope(::LogPane) = :log
 scope!(:log, "Journal")
-bind!(:log, ["k", "↑"], "remonter"; group = :nav, repeat = true, when = p -> p.pane.offset > 0,
-      action = p -> (_log_sync!(p); _scroll!(p.pane, :up)))
-bind!(:log, "PgUp", "remonter d'un écran"; group = :nav, hint = false, repeat = true, when = p -> p.pane.offset > 0,
-      action = p -> (_log_sync!(p); _scroll!(p.pane, :pageup)))
-bind!(:log, "PgDn", "redescendre d'un écran"; group = :nav, hint = false, repeat = true,
-      when = p -> !p.pane.following, action = p -> (_log_sync!(p); _scroll!(p.pane, :pagedown)))
-bind!(:log, ["j", "↓"], "descendre"; group = :nav, when = p -> !p.pane.following, repeat = true,
-      action = p -> (_log_sync!(p); _scroll!(p.pane, :down)))
-bind!(:log, "G", "recoller au bas"; group = :nav, hint = false, when = p -> !p.pane.following,
-      action = p -> _scroll_end!(p.pane))
+# Le journal suit le bas tant qu'on n'a pas remonté : descendre et G
+# (recoller au bas) n'ont de sens que décroché.
+mixin_scroll_nav!(:log, p -> p.pane; before = _log_sync!, hint = true,
+                  down_when = p -> !p.pane.following, end_action = p -> _scroll_end!(p.pane))
 
 title(::LogPane) = "log"
 

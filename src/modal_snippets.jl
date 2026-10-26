@@ -229,7 +229,7 @@ end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
-scope!(:modal_snippets, "Snippets")
+scope!(:modal_snippets, "Snippets"; layer = :modal)
 bind!(:modal_snippets, "Enter", "insérer"; group = :edit, action = _insert_snippet!)
 bind!(:modal_snippets, "Space", "aperçu"; group = :view, action = _preview_snippet!)
 bind!(:modal_snippets, ["Tab", "l", "→"], "catégorie suivante"; group = :nav,
@@ -237,13 +237,6 @@ bind!(:modal_snippets, ["Tab", "l", "→"], "catégorie suivante"; group = :nav,
 bind!(:modal_snippets, ["h", "←"], "catégorie précédente"; group = :nav, hint = false,
       action = m -> _snip_cycle_category!(m, -1))
 bind!(:modal_snippets, "/", "rechercher"; group = :edit, action = m -> _picker_search!(m.snips, true))
-bind!(:modal_snippets, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :down)))
-bind!(:modal_snippets, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :up)))
-bind!(:modal_snippets, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :pagedown)))
-bind!(:modal_snippets, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (_snippets_sync!(m); _picker_nav!(m.snips, :pageup)))
+mixin_list_nav!(:modal_snippets, (m, key) -> _picker_nav!(m.snips, key); before = _snippets_sync!)
 bind!(:modal_snippets, "Esc / q", "effacer la recherche → la catégorie → fermer"; group = :nav, hint = false)
 _bind_modal_common!(:modal_snippets; nav = false)

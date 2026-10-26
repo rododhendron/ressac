@@ -161,7 +161,7 @@ function _render_evolve_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
 end
 
 # ── Registre de touches ────────────────────────────────────────────
-scope!(:modal_evolve, "Variations de pattern")
+scope!(:modal_evolve, "Variations de pattern"; layer = :modal)
 bind!(:modal_evolve, ["Space", "K"], "écouter"; short = "écouter", group = :audio,
       action = m -> _evolve_preview!(m))
 bind!(:modal_evolve, "l", "verrouiller / relâcher"; short = "verrouiller", group = :edit,
@@ -174,12 +174,5 @@ bind!(:modal_evolve, "s", "ranger dans la bibliothèque"; short = "ranger", grou
       action = m -> _evolve_keep!(m))
 bind!(:modal_evolve, "x", "couper l'écoute"; group = :audio, hint = false,
       action = m -> _evolve_stop_preview!(m))
-bind!(:modal_evolve, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> _list_nav!(m.evolve_list, :pagedown))
-bind!(:modal_evolve, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> _list_nav!(m.evolve_list, :pageup))
-bind!(:modal_evolve, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> _list_nav!(m.evolve_list, :down))
-bind!(:modal_evolve, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> _list_nav!(m.evolve_list, :up))
+mixin_list_nav!(:modal_evolve, (m, key) -> _list_nav!(m.evolve_list, key))
 _bind_modal_common!(:modal_evolve; nav = false)

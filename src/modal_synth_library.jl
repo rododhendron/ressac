@@ -225,17 +225,10 @@ end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
-scope!(:modal_lib, "Librairie de synths")
+scope!(:modal_lib, "Librairie de synths"; layer = :modal)
 bind!(:modal_lib, "Space", "écouter"; group = :audio, action = _preview_synth_from_library!)
 bind!(:modal_lib, "/", "chercher"; short = "chercher", group = :nav, action = m -> _picker_search!(m.synthlib, true))
-bind!(:modal_lib, ["j", "↓"], "suivant"; group = :nav, hint = false, repeat = true,
-      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :down)))
-bind!(:modal_lib, ["k", "↑"], "précédent"; group = :nav, hint = false, repeat = true,
-      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :up)))
-bind!(:modal_lib, ["PgDn", "Ctrl-d"], "page suivante"; group = :nav, hint = false, repeat = true,
-      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :pagedown)))
-bind!(:modal_lib, ["PgUp", "Ctrl-u"], "page précédente"; group = :nav, hint = false, repeat = true,
-      action = m -> (_synthlib_sync!(m); _picker_nav!(m.synthlib, :pageup)))
+mixin_list_nav!(:modal_lib, (m, key) -> _picker_nav!(m.synthlib, key); before = _synthlib_sync!)
 bind!(:modal_lib, "Enter", "ouvrir dans une pane synth"; short = "ouvrir", group = :file,
       action = _instantiate_synth_from_library!)
 _bind_modal_common!(:modal_lib; nav = false)

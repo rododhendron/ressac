@@ -183,9 +183,5 @@ bind!(:synthdoc, "]", "graphe : défiler →"; group = :view, hint = false, when
       action = p -> (p.graph_x += 8))
 bind!(:synthdoc, "[", "graphe : défiler ←"; group = :view, hint = false, when = _synthdoc_graph, repeat = true,
       action = p -> (p.graph_x = max(0, p.graph_x - 8)))
-bind!(:synthdoc, ["j", "↓"], "défiler"; group = :nav, repeat = true,
-      action = p -> _scroll!(_synthdoc_view(p), :down))
-bind!(:synthdoc, ["k", "↑"], "remonter"; group = :nav, repeat = true,
-      action = p -> _scroll!(_synthdoc_view(p), :up))
-bind!(:synthdoc, "g", "haut"; group = :nav, hint = false, action = p -> _scroll_top!(_synthdoc_view(p)))
-bind!(:synthdoc, "G", "bas"; group = :nav, hint = false, action = p -> _scroll_end!(_synthdoc_view(p)))
+mixin_scroll_nav!(:synthdoc, _synthdoc_view; hint = true, labels = (down = "défiler", up = "remonter"),
+                  up_when = _always, end_action = p -> _scroll_end!(_synthdoc_view(p)))

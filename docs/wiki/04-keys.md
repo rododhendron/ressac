@@ -433,7 +433,7 @@ Lecture d'une carte :
 | `j / ↓` | knob suivant |
 | `k / ↑` | knob précédent |
 | `Tab` | nœud suivant |
-| `S-Tab` | nœud précédent |
+| `S-Tab` | précédent (groupe) |
 
 **Éditer**
 
@@ -498,7 +498,7 @@ Lecture d'une carte :
 | `j / ↓` | argument suivant |
 | `k / ↑` | argument précédent |
 | `Tab` | drone suivant |
-| `S-Tab` | drone précédent |
+| `S-Tab` | précédent (groupe) |
 
 **Éditer**
 
@@ -540,6 +540,8 @@ Lecture d'une carte :
 | `Enter` | graphe : le knob de ce nœud dans le studio |
 | `j / ↓` | défiler |
 | `k / ↑` | remonter |
+| `PgDn / Ctrl-d` | descendre d'un écran |
+| `PgUp / Ctrl-u` | remonter d'un écran |
 | `g` | haut |
 | `G` | bas |
 
@@ -562,11 +564,12 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `k / ↑` | remonter |
-| `PgUp` | remonter d'un écran |
-| `PgDn` | redescendre d'un écran |
 | `j / ↓` | descendre |
-| `G` | recoller au bas |
+| `k / ↑` | remonter |
+| `PgDn / Ctrl-d` | descendre d'un écran |
+| `PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
 
 ## Documentation
 
@@ -576,9 +579,10 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | descendre |
 | `k / ↑` | remonter |
-| `d / PgDn` | descendre d'un écran |
-| `u / PgUp` | remonter d'un écran |
-| `g` | début |
+| `d / PgDn / Ctrl-d` | descendre d'un écran |
+| `u / PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
 | `f` | suivre le curseur ou figer |
 
 ## Wiki (pane)
@@ -589,11 +593,12 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | défiler |
 | `k / ↑` | remonter |
+| `d / PgDn / Ctrl-d` | descendre d'un écran |
+| `u / PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
 | `n / ] / →` | page du wiki suivante |
 | `p / [ / ←` | page du wiki précédente |
-| `d / PgDn` | défiler d'un écran |
-| `u / PgUp` | remonter d'un écran |
-| `g / G` | début / fin de page |
 | `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
 
 ## Visualiseur de notes
@@ -623,6 +628,10 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | défiler |
 | `k / ↑` | remonter |
+| `PgDn / Ctrl-d` | descendre d'un écran |
+| `PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
 | `n` | sauter l'étape |
 | `p` | étape précédente |
 | `r` | recommencer |
@@ -655,11 +664,12 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `j / ↓` | défiler |
+| `j / ↓` | descendre |
 | `k / ↑` | remonter |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g / G` | début / fin |
+| `PgDn / Ctrl-d` | descendre d'un écran |
+| `PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
 
 **Aide**
 
@@ -674,12 +684,12 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `j / ↓` | défiler |
+| `j / ↓` | descendre |
 | `k / ↑` | remonter |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `G` | fin |
-| `g` | début |
+| `PgDn / Ctrl-d` | descendre d'un écran |
+| `PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
 | `Esc / q` | fermer |
 
 ## Sons (samples, instruments, synths)
@@ -705,10 +715,10 @@ Lecture d'une carte :
 | `/` | chercher |
 | `h / ←` | précédent |
 | `l / →` | suivant |
-| `j / ↓` | ligne suivante |
-| `k / ↑` | ligne précédente |
-| `Ctrl-d / PgDn` | page suivante |
-| `Ctrl-u / PgUp` | page précédente |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
 | `g` | premier |
 | `G` | dernier |
 | `j / k / ↓ / ↑` | naviguer |
@@ -737,6 +747,8 @@ Lecture d'une carte :
 | `k / ↑` | précédent |
 | `PgDn / Ctrl-d` | page suivante |
 | `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
 | `Esc / q` | fermer |
 
 **Fichiers**
@@ -776,6 +788,8 @@ Lecture d'une carte :
 | `k / ↑` | précédent |
 | `PgDn / Ctrl-d` | page suivante |
 | `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
 | `Esc / q` | effacer la recherche → la catégorie → fermer |
 | `Esc / q` | fermer |
 
@@ -842,10 +856,12 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
 | `Esc / q` | fermer |
 
 **Aide**
@@ -897,6 +913,10 @@ Lecture d'une carte :
 |---|---|
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
 | `Esc / q` | fermer |
 
 **Aide**
@@ -926,8 +946,10 @@ Lecture d'une carte :
 | `n / p` | page suivante / précédente |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page d'écran suivante |
-| `PgUp / Ctrl-u` | page d'écran précédente |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
 | `Esc / q` | fermer |
 
 **Éditer**

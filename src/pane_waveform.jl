@@ -626,20 +626,15 @@ bind!(:waveform, "0", "toute l'onde"; group = :view, when = _wv_has,
       action = p -> (p.view_start = 1; p.view_len = length(p.samples)))
 
 scope!(:sculpt, "Sculpt (l'onde et ses knobs)")
-bind!(:sculpt, ["j", "↓"], "knob suivant"; group = :nav, when = _sc_has, repeat = true,
-      action = p -> (p.focus = clamp(p.focus + 1, 1, length(p.knobs))))
-bind!(:sculpt, ["k", "↑"], "knob précédent"; group = :nav, when = _sc_has, repeat = true,
-      action = p -> (p.focus = clamp(p.focus - 1, 1, length(p.knobs))))
-bind!(:sculpt, "Tab", "nœud suivant"; short = "nœud", group = :nav, when = _sc_has,
-      action = p -> _sculpt_focus_neighbour!(p, +1))
-bind!(:sculpt, "S-Tab", "nœud précédent"; group = :nav, hint = false, when = _sc_has,
-      action = p -> _sculpt_focus_neighbour!(p, -1))
-bind!(:sculpt, ["l", "→"], "tirer +"; group = :edit, when = _sc_has, repeat = true,
-      action = p -> _sculpt_tug!(p, +1))
-bind!(:sculpt, ["h", "←"], "tirer −"; group = :edit, when = _sc_has, repeat = true,
-      action = p -> _sculpt_tug!(p, -1))
-bind!(:sculpt, "=", "saisir une valeur"; short = "valeur", group = :edit, when = _sc_has,
-      action = p -> _sculpt_begin_value!(p))
+mixin_knob_nav!(:sculpt; has = _sc_has,
+    next = p -> (p.focus = clamp(p.focus + 1, 1, length(p.knobs))),
+    prev = p -> (p.focus = clamp(p.focus - 1, 1, length(p.knobs))),
+    tab_next = p -> _sculpt_focus_neighbour!(p, +1), tab_prev = p -> _sculpt_focus_neighbour!(p, -1),
+    more = p -> _sculpt_tug!(p, +1), less = p -> _sculpt_tug!(p, -1),
+    value = p -> _sculpt_begin_value!(p),
+    labels = (next = "knob suivant", prev = "knob précédent", more = "tirer +", less = "tirer −",
+              tab = "nœud suivant", tab_short = "nœud", value = "saisir une valeur",
+              reset = "", reset_short = ""))
 bind!(:sculpt, ["Space", "Enter"], "jouer"; group = :audio, when = _sc_has, repeat = true,
       action = p -> _wave_play!(p))
 bind!(:sculpt, "o", "UGen suivant (même rôle)"; short = "UGen", group = :structure, when = _sc_has,
