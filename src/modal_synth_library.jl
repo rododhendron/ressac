@@ -225,7 +225,7 @@ end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
-scope!(:modal_lib, "Librairie de synths"; layer = :modal)
+scope!(:modal_lib, "Librairie de synths"; layer = :modal, modes = (:design,))
 bind!(:modal_lib, "Space", "écouter"; group = :audio, action = _preview_synth_from_library!)
 bind!(:modal_lib, "/", "chercher"; short = "chercher", group = :nav, action = m -> _picker_search!(m.synthlib, true))
 mixin_list_nav!(:modal_lib, (m, key) -> _picker_nav!(m.synthlib, key); before = _synthlib_sync!)

@@ -229,7 +229,7 @@ end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
-scope!(:modal_snippets, "Snippets"; layer = :modal)
+scope!(:modal_snippets, "Snippets"; layer = :modal, modes = (:play,))
 bind!(:modal_snippets, "Enter", "insérer"; group = :edit, action = _insert_snippet!)
 bind!(:modal_snippets, "Space", "aperçu"; group = :view, action = _preview_snippet!)
 bind!(:modal_snippets, ["Tab", "l", "→"], "catégorie suivante"; group = :nav,

@@ -187,7 +187,7 @@ pane_scope(::DronePane) = :drone
 title(p::DronePane) = "modulation"
 register_pane_kind!(:drone, _drone_pane_ctor)
 
-scope!(:drone, "Modulation (drones)")
+scope!(:drone, "Modulation (drones)"; layer = :pane, modes = (:design, :play))
 mixin_knob_nav!(:drone; has = _dr_has,
     next = p -> _dr_move!(p, +1), prev = p -> _dr_move!(p, -1),
     tab_next = p -> _dr_cycle!(p, +1), tab_prev = p -> _dr_cycle!(p, -1),

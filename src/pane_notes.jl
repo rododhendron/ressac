@@ -170,7 +170,7 @@ serialize(p::NotesPane) = Dict{String,Any}("span_num" => numerator(p.span),
                                            "perc_rows" => p.perc_rows)
 register_pane_kind!(:notes, _notes_pane_ctor)
 
-scope!(:notes, "Visualiseur de notes")
+scope!(:notes, "Visualiseur de notes"; layer = :pane, modes = (:play,))
 bind!(:notes, ["+", "l", "→"], "fenêtre plus large"; short = "plus large", group = :nav, repeat = true,
       action = p -> (p.span = min(p.span * 2, Rational{Int64}(32))))
 bind!(:notes, ["-", "h", "←"], "fenêtre plus étroite"; short = "plus étroite", group = :nav, repeat = true,

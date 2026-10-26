@@ -1,10 +1,14 @@
 # Touches
 
-Page générée depuis le registre de bindings (`src/keymap.jl`, `src/app_keymap.jl` et les scopes des panes/modaux) par `scripts/gen_keys_wiki.jl` — ne pas éditer à la main. Dans l'app, `?` ouvre la même chose pour le contexte courant.
+Page générée depuis le registre de bindings (`src/keymap.jl`, `src/app_keymap.jl` et les scopes des panes/modaux) par `scripts/gen_keys_wiki.jl` — ne pas éditer à la main. Dans l'app, `?` ouvre la même chose pour le contexte courant, `Tab` tout le mode.
 
 Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g puis t. Les touches séparées par ` / ` sont des synonymes.
 
-## PLAY — quelle que soit la pane
+Une touche descend les couches actives — transitoire (saisie, leader, mode pane…), modale, pane focalisée, **mode** (PLAY · DESIGN · EXPLORE), partout — jusqu'à la première qui la connaît. Les gestes d'un mode valent quelle que soit la pane.
+
+## PLAY
+
+### PLAY — quelle que soit la pane
 
 **Évaluer**
 
@@ -31,140 +35,61 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 |---|---|
 | `Space` | snippet… |
 
-## DESIGN — quelle que soit la pane
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `T / t` | entendre le son (maintenir = rafale) |
-| `D` | drone : tenir le son / le relâcher |
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `Space` | maillon DSL… |
-
-**Fichiers**
-
-| Touche | Action |
-|---|---|
-| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
-
-**Structure**
-
-| Touche | Action |
-|---|---|
-| `P` | élagage : mesurer l'impact de chaque nœud |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `K` | la fiche du mot sous le curseur (DOC) |
-| `X` | l'explication du son (DOC) |
-| `Y` | le graphe du son (DOC) |
-
-## EXPLORE — quelle que soit la pane
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `T / t` | entendre le candidat |
-| `D` | drone du candidat on/off |
-
-## Partout
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-| `Ctrl-p` | palette : commandes, sons, fonctions, patterns |
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `!` | panic (coupe tout) |
-| `,` | hush (laisse finir les queues) |
-
-**Divers**
-
-| Touche | Action |
-|---|---|
-| `Esc` | quitter Ressac (Échap deux fois) |
-| `:` | commande |
-| `/` | rechercher |
+### Gamme (tuning)
 
 **Vues**
 
 | Touche | Action |
 |---|---|
-| `S` | scope suivant |
-| `+` | scope : zoom Y + |
-| `-` | scope : zoom Y − |
-| `>` | scope : zoom X + |
-| `<` | scope : zoom X − |
-| `=` | scope : zoom reset |
-| `+` | réservoir : plus rapide |
-| `-` | réservoir : plus lent |
+| `r` | étiquettes : cents ⟷ ratios |
 
-**Panes & workspaces**
-
-| Touche | Action |
-|---|---|
-| `Ctrl-w` | mode pane |
-| `Ctrl-1 / Ctrl-2 / Ctrl-3 / Ctrl-4 / Ctrl-5 / Ctrl-6 / Ctrl-7 / Ctrl-8 / Ctrl-9` | workspace 1…9 |
-| `Ctrl-f` | montrer/cacher les floats |
-| `Ctrl-1 / :play · Ctrl-2 / :design · Ctrl-3 / :explore` | workspaces PLAY (patterns) · DESIGN (synth) · EXPLORE (GA) |
-
-## Éditeur (patterns et synth)
+### Visualiseur de notes
 
 **Naviguer**
 
 | Touche | Action |
 |---|---|
-| `Tab` | basculer patterns ⟷ synth |
-| `PgDn` | page suivante |
-| `PgUp` | page précédente |
-| `Ctrl-d / PgDn` | demi-page suivante |
-| `Ctrl-u / PgUp` | demi-page précédente |
-| `h / j / k / l` | déplacer le curseur (ou flèches) |
-| `w / b / e` | mot suivant / précédent / fin de mot |
-| `f / F / t / T` | aller au caractère (f dessus, t avant, majuscule = à gauche) |
-| `;` | refaire la recherche de caractère |
-| `,` | refaire la recherche de caractère, à l'envers |
-| `W / B / E` | MOT (séparé par des espaces) |
-| `0 / $` | début / fin de ligne |
-| `g g / G` | début / fin du buffer |
+| `+ / l / →` | fenêtre plus large |
+| `- / h / ←` | fenêtre plus étroite |
+| `j / ↓` | moins de couloirs de percussion |
+| `k / ↑` | plus de couloirs de percussion |
+
+### Modulation (drones)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | argument suivant |
+| `k / ↑` | argument précédent |
+| `Tab` | drone suivant |
+| `S-Tab` | précédent (groupe) |
 
 **Éditer**
 
 | Touche | Action |
 |---|---|
-| `.` | répéter la dernière édition |
-| `+` | nombre +1 (maintenir = scrub) |
-| `-` | nombre −1 |
-| `*` | nombre +10 |
-| `/` | nombre −10 |
-| `i / a / o / O` | insérer (avant / après / ligne dessous / dessus) |
-| `Esc` | retour au mode normal |
-| `dd / yy / p` | supprimer / copier / coller la ligne |
-| `cw / dw / yw` | opérateur + motion (aussi b, e, W, B, E, $, 0) |
-| `x` | supprimer le caractère |
-| `u` | annuler |
+| `l / →` | moduler + |
+| `h / ←` | moduler − |
+| `L` | moduler + (grand pas) |
+| `H` | moduler − (grand pas) |
+| `=` | saisir une valeur |
+| `0` | revenir au défaut |
 
-**Sélection**
+**Jouer / écouter**
 
 | Touche | Action |
 |---|---|
-| `v` | sélection visuelle (caractères) |
-| `V` | sélection visuelle (lignes) |
+| `x` | relâcher ce drone |
+| `Ctrl-x` | relâcher tous les drones |
 
-## Pane patterns
+**Sous-modes (touches une fois dedans)**
+
+| Touche | Action |
+|---|---|
+| `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
+
+### Pane patterns
 
 **Jouer / écouter**
 
@@ -188,7 +113,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 |---|---|
 | `g s` | ouvrir le synth sous le curseur (DESIGN) |
 
-## Space + …
+### Space + …
 
 **Éditer**
 
@@ -226,7 +151,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `Space w` | ▸ wiki |
 | `Space ?` | ▸ aide |
 
-## Snippet avec des trous (après Space + lettre)
+### Snippet avec des trous (après Space + lettre)
 
 **Éditer**
 
@@ -238,7 +163,400 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `u` | annuler le snippet |
 | `Esc` | sortir des trous |
 
-## Pane synth (texte)
+### Tap (:tap / :bpm)
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Space` | frapper |
+| `Enter` | valider |
+| `Esc` | annuler |
+
+### Piano (:piano)
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `z x c v b n m ,` | notes (rangée du bas = naturelles) |
+| `s d g h j` | dièses |
+| `[ / ]` | octave − / + |
+| `Enter` | valider l'enregistrement |
+| `Esc` | quitter |
+
+### Sons (samples, instruments, synths)
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | insérer dans le pattern |
+| `Bksp` | effacer le filtre |
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `K / Space` | écouter |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `Tab` | catégorie suivante |
+| `/` | chercher |
+| `h / ←` | précédent |
+| `l / →` | suivant |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `j / k / ↓ / ↑` | naviguer |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+### Mixer
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `m` | mute / unmute |
+| `s` | solo |
+| `u` | tout démuter |
+| `! / .` | panic |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `+ / -` | gain ±0.1 |
+| `* / /` | gain ±0.5 |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+### Snippets
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | insérer |
+| `/` | rechercher |
+
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `Space` | aperçu |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `Tab / l / →` | catégorie suivante |
+| `h / ←` | catégorie précédente |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `Esc / q` | effacer la recherche → la catégorie → fermer |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+### Patterns rangés
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | charger |
+| `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | charger sur le slot N |
+| `x` | supprimer |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `/` | chercher |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `j / k / ↓ / ↑` | naviguer |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+### Variations de pattern
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Space / K` | écouter |
+| `x` | couper l'écoute |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `l` | verrouiller / relâcher |
+| `r` | relancer depuis les verrouillées |
+| `Enter` | remplacer le bloc |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `s` | ranger dans la bibliothèque |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+## DESIGN
+
+### DESIGN — quelle que soit la pane
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `T / t` | entendre le son (maintenir = rafale) |
+| `D` | drone : tenir le son / le relâcher |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Space` | maillon DSL… |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
+
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `P` | élagage : mesurer l'impact de chaque nœud |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `K` | la fiche du mot sous le curseur (DOC) |
+| `X` | l'explication du son (DOC) |
+| `Y` | le graphe du son (DOC) |
+
+### Vue d'onde
+
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `s` | sculpter |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `l / →` | défiler → |
+| `h / ←` | défiler ← |
+
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `+ / i` | zoom + |
+| `- / o` | zoom − |
+| `0` | toute l'onde |
+
+### Sculpt (l'onde et ses knobs)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | knob suivant |
+| `k / ↑` | knob précédent |
+| `Tab` | nœud suivant |
+| `S-Tab` | précédent (groupe) |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `l / →` | tirer + |
+| `h / ←` | tirer − |
+| `=` | saisir une valeur |
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Enter` | jouer |
+
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `o` | UGen suivant (même rôle) |
+| `O` | UGen précédent |
+| `n` | insérer un filtre après |
+| `d` | supprimer le nœud (bypass) |
+| `i` | recâbler l'entrée → |
+| `I` | recâbler l'entrée ← |
+| `r` | taux ar/kr suivant |
+| `R` | taux précédent |
+| `x` | dupliquer en parallèle |
+| `m` | greffer un LFO sur le slot |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `e` | exporter dans l'éditeur |
+
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `L` | défiler l'onde → |
+| `H` | défiler l'onde ← |
+| `0` | toute l'onde |
+| `s` | revenir à la vue d'onde |
+| `> / <` | défiler l'explication |
+
+**Sous-modes (touches une fois dedans)**
+
+| Touche | Action |
+|---|---|
+| `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
+
+### Modulation (drones)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | argument suivant |
+| `k / ↑` | argument précédent |
+| `Tab` | drone suivant |
+| `S-Tab` | précédent (groupe) |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `l / →` | moduler + |
+| `h / ←` | moduler − |
+| `L` | moduler + (grand pas) |
+| `H` | moduler − (grand pas) |
+| `=` | saisir une valeur |
+| `0` | revenir au défaut |
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `x` | relâcher ce drone |
+| `Ctrl-x` | relâcher tous les drones |
+
+**Sous-modes (touches une fois dedans)**
+
+| Touche | Action |
+|---|---|
+| `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
+
+### Doc du synth (doc · explication · graphe)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `→` | onglet suivant (doc · explication · graphe) |
+| `←` | onglet précédent |
+| `l` | onglet suivant |
+| `h` | onglet précédent |
+| `l` | graphe : nœud suivant |
+| `h` | graphe : nœud précédent |
+| `Enter` | graphe : le knob de ce nœud dans le studio |
+| `j / ↓` | défiler |
+| `k / ↑` | remonter |
+| `PgDn / Ctrl-d` | descendre d'un écran |
+| `PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
+
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `d` | graphe : retirer le nœud (bypass) |
+
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `]` | graphe : défiler → |
+| `[` | graphe : défiler ← |
+
+### Pane synth (texte)
 
 **Naviguer**
 
@@ -247,7 +565,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `g t` | synth suivant |
 | `g T` | synth précédent |
 
-## Space + … (synth)
+### Space + … (synth)
 
 **Éditer**
 
@@ -280,66 +598,140 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 |---|---|
 | `Space ?` | ▸ aide |
 
-## Sélection visuelle (v / V)
-
-**Sélection**
-
-| Touche | Action |
-|---|---|
-| `j / k / h / l` | étendre la sélection |
-| `Esc` | annuler |
+### Snippet avec des trous (après Space + lettre)
 
 **Éditer**
 
 | Touche | Action |
 |---|---|
-| `d / y / c` | supprimer / copier / changer |
+| `Tab` | trou suivant |
+| `S-Tab` | trou précédent |
+| `i` | remplir le trou (insertion) |
+| `u` | annuler le snippet |
+| `Esc` | sortir des trous |
+
+### Sons (samples, instruments, synths)
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | insérer dans le pattern |
+| `Bksp` | effacer le filtre |
 
 **Jouer / écouter**
 
 | Touche | Action |
 |---|---|
-| `m` | mute les slots sélectionnés |
-
-**Évaluer**
-
-| Touche | Action |
-|---|---|
-| `e` | évaluer le bloc |
-
-## Mode insertion
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `Esc` | retour au mode normal |
-| `Tab` | compléter (ghost, identifiants) · placeholder suivant |
-| `S-Tab` | placeholder précédent |
-
-## Mode pane (Ctrl-w, reste actif)
-
-**Panes & workspaces**
-
-| Touche | Action |
-|---|---|
-| `Ctrl-w s` | split horizontal |
-| `Ctrl-w v` | split vertical |
-| `Ctrl-w c` | fermer la pane |
-| `Ctrl-w z` | zoom / dézoom (la pane seule à l'écran) |
-| `Ctrl-w < / Ctrl-w >` | moins / plus large (5 %) — ou glisser une bordure à la souris |
-| `Ctrl-w - / Ctrl-w +` | moins / plus haut (5 %) |
-| `Ctrl-w =` | des parts égales |
-| `Ctrl-w r` | tourner la coupe (horizontal ⟷ vertical) |
-| `Ctrl-w Esc / Ctrl-w Enter / Ctrl-w Ctrl-w` | quitter le mode pane |
+| `K / Space` | écouter |
 
 **Naviguer**
 
 | Touche | Action |
 |---|---|
-| `Ctrl-w h / Ctrl-w j / Ctrl-w k / Ctrl-w l` | focus ← ↓ ↑ → (ou flèches) |
+| `Tab` | catégorie suivante |
+| `/` | chercher |
+| `h / ←` | précédent |
+| `l / →` | suivant |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `j / k / ↓ / ↑` | naviguer |
+| `Esc / q` | fermer |
 
-## Explorateur de synths (GA)
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+### Librairie de synths
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Space` | écouter |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `/` | chercher |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `Esc / q` | fermer |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `Enter` | ouvrir dans une pane synth |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+### sccode.org
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `Enter` | charger dans une pane synth |
+
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `Space` | aperçu |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `n / p` | page suivante / précédente |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `Esc / q` | fermer |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `/` | rechercher |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
+## EXPLORE
+
+### EXPLORE — quelle que soit la pane
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `T / t` | entendre le candidat |
+| `D` | drone du candidat on/off |
+
+### Explorateur de synths (GA)
 
 **Structure**
 
@@ -430,7 +822,7 @@ Lecture d'une carte :
   ♪NN         adéquation mesurée au rôle (%) · ⚠ MUET = mesuré silencieux
 ```
 
-## Vue d'onde
+### Vue d'onde
 
 **Structure**
 
@@ -453,7 +845,7 @@ Lecture d'une carte :
 | `- / o` | zoom − |
 | `0` | toute l'onde |
 
-## Sculpt (l'onde et ses knobs)
+### Sculpt (l'onde et ses knobs)
 
 **Naviguer**
 
@@ -515,75 +907,55 @@ Lecture d'une carte :
 |---|---|
 | `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
 
-## Modulation (drones)
+## Partout
 
-**Naviguer**
+### Partout
 
-| Touche | Action |
-|---|---|
-| `j / ↓` | argument suivant |
-| `k / ↑` | argument précédent |
-| `Tab` | drone suivant |
-| `S-Tab` | précédent (groupe) |
-
-**Éditer**
+**Aide**
 
 | Touche | Action |
 |---|---|
-| `l / →` | moduler + |
-| `h / ←` | moduler − |
-| `L` | moduler + (grand pas) |
-| `H` | moduler − (grand pas) |
-| `=` | saisir une valeur |
-| `0` | revenir au défaut |
+| `?` | aide |
+| `Ctrl-p` | palette : commandes, sons, fonctions, patterns |
 
 **Jouer / écouter**
 
 | Touche | Action |
 |---|---|
-| `x` | relâcher ce drone |
-| `Ctrl-x` | relâcher tous les drones |
+| `!` | panic (coupe tout) |
+| `,` | hush (laisse finir les queues) |
 
-**Sous-modes (touches une fois dedans)**
-
-| Touche | Action |
-|---|---|
-| `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
-
-## Doc du synth (doc · explication · graphe)
-
-**Naviguer**
+**Divers**
 
 | Touche | Action |
 |---|---|
-| `→` | onglet suivant (doc · explication · graphe) |
-| `←` | onglet précédent |
-| `l` | onglet suivant |
-| `h` | onglet précédent |
-| `l` | graphe : nœud suivant |
-| `h` | graphe : nœud précédent |
-| `Enter` | graphe : le knob de ce nœud dans le studio |
-| `j / ↓` | défiler |
-| `k / ↑` | remonter |
-| `PgDn / Ctrl-d` | descendre d'un écran |
-| `PgUp / Ctrl-u` | remonter d'un écran |
-| `g` | haut |
-| `G` | bas |
-
-**Structure**
-
-| Touche | Action |
-|---|---|
-| `d` | graphe : retirer le nœud (bypass) |
+| `Esc` | quitter Ressac (Échap deux fois) |
+| `:` | commande |
+| `/` | rechercher |
 
 **Vues**
 
 | Touche | Action |
 |---|---|
-| `]` | graphe : défiler → |
-| `[` | graphe : défiler ← |
+| `S` | scope suivant |
+| `+` | scope : zoom Y + |
+| `-` | scope : zoom Y − |
+| `>` | scope : zoom X + |
+| `<` | scope : zoom X − |
+| `=` | scope : zoom reset |
+| `+` | réservoir : plus rapide |
+| `-` | réservoir : plus lent |
 
-## Journal
+**Panes & workspaces**
+
+| Touche | Action |
+|---|---|
+| `Ctrl-w` | mode pane |
+| `Ctrl-1 / Ctrl-2 / Ctrl-3 / Ctrl-4 / Ctrl-5 / Ctrl-6 / Ctrl-7 / Ctrl-8 / Ctrl-9` | workspace 1…9 |
+| `Ctrl-f` | montrer/cacher les floats |
+| `Ctrl-1 / :play · Ctrl-2 / :design · Ctrl-3 / :explore` | workspaces PLAY (patterns) · DESIGN (synth) · EXPLORE (GA) |
+
+### Journal
 
 **Naviguer**
 
@@ -596,7 +968,7 @@ Lecture d'une carte :
 | `g` | haut |
 | `G` | bas |
 
-## Documentation
+### Documentation
 
 **Naviguer**
 
@@ -610,7 +982,7 @@ Lecture d'une carte :
 | `G` | bas |
 | `f` | suivre le curseur ou figer |
 
-## Wiki (pane)
+### Wiki (pane)
 
 **Naviguer**
 
@@ -626,26 +998,7 @@ Lecture d'une carte :
 | `p / [ / ←` | page du wiki précédente |
 | `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
 
-## Visualiseur de notes
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `+ / l / →` | fenêtre plus large |
-| `- / h / ←` | fenêtre plus étroite |
-| `j / ↓` | moins de couloirs de percussion |
-| `k / ↑` | plus de couloirs de percussion |
-
-## Gamme (tuning)
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `r` | étiquettes : cents ⟷ ratios |
-
-## Tutoriel
+### Tutoriel
 
 **Naviguer**
 
@@ -661,29 +1014,123 @@ Lecture d'une carte :
 | `p` | étape précédente |
 | `r` | recommencer |
 
-## Tap (:tap / :bpm)
+### Éditeur (patterns et synth)
 
-**Jouer / écouter**
+**Naviguer**
 
 | Touche | Action |
 |---|---|
-| `Space` | frapper |
-| `Enter` | valider |
+| `Tab` | basculer patterns ⟷ synth |
+| `PgDn` | page suivante |
+| `PgUp` | page précédente |
+| `Ctrl-d / PgDn` | demi-page suivante |
+| `Ctrl-u / PgUp` | demi-page précédente |
+| `h / j / k / l` | déplacer le curseur (ou flèches) |
+| `w / b / e` | mot suivant / précédent / fin de mot |
+| `f / F / t / T` | aller au caractère (f dessus, t avant, majuscule = à gauche) |
+| `;` | refaire la recherche de caractère |
+| `,` | refaire la recherche de caractère, à l'envers |
+| `W / B / E` | MOT (séparé par des espaces) |
+| `0 / $` | début / fin de ligne |
+| `g g / G` | début / fin du buffer |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `.` | répéter la dernière édition |
+| `+` | nombre +1 (maintenir = scrub) |
+| `-` | nombre −1 |
+| `*` | nombre +10 |
+| `/` | nombre −10 |
+| `i / a / o / O` | insérer (avant / après / ligne dessous / dessus) |
+| `Esc` | retour au mode normal |
+| `dd / yy / p` | supprimer / copier / coller la ligne |
+| `cw / dw / yw` | opérateur + motion (aussi b, e, W, B, E, $, 0) |
+| `x` | supprimer le caractère |
+| `u` | annuler |
+
+**Sélection**
+
+| Touche | Action |
+|---|---|
+| `v` | sélection visuelle (caractères) |
+| `V` | sélection visuelle (lignes) |
+
+### Mode pane (Ctrl-w, reste actif)
+
+**Panes & workspaces**
+
+| Touche | Action |
+|---|---|
+| `Ctrl-w s` | split horizontal |
+| `Ctrl-w v` | split vertical |
+| `Ctrl-w c` | fermer la pane |
+| `Ctrl-w z` | zoom / dézoom (la pane seule à l'écran) |
+| `Ctrl-w < / Ctrl-w >` | moins / plus large (5 %) — ou glisser une bordure à la souris |
+| `Ctrl-w - / Ctrl-w +` | moins / plus haut (5 %) |
+| `Ctrl-w =` | des parts égales |
+| `Ctrl-w r` | tourner la coupe (horizontal ⟷ vertical) |
+| `Ctrl-w Esc / Ctrl-w Enter / Ctrl-w Ctrl-w` | quitter le mode pane |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `Ctrl-w h / Ctrl-w j / Ctrl-w k / Ctrl-w l` | focus ← ↓ ↑ → (ou flèches) |
+
+### Sélection visuelle (v / V)
+
+**Sélection**
+
+| Touche | Action |
+|---|---|
+| `j / k / h / l` | étendre la sélection |
 | `Esc` | annuler |
 
-## Piano (:piano)
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `d / y / c` | supprimer / copier / changer |
 
 **Jouer / écouter**
 
 | Touche | Action |
 |---|---|
-| `z x c v b n m ,` | notes (rangée du bas = naturelles) |
-| `s d g h j` | dièses |
-| `[ / ]` | octave − / + |
-| `Enter` | valider l'enregistrement |
-| `Esc` | quitter |
+| `m` | mute les slots sélectionnés |
 
-## Aide
+**Évaluer**
+
+| Touche | Action |
+|---|---|
+| `e` | évaluer le bloc |
+
+### Mode insertion
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Esc` | retour au mode normal |
+| `Tab` | compléter (ghost, identifiants) · placeholder suivant |
+| `S-Tab` | placeholder précédent |
+
+### Texte (guide, tutoriel, explication)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | descendre |
+| `k / ↑` | remonter |
+| `PgDn / Ctrl-d` | descendre d'un écran |
+| `PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
+| `Esc / q` | fermer |
+
+### Aide
 
 **Naviguer**
 
@@ -703,199 +1150,7 @@ Lecture d'une carte :
 | `Tab` | toutes les sections ⟷ contexte |
 | `? / Esc / q` | fermer l'aide |
 
-## Texte (guide, tutoriel, explication)
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / ↓` | descendre |
-| `k / ↑` | remonter |
-| `PgDn / Ctrl-d` | descendre d'un écran |
-| `PgUp / Ctrl-u` | remonter d'un écran |
-| `g` | haut |
-| `G` | bas |
-| `Esc / q` | fermer |
-
-## Sons (samples, instruments, synths)
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `Enter` | insérer dans le pattern |
-| `Bksp` | effacer le filtre |
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `K / Space` | écouter |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `Tab` | catégorie suivante |
-| `/` | chercher |
-| `h / ←` | précédent |
-| `l / →` | suivant |
-| `j / ↓` | suivant |
-| `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g` | premier |
-| `G` | dernier |
-| `j / k / ↓ / ↑` | naviguer |
-| `Esc / q` | fermer |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-
-## Librairie de synths
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `Space` | écouter |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `/` | chercher |
-| `j / ↓` | suivant |
-| `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g` | premier |
-| `G` | dernier |
-| `Esc / q` | fermer |
-
-**Fichiers**
-
-| Touche | Action |
-|---|---|
-| `Enter` | ouvrir dans une pane synth |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-
-## Snippets
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `Enter` | insérer |
-| `/` | rechercher |
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `Space` | aperçu |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `Tab / l / →` | catégorie suivante |
-| `h / ←` | catégorie précédente |
-| `j / ↓` | suivant |
-| `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g` | premier |
-| `G` | dernier |
-| `Esc / q` | effacer la recherche → la catégorie → fermer |
-| `Esc / q` | fermer |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-
-## Patterns rangés
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `Enter` | charger |
-| `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | charger sur le slot N |
-| `x` | supprimer |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `/` | chercher |
-| `j / ↓` | suivant |
-| `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g` | premier |
-| `G` | dernier |
-| `j / k / ↓ / ↑` | naviguer |
-| `Esc / q` | fermer |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-
-## Variations de pattern
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `Space / K` | écouter |
-| `x` | couper l'écoute |
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `l` | verrouiller / relâcher |
-| `r` | relancer depuis les verrouillées |
-| `Enter` | remplacer le bloc |
-
-**Fichiers**
-
-| Touche | Action |
-|---|---|
-| `s` | ranger dans la bibliothèque |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / ↓` | suivant |
-| `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g` | premier |
-| `G` | dernier |
-| `Esc / q` | fermer |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-
-## Palette (Ctrl-p)
+### Palette (Ctrl-p)
 
 **Éditer**
 
@@ -913,78 +1168,3 @@ Lecture d'une carte :
 | `PgDn` | page suivante |
 | `PgUp` | page précédente |
 | `Esc` | fermer |
-
-## Mixer
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `m` | mute / unmute |
-| `s` | solo |
-| `u` | tout démuter |
-| `! / .` | panic |
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `+ / -` | gain ±0.1 |
-| `* / /` | gain ±0.5 |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / ↓` | suivant |
-| `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g` | premier |
-| `G` | dernier |
-| `Esc / q` | fermer |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |
-
-## sccode.org
-
-**Fichiers**
-
-| Touche | Action |
-|---|---|
-| `Enter` | charger dans une pane synth |
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `Space` | aperçu |
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `n / p` | page suivante / précédente |
-| `j / ↓` | suivant |
-| `k / ↑` | précédent |
-| `PgDn / Ctrl-d` | page suivante |
-| `PgUp / Ctrl-u` | page précédente |
-| `g` | premier |
-| `G` | dernier |
-| `Esc / q` | fermer |
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `/` | rechercher |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `?` | aide |

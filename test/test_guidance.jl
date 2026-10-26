@@ -75,7 +75,7 @@ _gdpanes(app, T) = [t for leaf in Ressac._all_leaves(Ressac.current_workspace(ap
     _gdex(app, "q")                                                 # ferme la pane wiki
     @test isempty(_gdpanes(app, Ressac.WikiPane)) && !app.quit
     # le scope :wiki est dans l'aide, le modal a disparu
-    @test :wiki in Ressac._PANE_SCOPES && !haskey(Ressac._MODAL_SCOPES, :wiki)
+    @test Ressac._pane_target_scope(:wiki) && !haskey(Ressac._MODAL_SCOPES, :wiki)
 end
 
 @testset "doc en pane — :doc et K sans voler le focus" begin

@@ -409,26 +409,13 @@ end
 # sections. L'aide s'ouvre par-dessus un modal et le restaure à la
 # fermeture. `?` / Esc / q ferment.
 
-# Ordre canonique des sections en mode « tout ».
-const _HELP_ALL_SCOPES = Symbol[
-    :mode_play, :mode_design, :mode_explore,
-    :global, :editor, :patterns, :leader, :placeholder, :synth, :leader_synth, :visual, :insert, :pane_mode,
-    :explorer, :waveform, :sculpt, :drone, :synthdoc, :log, :doc, :wiki, :notes, :tuning, :tutorial, :tap, :piano,
-    :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets, :modal_patterns,
-    :modal_evolve, :modal_palette,
-    :modal_mixer, :modal_sccode,
-]
-
 """
     _help_scopes(m) -> Vector{Symbol}
 
 Sections de l'aide pour le contexte courant (ou toutes si `help_expanded`).
 """
 function _help_scopes(m::RessacApp)
-    if m.help_expanded
-        mode = _workspace_mode(m)
-        return Symbol[s for s in _HELP_ALL_SCOPES if !isempty(bindings(s)) && _scope_in_mode(s, mode)]
-    end
+    m.help_expanded && return scopes_for_mode(_workspace_mode(m))
     if m.help_return !== :none                       # aide ouverte depuis un modal
         return Symbol[get(_MODAL_SCOPES, m.help_return, :modal_text), :modal_help]
     end
@@ -458,8 +445,9 @@ function _help_scopes(m::RessacApp)
     return out
 end
 
-# Scopes dont la cible des prédicats est une PANE (pas l'app).
-const _PANE_SCOPES = (:explorer, :waveform, :sculpt, :drone, :synthdoc, :log, :doc, :wiki, :notes, :tuning, :tutorial)
+# Scopes dont la cible des prédicats est une PANE (pas l'app) : ceux de
+# la couche pane, hors l'éditeur et ses rôles (cible : l'app).
+_pane_target_scope(s::Symbol) = scope_layer(s) === :pane && !(s in (:editor, :patterns, :synth))
 
 # Cible des prédicats `when` d'un scope : la pane focalisée pour son
 # propre scope, l'app pour les scopes app ; un scope de pane non
@@ -470,8 +458,8 @@ function _help_targets(m::RessacApp)
     if pane !== nothing && pane_scope(pane) !== :none
         t[pane_scope(pane)] = pane
     end
-    for s in _HELP_ALL_SCOPES
-        (haskey(t, s) || s in _PANE_SCOPES) || (t[s] = m)
+    for s in _SCOPE_ORDER
+        (haskey(t, s) || _pane_target_scope(s)) || (t[s] = m)
     end
     return t
 end
@@ -577,7 +565,7 @@ bind!(:modal_help, ["?", "Esc", "q"], "fermer l'aide"; short = "fermer", group =
     keys_wiki_markdown() -> String
 
 La page « Touches » du wiki, générée depuis le registre : une section
-par scope (ordre de `_HELP_ALL_SCOPES`), un tableau par groupe, puis les
+par mode puis par scope (`scopes_for_mode`), un tableau par groupe, puis les
 notes du scope. `scripts/gen_keys_wiki.jl` l'écrit dans
 docs/wiki/04-keys.md ; un test échoue si la page diverge.
 """
@@ -588,13 +576,17 @@ function keys_wiki_markdown()
     println(io, "Page générée depuis le registre de bindings (`src/keymap.jl`, ",
                 "`src/app_keymap.jl` et les scopes des panes/modaux) par ",
                 "`scripts/gen_keys_wiki.jl` — ne pas éditer à la main. Dans l'app, ",
-                "`?` ouvre la même chose pour le contexte courant.")
+                "`?` ouvre la même chose pour le contexte courant, `Tab` tout le mode.")
     println(io)
     println(io, "Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · ",
                 "`g t` = g puis t. Les touches séparées par ` / ` sont des synonymes.")
-    for sec in help_sections(Symbol[s for s in _HELP_ALL_SCOPES if !isempty(bindings(s))])
+    println(io)
+    println(io, "Une touche descend les couches actives — transitoire (saisie, leader, mode pane…), ",
+                "modale, pane focalisée, **mode** (PLAY · DESIGN · EXPLORE), partout — jusqu'à la ",
+                "première qui la connaît. Les gestes d'un mode valent quelle que soit la pane.")
+    section(sec) = begin
         println(io)
-        println(io, "## ", sec.title)
+        println(io, "### ", sec.title)
         for g in sec.groups
             println(io)
             println(io, "**", g.title, "**")
@@ -612,5 +604,17 @@ function keys_wiki_markdown()
             println(io, "```")
         end
     end
+    everywhere = Symbol[s for s in _SCOPE_ORDER if scope_modes(s) == _ALL_MODES && !isempty(bindings(s))]
+    for mode in _ALL_MODES
+        println(io)
+        println(io, "## ", _mode_label(mode))
+        own = Symbol[s for s in scopes_for_mode(mode) if !(s in everywhere)]
+        foreach(section, help_sections(own))
+    end
+    println(io)
+    println(io, "## Partout")
+    rank = Dict(:mode => 1, :global => 2, :pane => 3, :transient => 4, :modal => 5)
+    sort!(everywhere; by = s -> rank[scope_layer(s)], alg = Base.Sort.MergeSort)
+    foreach(section, help_sections(everywhere))
     return String(take!(io))
 end

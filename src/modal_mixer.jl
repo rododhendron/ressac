@@ -242,7 +242,7 @@ end
 #    doivent exister au moment du bind!) ──
 _mixer_cur(m::RessacApp) = (s = _mixer_sync!(m); i = m.mixer_table.selected; 1 <= i <= length(s) ? s[i] : nothing)
 _mixer_has_cur(m::RessacApp) = _mixer_cur(m) !== nothing
-scope!(:modal_mixer, "Mixer"; layer = :modal)
+scope!(:modal_mixer, "Mixer"; layer = :modal, modes = (:play,))
 bind!(:modal_mixer, "m", "mute / unmute"; short = "mute", group = :audio, when = _mixer_has_cur,
       action = m -> (slot = _mixer_cur(m);
                      haskey(_APP_MUTED_PATTERNS, slot) ? _unmute_pattern_slot!(m, slot) :

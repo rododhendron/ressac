@@ -28,20 +28,9 @@ end
 
 _mode_label(mode::Symbol) = get(_WORKSPACE_OF_MODE, mode, "PLAY")
 
-# ── Scopes de touches par mode (l'aide « tout ») ─────────────────────
-# Absent = partout.
-const _SCOPE_MODES = Dict{Symbol,Tuple{Vararg{Symbol}}}(
-    :mode_play => (:play,), :mode_design => (:design,), :mode_explore => (:explore,),
-    :patterns => (:play,), :leader => (:play,), :placeholder => (:play, :design),
-    :tap => (:play,), :piano => (:play,), :notes => (:play,), :tuning => (:play,),
-    :modal_patterns => (:play,), :modal_evolve => (:play,), :modal_mixer => (:play,),
-    :modal_snippets => (:play,), :modal_browse => (:play, :design),
-    :synth => (:design,), :leader_synth => (:design,), :sculpt => (:design, :explore),
-    :waveform => (:design, :explore), :drone => (:design, :play), :synthdoc => (:design,),
-    :modal_lib => (:design,), :modal_sccode => (:design,),
-    :explorer => (:explore,),
-)
-_scope_in_mode(scope::Symbol, mode::Symbol) = mode in get(_SCOPE_MODES, scope, (:play, :design, :explore))
+# Les scopes de touches d'un mode : déclarés avec chaque `scope!(…; modes = …)`,
+# voir keymap.jl (`scope_in_mode`, `scopes_for_mode`).
+_scope_in_mode(scope::Symbol, mode::Symbol) = scope_in_mode(scope, mode)
 
 # ── Commandes par mode ────────────────────────────────────────────────
 const _COMMAND_MODES = Dict{String,Tuple{Vararg{Symbol}}}()

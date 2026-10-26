@@ -162,7 +162,7 @@ title(p::SynthDocPane) = "doc:" * _synthdoc_label(p.mode)
 serialize(p::SynthDocPane) = Dict{String,Any}("mode" => String(p.mode), "name" => p.doc.name)
 register_pane_kind!(:synthdoc, _synthdoc_pane_ctor)
 
-scope!(:synthdoc, "Doc du synth (doc · explication · graphe)")
+scope!(:synthdoc, "Doc du synth (doc · explication · graphe)"; layer = :pane, modes = (:design,))
 bind!(:synthdoc, "→", "onglet suivant (doc · explication · graphe)"; short = "onglet", group = :nav,
       action = p -> _synthdoc_cycle!(p, +1))
 bind!(:synthdoc, "←", "onglet précédent"; group = :nav, hint = false,

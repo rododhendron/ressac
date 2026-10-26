@@ -190,7 +190,7 @@ function _patterns_delete_selected!(m::RessacApp)
 end
 
 # ── Registre de touches ────────────────────────────────────────────
-scope!(:modal_patterns, "Patterns rangés"; layer = :modal)
+scope!(:modal_patterns, "Patterns rangés"; layer = :modal, modes = (:play,))
 bind!(:modal_patterns, "Enter", "charger"; short = "charger", group = :edit,
       action = m -> _patterns_load_selected!(m))
 bind!(:modal_patterns, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "charger sur le slot N";

@@ -225,7 +225,7 @@ end
 
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
-scope!(:modal_sccode, "sccode.org"; layer = :modal)
+scope!(:modal_sccode, "sccode.org"; layer = :modal, modes = (:design,))
 bind!(:modal_sccode, "Enter", "charger dans une pane synth"; short = "charger", group = :file, action = _load_sccode_filtered!)
 bind!(:modal_sccode, "Space", "aperçu"; group = :view, action = _preview_sccode_filtered!)
 bind!(:modal_sccode, ["n", "p"], "page suivante / précédente"; group = :nav,

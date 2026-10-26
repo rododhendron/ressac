@@ -173,7 +173,7 @@ end
 
 handle_key!(p::TuningPane, evt) = evt isa TK.KeyEvent && dispatch!(((:tuning, p),), evt)
 pane_scope(::TuningPane) = :tuning
-scope!(:tuning, "Gamme (tuning)")
+scope!(:tuning, "Gamme (tuning)"; layer = :pane, modes = (:play,))
 bind!(:tuning, "r", "étiquettes : cents ⟷ ratios"; group = :view,
       action = p -> (p.label_mode = p.label_mode === :cents ? :ratio : :cents))
 

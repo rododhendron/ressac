@@ -1028,7 +1028,7 @@ register_pane_kind!(:explorer, _synth_explorer_pane_ctor)
 # explication, réglages GA, params, mini-clavier) gardent leurs handlers
 # et sont documentés ici en entrées sans action.
 pane_scope(::SynthExplorerPane) = :explorer
-scope!(:explorer, "Explorateur de synths (GA)")
+scope!(:explorer, "Explorateur de synths (GA)"; layer = :pane, modes = (:explore,))
 bind!(:explorer, "n", "génération suivante"; short = "génération", group = :structure, action = _explorer_next_gen!)
 bind!(:explorer, "f", "favoriser"; group = :select, action = p -> favor!(p.pop, p.focus))
 bind!(:explorer, "d", "dévaluer"; group = :select, action = p -> devalue!(p.pop, p.focus))

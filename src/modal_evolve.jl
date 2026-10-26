@@ -161,7 +161,7 @@ function _render_evolve_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
 end
 
 # ── Registre de touches ────────────────────────────────────────────
-scope!(:modal_evolve, "Variations de pattern"; layer = :modal)
+scope!(:modal_evolve, "Variations de pattern"; layer = :modal, modes = (:play,))
 bind!(:modal_evolve, ["Space", "K"], "écouter"; short = "écouter", group = :audio,
       action = m -> _evolve_preview!(m))
 bind!(:modal_evolve, "l", "verrouiller / relâcher"; short = "verrouiller", group = :edit,

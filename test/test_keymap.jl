@@ -186,3 +186,19 @@ end
     @test "Space" in active_keys(:mode_play) && "Space" in active_keys(:mode_design)
     @test "T" in active_keys(:mode_design) && "T" in active_keys(:mode_explore)
 end
+
+@testset "scopes par mode — déclarés une fois, l'aide « tout » et le wiki en dérivent" begin
+    @test Ressac.scope_modes(:patterns) == (:play,) && Ressac.scope_modes(:explorer) == (:explore,)
+    @test Ressac.scope_modes(:global) == (:play, :design, :explore)
+    @test Ressac.scope_in_mode(:sculpt, :design) && Ressac.scope_in_mode(:sculpt, :explore) && !Ressac.scope_in_mode(:sculpt, :play)
+    @test_throws ArgumentError Ressac.scope!(:t_bad2, "x"; modes = (:nope,))
+    d = Ressac.scopes_for_mode(:design)
+    @test d[1] === :mode_design && d[2] === :global
+    @test :synth in d && :sculpt in d && :synthdoc in d && :modal_lib in d
+    @test !(:patterns in d) && !(:explorer in d) && !(:tap in d)
+    @test findfirst(==(:sculpt), d) < findfirst(==(:leader_synth), d) < findfirst(==(:modal_lib), d)   # panes, puis transitoires, puis modales
+    md = Ressac.keys_wiki_markdown()
+    @test occursin("## PLAY\n", md) && occursin("## DESIGN\n", md) && occursin("## EXPLORE\n", md) && occursin("## Partout\n", md)
+    @test findfirst("### DESIGN — quelle que soit la pane", md)[1] < findfirst("### Sculpt", md)[1]
+    @test findfirst("## Partout", md)[1] < findfirst("### Éditeur (patterns et synth)", md)[1]
+end

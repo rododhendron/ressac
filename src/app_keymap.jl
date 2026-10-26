@@ -130,7 +130,7 @@ bind!(:editor, "u", "annuler"; group = :edit, hint = false)
 # ── Les modes : ce qui concerne le son ou la session, quelle que soit ──
 # la pane focalisée. Règle : une touche de mode n'est jamais aussi une
 # touche d'une pane de ce mode (test_keymap.jl le vérifie).
-scope!(:mode_play, "PLAY — quelle que soit la pane"; layer = :mode)
+scope!(:mode_play, "PLAY — quelle que soit la pane"; layer = :mode, modes = (:play,))
 bind!(:mode_play, "e", "évaluer la ligne"; short = "évaluer", group = :eval, when = _km_normal,
       action = _eval_current_line!)
 bind!(:mode_play, "E", "tout évaluer"; group = :eval, when = _km_normal,
@@ -142,7 +142,7 @@ bind!(:mode_play, "K", "la fiche du mot sous le curseur (DOC)"; short = "fiche",
 bind!(:mode_play, "Space", "snippet…"; group = :edit, when = _km_normal,
       action = m -> (m.pending_leader = true))
 
-scope!(:mode_design, "DESIGN — quelle que soit la pane"; layer = :mode)
+scope!(:mode_design, "DESIGN — quelle que soit la pane"; layer = :mode, modes = (:design,))
 bind!(:mode_design, ["T", "t"], "entendre le son (maintenir = rafale)"; short = "entendre", group = :audio,
       repeat = true, when = _km_normal,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
@@ -161,14 +161,14 @@ bind!(:mode_design, "X", "l'explication du son (DOC)"; short = "explication", gr
 bind!(:mode_design, "Y", "le graphe du son (DOC)"; short = "graphe", group = :help,
       when = _km_normal, action = m -> _design_doc_mode!(m, :graph))
 
-scope!(:mode_explore, "EXPLORE — quelle que soit la pane"; layer = :mode)
+scope!(:mode_explore, "EXPLORE — quelle que soit la pane"; layer = :mode, modes = (:explore,))
 bind!(:mode_explore, ["T", "t"], "entendre le candidat"; short = "entendre", group = :audio,
       when = _km_normal, action = _explore_play!)
 bind!(:mode_explore, "D", "drone du candidat on/off"; short = "drone", group = :audio,
       when = _km_normal, action = _explore_drone!)
 
 # ── :patterns ──────────────────────────────────────────────────────
-scope!(:patterns, "Pane patterns"; layer = :pane)
+scope!(:patterns, "Pane patterns"; layer = :pane, modes = (:play,))
 bind!(:patterns, ">", "pattern : zoom ×2"; group = :edit, hint = false, when = _km_in_pattern,
       action = m -> _pat_zoom!(m, _km_ed(m), +1))
 bind!(:patterns, "<", "pattern : zoom ÷2"; group = :edit, hint = false, when = _km_in_pattern,
@@ -183,7 +183,7 @@ bind!(:patterns, "g s", "ouvrir le synth sous le curseur (DESIGN)"; group = :nav
       when = _km_patterns, action = _goto_synth_under_cursor!)
 
 # ── :synth ─────────────────────────────────────────────────────────
-scope!(:synth, "Pane synth (texte)"; layer = :pane)
+scope!(:synth, "Pane synth (texte)"; layer = :pane, modes = (:design,))
 bind!(:synth, "g t", "synth suivant"; group = :nav, hint = false,
       when = m -> _km_synth(m) && length(_all_synth_buffers(m)) > 1,
       action = m -> _cycle_synth_tab!(m; dir = +1))
@@ -192,7 +192,7 @@ bind!(:synth, "g T", "synth précédent"; group = :nav, hint = false,
       action = m -> _cycle_synth_tab!(m; dir = -1))
 
 # ── :leader — Space + touche (pane patterns) ───────────────────────
-scope!(:leader, "Space + …"; layer = :transient)
+scope!(:leader, "Space + …"; layer = :transient, modes = (:play,))
 const _LEADER_FR = Dict{Char,String}(
     'd' => "slot @dN", 'g' => "gain", 'l' => "lpf", 'h' => "hpf", 'p' => "pan",
     'f' => "fast", 's' => "slow", 'r' => "room", 'n' => "n()", 'e' => "every",
@@ -219,7 +219,7 @@ end
 _leader_scope(m::RessacApp) = _workspace_mode(m) === :design ? :leader_synth : :leader
 
 # Space dans DESIGN : des maillons du DSL, insérés en bout de chaîne.
-scope!(:leader_synth, "Space + … (synth)"; layer = :transient)
+scope!(:leader_synth, "Space + … (synth)"; layer = :transient, modes = (:design,))
 const _LEADER_SYNTH = [
     ('s', "saw(:freq)", "source saw"), ('o', "sin_osc(:freq)", "source sin_osc"),
     ('p', "pulse(:freq, \$1)", "source pulse"), ('w', "white()", "bruit blanc"),
@@ -260,7 +260,7 @@ bind!(:visual, "Esc", "annuler"; group = :select)
 
 scope!(:insert, "Mode insertion"; layer = :transient)
 bind!(:insert, "Esc", "retour au mode normal"; group = :edit)
-scope!(:placeholder, "Snippet avec des trous (après Space + lettre)"; layer = :transient)
+scope!(:placeholder, "Snippet avec des trous (après Space + lettre)"; layer = :transient, modes = (:play, :design))
 bind!(:placeholder, "Tab", "trou suivant"; group = :edit)
 bind!(:placeholder, "S-Tab", "trou précédent"; group = :edit)
 bind!(:placeholder, "i", "remplir le trou (insertion)"; group = :edit)
@@ -269,12 +269,12 @@ bind!(:placeholder, "Esc", "sortir des trous"; group = :edit)
 bind!(:insert, "Tab", "compléter (ghost, identifiants) · placeholder suivant"; group = :edit)
 bind!(:insert, "S-Tab", "placeholder précédent"; group = :edit)
 
-scope!(:tap, "Tap (:tap / :bpm)"; layer = :transient)
+scope!(:tap, "Tap (:tap / :bpm)"; layer = :transient, modes = (:play,))
 bind!(:tap, "Space", "frapper"; group = :audio)
 bind!(:tap, "Enter", "valider"; group = :audio)
 bind!(:tap, "Esc", "annuler"; group = :audio)
 
-scope!(:piano, "Piano (:piano)"; layer = :transient)
+scope!(:piano, "Piano (:piano)"; layer = :transient, modes = (:play,))
 bind!(:piano, "z x c v b n m ,", "notes (rangée du bas = naturelles)"; group = :audio)
 bind!(:piano, "s d g h j", "dièses"; group = :audio)
 bind!(:piano, ["[", "]"], "octave − / +"; group = :audio)

@@ -612,7 +612,7 @@ pane_scope(p::WaveformPane) = p.sculpt ? :sculpt : :waveform
 _wv_has(p::WaveformPane) = !isempty(p.samples)
 _sc_has(p::WaveformPane) = !isempty(p.knobs)
 
-scope!(:waveform, "Vue d'onde")
+scope!(:waveform, "Vue d'onde"; layer = :pane, modes = (:design, :explore))
 bind!(:waveform, "s", "sculpter"; group = :structure, action = p -> _sculpt_init!(p))
 bind!(:waveform, ["l", "→"], "défiler →"; group = :nav, when = _wv_has, repeat = true,
       action = p -> _wave_pan!(p, p.view_len ÷ 8))
@@ -625,7 +625,7 @@ bind!(:waveform, ["-", "o"], "zoom −"; group = :view, when = _wv_has, repeat =
 bind!(:waveform, "0", "toute l'onde"; group = :view, when = _wv_has,
       action = p -> (p.view_start = 1; p.view_len = length(p.samples)))
 
-scope!(:sculpt, "Sculpt (l'onde et ses knobs)")
+scope!(:sculpt, "Sculpt (l'onde et ses knobs)"; layer = :pane, modes = (:design, :explore))
 mixin_knob_nav!(:sculpt; has = _sc_has,
     next = p -> (p.focus = clamp(p.focus + 1, 1, length(p.knobs))),
     prev = p -> (p.focus = clamp(p.focus - 1, 1, length(p.knobs))),

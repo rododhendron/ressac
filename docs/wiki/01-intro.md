@@ -78,9 +78,17 @@ charley : `Esc` puis `E` et tu entends quelque chose.
   synths et le studio **sculpt** (les paramètres d'un son manipulés
   directement sur son onde).
 
-Chaque mode a son vocabulaire : `?` puis `Tab` liste toutes les touches
-du mode courant, la palette (`Ctrl-p`) et la complétion de `:` ne
-proposent que ses commandes. Une commande d'un autre mode y emmène
+Le clavier est en couches : une touche descend les couches actives —
+transitoire (saisie, leader, mode pane…), modale, pane focalisée, **mode**,
+partout — jusqu'à la première qui la connaît. Les gestes d'un mode valent
+quelle que soit la pane : dans DESIGN, `T` entend le son, `D` tient le
+drone, `Espace` ouvre les maillons DSL, `U` l'envoie dans un pattern, `P`
+mesure l'élagage, `K` `X` `Y` mettent la DOC sur la fiche, l'explication,
+le graphe — depuis le texte, le studio ou la DOC. Dans PLAY, `e` `E` `m`
+`K` `Espace` de même depuis le wiki ou le journal ; dans EXPLORE, `T` et
+`D` sur le candidat. `?` puis `Tab` liste toutes les touches du mode
+courant, la palette (`Ctrl-p`) et la complétion de `:` ne proposent que
+ses commandes. Une commande d'un autre mode y emmène
 d'abord (`:synth wob` depuis PLAY ouvre DESIGN). `:play!`, `:design!`,
 `:explore!` remettent un workspace à neuf, panes bien placées ; `:reset`
 fait pareil pour le workspace courant. `:design` remet la forme texte |

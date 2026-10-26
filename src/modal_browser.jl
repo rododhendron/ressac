@@ -250,7 +250,7 @@ end
 # ── Registre de touches (déclaré en fin de fichier : les actions nommées
 #    doivent exister au moment du bind!) ──
 _browser_cur(m::RessacApp) = (e = _browser_entries(m); 1 <= m.browser_cursor <= length(e) ? e[m.browser_cursor] : nothing)
-scope!(:modal_browse, "Sons (samples, instruments, synths)"; layer = :modal)
+scope!(:modal_browse, "Sons (samples, instruments, synths)"; layer = :modal, modes = (:play, :design))
 bind!(:modal_browse, "Enter", "insérer dans le pattern"; short = "insérer", group = :edit,
       action = m -> (e = _browser_cur(m); e === nothing || _browser_insert!(m, e); m.modal = :none))
 bind!(:modal_browse, ["K", "Space"], "écouter"; group = :audio,

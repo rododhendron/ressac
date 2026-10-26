@@ -52,6 +52,11 @@ const _SCOPE_TITLES = Dict{Symbol,String}()
 #   :global     partout
 const _SCOPE_LAYER = Dict{Symbol,Symbol}()
 const _LAYER_KINDS = (:transient, :modal, :pane, :mode, :global)
+# Les modes où un scope a un sens (absent = partout), et l'ordre de
+# déclaration des scopes (l'aide « tout » et le wiki le suivent).
+const _SCOPE_MODES = Dict{Symbol,Tuple{Vararg{Symbol}}}()
+const _ALL_MODES = (:play, :design, :explore)
+const _SCOPE_ORDER = Symbol[]
 const _SCOPE_NOTES = Dict{Symbol,Vector{String}}()   # texte libre en fin de section d'aide
 const _GROUP_TITLES = Dict{Symbol,String}(
     :nav => "Naviguer", :edit => "Éditer", :audio => "Jouer / écouter",
@@ -69,14 +74,34 @@ _always(_) = true
 Déclare (ou renomme) un scope avec son titre affiché dans l'aide, et sa
 couche (voir `_SCOPE_LAYER`).
 """
-function scope!(scope::Symbol, title::AbstractString; layer::Symbol = :pane)
+function scope!(scope::Symbol, title::AbstractString; layer::Symbol = :pane,
+                modes::Tuple{Vararg{Symbol}} = _ALL_MODES)
     layer in _LAYER_KINDS || throw(ArgumentError("scope!: couche inconnue $layer"))
+    all(m -> m in _ALL_MODES, modes) || throw(ArgumentError("scope!: mode inconnu dans $modes"))
     _SCOPE_TITLES[scope] = String(title)
     _SCOPE_LAYER[scope] = layer
+    _SCOPE_MODES[scope] = modes
+    scope in _SCOPE_ORDER || push!(_SCOPE_ORDER, scope)
     return scope
 end
 scope_title(scope::Symbol) = get(_SCOPE_TITLES, scope, String(scope))
 scope_layer(scope::Symbol) = get(_SCOPE_LAYER, scope, :pane)
+scope_modes(scope::Symbol) = get(_SCOPE_MODES, scope, _ALL_MODES)
+scope_in_mode(scope::Symbol, mode::Symbol) = mode in scope_modes(scope)
+
+"""
+    scopes_for_mode(mode) -> Vector{Symbol}
+
+Les scopes qui ont un sens dans `mode`, dans l'ordre de lecture : le
+scope du mode, le global, les panes, les transitoires, les modales —
+chaque groupe dans l'ordre de déclaration. Vides exclus.
+"""
+function scopes_for_mode(mode::Symbol)
+    rank = Dict(:mode => 1, :global => 2, :pane => 3, :transient => 4, :modal => 5)
+    out = Symbol[s for s in _SCOPE_ORDER if scope_in_mode(s, mode) && !isempty(bindings(s))]
+    sort!(out; by = s -> rank[scope_layer(s)], alg = Base.Sort.MergeSort)   # stable : l'ordre de déclaration dedans
+    return out
+end
 scope_notes!(scope::Symbol, lines) = (_SCOPE_NOTES[scope] = String[String(l) for l in lines]; scope)
 scope_notes(scope::Symbol) = get(_SCOPE_NOTES, scope, String[])
 
