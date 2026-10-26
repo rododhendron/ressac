@@ -143,17 +143,21 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
         cmd = TK.pending_command!(pane.tabs[pane.current_tab].code_editor)
         isempty(cmd) || _handle_ex_command!(m, cmd)
     end
-    # Seams app-level (no-op si rien posté) : un export/onde/sculpt peut
-    # être posté par l'explorer OU par un WaveformPane → on draine toujours.
+    return consumed ? :consumed : :pass
+end
+
+# Les requêtes qu'une pane ou un geste de mode postent à l'app (export,
+# onde, sculpt, U depuis un studio seul, réévaluation d'un drone, onglet
+# de la DOC) : drainées après CHAQUE touche résolue, quelle que soit la
+# couche qui l'a consommée. No-op si rien n'est posté.
+function _drain_requests!(m::RessacApp)
     _drain_explorer_export!(m)
     _drain_explorer_waveform!(m)
     _drain_explorer_sculpt!(m)
     _drain_sculpt_use!(m)
     _drain_drone_request!(m)
     _drain_synthdoc_request!(m)
-    # Non consommée par la pane → le scope :global a sa chance (aide,
-    # hush, scope…) dans update!.
-    return consumed ? :consumed : :pass
+    return
 end
 
 """
@@ -406,6 +410,7 @@ function TK.update!(m::RessacApp, evt::TK.KeyEvent)
     # l'application ne tombe pas.
     try
         _resolve_key!(m, evt)
+        _drain_requests!(m)
     catch err
         _push_app_log!(m, "[ERROR] touche $(keyname(evt)) — $(first(sprint(showerror, err), 160))")
     end

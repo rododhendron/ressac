@@ -161,8 +161,8 @@ end
         @test occursin("SC brut", app.logs[end])
         _bex(app, "sculpt nexistepas")
         @test occursin("introuvable", app.logs[end])
-        # U depuis le studio sculpt (buffer focalisé = zorglub) : sauve + @dN dans PLAY
-        Ressac._focused_role(app) === :synth || _bkey(app, :tab)   # refocalise la pane synth
+        # U depuis un studio seul (le workspace a perdu sa forme) : sauve + @dN dans PLAY
+        _bex(app, "synth zorglub")                               # l'onglet zorglub redevient courant
         @test Ressac._focused_role(app) === :synth
         _bex(app, "sculpt")
         sp = Ressac._focused_sculpt_pane(app)

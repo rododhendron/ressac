@@ -264,3 +264,73 @@ end
     end
     @test Ressac.synthdef_to_dsl("pas un synthdef") === nothing
 end
+
+@testset "touches de mode — les mêmes gestes depuis n'importe quelle pane" begin
+    oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
+    Ressac._WAVE_RENDER[] = _MF_STUB; Ressac._WAVE_SYNC[] = true
+    old = Ressac._LIVE_SCHEDULER[]
+    empty!(Ressac._DRONES)
+    try
+        app, tb, frame = _mf_app()
+        Ressac._LIVE_SCHEDULER[] = app.scheduler
+        _mfex(app, "design")
+        (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
+        ed = ep.tabs[1].code_editor
+        Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)\n"); ed.mode = :normal
+        _mfscreen(app, tb, frame)
+        # depuis le studio : Espace ouvre le leader DSL et le maillon va dans le texte
+        Ressac._focus_pane!(app, studio)
+        _mfkey(app, ' ')
+        @test app.pending_leader
+        @test Ressac._visible_layers(app) == ([(:leader_synth, app)], "Space")
+        _mfkey(app, 't')
+        @test occursin("|> tanh_drive(", Tachikoma.text(ed))
+        @test Ressac._focused_pane_impl(app) === studio
+        # T entend le son, D tient le drone, D relâche — depuis le studio
+        n0 = length(app.scheduler.osc.sent)
+        _mfkey(app, 'T')
+        @test length(app.scheduler.osc.sent) > n0
+        _mfkey(app, 'D')
+        @test Ressac.drone_running(:sketch)
+        # depuis la MODULATION : T réévalue, D relâche (plus de touches propres)
+        Ressac._focus_pane!(app, Ressac._find_pane(app, Ressac.DronePane))
+        _mfkey(app, 'T')
+        @test Ressac.drone_running(:sketch)
+        _mfkey(app, 'D')
+        @test !Ressac.drone_running(:sketch)
+        # depuis la DOC : X l'explication, Y le graphe, K la fiche
+        Ressac._focus_pane!(app, sdoc)
+        _mfkey(app, 'X'); @test sdoc.mode === :explain
+        _mfkey(app, 'Y'); @test sdoc.mode === :graph
+        _mfkey(app, 'K'); @test sdoc.mode === :doc
+        # la barre de touches montre les gestes du mode avant ceux de la pane
+        _mfscreen(app, tb, frame)
+        bar = Ressac.hint_text(Ressac._keybar_layers(app)[1])
+        @test startswith(bar, "T entendre · D drone")
+        @test occursin("j défiler", bar)
+        # PLAY : e évalue, m mute, depuis le wiki
+        _mfex(app, "play")
+        wiki = Ressac._find_pane(app, Ressac.WikiPane)
+        Ressac._focus_pane!(app, wiki)
+        ped = Ressac._active_editor(app)
+        Tachikoma.set_text!(ped, "@d1 \"bd*4\"\n"); ped.mode = :normal; ped.cursor_row = 1
+        _mfkey(app, 'm')
+        @test startswith(String(ped.lines[1]), "#")
+        _mfkey(app, 'm')
+        @test !startswith(String(ped.lines[1]), "#")
+        # EXPLORE : T entend le candidat depuis une pane voisine, B tune/brew sur l'explorateur
+        _mfex(app, "explore")
+        p = Ressac._focused_pane_impl(app)
+        @test p isa Ressac.SynthExplorerPane
+        n1 = length(app.scheduler.osc.sent)
+        _mfkey(app, 'T')
+        @test length(app.scheduler.osc.sent) > n1
+        m0 = p.mode
+        _mfkey(app, 'B')
+        @test p.mode != m0
+    finally
+        Ressac._LIVE_SCHEDULER[] = old
+        Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
+        empty!(Ressac._DRONES)
+    end
+end

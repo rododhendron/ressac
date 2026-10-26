@@ -68,7 +68,7 @@ end
     names(a) = [l.scope === :none ? Symbol("engine:" * string(nameof(l.engine))) : l.scope for l in Ressac._active_layers(a)]
     # PLAY, éditeur en mode normal : pré-moteurs, registre (rôle, éditeur, mode, global), moteurs de l'éditeur
     @test names(app) == [Symbol("engine:_pre_engine!"), Symbol("engine:_open_transient_engine!"),
-                         Symbol("engine:_vim_record_engine!"), :patterns, :editor, :mode_play, :global,
+                         Symbol("engine:_vim_record_engine!"), :patterns, :mode_play, :editor, :global,
                          Symbol("engine:_editor_normal_engine!"), Symbol("engine:_editor_engine!")]
     @test Ressac._active_layers(app)[end].exclusive
     # Espace : le leader seul, préfixe « Space »

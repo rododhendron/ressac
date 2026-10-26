@@ -4,6 +4,77 @@ Page générée depuis le registre de bindings (`src/keymap.jl`, `src/app_keymap
 
 Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g puis t. Les touches séparées par ` / ` sont des synonymes.
 
+## PLAY — quelle que soit la pane
+
+**Évaluer**
+
+| Touche | Action |
+|---|---|
+| `e` | évaluer la ligne |
+| `E` | tout évaluer |
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `m` | mute / unmute le slot |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `K` | la fiche du mot sous le curseur (DOC) |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Space` | snippet… |
+
+## DESIGN — quelle que soit la pane
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `T / t` | entendre le son (maintenir = rafale) |
+| `D` | drone : tenir le son / le relâcher |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Space` | maillon DSL… |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
+
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `P` | élagage : mesurer l'impact de chaque nœud |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `K` | la fiche du mot sous le curseur (DOC) |
+| `X` | l'explication du son (DOC) |
+| `Y` | le graphe du son (DOC) |
+
+## EXPLORE — quelle que soit la pane
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `T / t` | entendre le candidat |
+| `D` | drone du candidat on/off |
+
 ## Partout
 
 **Aide**
@@ -95,31 +166,16 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 
 ## Pane patterns
 
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `K` | doc du mot sous le curseur (pane DOC) |
-
-**Évaluer**
-
-| Touche | Action |
-|---|---|
-| `e` | évaluer la ligne |
-| `E` | tout évaluer |
-
 **Jouer / écouter**
 
 | Touche | Action |
 |---|---|
-| `m` | mute / unmute le slot |
-| `K` | écouter le mot sous le curseur |
+| `g K` | écouter le mot sous le curseur |
 
 **Éditer**
 
 | Touche | Action |
 |---|---|
-| `Space` | snippet… |
 | `>` | pattern : zoom ×2 |
 | `<` | pattern : zoom ÷2 |
 | `L` | pattern : décaler le token → |
@@ -182,32 +238,7 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | `u` | annuler le snippet |
 | `Esc` | sortir des trous |
 
-## Pane synth
-
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `t / T` | tester le synth (maintenir = rafale) |
-| `D` | drone : tenir le synth / le relâcher |
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `Space` | snippet DSL… |
-
-**Aide**
-
-| Touche | Action |
-|---|---|
-| `K` | doc du mot sous le curseur (pane DOC) |
-
-**Fichiers**
-
-| Touche | Action |
-|---|---|
-| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
+## Pane synth (texte)
 
 **Naviguer**
 
@@ -310,20 +341,12 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 
 ## Explorateur de synths (GA)
 
-**Jouer / écouter**
-
-| Touche | Action |
-|---|---|
-| `Space` | jouer le candidat |
-| `t` | drone on/off |
-| `m` | mini-clavier (z x c v…) |
-
 **Structure**
 
 | Touche | Action |
 |---|---|
 | `n` | génération suivante |
-| `T` | tune (réglage fin) ⟷ brew (rebrassage) |
+| `B` | tune (réglage fin) ⟷ brew (rebrassage) |
 | `g` | réglages GA |
 | `R` | re-diverger (vieux parents + bruit) |
 | `C` | diversité chaotique on/off |
@@ -371,6 +394,12 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 | Touche | Action |
 |---|---|
 | `p` | params du candidat |
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `m` | mini-clavier (z x c v…) |
 
 **Naviguer**
 
@@ -447,7 +476,7 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `Space / Enter` | jouer |
+| `Enter` | jouer |
 
 **Structure**
 
@@ -463,25 +492,22 @@ Lecture d'une carte :
 | `R` | taux précédent |
 | `x` | dupliquer en parallèle |
 | `m` | greffer un LFO sur le slot |
-| `P` | élagage : mesurer l'impact de chaque nœud |
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `G` | le graphe du son (onglet graphe de la DOC) |
-| `L` | défiler l'onde → |
-| `H` | défiler l'onde ← |
-| `0` | toute l'onde |
-| `s` | revenir à la vue d'onde |
-| `> / <` | défiler l'explication |
 
 **Fichiers**
 
 | Touche | Action |
 |---|---|
 | `e` | exporter dans l'éditeur |
-| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
+
+**Vues**
+
+| Touche | Action |
+|---|---|
+| `L` | défiler l'onde → |
+| `H` | défiler l'onde ← |
+| `0` | toute l'onde |
+| `s` | revenir à la vue d'onde |
+| `> / <` | défiler l'explication |
 
 **Sous-modes (touches une fois dedans)**
 
@@ -515,9 +541,8 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `T / t` | réévaluer le drone depuis son texte |
-| `D / x` | relâcher ce drone |
-| `X` | relâcher tous les drones |
+| `x` | relâcher ce drone |
+| `Ctrl-x` | relâcher tous les drones |
 
 **Sous-modes (touches une fois dedans)**
 

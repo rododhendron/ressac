@@ -635,7 +635,7 @@ mixin_knob_nav!(:sculpt; has = _sc_has,
     labels = (next = "knob suivant", prev = "knob précédent", more = "tirer +", less = "tirer −",
               tab = "nœud suivant", tab_short = "nœud", value = "saisir une valeur",
               reset = "", reset_short = ""))
-bind!(:sculpt, ["Space", "Enter"], "jouer"; group = :audio, when = _sc_has, repeat = true,
+bind!(:sculpt, "Enter", "jouer"; group = :audio, when = _sc_has, repeat = true,
       action = p -> _wave_play!(p))
 bind!(:sculpt, "o", "UGen suivant (même rôle)"; short = "UGen", group = :structure, when = _sc_has,
       action = p -> _sculpt_swap_focus_ugen!(p, +1))
@@ -657,10 +657,6 @@ bind!(:sculpt, "x", "dupliquer en parallèle"; short = "dupliquer", group = :str
       action = p -> _sculpt_structural!(p, :duplicate))
 bind!(:sculpt, "m", "greffer un LFO sur le slot"; short = "LFO", group = :structure, when = _sc_has,
       action = p -> _sculpt_graft_focus!(p))
-bind!(:sculpt, "P", "élagage : mesurer l'impact de chaque nœud"; short = "élagage", group = :structure, when = _sc_has,
-      action = p -> _sculpt_measure_impacts!(p))
-bind!(:sculpt, "G", "le graphe du son (onglet graphe de la DOC)"; short = "graphe", group = :view, when = p -> _sc_has(p) && p.linked,
-      action = p -> (_SYNTHDOC_REQUEST[] = :graph))
 bind!(:sculpt, "e", "exporter dans l'éditeur"; short = "exporter", group = :file, when = _sc_has,
       action = p -> _wave_export!(p))
 bind!(:sculpt, "L", "défiler l'onde →"; group = :view, hint = false, when = _sc_has,
@@ -757,5 +753,3 @@ end
 bind!(:sculpt, [">", "<"], "défiler l'explication"; short = "explication", group = :view,
       hint = false, when = _sc_has,
       action = (p, evt) -> _scroll!(p.explain_view, evt.char == '>' ? :down : :up))
-bind!(:sculpt, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
-      group = :file, when = _sc_has, action = p -> (_SCULPT_USE_REQUEST[] = p))

@@ -672,7 +672,14 @@ Couches du registre à afficher dans la barre de touches selon le
 contexte : modal ouvert, leader Space, mode pane, tap/piano/visuel,
 insertion, pane focalisée (+ global), éditeur (rôle + éditeur + global).
 """
-_keybar_layers(m::RessacApp) = _visible_layers(m)
+# La barre de touches : les gestes du mode d'abord (ce qu'on cherche en
+# arrivant dans une pane), puis ceux de la pane, puis le global.
+function _keybar_layers(m::RessacApp)
+    pairs, prefix = _visible_layers(m)
+    i = findfirst(((sc, _),) -> scope_layer(sc) === :mode, pairs)
+    i === nothing || i == 1 || (p = pairs[i]; deleteat!(pairs, i); pushfirst!(pairs, p))
+    return pairs, prefix
+end
 
 """
     _render_footer(m, area, buf)

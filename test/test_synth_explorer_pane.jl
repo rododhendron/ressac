@@ -123,7 +123,7 @@ end
         Ressac._LIVE_SCHEDULER[] = sched
         try
             p = mk()
-            Ressac.handle_key!(p, Tachikoma.KeyEvent(' '))
+            Ressac._explorer_play_focus!(p)
             @test length(mock.sent) >= 1
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
@@ -171,9 +171,9 @@ end
     @testset "t toggles drone hold (mock)" begin
         _with_mock() do mock
             p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
-            Ressac.handle_key!(p, Tachikoma.KeyEvent('t'))
+            Ressac._explorer_toggle_drone!(p)
             @test p.audition.held_active == true
-            Ressac.handle_key!(p, Tachikoma.KeyEvent('t'))
+            Ressac._explorer_toggle_drone!(p)
             @test p.audition.held_active == false
         end
     end
@@ -181,7 +181,7 @@ end
     @testset "on_close! stops the drone (mock)" begin
         _with_mock() do mock
             p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 3))
-            Ressac.handle_key!(p, Tachikoma.KeyEvent('t'))
+            Ressac._explorer_toggle_drone!(p)
             Ressac.on_close!(p)
             @test p.audition.held_active == false
         end
@@ -467,8 +467,9 @@ end
         @test Ressac.handle_key!(p, Tachikoma.KeyEvent('?')) == false
         @test Ressac.pane_scope(p) === :explorer
         ks = Set(k for b in Ressac.bindings(:explorer) for k in b.keys)
-        for k in ("Space", "n", "f", "d", "u", "H", "T", "M", "e", "w", "s", "x", "i",
-                  "V", "L", "p", "g", "t", "m", "y", "R", "C", "G", ">", "<", "Tab",
+        # Espace, T et t sont des gestes du mode EXPLORE (leader, entendre, drone) ; B = tune/brew
+        for k in ("n", "f", "d", "u", "H", "B", "M", "e", "w", "s", "x", "i",
+                  "V", "L", "p", "g", "m", "y", "R", "C", "G", ">", "<", "Tab",
                   "S", "0", "]", "[", "+", "-", "h", "j", "k", "l", "1", "9")
             @test k in ks
         end
@@ -694,9 +695,9 @@ end
     @testset "T flips the mode, default is brew" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
         @test p.mode === :brew
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('B'))
         @test p.mode === :tune
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('B'))
         @test p.mode === :brew
     end
 
@@ -704,7 +705,7 @@ end
         p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
         p.focus = 2
         anchor_ugens = sort([String(n.ugen) for n in values(p.pop.candidates[2].genome.nodes)])
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))     # → tune
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('B'))     # → tune
         Ressac.handle_key!(p, Tachikoma.KeyEvent('n'))     # générer
         @test p.pop.generation == 1
         for c in p.pop.candidates
@@ -714,7 +715,7 @@ end
 
     @testset "header shows the TUNE badge in tune mode" begin
         p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 9))
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('T'))
+        Ressac.handle_key!(p, Tachikoma.KeyEvent('B'))
         tb = Tachikoma.TestBackend(100, 30)
         Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
         @test occursin("TUNE", Tachikoma.row_text(tb, 1))
@@ -907,7 +908,7 @@ end
         Ressac._LIVE_SCHEDULER[] = sched
         try
             p = Ressac._pane_new(:explorer, Dict{String,Any}("seed" => "drone_grave", "rng" => 9))
-            p.show_explain = true
+            p.show_explain = true                        # l'explication ouverte : Espace y solo le composant
             n0 = length(mock.sent)
             Ressac.handle_key!(p, Tachikoma.KeyEvent(' '))
             @test length(mock.sent) > n0

@@ -62,6 +62,13 @@ function _active_layers(m::RessacApp)
     end
     pane = _focused_pane_impl(m)
     ed = _active_editor(m)
+    # Espace déjà pressé : le leader du mode, depuis n'importe quelle pane
+    # (le snippet va dans le texte du workspace).
+    if m.pending_leader && ed !== nothing && ed.mode === :normal
+        push!(L, Layer(_leader_scope(m), m; engine = _leader_engine!, exclusive = true,
+                       engine_first = true, prefix = "Space"))
+        return L
+    end
     if pane !== nothing && !_editor_pane_focused(m, pane, ed)
         # Une pane qui n'est pas l'éditeur : ses touches, puis le mode, puis
         # le global. Jamais l'éditeur.
@@ -84,11 +91,6 @@ function _active_layers(m::RessacApp)
         # continue vers le moteur vim (la sélection suit le curseur).
         m.visual_active && push!(L, Layer(:visual, m; engine = _visual_engine!, solo = true))
         push!(L, Layer(:none, m; engine = _vim_record_engine!))
-        if m.pending_leader
-            sc = _focused_role(m) === :synth ? :leader_synth : :leader
-            push!(L, Layer(sc, m; engine = _leader_engine!, exclusive = true, engine_first = true, prefix = "Space"))
-            return L
-        end
         m.placeholder_active && push!(L, Layer(:placeholder, m; engine = _placeholder_engine!))
         if m.pending_find !== nothing
             push!(L, Layer(:none, m; engine = _pending_find_engine!, exclusive = true))
@@ -99,10 +101,13 @@ function _active_layers(m::RessacApp)
             # l'accord consommé lève le préfixe de CET éditeur (l'action a pu
             # changer de workspace, donc d'éditeur actif)
             hit = isempty(prefix) ? nothing : (_ -> (ed.pending_key = nothing))
+            # le texte : ses touches propres (rôle), puis le mode, puis les
+            # motions documentées de l'éditeur (f/t…), puis le global — un
+            # geste de mode passe avant une motion vim, c'est voulu
             role = _focused_role(m) === :synth ? :synth : :patterns
             push!(L, Layer(role, m; prefix = prefix, after_hit = hit))
-            push!(L, Layer(:editor, m; prefix = prefix, after_hit = hit))
             push!(L, Layer(_mode_scope(m), m; prefix = prefix, after_hit = hit))
+            push!(L, Layer(:editor, m; prefix = prefix, after_hit = hit))
             push!(L, Layer(:global, m; prefix = prefix, after_hit = hit))
         end
         push!(L, Layer(:none, m; engine = _editor_normal_engine!))

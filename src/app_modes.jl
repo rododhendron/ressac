@@ -14,12 +14,14 @@ const _WORKSPACE_OF_MODE = Dict(:play => "PLAY", :design => "DESIGN", :explore =
 Le mode courant : le nom du workspace, sinon ce que porte la pane focalisée.
 """
 function _workspace_mode(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return :play
-    haskey(_MODE_OF_WORKSPACE, ws.name) && return _MODE_OF_WORKSPACE[ws.name]
+    # Ce que porte la pane focalisée prime : un synth ouvert dans PLAY (une
+    # vieille disposition, un :vsplit) se travaille avec les gestes de DESIGN.
     pane = _focused_pane_impl(m)
     pane isa SynthExplorerPane && return :explore
     _focused_role(m) === :synth && return :design
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return :play
+    haskey(_MODE_OF_WORKSPACE, ws.name) && return _MODE_OF_WORKSPACE[ws.name]
     (pane isa WaveformPane || pane isa DronePane || pane isa SynthDocPane) && return :design
     return :play
 end
@@ -29,6 +31,7 @@ _mode_label(mode::Symbol) = get(_WORKSPACE_OF_MODE, mode, "PLAY")
 # ── Scopes de touches par mode (l'aide « tout ») ─────────────────────
 # Absent = partout.
 const _SCOPE_MODES = Dict{Symbol,Tuple{Vararg{Symbol}}}(
+    :mode_play => (:play,), :mode_design => (:design,), :mode_explore => (:explore,),
     :patterns => (:play,), :leader => (:play,), :placeholder => (:play, :design),
     :tap => (:play,), :piano => (:play,), :notes => (:play,), :tuning => (:play,),
     :modal_patterns => (:play,), :modal_evolve => (:play,), :modal_mixer => (:play,),

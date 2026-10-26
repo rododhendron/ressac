@@ -117,8 +117,8 @@ bind!(:editor, ";", "refaire la recherche de caractère"; group = :nav, hint = f
 bind!(:editor, ",", "refaire la recherche de caractère, à l'envers"; group = :nav, hint = false,
       when = m -> _km_normal_ed(m) && m.last_find !== nothing, repeat = true,
       action = m -> _repeat_find!(m, _km_ed(m), -1))
-bind!(:patterns, "K", "doc du mot sous le curseur (pane DOC)"; short = "doc", group = :help,
-      when = _km_patterns, action = _doc_under_cursor!)
+bind!(:patterns, "g K", "écouter le mot sous le curseur"; short = "écouter", group = :audio, hint = false,
+      when = _km_patterns, action = _preview_word_under_cursor!)
 bind!(:editor, ["W", "B", "E"], "MOT (séparé par des espaces)"; group = :nav, hint = false)
 bind!(:editor, ["0", "\$"], "début / fin de ligne"; group = :nav, hint = false)
 bind!(:editor, ["g g", "G"], "début / fin du buffer"; group = :nav, hint = false)
@@ -127,19 +127,48 @@ bind!(:editor, ["cw", "dw", "yw"], "opérateur + motion (aussi b, e, W, B, E, \$
 bind!(:editor, "x", "supprimer le caractère"; group = :edit, hint = false)
 bind!(:editor, "u", "annuler"; group = :edit, hint = false)
 
+# ── Les modes : ce qui concerne le son ou la session, quelle que soit ──
+# la pane focalisée. Règle : une touche de mode n'est jamais aussi une
+# touche d'une pane de ce mode (test_keymap.jl le vérifie).
+scope!(:mode_play, "PLAY — quelle que soit la pane"; layer = :mode)
+bind!(:mode_play, "e", "évaluer la ligne"; short = "évaluer", group = :eval, when = _km_normal,
+      action = _eval_current_line!)
+bind!(:mode_play, "E", "tout évaluer"; group = :eval, when = _km_normal,
+      action = m -> _eval_pattern_blocks!(m, :all))
+bind!(:mode_play, "m", "mute / unmute le slot"; short = "mute", group = :audio, when = _km_normal,
+      action = _toggle_mute_current_line!)
+bind!(:mode_play, "K", "la fiche du mot sous le curseur (DOC)"; short = "fiche", group = :help, when = _km_normal,
+      action = _doc_under_cursor!)
+bind!(:mode_play, "Space", "snippet…"; group = :edit, when = _km_normal,
+      action = m -> (m.pending_leader = true))
+
+scope!(:mode_design, "DESIGN — quelle que soit la pane"; layer = :mode)
+bind!(:mode_design, ["T", "t"], "entendre le son (maintenir = rafale)"; short = "entendre", group = :audio,
+      repeat = true, when = _km_normal,
+      action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
+bind!(:mode_design, "D", "drone : tenir le son / le relâcher"; short = "drone", group = :audio,
+      when = _km_normal, action = _drone_toggle!)
+bind!(:mode_design, "Space", "maillon DSL…"; group = :edit, when = _km_normal,
+      action = m -> (m.pending_leader = true))
+bind!(:mode_design, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
+      group = :file, when = _km_normal, action = _design_use_in_pattern!)
+bind!(:mode_design, "P", "élagage : mesurer l'impact de chaque nœud"; short = "élagage", group = :structure,
+      when = _km_normal, action = _design_measure_impacts!)
+bind!(:mode_design, "K", "la fiche du mot sous le curseur (DOC)"; short = "fiche", group = :help,
+      when = _km_normal, action = _design_doc_tab!)
+bind!(:mode_design, "X", "l'explication du son (DOC)"; short = "explication", group = :help,
+      when = _km_normal, action = m -> _design_doc_mode!(m, :explain))
+bind!(:mode_design, "Y", "le graphe du son (DOC)"; short = "graphe", group = :help,
+      when = _km_normal, action = m -> _design_doc_mode!(m, :graph))
+
+scope!(:mode_explore, "EXPLORE — quelle que soit la pane"; layer = :mode)
+bind!(:mode_explore, ["T", "t"], "entendre le candidat"; short = "entendre", group = :audio,
+      when = _km_normal, action = _explore_play!)
+bind!(:mode_explore, "D", "drone du candidat on/off"; short = "drone", group = :audio,
+      when = _km_normal, action = _explore_drone!)
+
 # ── :patterns ──────────────────────────────────────────────────────
 scope!(:patterns, "Pane patterns"; layer = :pane)
-bind!(:patterns, "e", "évaluer la ligne"; short = "évaluer", group = :eval, when = _km_patterns,
-      action = _eval_current_line!)
-bind!(:patterns, "E", "tout évaluer"; group = :eval, when = _km_patterns,
-      action = m -> _eval_pattern_blocks!(m, :all))
-bind!(:patterns, "m", "mute / unmute le slot"; short = "mute", group = :audio, when = _km_patterns,
-      action = _toggle_mute_current_line!)
-bind!(:patterns, "K", "écouter le mot sous le curseur"; short = "écouter", group = :audio, when = _km_patterns,
-      action = _preview_word_under_cursor!)
-bind!(:patterns, "Space", "snippet…"; group = :edit,
-      when = m -> _km_patterns(m) && !m.tap_recording,
-      action = m -> (m.pending_leader = true))
 bind!(:patterns, ">", "pattern : zoom ×2"; group = :edit, hint = false, when = _km_in_pattern,
       action = m -> _pat_zoom!(m, _km_ed(m), +1))
 bind!(:patterns, "<", "pattern : zoom ÷2"; group = :edit, hint = false, when = _km_in_pattern,
@@ -154,18 +183,7 @@ bind!(:patterns, "g s", "ouvrir le synth sous le curseur (DESIGN)"; group = :nav
       when = _km_patterns, action = _goto_synth_under_cursor!)
 
 # ── :synth ─────────────────────────────────────────────────────────
-scope!(:synth, "Pane synth"; layer = :pane)
-bind!(:synth, ["t", "T"], "tester le synth (maintenir = rafale)"; short = "tester", group = :audio,
-      repeat = true, when = _km_synth,
-      action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
-bind!(:synth, "Space", "snippet DSL…"; group = :edit, when = _km_synth,
-      action = m -> (m.pending_leader = true))
-bind!(:synth, "D", "drone : tenir le synth / le relâcher"; short = "drone", group = :audio,
-      when = _km_synth, action = _drone_toggle!)
-bind!(:synth, "K", "doc du mot sous le curseur (pane DOC)"; short = "doc", group = :help,
-      when = _km_synth, action = _doc_under_cursor!)
-bind!(:synth, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
-      group = :file, when = _km_synth, action = _use_current_synth_in_pattern!)
+scope!(:synth, "Pane synth (texte)"; layer = :pane)
 bind!(:synth, "g t", "synth suivant"; group = :nav, hint = false,
       when = m -> _km_synth(m) && length(_all_synth_buffers(m)) > 1,
       action = m -> _cycle_synth_tab!(m; dir = +1))
@@ -196,7 +214,11 @@ for (c, _) in _LEADER_LABELS
     end
 end
 
-# Space dans une pane synth : des maillons du DSL, insérés en bout de chaîne.
+# Le leader d'un mode : les snippets de patterns dans PLAY, les maillons
+# du DSL dans DESIGN (depuis n'importe quelle pane : ils vont dans le texte).
+_leader_scope(m::RessacApp) = _workspace_mode(m) === :design ? :leader_synth : :leader
+
+# Space dans DESIGN : des maillons du DSL, insérés en bout de chaîne.
 scope!(:leader_synth, "Space + … (synth)"; layer = :transient)
 const _LEADER_SYNTH = [
     ('s', "saw(:freq)", "source saw"), ('o', "sin_osc(:freq)", "source sin_osc"),

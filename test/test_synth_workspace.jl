@@ -261,10 +261,11 @@ end
         # Enter : le focus passe au studio
         _swkey(app, :enter)
         @test Ressac._focused_pane_impl(app) === studio
-        # G dans le studio ramène sur l'onglet graphe
+        # Y (mode DESIGN) depuis le studio met la DOC sur le graphe
         sdoc.mode = :doc
-        _swkey(app, 'G')
-        @test sdoc.mode === :graph && Ressac._focused_pane_impl(app) === sdoc
+        _swkey(app, 'Y')
+        @test sdoc.mode === :graph
+        Ressac._focus_pane!(app, sdoc)
         # d retire le nœud focalisé (bypass) : le graphe et le texte suivent
         n0 = length(studio.genome.nodes)
         rl = findfirst(i -> studio.genome.nodes[i].ugen === :RLPF, sdoc.graph_ids)

@@ -273,7 +273,7 @@ Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_waveform.jl"))
 
         @testset "Space plays (alias of ⏎), no crash without a session" begin
             p = mkscu()
-            @test Ressac.handle_key!(p, Tachikoma.KeyEvent(' ')) == true
+            @test Ressac.handle_key!(p, Tachikoma.KeyEvent(:enter)) == true
         end
 
         @testset "o swaps the focused node's UGen and re-enumerates" begin

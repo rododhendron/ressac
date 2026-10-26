@@ -1029,13 +1029,12 @@ register_pane_kind!(:explorer, _synth_explorer_pane_ctor)
 # et sont documentés ici en entrées sans action.
 pane_scope(::SynthExplorerPane) = :explorer
 scope!(:explorer, "Explorateur de synths (GA)")
-bind!(:explorer, "Space", "jouer le candidat"; short = "jouer", group = :audio, action = _explorer_play_focus!)
 bind!(:explorer, "n", "génération suivante"; short = "génération", group = :structure, action = _explorer_next_gen!)
 bind!(:explorer, "f", "favoriser"; group = :select, action = p -> favor!(p.pop, p.focus))
 bind!(:explorer, "d", "dévaluer"; group = :select, action = p -> devalue!(p.pop, p.focus))
 bind!(:explorer, "u", "rôle d'usage suivant"; short = "rôle", group = :select, action = _explorer_cycle_role!)
 bind!(:explorer, "H", "récolte NRT (top-k du rôle)"; short = "récolte", group = :select, action = _explorer_harvest!)
-bind!(:explorer, "T", "tune (réglage fin) ⟷ brew (rebrassage)"; short = "tune/brew", group = :structure,
+bind!(:explorer, "B", "tune (réglage fin) ⟷ brew (rebrassage)"; short = "tune/brew", group = :structure,
       action = p -> (p.mode = p.mode === :tune ? :brew : :tune))
 bind!(:explorer, "M", "sculpter le candidat"; short = "sculpter", group = :file, action = _explorer_sculpt_focus!)
 bind!(:explorer, "e", "exporter dans l'éditeur…"; short = "éditeur…", group = :file,
@@ -1053,7 +1052,6 @@ bind!(:explorer, "p", "params du candidat"; short = "params", group = :edit,
       action = p -> (p.param_edit = true; p.param_cursor = 1))
 bind!(:explorer, "g", "réglages GA"; short = "réglages", group = :structure,
       action = p -> (p.ga_panel = true; p.ga_cursor = 1))
-bind!(:explorer, "t", "drone on/off"; short = "drone", group = :audio, action = _explorer_toggle_drone!)
 bind!(:explorer, "m", "mini-clavier (z x c v…)"; short = "clavier", group = :audio,
       action = p -> (p.keyboard_mode = true))
 bind!(:explorer, "y", "copier le DSL"; group = :file, hint = false, action = _explorer_yank!)
@@ -1111,3 +1109,4 @@ scope_notes!(:explorer, [
     "  5 nœuds…    taille du DAG + origine (graine/muté/croisé)",
     "  ♪NN         adéquation mesurée au rôle (%) · ⚠ MUET = mesuré silencieux",
 ])
+

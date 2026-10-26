@@ -70,7 +70,7 @@ end
     _hkey(app, '?')
     @test app.modal === :help
     @test app.help_scopes[1] === :synth
-    @test occursin("tester le synth", _screen(app, tb, frame))
+    @test occursin("entendre le son", _screen(app, tb, frame))
 end
 
 @testset "help — depuis une pane non-éditeur (log, explorer) : ? fonctionne" begin
@@ -152,17 +152,17 @@ end
     @test occursin("Space snippet", bar)
     _hex(app, "synth kick")                                  # :synth emmène dans DESIGN
     bar = _bottom_bar(app, tb, frame)
-    @test occursin("t tester", bar)
+    @test occursin("T entendre", bar)
     @test !occursin("Tab patterns", bar)                     # DESIGN : pas de pane patterns
     _hex(app, "design")
     bar = _bottom_bar(app, tb, frame)
-    @test occursin("t tester", bar)
+    @test occursin("T entendre", bar)
     _hex(app, "play")
     @test !occursin("e évaluer", bar)
     app2, tb2, frame2 = _help_app()
     _hex(app2, "vsplit explorer")
     bar = _bottom_bar(app2, tb2, frame2)
-    @test occursin("Space jouer", bar)
+    @test occursin("T entendre", bar)
     @test occursin("n génération", bar)
     @test occursin("? aide", bar)
 end

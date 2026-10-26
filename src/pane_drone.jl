@@ -197,11 +197,9 @@ mixin_knob_nav!(:drone; has = _dr_has,
     labels = (next = "argument suivant", prev = "argument précédent", more = "moduler +", less = "moduler −",
               tab = "drone suivant", tab_short = "drone", value = "saisir une valeur",
               reset = "revenir au défaut", reset_short = "défaut"))
-bind!(:drone, ["T", "t"], "réévaluer le drone depuis son texte"; short = "réévaluer", group = :audio, when = _dr_has,
-      action = p -> _dr_reeval!(p))
-bind!(:drone, ["D", "x"], "relâcher ce drone"; short = "relâcher", group = :audio, when = _dr_has,
+bind!(:drone, "x", "relâcher ce drone"; short = "relâcher", group = :audio, when = _dr_has,
       action = p -> _dr_stop!(p))
-bind!(:drone, "X", "relâcher tous les drones"; group = :audio, hint = false, when = _dr_has,
+bind!(:drone, "Ctrl-x", "relâcher tous les drones"; group = :audio, hint = false, when = _dr_has,
       action = p -> _dr_stop_all!(p))
 bind!(:drone, ["Enter", "Esc", "Bksp"], "saisie de valeur : valider / annuler / effacer";
       group = :submode, hint = false)

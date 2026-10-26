@@ -89,7 +89,7 @@ end
         scr = join((Tachikoma.row_text(tb, y) for y in 1:30), "\n")
         @test occursin("✂", scr)
         # P mesure (synchrone en test)
-        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('P')) == true
+        @test (Ressac._sculpt_measure_impacts!(p); true)
         @test !p.measuring && !isempty(p.impacts) && p.impacts[n.f2] == 0.0
         @test any(l -> occursin("impact", l), p.explain_lines)
         # :prune retire les ✂ mesurés, pas le filtre
@@ -97,12 +97,12 @@ end
         @test nb >= 2 && !haskey(p.genome.nodes, n.f2) && haskey(p.genome.nodes, n.f)
         @test isempty(p.impacts)                                         # périmés après la coupe
         # un édit structurel vide aussi les impacts
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('P')); @test !isempty(p.impacts)
+        Ressac._sculpt_measure_impacts!(p); @test !isempty(p.impacts)
         Ressac.handle_key!(p, Tachikoma.KeyEvent('n')); @test isempty(p.impacts)
         # sans mesure, :prune ne fait rien ; avec une analyse qui échoue, le message le dit
         @test Ressac._sculpt_prune!(p) == 0
         Ressac._PRUNE_ANALYZE[] = gs -> error("nrt: sclang introuvable")
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('P'))
+        Ressac._sculpt_measure_impacts!(p)
         @test !p.measuring && isempty(p.impacts) && any(l -> occursin("indisponible", l), p.explain_lines)
     finally
         Ressac._PRUNE_ANALYZE[] = old_an; Ressac._WAVE_RENDER[] = old_render; Ressac._WAVE_SYNC[] = old_sync

@@ -411,6 +411,7 @@ end
 
 # Ordre canonique des sections en mode « tout ».
 const _HELP_ALL_SCOPES = Symbol[
+    :mode_play, :mode_design, :mode_explore,
     :global, :editor, :patterns, :leader, :placeholder, :synth, :leader_synth, :visual, :insert, :pane_mode,
     :explorer, :waveform, :sculpt, :drone, :synthdoc, :log, :doc, :wiki, :notes, :tuning, :tutorial, :tap, :piano,
     :modal_help, :modal_text, :modal_browse, :modal_lib, :modal_snippets, :modal_patterns,
@@ -436,11 +437,18 @@ function _help_scopes(m::RessacApp)
     for (sc, _) in layers
         sc in out || push!(out, sc)
     end
+    # la section du mode juste après celle de la pane : ce sont les gestes
+    # qu'on cherche d'abord
+    i = findfirst(sc -> scope_layer(sc) === :mode, out)
+    if i !== nothing && i > 2
+        sc = out[i]; deleteat!(out, i); insert!(out, 2, sc)
+    end
     # ce qui s'ouvre d'une touche depuis là : le leader, le visuel,
     # l'insertion, le mode pane, l'aide
-    role = _focused_role(m)
+    mode = _workspace_mode(m)
+    mode === :explore || (sc = _leader_scope(m); sc in out || push!(out, sc))
     if _focused_pane_impl(m) isa EditorPane
-        for sc in (role === :synth ? :leader_synth : :leader, :visual, :insert)
+        for sc in (:visual, :insert)
             sc in out || push!(out, sc)
         end
     end

@@ -288,3 +288,64 @@ function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::A
     end
     return true
 end
+
+# ── Les gestes du mode DESIGN, depuis n'importe quelle pane ────────────
+# Dans DESIGN le studio est lié au texte : « utiliser dans un pattern »
+# et « mesurer l'élagage » parlent du synth courant, que le focus soit
+# sur le texte, le studio ou la DOC. Un studio seul (hors DESIGN) garde
+# son propre chemin.
+function _design_use_in_pattern!(m::RessacApp)
+    p = _focused_pane_impl(m)
+    if p isa WaveformPane && p.sculpt && !p.linked
+        _SCULPT_USE_REQUEST[] = p
+        return
+    end
+    _use_current_synth_in_pattern!(m)
+end
+
+function _design_measure_impacts!(m::RessacApp)
+    p = _focused_pane_impl(m)
+    studio = (p isa WaveformPane && p.sculpt) ? p :
+             (parts = _synth_workspace_parts(m); parts === nothing ? nothing : parts[2])
+    if studio === nothing || studio.genome === nothing
+        _push_app_log!(m, "[INFO] élagage : le studio attend un @synth analysable")
+        return
+    end
+    _synth_workspace_sync!(m)
+    _sculpt_measure_impacts!(studio)
+end
+
+# K / X / Y : la DOC sur la fiche du mot, l'explication, le graphe.
+function _design_doc_mode!(m::RessacApp, mode::Symbol)
+    parts = _synth_workspace_parts(m)
+    if parts === nothing || parts[3] === nothing
+        _push_app_log!(m, "[INFO] pas de pane DOC dans ce workspace — :design la remet")
+        return
+    end
+    _synth_workspace_sync!(m)
+    parts[3].mode = mode
+    return
+end
+
+function _design_doc_tab!(m::RessacApp)
+    _design_doc_mode!(m, :doc)
+    _doc_under_cursor!(m)
+end
+
+# Les gestes du mode EXPLORE (T entendre, D drone) visent l'explorateur
+# du workspace, que le focus soit dessus ou sur une pane voisine.
+function _explore_pane(m::RessacApp)
+    p = _focused_pane_impl(m)
+    p isa SynthExplorerPane && return p
+    return _find_pane(m, SynthExplorerPane)
+end
+function _explore_play!(m::RessacApp)
+    p = _explore_pane(m)
+    p === nothing && (_push_app_log!(m, "[INFO] pas d'explorateur ici — :explore"); return)
+    _explorer_play_focus!(p)
+end
+function _explore_drone!(m::RessacApp)
+    p = _explore_pane(m)
+    p === nothing && (_push_app_log!(m, "[INFO] pas d'explorateur ici — :explore"); return)
+    _explorer_toggle_drone!(p)
+end

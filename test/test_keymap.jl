@@ -165,3 +165,24 @@ end
     @test !Ressac.dispatch!(((:t_mix, t),), Tachikoma.KeyEvent('k'))      # en haut : k indisponible
     Ressac.clear_scope!(:t_mix)
 end
+
+@testset "règle des couches — une touche de mode n'est jamais une touche d'une pane du mode" begin
+    active_keys(scope) = Set(k for b in Ressac.bindings(scope) if b.action !== nothing for k in b.keys)
+    for mode in (:play, :design, :explore)
+        mk = active_keys(Symbol("mode_", mode))
+        @test !isempty(mk)
+        for scope in keys(Ressac._KEYMAP)
+            Ressac.scope_layer(scope) === :pane || continue
+            Ressac._scope_in_mode(scope, mode) || continue
+            # :editor documente le moteur vim du texte ; qu'un geste de mode
+            # passe avant une motion (t/T « jusqu'au caractère » dans DESIGN)
+            # est le prix assumé, pas un conflit de registre
+            scope === :editor && continue
+            clash = intersect(mk, active_keys(scope))
+            @test isempty(clash) || (println("conflit $mode / $scope : ", clash); false)
+        end
+    end
+    # les trois modes partagent T/D (entendre, drone) là où ça a un sens, Espace = leader
+    @test "Space" in active_keys(:mode_play) && "Space" in active_keys(:mode_design)
+    @test "T" in active_keys(:mode_design) && "T" in active_keys(:mode_explore)
+end
