@@ -74,40 +74,73 @@ function _kind_for(p::PaneImpl)
 end
 
 """
-    load_layout!(wm, path)
+    read_layout(path) -> WorkspaceManager
 
-Read `path` and rebuild the manager state. Falls back to a
-no-op + warning on file errors or schema mismatch — the caller is
-expected to install a default workspace after.
+Lit une disposition sauvée dans un gestionnaire **neuf**, sans toucher à
+rien d'existant. Lève — avec la raison — si le fichier manque, ne se parse
+pas, ne contient aucun workspace, ou nomme un type de pane inconnu : une
+disposition à moitié lue n'est jamais rendue.
 """
-function load_layout!(wm::WorkspaceManager, path::AbstractString)
-    isfile(path) || begin
-        @warn "workspace_persistence: layout file not found at $path"
-        return nothing
-    end
+function read_layout(path::AbstractString)
+    isfile(path) || error("fichier de disposition introuvable : $path")
     raw = try
         TOML.parsefile(path)
     catch err
-        @warn "workspace_persistence: parse failed: $(sprint(showerror, err))"
-        return nothing
+        error("le fichier ne se lit pas (TOML) : " * first(sprint(showerror, err), 160))
     end
-    workspaces_raw = get(raw, "workspaces", Dict())
-    sorted_keys = sort(collect(keys(workspaces_raw)); by = k -> parse(Int, k))
-    for k in sorted_keys
+    wm = WorkspaceManager()
+    workspaces_raw = get(raw, "workspaces", nothing)
+    (workspaces_raw isa AbstractDict && !isempty(workspaces_raw)) ||
+        error("le fichier ne contient aucun workspace")
+    for k in sort(collect(keys(workspaces_raw)); by = k -> something(tryparse(Int, k), typemax(Int)))
         ws_data = workspaces_raw[k]
-        name = String(get(ws_data, "name", ""))
-        focused = Int(get(ws_data, "focused_pane", 1))
+        (ws_data isa AbstractDict && get(ws_data, "tree", nothing) isa AbstractDict) ||
+            error("le workspace « $k » n'a pas d'arbre de panes")
         tree = _deserialize_tree(ws_data["tree"], wm)
-        ws = Workspace(wm.next_workspace_id, name, tree,
-                       FloatingPane[], focused)
+        ws = Workspace(wm.next_workspace_id, String(get(ws_data, "name", "")), tree,
+                       FloatingPane[], Int(get(ws_data, "focused_pane", 1)))
         wm.next_workspace_id += 1
         push!(wm.workspaces, ws)
     end
-    if !isempty(wm.workspaces)
-        wm.current_idx = clamp(Int(get(raw, "current_idx", 1)),
-                                1, length(wm.workspaces))
+    wm.current_idx = clamp(Int(get(raw, "current_idx", 1)), 1, length(wm.workspaces))
+    return wm
+end
+
+"""
+    load_layout!(wm, path) -> Bool
+
+Remplace l'état de `wm` par la disposition de `path` — **seulement si elle
+se lit en entier** (voir [`read_layout`](@ref)). En cas d'échec, `wm` est
+intact, un avertissement est émis et `false` est rendu : c'est le chemin du
+démarrage, où une disposition abîmée ne doit pas empêcher de jouer.
+"""
+function load_layout!(wm::WorkspaceManager, path::AbstractString)
+    fresh = try
+        read_layout(path)
+    catch err
+        @warn "workspace_persistence: " * sprint(showerror, err)
+        return false
     end
-    return nothing
+    _adopt_layout!(wm, fresh)
+    return true
+end
+
+# `wm` devient `fresh` (même objet, nouveau contenu : l'app garde sa
+# référence). Les panes qui disparaissent sont fermées proprement.
+function _adopt_layout!(wm::WorkspaceManager, fresh::WorkspaceManager)
+    for ws in wm.workspaces
+        for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+            try; on_close!(tab); catch; end
+        end
+        for f in ws.floats
+            try; on_close!(f.pane); catch; end
+        end
+    end
+    wm.workspaces = fresh.workspaces
+    wm.current_idx = fresh.current_idx
+    wm.next_pane_id = max(wm.next_pane_id, fresh.next_pane_id)
+    wm.next_workspace_id = max(wm.next_workspace_id, fresh.next_workspace_id)
+    return wm
 end
 
 function _deserialize_tree(d::AbstractDict, wm::WorkspaceManager)
@@ -134,7 +167,7 @@ function _deserialize_tree(d::AbstractDict, wm::WorkspaceManager)
     end
 end
 
-_default_layout_path() = joinpath(homedir(), ".config", "ressac", "last_layout.toml")
+_default_layout_path() = joinpath(_config_dir(), "last_layout.toml")
 
 _named_layout_path(name::AbstractString) =
-    joinpath(homedir(), ".config", "ressac", "layouts", "$(name).toml")
+    joinpath(_config_dir(), "layouts", "$(name).toml")

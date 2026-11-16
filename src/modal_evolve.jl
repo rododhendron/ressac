@@ -109,7 +109,7 @@ function _evolve_accept!(m::RessacApp)
         splice!(lines, a:max(b, a), split(final, '\n'))
         a
     end
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     ed.cursor_row = clamp(row, 1, length(ed.lines))
     ed.cursor_col = 0
     m.modal = :none

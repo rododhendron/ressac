@@ -20,6 +20,17 @@ can map (x, y) → which widget under the pointer. Behaviours:
   • Middle-click in modal row                    → highlight + activate (Enter)
 """
 function TK.update!(m::RessacApp, evt::TK.MouseEvent)
+    # Même filet que le clavier : un geste de souris qui lève se lit dans
+    # le journal, la session continue.
+    try
+        _mouse_update!(m, evt)
+    catch err
+        _push_app_log!(m, "[ERROR] souris — $(first(sprint(showerror, err), 160))")
+    end
+    return
+end
+
+function _mouse_update!(m::RessacApp, evt::TK.MouseEvent)
     # La bulle de glossaire suit la souris (déplacements, clic dedans).
     m.modal === :none && _hover_mouse!(m, evt) && return
     evt.action === TK.mouse_move && return
@@ -84,6 +95,21 @@ propre recherche sur `/`).
 """
 _modal_owns_key(m::RessacApp, chord::AbstractString) =
     m.modal !== :none && lookup(modal_scope(m), chord; target = m) !== nothing
+
+"""
+    _text_entry_active(m) -> Bool
+
+Vrai quand la frappe va dans une saisie de modale (la recherche de la
+palette, le `/` d'une liste, la recherche du navigateur de sons). Tant que
+c'est le cas, aucune touche globale ne passe devant : `!` est un caractère,
+pas un PANIC ; `:` et Ctrl-w aussi.
+"""
+function _text_entry_active(m::RessacApp)
+    m.modal === :none && return false
+    m.modal === :browse && return m.browser_search.focused
+    pk = _modal_picker(m)
+    return pk !== nothing && pk.searching
+end
 
 """
     _route_key_to_focused_pane!(m, evt) -> :editor | :consumed | :pass

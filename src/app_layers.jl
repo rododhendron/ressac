@@ -42,6 +42,7 @@ _mode_scope(m::RessacApp) = Symbol("mode_", _workspace_mode(m))
 La pile du moment, de la plus prioritaire à la moins.
 """
 function _active_layers(m::RessacApp)
+    _validate_transients!(m)
     L = Layer[]
     m.hover === nothing || push!(L, Layer(:none, m; engine = _hover_engine!))
     if is_active(m.command_line)
@@ -50,8 +51,14 @@ function _active_layers(m::RessacApp)
     end
     # Partout, avant tout : panic, Ctrl-1..9, Ctrl-F.
     push!(L, Layer(:none, m; engine = _pre_engine!))
+    # États exclusifs de l'app — pause, piano, tap. Ils ne dépendent pas de
+    # la pane focalisée : lancés depuis le wiki ou le journal, ils prennent
+    # les touches tout pareil (sinon `:pause` gèle l'écran sans sortie).
+    m.paused        && (push!(L, Layer(:none,  m; engine = _paused_engine!, exclusive = true)); return L)
+    m.piano_active  && (push!(L, Layer(:piano, m; exclusive = true)); return L)
+    m.tap_recording && (push!(L, Layer(:tap,   m; exclusive = true)); return L)
     if _PANE_MODE.active
-        push!(L, Layer(:pane_mode, m; engine = _pane_mode_engine!, exclusive = true, prefix = "Ctrl-w"))
+        push!(L, Layer(:pane_mode, m; exclusive = true, prefix = "Ctrl-w"))
         return L
     end
     # Ouvrir le mode pane (Ctrl-w) ou la ligne « : » / « / ».
@@ -84,19 +91,19 @@ function _active_layers(m::RessacApp)
     end
     ed.focused = true
     if ed.mode === :normal
-        m.piano_active && (push!(L, Layer(:piano, m; engine = _piano_engine!, exclusive = true)); return L)
-        m.tap_recording && (push!(L, Layer(:tap, m; engine = _tap_engine!, exclusive = true)); return L)
-        m.paused && (push!(L, Layer(:none, m; engine = _paused_engine!, exclusive = true)); return L)
         # Le visuel : ses touches sur une pression ; une touche tenue
         # continue vers le moteur vim (la sélection suit le curseur).
         m.visual_active && push!(L, Layer(:visual, m; engine = _visual_engine!, solo = true))
         push!(L, Layer(:none, m; engine = _vim_record_engine!))
-        m.placeholder_active && push!(L, Layer(:placeholder, m; engine = _placeholder_engine!))
+        m.placeholder_active && push!(L, Layer(:placeholder, m))
         if m.pending_find !== nothing
             push!(L, Layer(:none, m; engine = _pending_find_engine!, exclusive = true))
             return L
         end
-        if !_awaiting_literal(m)
+        # Un opérateur en attente (`d`, `c`, `y`) : la touche suivante est son
+        # mouvement, pas un geste de mode — `de` supprime jusqu'à la fin du
+        # mot, il n'évalue pas la ligne.
+        if !_awaiting_literal(m) && !(ed.pending_key in ('c', 'd', 'y'))
             prefix = ed.pending_key == 'g' ? "g" : ""
             # l'accord consommé lève le préfixe de CET éditeur (l'action a pu
             # changer de workspace, donc d'éditeur actif)
@@ -114,13 +121,28 @@ function _active_layers(m::RessacApp)
         push!(L, Layer(:none, m; engine = _editor_engine!, exclusive = true))
     elseif ed.mode === :insert
         push!(L, Layer(:insert, m; engine = _editor_insert_engine!, exclusive = true))
-    elseif ed.mode === :command
-        push!(L, Layer(:none, m; engine = _editor_command_engine!))
-        push!(L, Layer(:none, m; engine = _editor_engine!, exclusive = true))
     else
         push!(L, Layer(:none, m; engine = _editor_engine!, exclusive = true))
     end
     return L
+end
+
+# La sélection visuelle et les trous d'un snippet appartiennent à un buffer
+# (`m.transient_ed`) et à des lignes précises. Un changement de pane, de
+# workspace ou d'onglet, ou une ligne supprimée entre-temps, les annule —
+# sans quoi ils se réveillaient dans un autre texte, ou sur une ligne qui
+# n'existe plus (BoundsError à chaque Tab).
+function _validate_transients!(m::RessacApp)
+    (m.visual_active || m.placeholder_active) || return
+    ed = _active_editor(m)
+    if ed === nothing || ed !== m.transient_ed
+        m.visual_active = false; m.placeholder_active = false
+        return
+    end
+    n = length(ed.lines)
+    m.visual_active && !(1 <= m.visual_anchor_row <= n) && (m.visual_active = false)
+    m.placeholder_active && !(1 <= m.placeholder_row <= n) && (m.placeholder_active = false)
+    return
 end
 
 # La pane focalisée est-elle l'éditeur actif ? (patterns ou synth)

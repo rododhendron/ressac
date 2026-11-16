@@ -159,9 +159,9 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 |---|---|
 | `Tab` | trou suivant |
 | `S-Tab` | trou précédent |
+| `Esc` | sortir des trous |
 | `i` | remplir le trou (insertion) |
 | `u` | annuler le snippet |
-| `Esc` | sortir des trous |
 
 ### Tap (:tap / :bpm)
 
@@ -179,8 +179,8 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `z x c v b n m ,` | notes (rangée du bas = naturelles) |
-| `s d g h j` | dièses |
+| `, / . / ; / b / c / m / n / v / w / x / z` | notes (rangée du bas = naturelles) |
+| `d / g / h / j / s` | dièses |
 | `[ / ]` | octave − / + |
 | `Enter` | valider l'enregistrement |
 | `Esc` | quitter |
@@ -606,9 +606,9 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 |---|---|
 | `Tab` | trou suivant |
 | `S-Tab` | trou précédent |
+| `Esc` | sortir des trous |
 | `i` | remplir le trou (insertion) |
 | `u` | annuler le snippet |
-| `Esc` | sortir des trous |
 
 ### Sons (samples, instruments, synths)
 
@@ -931,7 +931,7 @@ Lecture d'une carte :
 |---|---|
 | `Esc` | quitter Ressac (Échap deux fois) |
 | `:` | commande |
-| `/` | rechercher |
+| `/` | chercher dans le texte (n / N : occurrence suivante / précédente) |
 
 **Vues**
 
@@ -1077,7 +1077,7 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `Ctrl-w h / Ctrl-w j / Ctrl-w k / Ctrl-w l` | focus ← ↓ ↑ → (ou flèches) |
+| `Ctrl-w h / Ctrl-w j / Ctrl-w k / Ctrl-w l / Ctrl-w ← / Ctrl-w ↓ / Ctrl-w ↑ / Ctrl-w →` | focus ← ↓ ↑ → (ou flèches) |
 
 ### Sélection visuelle (v / V)
 
@@ -1085,7 +1085,9 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `j / k / h / l` | étendre la sélection |
+| `j / k / ↓ / ↑` | étendre la sélection (lignes) |
+| `h / l / ← / →` | étendre la sélection (caractères, en v) |
+| `0 / $` | jusqu'au début / à la fin de la ligne (en v) |
 | `Esc` | annuler |
 
 **Éditer**
@@ -1104,7 +1106,7 @@ Lecture d'une carte :
 
 | Touche | Action |
 |---|---|
-| `e` | évaluer le bloc |
+| `e` | évaluer les blocs sélectionnés |
 
 ### Mode insertion
 

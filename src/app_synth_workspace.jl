@@ -144,11 +144,7 @@ function _studio_to_text!(m::RessacApp, studio::WaveformPane, tab::EditorBuffer)
         _push_app_log!(m, "[INFO] studio → texte réécrit en forme canonique (u dans le texte annule)")
     end
     if newtext != text
-        row = ed.cursor_row; col = ed.cursor_col
-        TK._push_undo!(ed; force = true)
-        TK.set_text!(ed, newtext)
-        ed.cursor_row = clamp(row, 1, length(ed.lines))
-        ed.cursor_col = clamp(col, 0, length(ed.lines[ed.cursor_row]))
+        _edit_text!(ed, newtext)
     end
     studio.synced_hash = hash(newtext)
     _studio_mark_synced!(studio)
@@ -186,42 +182,54 @@ end
 """
     _ensure_synth_workspace!(m) -> Bool
 
-Le workspace courant a la forme texte | studio / doc : si le studio lié ou
-la DOC manquent (disposition d'avant, pane fermée), on les repose autour
-de la pane texte — les onglets de synths sont gardés. Vrai si quelque
-chose a été refait.
+Le workspace courant a ce qu'il faut pour concevoir un son : un texte de
+synth, son studio lié, la DOC. Ce qui manque (une disposition d'avant, une
+pane fermée) est **reposé autour de l'arbre existant** — le studio à
+droite du texte, la doc sous le studio. Rien d'autre n'est touché : les
+panes ouvertes à côté, leurs textes et leurs proportions restent. Vrai si
+quelque chose a été ajouté.
 """
 function _ensure_synth_workspace!(m::RessacApp)
     ws = current_workspace(m.workspaces)
     ws === nothing && return false
-    _synth_workspace_parts(m) === nothing || return false
     wm = m.workspaces
-    # la pane texte : celle qui porte des synths, sinon la première pane éditeur
-    leaf_ed = nothing
-    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
-        tab isa EditorPane && any(b -> b.role === :synth, tab.tabs) && (leaf_ed = leaf; break)
-    end
-    if leaf_ed === nothing
+    find_leaf(pred) = begin
         for leaf in _all_leaves(ws.tree), tab in leaf.tabs
-            tab isa EditorPane && (leaf_ed = leaf; break)
+            pred(tab) && return leaf
         end
+        nothing
     end
+    new_leaf(pane) = (l = PaneLeaf(wm.next_pane_id, PaneImpl[pane], 1); wm.next_pane_id += 1; l)
+    added = String[]
+
+    leaf_ed = find_leaf(t -> t isa EditorPane && any(b -> b.role === :synth, t.tabs))
     if leaf_ed === nothing
         ep = _pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "sketch"))
         eb = ep.tabs[1]; eb.synth_mode = :dsl
-        TK.set_text!(eb.code_editor, _STARTER_DSL("sketch")); eb.code_editor.mode = :normal
-        leaf_ed = PaneLeaf(wm.next_pane_id, PaneImpl[ep], 1); wm.next_pane_id += 1
+        _load_text!(eb.code_editor, _STARTER_DSL("sketch")); eb.code_editor.mode = :normal
+        if ws.tree isa PaneLeaf && isempty(ws.tree.tabs)
+            push!(ws.tree.tabs, ep); ws.tree.current_tab = 1          # un workspace encore vide
+            leaf_ed = ws.tree
+        else
+            leaf_ed = new_leaf(ep)
+            ws.tree = _split_root(ws.tree, _first_leaf_id(ws.tree), :h, leaf_ed)
+        end
+        push!(added, "texte")
     end
-    for leaf in _all_leaves(ws.tree)
-        leaf === leaf_ed && continue
-        for tab in leaf.tabs; try; on_close!(tab); catch; end; end
+    leaf_studio = find_leaf(t -> t isa WaveformPane && t.linked)
+    if leaf_studio === nothing
+        leaf_studio = new_leaf(_pane_new(:waveform, Dict{String,Any}("label" => "sketch", "sculpt" => true, "linked" => true)))
+        ws.tree = _split_root(ws.tree, leaf_ed.id, :h, leaf_studio)
+        push!(added, "studio")
     end
-    ws.tree = leaf_ed
+    if find_leaf(t -> t isa SynthDocPane) === nothing
+        ws.tree = _split_root(ws.tree, leaf_studio.id, :v, new_leaf(_pane_new(:synthdoc, Dict{String,Any}())))
+        push!(added, "doc")
+    end
+    isempty(added) && return false
     ws.focused_pane = leaf_ed.id
-    empty!(ws.floats)
     m.zoom_leaf = 0
-    _synth_workspace_panes!(ws, wm)
-    _push_app_log!(m, "[INFO] DESIGN remis en forme : texte | studio / doc")
+    _push_app_log!(m, "[INFO] DESIGN : $(join(added, ", ")) reposé$(length(added) > 1 ? "s" : "") à côté de ce qui était ouvert")
     return true
 end
 
@@ -266,7 +274,7 @@ function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::A
             push!(wsed.tabs, EditorBuffer(; role = :synth, name = name, content = text, synth_mode = :dsl))
             i = length(wsed.tabs)
         else
-            TK.set_text!(wsed.tabs[i].code_editor, text)
+            _edit_text!(wsed.tabs[i].code_editor, text)
         end
         wsed.current_tab = i
         wsed.tabs[i].code_editor.mode = :normal
@@ -283,7 +291,7 @@ function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::A
     if pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs)
         eb = pane.tabs[pane.current_tab]
         eb.synth_mode = :dsl
-        TK.set_text!(eb.code_editor, text)
+        _edit_text!(eb.code_editor, text)
         eb.code_editor.mode = :normal
     end
     return true

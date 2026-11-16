@@ -15,6 +15,7 @@ using Random
 const TK = Tachikoma
 
 # ─── Core domain — pure pattern types + algebra, no I/O ───────────
+include("paths.jl")              # _config_dir / _cache_dir / _project_dir
 include("core_patterns.jl")      # Pattern{T}, Event{T}, query
 include("core_mininotation.jl")  # the p"…" / "…" parser
 include("core_combinators.jl")   # fast/slow/jux/every/sometimes/…
@@ -26,11 +27,12 @@ include("core_maths.jl")         # courbes, lois de probabilité, suites, hauteu
 include("mix_helpers.jl")        # duck / avoid / band / fan / declash / clashes
 
 # ─── I/O primitives ───────────────────────────────────────────────
+include("io_notices.jl")         # threads de fond → journal de l'app
 include("io_osc.jl")             # OSC wire format (encode/decode)
 include("io_scheduler.jl")       # real-time loop + locked snapshots
 
 # ─── Shared TUI helpers (used by autocomplete + modals + app) ─────
-include("editor_fuzzy.jl")       # _fuzzy_score, _COMMAND_NAMES (complétion)
+include("editor_fuzzy.jl")       # _fuzzy_score, _fuzzy_rank (complétion)
 include("keymap.jl")             # registre de bindings (pur) — barre, aide, which-key
 
 # ─── Live session lifecycle ───────────────────────────────────────
@@ -69,6 +71,7 @@ include("extension_registry.jl")
 include("pane_interface.jl")
 include("workspace_manager.jl")
 include("pane_editor.jl")
+include("editor_edit.jl")        # écrire dans un buffer : _edit_text! (annulable), _load_text!
 include("tk_scroll.jl")         # ScrollPane partagé : défilement, molette, barre
 include("tk_picker.jl")         # saisie de filtre + liste (TextInput + SelectableList)
 include("pane_log.jl")
@@ -112,6 +115,7 @@ include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication �
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
 include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
+include("app_jobs.jl")           # travail lent hors de la tâche UI (_background!, _drain_jobs!)
 include("app_hover.jl")          # bulle de glossaire au survol (avant les étapes clavier)
 include("app_layers.jl")         # la pile des couches de touches, le résolveur
 include("app_input.jl")          # TK.update! souris, routage vers la pane focalisée, drains
@@ -215,9 +219,9 @@ export transpose_cents, scale_stretch, bend
 export Scale, scale_to_semitones, register_scale!, lookup_scale, list_scales
 export edo, from_ratios, from_cents, bohlen_pierce, golden_meantone,
        fibonacci_scale, continued_fraction_scale, stern_brocot
-# Compressor params (auto-generated in controls.jl):
+# Compressor params (auto-generated in core_controls.jl):
 export compress, compressThreshold, compressRatio
-# SuperDirt param helpers (auto-generated in controls.jl):
+# SuperDirt param helpers (auto-generated in core_controls.jl):
 export freq
 export attack, release, hold, sustain, legato
 export cutoff, resonance, bandq, bandf, hcutoff, hresonance   # cutoff = lpf, hcutoff = hpf
@@ -332,6 +336,17 @@ end
 end
 
 @compile_workload begin
+    # La charge de précompilation pilote l'app entière (touches, commandes,
+    # double Échap qui quitte et sauve la disposition, :synth qui écrit un
+    # fichier). Elle tourne donc dans un bac à sable : préférences et projet
+    # dans un répertoire temporaire, jamais dans le home ni le dépôt de qui
+    # compile.
+    _wl_dir = mktempdir()
+    _wl_pwd = pwd()
+    _wl_cfg = get(ENV, "RESSAC_CONFIG_DIR", nothing)
+    ENV["RESSAC_CONFIG_DIR"] = joinpath(_wl_dir, "config")
+    cd(_wl_dir)
+    try
     # Mini-notation: cover the parser's main branches.
     p1 = parse_minino("bd hh sn hh")
     p2 = parse_minino("<bd sn cp>")
@@ -385,10 +400,8 @@ end
         _EVAL_MODE[] = (:immediate, 0)
     end
 
-    # (The TUI warmup is `_precompile_tour!` below ;
-    # cleanup that deleted tui_view.jl / tui_bindings.jl / tui_browser.jl.
-    # RessacApp coverage is below — exhaustive enough that first-keystroke
-    # JIT cost is comparable.)
+    # (The TUI warmup is `_precompile_tour!` below — exhaustive enough that
+    # the first keystroke of a session doesn't pay for compilation.)
 
     # Plugins: parse a fixture manifest if present and walk the loader
     # to warm up TOML parsing + the discover/topo_sort paths.
@@ -597,23 +610,19 @@ end
         app.completion_idx = 0
         ed = _active_editor(app)
         ed.mode = :insert
-        Tachikoma.set_text!(ed, "@d1 p\"bd\" |> gai")
+        _load_text!(ed, "@d1 p\"bd\" |> gai")
         ed.cursor_row = 1
         ed.cursor_col = lastindex(Tachikoma.text(ed)) - 1
         _try_autocomplete!(app, ed)
         _try_autocomplete!(app, ed)
         _reset_completion!(app)
 
-        # Ex-command autocomplete.
-        ed.mode = :command
-        empty!(ed.command_buffer); append!(ed.command_buffer, collect("syn"))
-        _try_ex_autocomplete!(ed)
-        empty!(ed.command_buffer); append!(ed.command_buffer, collect("scope wav"))
-        _try_ex_autocomplete!(ed)
-        ed.mode = :normal
+        # Complétion de la barre de commande.
+        _command_completion_candidates(app, "syn")
+        _command_completion_candidates(app, "scope wav")
 
         # Nudge on int + float.
-        Tachikoma.set_text!(_active_editor(app), "rate = 4.5\ncount = 200")
+        _load_text!(_active_editor(app), "rate = 4.5\ncount = 200")
         _active_editor(app).cursor_row = 1
         _active_editor(app).cursor_col = 8
         _nudge_number_under_cursor!(app, _active_editor(app), 1)
@@ -772,6 +781,11 @@ end
     catch
         # Best-effort : un raté de précompile ne coûte que de la latence.
     end
+    finally
+        cd(_wl_pwd)
+        _wl_cfg === nothing ? delete!(ENV, "RESSAC_CONFIG_DIR") : (ENV["RESSAC_CONFIG_DIR"] = _wl_cfg)
+        rm(_wl_dir; recursive = true, force = true)
+    end
 end
 
 function __init__()
@@ -832,6 +846,8 @@ function _patch_tachikoma_utf8!()
     # produces a method-overwrite warning. Wrapping in a try makes it
     # idempotent on Revise reloads and survives any future signature
     # change in Tachikoma (we just leave the original intact then).
+    # Écrit pour une version précise : voir `_tk_patches_apply` (tk_patches.jl).
+    _tk_patches_apply() || return
     try
         @eval Tachikoma function read_event()
             io = _input_io()

@@ -165,7 +165,7 @@ function _load_pattern_cmd!(m::RessacApp, name::AbstractString, slot::Union{Noth
         a
     end
     # `set_text!` repositionne le curseur : on le pose après.
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     ed.cursor_row = clamp(row, 1, length(ed.lines))
     ed.cursor_col = 0
     _push_app_log!(m, "[INFO] « $(e.name) » chargé sur d$target")

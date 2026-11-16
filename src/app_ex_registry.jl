@@ -34,7 +34,7 @@ const _SPECIAL_DISPATCH = Tuple{Function,Function}[]
 
 # Verbs (autocomplete candidates) populated automatically by the
 # `_register_*!` helpers. Single source of truth — the autocomplete
-# in autocomplete.jl unions `keys(_LITERAL_DISPATCH)` with these,
+# in editor_autocomplete.jl unions `keys(_LITERAL_DISPATCH)` with these,
 # so adding a new command via `_register_regex!` or `_register_special!`
 # makes it Tab-completable without touching another file.
 const _REGEX_VERBS   = Set{String}()
@@ -100,7 +100,7 @@ Every command verb the user can type after `:`. Union of:
   * `_REGEX_VERBS`            — extracted from each regex registration
   * `_SPECIAL_VERBS`          — explicit list from `_register_special!`
 
-Sorted for stable ordering. Used by autocomplete.jl to keep the
+Sorted for stable ordering. Used by editor_autocomplete.jl to keep the
 Tab-completion candidate set in sync with the dispatch tables.
 """
 _all_ex_verbs() = sort!(collect(union(keys(_LITERAL_DISPATCH),
@@ -141,17 +141,6 @@ unknown fallback.
 """
 function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
     s = String(cmd)
-    # Record into history BEFORE dispatch (so even commands that error
-    # are recallable for editing). Skip empties + exact duplicates of
-    # the most recent entry so up-arrow doesn't get stuck on repeats.
-    if !isempty(s) && (isempty(_EX_COMMAND_HISTORY) ||
-                       last(_EX_COMMAND_HISTORY) != s)
-        push!(_EX_COMMAND_HISTORY, s)
-        while length(_EX_COMMAND_HISTORY) > _EX_HISTORY_CAP
-            popfirst!(_EX_COMMAND_HISTORY)
-        end
-    end
-    m.ex_history_idx = 0   # any new command resets the navigation cursor
     # Une commande qui lève ne doit jamais faire tomber l'application :
     # elle se lit dans le log, la session continue.
     try
@@ -180,33 +169,3 @@ function _dispatch_ex_command!(m::RessacApp, s::String)
     _push_app_log!(m, "[WARN] commande inconnue : :$s (? aide · Tab complète)")
 end
 
-# Ring of recent ex-commands ; `m.ex_history_idx` tracks where the
-# up/down navigation currently sits. 0 means "no navigation in
-# progress, the next ↑ should yank the most recent entry".
-const _EX_HISTORY_CAP = 200
-const _EX_COMMAND_HISTORY = String[]
-
-"""
-    _ex_history_nav!(m, ed, dir)
-
-Up/Down navigation through `_EX_COMMAND_HISTORY` while in :command
-mode. Yanks the historical command into the active `command_buffer`
-so the user can edit + re-submit. `dir ∈ (:up, :down)`.
-"""
-function _ex_history_nav!(m::RessacApp, ed::TK.CodeEditor, dir::Symbol)
-    n = length(_EX_COMMAND_HISTORY)
-    n == 0 && return
-    if dir === :up
-        m.ex_history_idx = min(n, m.ex_history_idx + 1)
-    elseif dir === :down
-        m.ex_history_idx = max(0, m.ex_history_idx - 1)
-    end
-    if m.ex_history_idx == 0
-        empty!(ed.command_buffer)
-    else
-        entry = _EX_COMMAND_HISTORY[end - m.ex_history_idx + 1]
-        empty!(ed.command_buffer)
-        append!(ed.command_buffer, collect(entry))
-    end
-    return
-end

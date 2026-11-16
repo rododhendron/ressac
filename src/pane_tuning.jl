@@ -20,21 +20,28 @@ where `t` is `time()` at ship.
 """
 const _LAST_NOTES = Ref(Tuple{Float64, Float64}[])
 const _LAST_NOTES_TTL = 2.0   # seconds before a played-note fades
+# Le scheduler écrit (son thread), le rendu lit : toujours sous ce verrou,
+# et le rendu travaille sur la copie de `_played_notes()`.
+const _LAST_NOTES_LOCK = ReentrantLock()
 
 """
     push_played_note!(note::Real)
 
 Append a played note (in semitones) to the recently-played buffer.
 Stale entries (older than `_LAST_NOTES_TTL`) are pruned in place
-so the buffer stays bounded.
+so the buffer stays bounded. Thread-safe.
 """
 function push_played_note!(note::Real)
     now = time()
-    buf = _LAST_NOTES[]
-    push!(buf, (Float64(note), now))
-    filter!(p -> (now - p[2]) <= _LAST_NOTES_TTL, buf)
+    lock(_LAST_NOTES_LOCK) do
+        buf = _LAST_NOTES[]
+        push!(buf, (Float64(note), now))
+        filter!(p -> (now - p[2]) <= _LAST_NOTES_TTL, buf)
+    end
     return nothing
 end
+
+_played_notes() = lock(() -> copy(_LAST_NOTES[]), _LAST_NOTES_LOCK)
 
 mutable struct TuningPane <: PaneImpl
     scale_ref::Symbol            # registry name; resolved each render
@@ -88,7 +95,7 @@ function _render_tuning_circle!(p::TuningPane, s::Scale,
     # Sample the recent-played buffer once per render so the same
     # degree fade matches everywhere on the screen.
     now = time()
-    played = _LAST_NOTES[]
+    played = _played_notes()
 
     for (i, c) in enumerate(s.cents)
         θ = 2π * c / s.period_cents - π / 2

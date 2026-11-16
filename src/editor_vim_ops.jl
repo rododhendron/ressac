@@ -1,188 +1,89 @@
-# Editor ops — vim word motions + visual modes (line + char) +
-# `.` repeat. Plus the small `_slots_in_text` / `_unschedule_removed_slots!`
-# helpers used by the visual-delete path to keep the scheduler in
-# sync with buffer deletions.
+# Editor ops — visual modes (line + char) and `.` repeat, plus the small
+# `_slots_in_text` / `_unschedule_removed_slots!` helpers used by the
+# visual-delete path to keep the scheduler in sync with buffer deletions.
 #
-# Block A (word motions / operator combos):  _word_bounds,
-#   _vim_word_motion!, _vim_op_motion! — used when the user types
-#   cw / dw / yw / c$ / d0 / etc. in the patterns/synth pane.
-#
-# Block B (visual modes + . repeat):  _visual_handle!,
-#   _visual_apply! (line + char variants), _slots_in_text,
-#   _unschedule_removed_slots! (mutes the audio when a @dN line is
-#   deleted), _vim_record_keystroke!, _vim_post_normal!, _vim_replay!.
-#
-# Extracted from app.jl; depends on RessacApp, _push_app_log!,
-# _set_one_line, _char_split — all defined earlier in app.jl by the
-# time this file is included.
+# (Les mouvements par mot et les opérateurs `cw` / `d$` / … vivent dans
+# app_editor.jl : `_word_motion!`, `_op_with_motion!`.)
 
-# ---------------------------------------------------------------------
-# Vim word motions + operator combos (cw / dw / yw / c$ / d0 / …)
-# ---------------------------------------------------------------------
-
-"""
-    _word_bounds(line, col, big=false) -> (start, stop)
-
-Return the half-open [start, stop) range of the word at/after `col`
-(0-based). `big` selects WORD (whitespace-delimited) vs word
-(alphanumeric-delimited). Matches vim's `w` motion: jumps to the
-next word's first char, deleting up through but not including the
-following whitespace.
-"""
-function _word_bounds(line::AbstractString, col::Int; big::Bool=false)
-    n = length(line)
-    is_word = if big
-        c -> !isspace(c)
-    else
-        c -> isletter(c) || isdigit(c) || c == '_'
-    end
-    col = clamp(col, 0, n)
-    # Skip current word
-    i = col + 1
-    while i <= n && is_word(line[i]); i += 1; end
-    # Skip whitespace
-    while i <= n && isspace(line[i]); i += 1; end
-    stop = i - 1
-    return (col, stop)
-end
-
-"""
-    _word_back_bounds(line, col, big=false) -> col
-
-Position of the previous word's first char.
-"""
-function _word_back_bounds(line::AbstractString, col::Int; big::Bool=false)
-    n = length(line)
-    is_word = big ? (c -> !isspace(c)) :
-                    (c -> isletter(c) || isdigit(c) || c == '_')
-    col = clamp(col, 0, n)
-    col == 0 && return 0
-    i = col
-    # Step back past whitespace
-    while i > 0 && i <= n && isspace(line[i]); i -= 1; end
-    # Step back to the start of the current word
-    while i > 0 && i <= n && is_word(line[i]); i -= 1; end
-    return i
-end
-
-function _vim_word_motion!(ed::TK.CodeEditor, ch::Char)
-    # Forward to the multi-line-aware implementation (app_editor.jl).
-    # The original single-line version stopped at EOL — `w` could get
-    # stuck on the last char of a line rather than wrapping.
-    kind = (ch == 'W' || ch == 'B') ? :big : :small
-    dir  = (ch == 'w' || ch == 'W') ? +1 : -1
-    _word_motion!(ed, dir, kind)
-end
-
-"""
-    _vim_op_motion!(m, ed, op, motion)
-
-Execute one of cw / cb / c\$ / c0 (and their d/y variants). `op`
-is the operator char; `motion` is one of the supported motion
-chars. Word boundaries reuse the same helpers as the standalone
-motions so behaviour stays consistent.
-"""
-function _vim_op_motion!(m::RessacApp, ed::TK.CodeEditor, op::Char, motion::Char)
-    # `$` (end of line) and `0` (start of line) are single-line-only,
-    # cheap operations — handle them inline.
-    if motion == '$'
-        row = ed.cursor_row
-        1 <= row <= length(ed.lines) || return
-        line = String(ed.lines[row])
-        n = length(line)
-        col = ed.cursor_col
-        captured = col < n ? line[col + 1 : n] : ""
-        ed.yank_buffer = [collect(captured)]; ed.yank_is_linewise = false
-        if op == 'y'; return; end
-        saved_scroll = ed.scroll_offset
-        new_line = col > 0 ? line[1:col] : ""
-        TK.set_text!(ed, _set_one_line(ed, row, new_line))
-        ed.scroll_offset = saved_scroll
-        ed.cursor_row = row; ed.cursor_col = col
-        op == 'c' && (ed.mode = :insert)
-        return
-    elseif motion == '0'
-        row = ed.cursor_row
-        1 <= row <= length(ed.lines) || return
-        line = String(ed.lines[row])
-        col = ed.cursor_col
-        captured = col > 0 ? line[1:col] : ""
-        ed.yank_buffer = [collect(captured)]; ed.yank_is_linewise = false
-        if op == 'y'; return; end
-        saved_scroll = ed.scroll_offset
-        new_line = col < length(line) ? line[col + 1 : end] : ""
-        TK.set_text!(ed, _set_one_line(ed, row, new_line))
-        ed.scroll_offset = saved_scroll
-        ed.cursor_row = row; ed.cursor_col = 0
-        op == 'c' && (ed.mode = :insert)
-        return
-    end
-    # Word motions (w/b/W/B/e/E) — delegate to the multi-line-aware,
-    # scroll-preserving impl (app_editor.jl).
-    if motion in ('w', 'b', 'W', 'B', 'e', 'E')
-        _op_with_motion!(m, ed, op, motion)
-    end
-end
 # ---------------------------------------------------------------------
 # Vim visual-line mode (V)
 # ---------------------------------------------------------------------
 
 """
-    _visual_handle!(m, ed, evt) -> Bool
+    _visual_move!(m, dir)
 
-Dispatch keys while in visual-line mode. Returns true if the event
-was consumed; false to let the rest of `update!` handle it (e.g. a
-key we don't know about — Tachikoma will own it).
-
-  • j / k / arrows → extend the selection
-  • d              → delete the selected lines (yank first)
-  • y              → yank lines, return to normal
-  • c              → delete + enter insert
-  • Esc            → exit without action
+Étend la sélection visuelle : `:down` / `:up` (les deux genres), et pour la
+sélection par caractères `:left` / `:right` / `:home` / `:end`. Les touches
+qui y mènent, comme `d` / `y` / `c`, `m`, `e` et Échap, sont au registre
+(scope `:visual`, app_keymap.jl).
 """
-function _visual_handle!(m::RessacApp, ed::TK.CodeEditor, evt::TK.KeyEvent)
-    if evt.key === :escape
-        m.visual_active = false
-        _push_app_log!(m, "[INFO] sélection annulée")
-        return true
-    end
-    # Both kinds share vertical motion (j/k); :char additionally tracks
-    # horizontal (h/l, arrows, w/b/0/$).
-    if evt.char == 'j' || evt.key === :down
+function _visual_move!(m::RessacApp, dir::Symbol)
+    ed = _active_editor(m)
+    ed === nothing && return
+    if dir === :down
         ed.cursor_row = min(ed.cursor_row + 1, length(ed.lines))
-        if m.visual_kind === :char
-            ed.cursor_col = clamp(ed.cursor_col, 0, length(ed.lines[ed.cursor_row]))
-        end
-        return true
-    end
-    if evt.char == 'k' || evt.key === :up
+    elseif dir === :up
         ed.cursor_row = max(1, ed.cursor_row - 1)
-        if m.visual_kind === :char
-            ed.cursor_col = clamp(ed.cursor_col, 0, length(ed.lines[ed.cursor_row]))
-        end
-        return true
+    elseif dir === :left
+        ed.cursor_col = max(0, ed.cursor_col - 1)
+    elseif dir === :right
+        ed.cursor_col = ed.cursor_col + 1
+    elseif dir === :home
+        ed.cursor_col = 0
+    elseif dir === :end
+        ed.cursor_col = length(ed.lines[ed.cursor_row])
     end
-    if m.visual_kind === :char
-        if evt.char == 'h' || evt.key === :left
-            ed.cursor_col = max(0, ed.cursor_col - 1); return true
+    m.visual_kind === :char && (ed.cursor_col = clamp(ed.cursor_col, 0, length(ed.lines[ed.cursor_row])))
+    return
+end
+
+"""
+    _visual_blocks!(m, ed, action)
+
+`m` / `e` en mode visuel : l'action s'applique à chaque bloc (`@dN …` et ses
+lignes de suite) que la sélection touche. `:mute` les coupe tous — ou, s'ils
+le sont déjà tous, les remet tous ; `:eval` les évalue l'un après l'autre.
+Un seul `u` annule le mute du groupe.
+"""
+function _visual_blocks!(m::RessacApp, ed::TK.CodeEditor, action::Symbol)
+    lines = collect(split(TK.text(ed), '\n'; keepempty = true))
+    r1 = clamp(min(m.visual_anchor_row, ed.cursor_row), 1, length(lines))
+    r2 = clamp(max(m.visual_anchor_row, ed.cursor_row), 1, length(lines))
+    # La première ligne de chaque bloc touché, sans doublon.
+    roots = Int[]
+    r = r1
+    while r <= r2
+        if isempty(strip(lines[r]))
+            r += 1; continue
         end
-        if evt.char == 'l' || evt.key === :right
-            row_len = length(ed.lines[ed.cursor_row])
-            ed.cursor_col = min(row_len, ed.cursor_col + 1); return true
+        (a, b) = _logical_block_range(lines, r)
+        a in roots || push!(roots, a)
+        r = max(b, r) + 1
+    end
+    row0, col0 = ed.cursor_row, ed.cursor_col
+    undo0 = length(ed.undo_stack)
+    if action === :mute
+        active(a) = match(_ACTIVE_SLOT_RX_APP, String(lines[a])) !== nothing
+        muted(a)  = match(_COMMENTED_SLOT_RX_APP, String(lines[a])) !== nothing
+        slots = [a for a in roots if active(a) || muted(a)]
+        targets = any(active, slots) ? filter(active, slots) : slots      # tous déjà muets → on les remet
+        isempty(targets) && (_push_app_log!(m, "[WARN] m — aucun slot @dN dans la sélection"); return)
+        for a in targets
+            ed.cursor_row = a; ed.cursor_col = 0
+            _toggle_mute_current_line!(m)
         end
-        if evt.char == '0'
-            ed.cursor_col = 0; return true
-        end
-        if evt.char == '\$'
-            ed.cursor_col = length(ed.lines[ed.cursor_row]); return true
+        # Les mutes du groupe : un seul pas d'annulation.
+        length(ed.undo_stack) > undo0 + 1 && resize!(ed.undo_stack, undo0 + 1)
+    else
+        for a in roots
+            startswith(lstrip(lines[a]), "#") && continue                  # un bloc muet ne s'évalue pas
+            ed.cursor_row = a; ed.cursor_col = 0
+            _eval_current_line!(m)
         end
     end
-    if evt.char == 'd' || evt.char == 'y' || evt.char == 'c'
-        _visual_apply!(m, ed, evt.char)
-        return true
-    end
-    m.visual_active = false
-    return false
+    ed.cursor_row = clamp(row0, 1, length(ed.lines))
+    ed.cursor_col = clamp(col0, 0, length(ed.lines[ed.cursor_row]))
+    return
 end
 
 """
@@ -221,7 +122,7 @@ function _visual_apply_line!(m::RessacApp, ed::TK.CodeEditor, op::Char)
         op == 'c' && insert!(lines, clamp(r1, 1, length(lines) + 1), "")
         isempty(lines) && push!(lines, "")
         new_txt = join(lines, '\n')
-        TK.set_text!(ed, new_txt)
+        _edit_text!(ed, new_txt)
         ed.cursor_row = clamp(r1, 1, length(ed.lines))
         ed.cursor_col = 0
         op == 'c' && (ed.mode = :insert)
@@ -249,42 +150,32 @@ function _visual_apply_char!(m::RessacApp, ed::TK.CodeEditor, op::Char)
         r1, c1, r2, c2 = a_r, a_c, c_r, c_c
     end
     txt = TK.text(ed)
-    lines = collect(split(txt, '\n'; keepempty = true))
+    lines = _buffer_lines(ed)                    # en caractères, comme les colonnes
     r1 = clamp(r1, 1, length(lines))
     r2 = clamp(r2, 1, length(lines))
     c1 = clamp(c1, 0, length(lines[r1]))
-    c2 = clamp(c2 + 1, c1, length(lines[r2]))  # +1 = inclusive on end
-    # Build the yanked text. char-wise so yank_is_linewise = false.
+    c2 = clamp(c2 + 1, r1 == r2 ? c1 : 0, length(lines[r2]))  # +1 = inclusive on end
     yanked = if r1 == r2
-        lines[r1][c1+1 : c2]
+        Vector{Char}[lines[r1][(c1 + 1):c2]]
     else
-        join([lines[r1][c1+1 : end],
-              lines[r1+1 : r2-1]...,
-              lines[r2][1 : c2]], '\n')
+        vcat(Vector{Char}[lines[r1][(c1 + 1):end]], lines[(r1 + 1):(r2 - 1)], Vector{Char}[lines[r2][1:c2]])
     end
-    ed.yank_buffer = [collect(line) for line in split(yanked, '\n')]
+    ed.yank_buffer = yanked
     ed.yank_is_linewise = false
+    n_chars = sum(length, yanked) + length(yanked) - 1
     if op == 'y'
-        _push_app_log!(m, "[INFO] v — $(length(yanked)) caractère(s) copié(s)")
+        _push_app_log!(m, "[INFO] v — $(n_chars) caractère(s) copié(s)")
         return
     end
-    # Delete the range. Rebuild affected lines, then collapse.
-    if r1 == r2
-        lines[r1] = lines[r1][1 : c1] * lines[r1][c2+1 : end]
-    else
-        lines[r1] = lines[r1][1 : c1] * lines[r2][c2+1 : end]
-        deleteat!(lines, (r1+1) : r2)
-    end
-    isempty(lines) && push!(lines, "")
-    new_txt = join(lines, '\n')
-    TK.set_text!(ed, new_txt)
-    ed.cursor_row = clamp(r1, 1, length(ed.lines))
-    ed.cursor_col = clamp(c1, 0, length(ed.lines[ed.cursor_row]))
+    # Delete the range: the head of the first line joins the tail of the last.
+    lines[r1] = vcat(lines[r1][1:c1], lines[r2][(c2 + 1):end])
+    r1 == r2 || deleteat!(lines, (r1 + 1):r2)
+    _edit_lines!(ed, lines; row = r1, col = c1)
     if op == 'c'
         ed.mode = :insert
     end
-    _push_app_log!(m, "[INFO] v — $(length(yanked)) caractère(s) $(op == 'c' ? "changé(s)" : "supprimé(s)")")
-    ed === _active_editor(m) && _unschedule_removed_slots!(m, txt, new_txt)
+    _push_app_log!(m, "[INFO] v — $(n_chars) caractère(s) $(op == 'c' ? "changé(s)" : "supprimé(s)")")
+    ed === _active_editor(m) && _unschedule_removed_slots!(m, txt, TK.text(ed))
 end
 
 # ---------------------------------------------------------------------

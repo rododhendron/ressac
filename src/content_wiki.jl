@@ -24,7 +24,7 @@ The title is the first `# H1` line; everything below it is body.
 # docs/wiki du paquet (quel que soit le répertoire courant), sinon celui
 # du répertoire courant, sinon rien.
 function _wiki_dir()
-    for base in (dirname(@__DIR__), pwd())
+    for base in (dirname(@__DIR__), _project_dir())
         d = joinpath(base, "docs", "wiki")
         isdir(d) && return d
     end

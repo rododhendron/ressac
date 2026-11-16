@@ -168,7 +168,7 @@ function _insert_snippet!(m::RessacApp)
     row = clamp(ed.cursor_row, 1, length(src_lines))
     inserted = String.(dedented)
     new_lines = vcat(src_lines[1:row], inserted, src_lines[row+1:end])
-    TK.set_text!(ed, join(new_lines, '\n'))
+    _edit_text!(ed, join(new_lines, '\n'))
     ed.cursor_row = row + 1
     ed.cursor_col = 0
     m.modal = :none
@@ -188,21 +188,8 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     inner.width < 20 && return
     # ── Row 1: category tab strip ─────────────────────────────────
     cats = _snip_categories(m)
-    tab_x = inner.x
-    for cat in cats
-        label = cat == "" ? "all" : cat
-        chip  = " " * label * " "
-        is_active = cat == m.snip_category
-        sty = is_active ? TK.tstyle(:accent, bold = true) :
-                          TK.tstyle(:text_dim)
-        tab_x + textwidth(chip) > inner.x + inner.width && break
-        TK.set_string!(buf, tab_x, inner.y, chip, sty)
-        tab_x += textwidth(chip)
-        if cat != cats[end] && tab_x + 2 < inner.x + inner.width
-            TK.set_string!(buf, tab_x, inner.y, "·", TK.tstyle(:text_dim))
-            tab_x += 1
-        end
-    end
+    _render_tabs!(buf, TK.Rect(inner.x, inner.y, inner.width, 1), String[cat == "" ? "all" : cat for cat in cats],
+                  something(findfirst(==(m.snip_category), cats), 1))
     # ── Row 2: search bar ─────────────────────────────────────────
     _picker_render_input!(m.snips, TK.Rect(inner.x, inner.y + 1, inner.width, 1), buf;
                           hint = "/ pour chercher · Tab change de catégorie · Entrée insère")

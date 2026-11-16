@@ -5,7 +5,7 @@
 
 function _scope_cycle_key!(m::RessacApp; dir::Int = +1)
     # Use the shared cycle order so new scope types added in
-    # tui_scope.jl automatically show up under S without a separate
+    # io_scope.jl automatically show up under S without a separate
     # edit here. `dir = -1` reverses (used by scroll-down on the
     # scope pane).
     order = _SCOPE_CYCLE_ORDER
@@ -631,7 +631,7 @@ each call uses the buffered last ~60 frames. Shading via the
 ░▒▓█ ramp — no colour gradient needed.
 """
 function _app_render_spectrogram(area::TK.Rect, buf::TK.Buffer)
-    history = _APP_SPECTROGRAM_HISTORY[]
+    history = _spectrogram_snapshot()
     isempty(history) && return
     rows = min(area.height, length(history))
     cols = area.width

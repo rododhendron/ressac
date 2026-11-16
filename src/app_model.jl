@@ -111,6 +111,11 @@ non-empty), and the focus toggle for keystroke routing.
     # the same `placeholder_row` for now (every current template fits a
     # single line; multi-line would require a parallel `placeholder_rows`).
     pending_leader::Bool         = false
+    # Le buffer auquel appartiennent la sélection visuelle et les trous de
+    # snippet en cours : ces états n'ont de sens que dans LEUR texte. Dès
+    # que le focus passe ailleurs (ou que la ligne visée n'existe plus),
+    # ils tombent — voir `_validate_transients!`.
+    transient_ed::Union{Nothing,TK.CodeEditor} = nothing
     placeholder_active::Bool     = false
     placeholder_row::Int         = 0
     placeholder_cols::Vector{Int} = Int[]
@@ -143,6 +148,7 @@ non-empty), and the focus toggle for keystroke routing.
     sccode::Picker               = _picker()       # recherche (titre + id) et liste
     sccode_page::Int             = 1
     sccode_loading::Bool         = false
+    sccode_wanted::Tuple{Int,String} = (0, "")     # (page, tag) de la demande en cours : seule sa réponse compte
     # Tag filter for `:sccode-tag <tag>` (URL ?tag=…). Empty = no tag.
     sccode_tag::String           = ""
     # Browser modal state (only meaningful when modal === :browse).
@@ -192,10 +198,6 @@ non-empty), and the focus toggle for keystroke routing.
     # = ±1) can compute the next cell without re-deriving the picker
     # geometry. Stays 1 until the first render of a session.
     completion_cols::Int         = 1
-    # Ex-command history cursor. 0 = inactive (next ↑ in :command yanks
-    # the latest entry); 1..N indexes into `_EX_COMMAND_HISTORY` from
-    # the END (1 = most recent). Reset to 0 on submit / Esc.
-    ex_history_idx::Int          = 0
     # (reservoir scope span lives in the module-level
     # `_APP_SCOPE_RESERVOIR_SPAN[]` Ref alongside its singleton siblings,
     # so the workspace ScopePane can render without an app handle.)
@@ -357,6 +359,29 @@ function _active_editor(m::RessacApp)
     # may be closed. Callers that run every frame (view chrome) or on
     # every key (routing) must tolerate `nothing`; in-editor-context
     # callers never see it because they only run when an editor exists.
+    return nothing
+end
+
+"""
+    _patterns_editor(m) -> Union{TK.CodeEditor, Nothing}
+
+Le texte des patterns du workspace courant : le buffer focalisé s'il est de
+rôle `:patterns`, sinon le premier buffer de patterns de l'arbre. C'est la
+cible des gestes de PLAY (`e`, `E`, `m`…), qui valent « quelle que soit la
+pane focalisée » — le wiki, le journal ou la doc à côté. `nothing` quand le
+workspace n'a pas de patterns.
+"""
+function _patterns_editor(m::RessacApp)
+    buf = _focused_buffer(m)
+    (buf !== nothing && buf.role === :patterns) && return buf.code_editor
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return nothing
+    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
+        tab isa EditorPane || continue
+        1 <= tab.current_tab <= length(tab.tabs) || continue
+        b = tab.tabs[tab.current_tab]
+        b.role === :patterns && return b.code_editor
+    end
     return nothing
 end
 
@@ -525,7 +550,7 @@ function _fill_workspace!(ws::Workspace, wm = nothing)
         ep = _pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "sketch"))
         eb = ep.tabs[1]
         eb.synth_mode = :dsl
-        TK.set_text!(eb.code_editor, _STARTER_DSL("sketch"))
+        _load_text!(eb.code_editor, _STARTER_DSL("sketch"))
         eb.code_editor.mode = :normal
         push!(leaf.tabs, ep)
         leaf.current_tab = 1
@@ -536,7 +561,7 @@ function _fill_workspace!(ws::Workspace, wm = nothing)
         push!(leaf.tabs, _pane_new(:explorer, Dict{String,Any}()))
     else
         ep = _pane_new(:editor, Dict{String,Any}())
-        TK.set_text!(ep.tabs[1].code_editor, _STARTER_BUFFER)
+        _load_text!(ep.tabs[1].code_editor, _STARTER_BUFFER)
         push!(leaf.tabs, ep)
         leaf.current_tab = 1
         ws.focused_pane = leaf.id
@@ -580,14 +605,25 @@ gs / U.
 function _switch_workspace_named!(m::RessacApp, name::AbstractString)
     wm = m.workspaces
     idx = findfirst(w -> w.name == name, wm.workspaces)
-    if idx === nothing
-        create_workspace!(wm, name)
-    else
-        cmd_workspace_switch!(wm, idx)
-    end
+    idx === nothing && (create_workspace!(wm, name); idx = wm.current_idx)
+    return _switch_workspace!(m, idx)
+end
+
+"""
+    _switch_workspace!(m, idx) -> Bool
+
+Passe au workspace `idx` — le seul chemin, que ce soit par son nom
+(`:design`, un pont depuis l'explorateur), par Ctrl-1..9 ou par un clic sur
+sa pastille : il est rempli à sa première visite, et DESIGN retrouve ce qui
+lui manque (voir `_ensure_synth_workspace!`). Faux si `idx` n'existe pas.
+"""
+function _switch_workspace!(m::RessacApp, idx::Int)
+    wm = m.workspaces
+    1 <= idx <= length(wm.workspaces) || return false
+    cmd_workspace_switch!(wm, idx)
     ws = current_workspace(wm)
-    ws === nothing || _fill_workspace!(ws, wm)
-    name == "DESIGN" && _ensure_synth_workspace!(m)
+    _fill_workspace!(ws, wm)
+    ws.name == "DESIGN" && _ensure_synth_workspace!(m)
     return true
 end
 

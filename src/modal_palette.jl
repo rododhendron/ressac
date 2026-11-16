@@ -107,7 +107,7 @@ function _palette_insert!(m::RessacApp, name::AbstractString)
     lines = collect(String, split(TK.text(ed), '\n'; keepempty = true))
     lines[ed.cursor_row] = _take_chars(line, col) * name * _drop_chars(line, col)
     row = ed.cursor_row
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     ed.cursor_row = row
     ed.cursor_col = col + length(name)
     _push_app_log!(m, "[INFO] « $name » inséré")

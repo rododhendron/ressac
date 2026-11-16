@@ -6,13 +6,11 @@
 #   • Mini-notation top-level token splitter
 #   • Context-aware pattern ops inside p"…":
 #       _pat_at_cursor, _pat_replace_body!,
-#       _pat_zoom!, _pat_shift!, _pat_silence!, _pat_subdivide!
+#       _pat_zoom!, _pat_shift!, _pat_silence!
 #
-# All of these operate on _active_editor(m) + m.scheduler.patterns; they're
-# pulled out of app.jl to make navigation easier without disturbing
-# load order (everything they reference — RessacApp, _char_split,
-# _push_app_log!, _LIVE_SCHEDULER — is already in scope by the time
-# this file is included from app.jl).
+# All of these operate on _active_editor(m) + m.scheduler.patterns.
+# Everything they reference — RessacApp, _char_split, _push_app_log!,
+# _LIVE_SCHEDULER — is in scope by the time Ressac.jl includes this file.
 
 # ---------------------------------------------------------------------
 # Playhead — highlights the active token in active patterns
@@ -393,8 +391,8 @@ function _pat_at_cursor(ed::TK.CodeEditor)
     cur = ed.cursor_col
     rx = r"\bp\"([^\"]*)\""
     for mt in eachmatch(rx, line)
-        body_start = mt.offsets[1] - 1            # 0-based col of body[1]
-        body_end   = body_start + length(mt.captures[1])  # exclusive
+        # Colonnes de caractères (celles du curseur), pas les octets de la regex.
+        (body_start, body_end) = _char_span(line, mt, 1)
         if body_start - 2 <= cur <= body_end
             body = String(mt.captures[1])
             tokens = _split_minino_top(body)
@@ -428,7 +426,7 @@ function _pat_replace_body!(m::RessacApp, ed::TK.CodeEditor, info, new_body::Abs
     txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty = true))
     lines[info.row] = new_line
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     ed.cursor_row = info.row
     ed.cursor_col = clamp(info.body_start_col, 0, length(ed.lines[info.row]))
 end
@@ -527,39 +525,3 @@ function _pat_silence!(m::RessacApp, ed::TK.CodeEditor)
     _pat_replace_body!(m, ed, info, new_body)
 end
 
-"""
-    _pat_subdivide!(m, ed, n)
-
-Set the token under cursor to subdivide N times — `bd` → `bd*N` —
-or strip the subdivision when `n == 1`. Maps musically:
-
-    1 = noire (no subdivision, plain token)
-    2 = croche
-    3 = triolet
-    4 = double croche
-    6 = sextolet
-    8 = triple croche
-
-If the token already ends in `*K`, the K is replaced by N.
-"""
-function _pat_subdivide!(m::RessacApp, ed::TK.CodeEditor, n::Int)
-    info = _pat_at_cursor(ed)
-    info === nothing && return _push_app_log!(m, "[WARN] subdivision : le curseur n'est pas dans un p\"…\"")
-    body = info.body
-    tokens = info.tokens
-    strs = [String(SubString(body, t[1] + 1, t[2] + 1)) for t in tokens]
-    tok = strs[info.tok_idx]
-    # Strip any existing *K suffix at the top level (skip if inside [] etc).
-    base = replace(tok, r"\*\d+$" => "")
-    new_tok = n <= 1 ? base : "$(base)*$(n)"
-    strs[info.tok_idx] = new_tok
-    new_body = join(strs, " ")
-    _pat_replace_body!(m, ed, info, new_body)
-    name = n == 1 ? "noire" :
-           n == 2 ? "croche" :
-           n == 3 ? "triolet" :
-           n == 4 ? "double croche" :
-           n == 6 ? "sextolet" :
-           n == 8 ? "triple croche" : "×$n"
-    _push_app_log!(m, "[INFO] subdivision : $tok → $new_tok ($name)")
-end

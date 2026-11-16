@@ -50,6 +50,7 @@ end
 # littéral (`r!` remplace, `f!` saute au prochain `!`).
 function _pre_engine!(m::RessacApp, evt::TK.KeyEvent)
     evt.action === TK.key_press || return false
+    _text_entry_active(m) && return false       # la frappe va dans une saisie
     if evt.char == '!'
         ed = _active_editor(m)
         (ed === nothing || ed.mode === :normal) && !_awaiting_literal(m) || return false
@@ -57,37 +58,15 @@ function _pre_engine!(m::RessacApp, evt::TK.KeyEvent)
         return true
     end
     if evt.key === :ctrl && evt.char in '1':'9'
-        cmd_workspace_switch!(m.workspaces, Int(evt.char - '0'))
+        _switch_workspace!(m, Int(evt.char - '0'))
         return true
     end
-    if evt.key === :ctrl && evt.char == 'F'
+    # Ctrl-f — et Ctrl-Maj-F, que certains terminaux envoient en majuscule.
+    if evt.key === :ctrl && (evt.char == 'f' || evt.char == 'F')
         m.floats_hidden = !m.floats_hidden
         return true
     end
     return false
-end
-
-# ── Mode pane, persistant ────────────────────────────────────────────
-# Sorties : Échap, Entrée, Ctrl-W. Les opérations reconnues le laissent
-# actif pour enchaîner sans un Ctrl-W entre chaque ; le reste est avalé.
-function _pane_mode_engine!(m::RessacApp, evt::TK.KeyEvent)
-    evt.action === TK.key_press || return true
-    if evt.key === :escape || evt.key === :enter || (evt.key === :ctrl && evt.char == 'w')
-        _PANE_MODE.active = false
-    elseif evt.key === :left
-        cmd_focus!(m.workspaces, :left)
-    elseif evt.key === :down
-        cmd_focus!(m.workspaces, :down)
-    elseif evt.key === :up
-        cmd_focus!(m.workspaces, :up)
-    elseif evt.key === :right
-        cmd_focus!(m.workspaces, :right)
-    elseif evt.key === :char && evt.char == 'z'
-        _toggle_zoom!(m)                          # z : zoom / dézoom du leaf focalisé
-    elseif evt.key === :char
-        _dispatch_pane_mode_key(m.workspaces, evt.char)
-    end
-    return true
 end
 
 # ── Ouvrir un transitoire : Ctrl-w (mode pane), « : » et « / » ───────
@@ -98,6 +77,7 @@ end
 # `/` seulement si la modale ouverte n'a pas sa propre recherche.
 function _open_transient_engine!(m::RessacApp, evt::TK.KeyEvent)
     evt.action === TK.key_press || return false
+    _text_entry_active(m) && return false       # la frappe va dans une saisie
     ed = _active_editor(m)
     in_normal = ed === nothing || ed.mode === :normal
     in_normal || return false
@@ -143,42 +123,9 @@ function _pane_engine!(m::RessacApp, evt::TK.KeyEvent)
     return r === :consumed
 end
 
-# ── Piano : les lettres jouent le synth courant ───────────────────
-# `[` / `]` changent d'octave, Entrée valide l'enregistrement s'il y en
-# a un, Échap sort. Tout le reste est avalé.
-function _piano_engine!(m::RessacApp, evt::TK.KeyEvent)
-    evt.action === TK.key_press || return true
-    if evt.key === :escape
-        _piano_stop!(m)
-    elseif evt.key === :enter
-        m.piano_rec ? _piano_commit!(m) : _piano_stop!(m)
-    elseif evt.char == '['
-        m.piano_octave = max(0, m.piano_octave - 1)
-        _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)")
-    elseif evt.char == ']'
-        m.piano_octave = min(9, m.piano_octave + 1)
-        _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)")
-    elseif haskey(_PIANO_KEYMAP, evt.char)
-        _piano_play!(m, _PIANO_KEYMAP[evt.char])
-    end
-    return true
-end
-
-# ── Tap : Espace marque un coup, Entrée valide, Échap annule ──────
-# Tout le reste est avalé, pour tenir le tempo sans éditer par accident.
-function _tap_engine!(m::RessacApp, evt::TK.KeyEvent)
-    evt.action === TK.key_press || return true
-    if evt.key === :enter
-        _tap_commit!(m)
-    elseif evt.key === :escape
-        m.tap_recording = false
-        empty!(m.tap_events)
-        _push_app_log!(m, "[INFO] tap annulé")
-    elseif evt.char == ' '
-        _tap_hit!(m)
-    end
-    return true
-end
+# (Piano, tap et mode pane n'ont pas de moteur : toutes leurs touches sont
+# des actions du registre — app_keymap.jl — et leur couche, exclusive,
+# avale le reste.)
 
 # ── Pause : une touche reprend, et elle est avalée ────────────────
 # (pour qu'elle ne s'insère pas aussi comme caractère).
@@ -190,10 +137,14 @@ function _paused_engine!(m::RessacApp, evt::TK.KeyEvent)
     return true
 end
 
-# ── Sélection visuelle : ses propres touches (étendre, d/y/c, m, e, Échap)
+# ── Sélection visuelle ───────────────────────────────────────────────
+# Ses touches sont au registre (scope :visual). Toute autre touche pressée
+# sort de la sélection et continue son chemin vers l'éditeur.
 function _visual_engine!(m::RessacApp, evt::TK.KeyEvent)
     evt.action === TK.key_press || return false
-    return _visual_handle!(m, _active_editor(m), evt)
+    isempty(keyname(evt)) && return false          # un modificateur seul : on attend
+    m.visual_active = false
+    return false
 end
 
 # ── Mémoire de `.` : la session d'insertion est enregistrée ──────
@@ -208,16 +159,6 @@ end
 # normal seulement : jamais une touche tapée en insertion ne déclenche
 # une action. Couches : pane focalisée (:patterns | :synth) → :editor →
 # :global. Un binding qui ne matche pas laisse la touche au moteur vim.
-# ── Trous d'un snippet : Tab / Maj-Tab sautent, Échap sort ───────────
-function _placeholder_engine!(m::RessacApp, evt::TK.KeyEvent)
-    evt.action === TK.key_press || return false
-    ed = _active_editor(m)
-    evt.key === :tab     && (_placeholder_jump!(m, ed, +1); return true)
-    evt.key === :backtab && (_placeholder_jump!(m, ed, -1); return true)
-    evt.key === :escape  && (m.placeholder_active = false; return true)
-    return false
-end
-
 # ── Espace déjà pressé : la touche suivante choisit dans le leader ────
 # (le registre de la couche, avec le préfixe « Space », passe après :
 # ici on ne gère que l'attente et la sortie).
@@ -251,7 +192,7 @@ function _editor_normal_engine!(m::RessacApp, evt::TK.KeyEvent)
     # Tachikoma ne connaît que les formes doublées (cc/dd/yy), celles-ci
     # sont à nous. Chacune garde `scroll_offset` pour que la vue ne saute
     # pas quand le texte change.
-    if is_press && ed.pending_key in ('c', 'd', 'y') && evt.char in ('w', 'b', 'W', 'B', 'e', 'E')
+    if is_press && ed.pending_key in ('c', 'd', 'y') && evt.char in ('w', 'b', 'W', 'B', 'e', 'E', '$', '0')
         op = ed.pending_key
         ed.pending_key = nothing
         _op_with_motion!(m, ed, op, evt.char)
@@ -309,33 +250,6 @@ function _editor_insert_engine!(m::RessacApp, evt::TK.KeyEvent)
     return true
 end
 
-# ── Mode commande du CodeEditor (`:synth wob…`) ──────────────────
-# Tab complète le verbe ou l'argument ; les flèches parcourent la grille
-# de complétion quand elle est ouverte, sinon ↑/↓ font l'historique
-# comme un shell. Toute autre touche ferme le cycle de complétion (pour
-# que la fermeture capturée ne pointe pas sur des jetons périmés) — et
-# éditer sort du mode historique.
-function _editor_command_engine!(m::RessacApp, evt::TK.KeyEvent)
-    ed = _active_editor(m)
-    evt.action === TK.key_press || return false
-    if evt.key === :tab
-        _try_ex_autocomplete!(m, ed) && return true
-        return false
-    end
-    if _completion_picker_active(m)
-        dir = evt.key === :up ? :up : evt.key === :down ? :down :
-              evt.key === :left ? :left : evt.key === :right ? :right : nothing
-        dir !== nothing && _move_completion_session!(m, dir) && return true
-    elseif evt.key === :up || evt.key === :down
-        _ex_history_nav!(m, ed, evt.key)
-        return true
-    end
-    if !(evt.key in (:up, :down, :left, :right))
-        _reset_completion!(m)
-        evt.key === :char && (m.ex_history_idx = 0)
-    end
-    return false
-end
 
 # ── L'éditeur lui-même : moteur vim de Tachikoma, puis `.` ───────
 function _editor_engine!(m::RessacApp, evt::TK.KeyEvent)
@@ -353,7 +267,9 @@ function _editor_engine!(m::RessacApp, evt::TK.KeyEvent)
 end
 
 
-_is_typable_ascii(c::Char) = ncodeunits(c) == 1 && (isprint(c) && c != '\0')
+# Ce qu'une saisie de recherche accepte : tout caractère imprimable, accents
+# compris (les libellés sont en français).
+_is_typable(c::Char) = c != '\0' && isvalid(c) && isprint(c)
 
 # ---------------------------------------------------------------------
 # Live doc row

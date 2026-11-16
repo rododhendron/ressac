@@ -87,21 +87,14 @@ end
 
 function _boundaries(node::LayoutNode, area::NamedTuple, out::Vector{PaneBoundary} = PaneBoundary[])
     node isa PaneLeaf && return out
-    if node.direction === :h
-        x = area.x
-        for (i, child) in enumerate(node.children)
-            w = round(Int, area.w * node.ratios[i])
-            _boundaries(child, (x = x, y = area.y, w = w, h = area.h), out)
-            i < length(node.children) && push!(out, PaneBoundary(node, i, :h, x + w - 1, area.y, area.y + area.h - 1, area.w))
-            x += w
-        end
-    else
-        y = area.y
-        for (i, child) in enumerate(node.children)
-            h = round(Int, area.h * node.ratios[i])
-            _boundaries(child, (x = area.x, y = y, w = area.w, h = h), out)
-            i < length(node.children) && push!(out, PaneBoundary(node, i, :v, y + h - 1, area.x, area.x + area.w - 1, area.h))
-            y += h
+    areas = _child_areas(node, area)          # les mêmes rectangles que le rendu
+    for (i, (child, sub)) in enumerate(zip(node.children, areas))
+        _boundaries(child, sub, out)
+        i < length(node.children) || continue
+        if node.direction === :h
+            push!(out, PaneBoundary(node, i, :h, sub.x + sub.w - 1, area.y, area.y + area.h - 1, area.w))
+        else
+            push!(out, PaneBoundary(node, i, :v, sub.y + sub.h - 1, area.x, area.x + area.w - 1, area.h))
         end
     end
     return out

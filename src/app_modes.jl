@@ -74,4 +74,3 @@ _command_modes!((:design,), "synth", "scratch", "sandbox", "synthlib", "synth-li
                 "sculpt", "explain", "todsl", "to-dsl", "sc2dsl", "prune", "test", "note",
                 "sccode", "sc", "sccode-tag", "sctag", "export", "export-synth", "tabs", "tabnext",
                 "tabn", "tabprev", "tabp", "back", "sc-rediscover", "sc-cache-info", "dsl")
-_command_modes!((:explore,), "harvest")

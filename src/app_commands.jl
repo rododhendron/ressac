@@ -10,8 +10,26 @@
 Forward search for `query` in the currently active editor's buffer.
 Pas d'import d'archive pour l'instant : on le dit.
 """
+# `/texte` : cherche dans le texte de l'éditeur. Le curseur va sur la
+# première occurrence à partir de sa position (en bouclant), toutes sont
+# surlignées, `n` / `N` passent à la suivante / la précédente. `/` seul
+# efface la recherche.
 function _ex_search!(m::RessacApp, query::AbstractString)
-    _push_app_log!(m, "[INFO] /$(query)  (recherche : à câbler)")
+    ed = _active_editor(m)
+    ed === nothing && (_push_app_log!(m, "[WARN] / — pas de texte où chercher ici"); return)
+    ed.search_query = collect(String(query))
+    TK._update_search_matches!(ed)
+    if isempty(query)
+        _push_app_log!(m, "[INFO] recherche effacée")
+    elseif isempty(ed.search_matches)
+        _push_app_log!(m, "[INFO] /$(query) — introuvable")
+    else
+        (row, col) = ed.search_matches[ed.search_match_idx]
+        ed.cursor_row = row; ed.cursor_col = col - 1
+        k = length(ed.search_matches)
+        _push_app_log!(m, "[INFO] /$(query) — $(ed.search_match_idx)/$k · n suivante, N précédente")
+    end
+    return
 end
 
 # ── Lifecycle ────────────────────────────────────────────────────────
@@ -145,15 +163,22 @@ _register_regex!(r"^workspace\s+(\S+)$",
 # extraction shape so the verb surfaces in Tab completion. Empty
 # capture means "editor" kind.
 _register_regex!(r"^vsplit\s*(\S*)$",
-    (m, mt) -> begin
-        kind = isempty(mt.captures[1]) ? "editor" : String(mt.captures[1])
-        cmd_vsplit!(m.workspaces, kind, Dict{String,Any}())
-    end)
+    (m, mt) -> _split_command!(m, "vsplit", cmd_vsplit!, mt.captures[1]))
 _register_regex!(r"^hsplit\s*(\S*)$",
-    (m, mt) -> begin
-        kind = isempty(mt.captures[1]) ? "editor" : String(mt.captures[1])
-        cmd_hsplit!(m.workspaces, kind, Dict{String,Any}())
-    end)
+    (m, mt) -> _split_command!(m, "hsplit", cmd_hsplit!, mt.captures[1]))
+
+# `:vsplit [type]` / `:hsplit [type]` : un type de pane inconnu se dit dans
+# le journal (avant, la commande ne faisait rien, sans un mot).
+function _split_command!(m::RessacApp, verb::AbstractString, split!, kind_arg::AbstractString)
+    kind = isempty(kind_arg) ? "editor" : String(kind_arg)
+    if !haskey(_PANE_KINDS, Symbol(kind))
+        known = join(sort!(String.(collect(keys(_PANE_KINDS)))), ", ")
+        _push_app_log!(m, "[ERROR] :$verb — type de pane inconnu « $kind » (types : $known)")
+        return
+    end
+    split!(m.workspaces, kind, Dict{String,Any}())
+    return
+end
 _register_literal!(m -> cmd_close!(m.workspaces),
                    "pclose", "paneclose")
 _register_literal!(m -> cmd_float!(m.workspaces),  "float")
@@ -185,17 +210,19 @@ function _layout_load!(m::RessacApp, name::AbstractString)
             "[WARN] :layout load $name — layout introuvable : $path")
         return
     end
-    empty!(m.workspaces.workspaces)
-    m.workspaces.current_idx = 0
-    try
-        load_layout!(m.workspaces, path)
-        _ensure_default_workspace!(m)
-        _push_app_log!(m, "[INFO] :layout load $name — chargé")
+    # La disposition est lue À CÔTÉ, en entier ; ce qui est à l'écran n'est
+    # remplacé que si elle est bonne. (Avant, les workspaces étaient vidés
+    # d'abord : un fichier abîmé emportait le texte en cours, et le journal
+    # disait « chargé ».)
+    fresh = try
+        read_layout(path)
     catch err
-        _push_app_log!(m,
-            "[ERROR] :layout load $name : $(sprint(showerror, err))")
-        _ensure_default_workspace!(m)
+        _push_app_log!(m, "[ERROR] :layout load $name — rien n'est changé : $(sprint(showerror, err))")
+        return
     end
+    _adopt_layout!(m.workspaces, fresh)
+    _ensure_default_workspace!(m)
+    _push_app_log!(m, "[INFO] :layout load $name — chargé")
 end
 
 # ── :tuning <variant> handlers ──────────────────────────────────────
@@ -431,7 +458,7 @@ _register_regex!(r"^(?:sccode|sc)\s+(\S+)$",
 
 # ── Synth alias management ─────────────────────────────────────────
 # Aliases are short, user-typed names that resolve to SC SynthDef
-# names. See _SYNTH_ALIASES + register_synth_alias! in plugins.jl.
+# names. See _SYNTH_ALIASES + register_synth_alias! in plugin_registry.jl.
 _register_literal!(m -> _alias_list!(m),             "alias-ls", "aliases")
 _register_regex!(r"^alias-rm\s+(\w+)$",
     (m, mt) -> _alias_remove!(m, Symbol(mt.captures[1])))
@@ -550,11 +577,11 @@ function _explain_command!(m::RessacApp, name::AbstractString)
     end
     lines = if isempty(nm)
         ed = _active_editor(m)
-        g = ed === nothing ? nothing : genome_from_dsl(TK.text(ed))
-        g === nothing ? ["(buffer courant : pas un synth DSL reconnu)"] :
+        (g, why) = ed === nothing ? (nothing, "pas d'éditeur") : parse_dsl_synth(TK.text(ed))
+        g === nothing ? ["(buffer courant : ne se relit pas en synth DSL — $why)"] :
                         vcat(explain_genome(g), prune_report_lines(g))
     else
-        path = joinpath(pwd(), "plugins", "user-synths", "$nm.jl")
+        path = joinpath(_project_dir(), "plugins", "user-synths", "$nm.jl")
         g = isfile(path) ? genome_from_dsl(read(path, String)) : nothing
         g === nothing ? explain_synth_file(path) : vcat(explain_genome(g), prune_report_lines(g))
     end
@@ -589,15 +616,15 @@ function _sc_rediscover_command!(m::RessacApp)
             "[ERROR] :sc-rediscover demande une session SC active — lance d'abord le live")
         return
     end
-    cache_dir = Main._sc_cache_dir()
+    cache_dir = Main.ScDiscoverer._sc_cache_dir()
     meta_path = joinpath(cache_dir, "cache_meta.toml")
     if isfile(meta_path)
         rm(meta_path)
         _push_app_log!(m, "[INFO] :sc-rediscover — cache vidé, redécouverte en cours")
     end
-    plugin_dir = joinpath(pwd(), "plugins", "sc-discoverer")
+    plugin_dir = joinpath(_project_dir(), "plugins", "sc-discoverer")
     try
-        Main._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
+        Main.ScDiscoverer._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
         _push_app_log!(m, "[INFO] :sc-rediscover — terminé. Relance le live pour recharger les docs.")
     catch err
         _push_app_log!(m, "[ERROR] :sc-rediscover a échoué : $(sprint(showerror, err))")
@@ -611,7 +638,7 @@ Print the contents of `cache_meta.toml` + cache dir path to the log.
 Useful for debugging stale caches or verifying SC version matches.
 """
 function _sc_cache_info_command!(m::RessacApp)
-    cache_dir = Main._sc_cache_dir()
+    cache_dir = Main.ScDiscoverer._sc_cache_dir()
     _push_app_log!(m, "[INFO] :sc-cache-info — répertoire du cache : $cache_dir")
     meta_path = joinpath(cache_dir, "cache_meta.toml")
     if !isfile(meta_path)
@@ -717,19 +744,28 @@ _register_special!(
 # _save_sculpt! (sauve le génome sculpté en .jl re-jouable/re-sculptable)
 # → src/app_sculpt.jl.
 
+# Ce que `:w` sauve dépend du MODE, pas de la pane qui a le focus : dans
+# DESIGN, c'est le synth — même depuis la DOC, le studio ou la MODULATION
+# (avant, `:w` y écrivait le texte du synth comme une « session »).
+_saves_synth(m::RessacApp) = _workspace_mode(m) === :design && _current_synth_tab(m) !== nothing
+
+# Le studio focalisé avec un son à sauver (sans génome — un texte qu'il n'a
+# pas su relire — c'est le texte du synth qui se sauve).
+_saves_sculpt(m::RessacApp) = (p = _focused_sculpt_pane(m); p !== nothing && p.genome !== nothing)
+
 function _save_or_session(m::RessacApp)
-    if _focused_sculpt_pane(m) !== nothing
+    if _saves_sculpt(m)
         _save_sculpt!(m, "")
-    elseif _focused_role(m) === :synth && _synth_pane_open(m)
+    elseif _saves_synth(m)
         _save_current_synth!(m)
     else
         _save_session_app!(m, "_last")
     end
 end
 function _save_or_session_named(m::RessacApp, mt::RegexMatch)
-    if _focused_sculpt_pane(m) !== nothing
+    if _saves_sculpt(m)
         _save_sculpt!(m, mt.captures[1])
-    elseif _focused_role(m) === :synth && _synth_pane_open(m)
+    elseif _saves_synth(m)
         _save_current_synth!(m; new_name = mt.captures[1])
     else
         _save_session_app!(m, mt.captures[1])
@@ -906,7 +942,7 @@ function _starter_command!(m::RessacApp, genre::AbstractString)
         _open_or_reuse_editable_pane!(m; name = "starter") :
         _active_editor(m)
     ed === nothing && return
-    TK.set_text!(ed, snip.resolved_content)
+    _edit_text!(ed, snip.resolved_content)
     ed.cursor_row = 1
     ed.cursor_col = 0
     _push_app_log!(m, "[INFO] :starter $key chargé — e évalue chaque @dN, E tout")
@@ -938,7 +974,7 @@ function _import_wav!(m::RessacApp, src_path::AbstractString,
         splitext(basename(src_path))[1] : String(name_or_nothing)
     name = replace(name, r"[^A-Za-z0-9_]" => "_")
     isempty(name) && (_push_app_log!(m, "[ERROR] :import — nom vide"); return)
-    dest_dir = joinpath(pwd(), "plugins", "user-samples", name)
+    dest_dir = joinpath(_project_dir(), "plugins", "user-samples", name)
     isdir(dest_dir) || mkpath(dest_dir)
     # Find the next variant index — preserves existing samples in the
     # folder so the user can pile up versions like bd_0, bd_1, bd_2…
@@ -956,9 +992,8 @@ function _import_wav!(m::RessacApp, src_path::AbstractString,
     variants = sort!([joinpath(dest_dir, f) for f in readdir(dest_dir)
                       if endswith(f, ".wav")])
     sym = Symbol(name)
-    haskey(_SAMPLE_REGISTRY, sym) && delete!(_SAMPLE_REGISTRY, sym)
     register_sample!(SampleEntry(sym, "user-samples", dest_dir, variants,
-        Dict{String,Any}("description" => "imported via :import")))
+        Dict{String,Any}("description" => "imported via :import")); update = true)
     # Tell SuperDirt to load the (new or extended) folder.
     sched = _LIVE_SCHEDULER[]
     sched !== nothing && send_osc(sched.osc,
@@ -973,12 +1008,14 @@ end
 # ---------------------------------------------------------------------
 
 function _save_session_app!(m::RessacApp, name::AbstractString)
-    dir = joinpath(pwd(), "sessions")
+    dir = joinpath(_project_dir(), "sessions")
     isdir(dir) || mkpath(dir)
     path = joinpath(dir, String(name) * ".txt")
-    ed = _active_editor(m)
+    # Une session, c'est le texte des patterns — pas celui de l'éditeur qui
+    # se trouve avoir le focus.
+    ed = _patterns_editor(m)
     if ed === nothing
-        _push_app_log!(m, "[ERROR] :save — aucune pane éditeur à sauver"); return
+        _push_app_log!(m, "[ERROR] :save — pas de patterns à sauver dans ce workspace"); return
     end
     try
         write(path, TK.text(ed))
@@ -989,7 +1026,7 @@ function _save_session_app!(m::RessacApp, name::AbstractString)
 end
 
 function _load_session_app!(m::RessacApp, name::AbstractString)
-    path = joinpath(pwd(), "sessions", String(name) * ".txt")
+    path = joinpath(_project_dir(), "sessions", String(name) * ".txt")
     if !isfile(path)
         _push_app_log!(m, "[ERROR] :load — aucun fichier : $path — :sessions pour la liste")
         return
@@ -997,7 +1034,7 @@ function _load_session_app!(m::RessacApp, name::AbstractString)
     try
         ed = _open_or_reuse_editable_pane!(m; name = String(name))
         ed === nothing && return
-        TK.set_text!(ed, read(path, String))
+        _edit_text!(ed, read(path, String))
         ed.cursor_row = 1; ed.cursor_col = 0
         _push_app_log!(m, "[INFO] session « $name » chargée — E évalue tous les blocs")
     catch err
@@ -1006,7 +1043,7 @@ function _load_session_app!(m::RessacApp, name::AbstractString)
 end
 
 function _list_sessions_app!(m::RessacApp)
-    dir = joinpath(pwd(), "sessions")
+    dir = joinpath(_project_dir(), "sessions")
     if !isdir(dir)
         _push_app_log!(m, "[INFO] pas encore de répertoire sessions — :save <nom> le crée")
         return

@@ -99,21 +99,6 @@ function _completion_context(line::AbstractString, cursor_col::Integer)
     return in_mn ? :mininotation : :default
 end
 
-const _COMMAND_NAMES = [
-    "q", "quit", "cps", "goto",
-    "samples", "instruments", "synths",
-    "guide", "help",
-    "browse", "save", "doc", "starter",
-    "mute", "unmute", "solo", "unsolo",
-    "scale",
-    "save-session", "load-session", "sessions",
-    "snippet", "snippets",
-    "synth", "back", "reload", "save-synth", "save-synth-as",
-    "swap", "test", "test-raw", "synth-guide", "scope",
-    "sculpt",
-    "w", "close", "tabs", "tabnext", "tabprev", "keep", "recall", "pats", "vary", "palette", "panic", "scales", "chords", "themes", "clash", "notes", "inline", "slots", "add", "note", "log", "play", "design", "explore", "zoom",
-]
-
 const _COMBINATOR_NAMES = [
     "pure", "silence", "fast", "slow", "density", "rev", "every", "arp",
     "rot", "hurry", "shuffle", "scramble", "linger", "swingBy", "swing", "whenmod",

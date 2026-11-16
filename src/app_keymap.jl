@@ -36,7 +36,7 @@ bind!(:global, ",", "hush (laisse finir les queues)"; short = "hush", group = :a
 bind!(:global, "S", "scope suivant"; group = :view, when = _km_normal,
       action = m -> _scope_cycle_key!(m))
 bind!(:global, ":", "commande"; group = :misc)                 # app_input.jl (structurel)
-bind!(:global, "/", "rechercher"; group = :misc, hint = false)
+bind!(:global, "/", "chercher dans le texte (n / N : occurrence suivante / précédente)"; short = "chercher", group = :misc, hint = false)
 bind!(:global, "Ctrl-p", "palette : commandes, sons, fonctions, patterns"; short = "palette",
       group = :help, when = m -> m.modal === :none, action = _open_palette!)
 bind!(:global, "Ctrl-w", "mode pane"; group = :layout, hint = false)
@@ -239,52 +239,93 @@ end
 bind!(:leader_synth, "Space ?", "▸ aide"; group = :help, action = _open_help!)
 
 # ── Scopes documentaires (dispatch explicite dans app_input.jl) ────
+# ── Les scopes transitoires ──────────────────────────────────────────
+# Leurs touches sont de vraies actions du registre, comme partout : ce que
+# l'aide, le which-key et le wiki affichent est ce qui s'exécute. (Elles
+# étaient « documentaires », le comportement recopié à la main dans un
+# moteur par scope — et les deux avaient divergé.) La couche de chacun est
+# posée par `_active_layers` (app_layers.jl).
+
 scope!(:pane_mode, "Mode pane (Ctrl-w, reste actif)"; layer = :transient)
-bind!(:pane_mode, "Ctrl-w s", "split horizontal"; group = :layout)
-bind!(:pane_mode, "Ctrl-w v", "split vertical"; group = :layout)
-bind!(:pane_mode, ["Ctrl-w h", "Ctrl-w j", "Ctrl-w k", "Ctrl-w l"], "focus ← ↓ ↑ → (ou flèches)"; group = :nav)
-bind!(:pane_mode, "Ctrl-w c", "fermer la pane"; group = :layout)
-bind!(:pane_mode, "Ctrl-w z", "zoom / dézoom (la pane seule à l'écran)"; group = :layout)
-bind!(:pane_mode, ["Ctrl-w <", "Ctrl-w >"], "moins / plus large (5 %) — ou glisser une bordure à la souris"; short = "largeur", group = :layout)
-bind!(:pane_mode, ["Ctrl-w -", "Ctrl-w +"], "moins / plus haut (5 %)"; short = "hauteur", group = :layout)
-bind!(:pane_mode, "Ctrl-w =", "des parts égales"; group = :layout)
-bind!(:pane_mode, "Ctrl-w r", "tourner la coupe (horizontal ⟷ vertical)"; group = :layout)
-bind!(:pane_mode, ["Ctrl-w Esc", "Ctrl-w Enter", "Ctrl-w Ctrl-w"], "quitter le mode pane"; group = :layout)
+const _PANE_MODE_FOCUS = Dict("h" => :left, "j" => :down, "k" => :up, "l" => :right,
+                              "←" => :left, "↓" => :down, "↑" => :up, "→" => :right)
+bind!(:pane_mode, "Ctrl-w s", "split horizontal"; group = :layout,
+      action = m -> cmd_hsplit!(m.workspaces, "editor", Dict{String,Any}()))
+bind!(:pane_mode, "Ctrl-w v", "split vertical"; group = :layout,
+      action = m -> cmd_vsplit!(m.workspaces, "editor", Dict{String,Any}()))
+bind!(:pane_mode, ["Ctrl-w h", "Ctrl-w j", "Ctrl-w k", "Ctrl-w l", "Ctrl-w ←", "Ctrl-w ↓", "Ctrl-w ↑", "Ctrl-w →"],
+      "focus ← ↓ ↑ → (ou flèches)"; short = "focus", group = :nav, repeat = true,
+      action = (m, evt) -> cmd_focus!(m.workspaces, _PANE_MODE_FOCUS[keyname(evt)]))
+bind!(:pane_mode, "Ctrl-w c", "fermer la pane"; group = :layout, action = m -> cmd_close!(m.workspaces))
+bind!(:pane_mode, "Ctrl-w z", "zoom / dézoom (la pane seule à l'écran)"; group = :layout, action = _toggle_zoom!)
+bind!(:pane_mode, ["Ctrl-w <", "Ctrl-w >"], "moins / plus large (5 %) — ou glisser une bordure à la souris"; short = "largeur",
+      group = :layout, repeat = true,
+      action = (m, evt) -> cmd_resize!(m.workspaces, :h, evt.char == '<' ? -_RATIO_STEP : +_RATIO_STEP))
+bind!(:pane_mode, ["Ctrl-w -", "Ctrl-w +"], "moins / plus haut (5 %)"; short = "hauteur", group = :layout, repeat = true,
+      action = (m, evt) -> cmd_resize!(m.workspaces, :v, evt.char == '-' ? -_RATIO_STEP : +_RATIO_STEP))
+bind!(:pane_mode, "Ctrl-w =", "des parts égales"; group = :layout, action = m -> cmd_equalize!(m.workspaces))
+bind!(:pane_mode, "Ctrl-w r", "tourner la coupe (horizontal ⟷ vertical)"; group = :layout, action = m -> cmd_rotate!(m.workspaces))
+bind!(:pane_mode, ["Ctrl-w Esc", "Ctrl-w Enter", "Ctrl-w Ctrl-w"], "quitter le mode pane"; group = :layout,
+      action = m -> (_PANE_MODE.active = false))
 
 scope!(:visual, "Sélection visuelle (v / V)"; layer = :transient)
-bind!(:visual, ["j", "k", "h", "l"], "étendre la sélection"; group = :select)
-bind!(:visual, ["d", "y", "c"], "supprimer / copier / changer"; group = :edit)
-bind!(:visual, "m", "mute les slots sélectionnés"; group = :audio)
-bind!(:visual, "e", "évaluer le bloc"; group = :eval)
-bind!(:visual, "Esc", "annuler"; group = :select)
+_km_visual_char(m::RessacApp) = m.visual_kind === :char
+bind!(:visual, ["j", "k", "↓", "↑"], "étendre la sélection (lignes)"; short = "étendre", group = :select, repeat = true,
+      action = (m, evt) -> _visual_move!(m, keyname(evt) in ("j", "↓") ? :down : :up))
+bind!(:visual, ["h", "l", "←", "→"], "étendre la sélection (caractères, en v)"; group = :select, hint = false, repeat = true,
+      when = _km_visual_char, action = (m, evt) -> _visual_move!(m, keyname(evt) in ("h", "←") ? :left : :right))
+bind!(:visual, ["0", "\$"], "jusqu'au début / à la fin de la ligne (en v)"; group = :select, hint = false,
+      when = _km_visual_char, action = (m, evt) -> _visual_move!(m, evt.char == '0' ? :home : :end))
+bind!(:visual, ["d", "y", "c"], "supprimer / copier / changer"; group = :edit,
+      action = (m, evt) -> (_visual_apply!(m, _active_editor(m), evt.char)))
+bind!(:visual, "m", "mute les slots sélectionnés"; group = :audio,
+      action = m -> (_visual_blocks!(m, _active_editor(m), :mute); m.visual_active = false))
+bind!(:visual, "e", "évaluer les blocs sélectionnés"; short = "évaluer", group = :eval,
+      action = m -> (_visual_blocks!(m, _active_editor(m), :eval); m.visual_active = false))
+bind!(:visual, "Esc", "annuler"; group = :select,
+      action = m -> (m.visual_active = false; _push_app_log!(m, "[INFO] sélection annulée")))
 
 scope!(:insert, "Mode insertion"; layer = :transient)
+# (L'insertion est la frappe elle-même : pas des touches nommées, un moteur
+# — `_editor_insert_engine!`. Ces trois lignes disent ce qu'il fait.)
 bind!(:insert, "Esc", "retour au mode normal"; group = :edit)
-scope!(:placeholder, "Snippet avec des trous (après Space + lettre)"; layer = :transient, modes = (:play, :design))
-bind!(:placeholder, "Tab", "trou suivant"; group = :edit)
-bind!(:placeholder, "S-Tab", "trou précédent"; group = :edit)
-bind!(:placeholder, "i", "remplir le trou (insertion)"; group = :edit)
-bind!(:placeholder, "u", "annuler le snippet"; group = :edit)
-bind!(:placeholder, "Esc", "sortir des trous"; group = :edit)
 bind!(:insert, "Tab", "compléter (ghost, identifiants) · placeholder suivant"; group = :edit)
 bind!(:insert, "S-Tab", "placeholder précédent"; group = :edit)
 
+scope!(:placeholder, "Snippet avec des trous (après Space + lettre)"; layer = :transient, modes = (:play, :design))
+bind!(:placeholder, "Tab", "trou suivant"; group = :edit, action = m -> _placeholder_jump!(m, _active_editor(m), +1))
+bind!(:placeholder, "S-Tab", "trou précédent"; group = :edit, action = m -> _placeholder_jump!(m, _active_editor(m), -1))
+bind!(:placeholder, "Esc", "sortir des trous"; group = :edit, action = m -> (m.placeholder_active = false))
+# `i` et `u` sont ceux de l'éditeur (insertion, annulation) : la couche les
+# laisse passer, l'aide les rappelle.
+bind!(:placeholder, "i", "remplir le trou (insertion)"; group = :edit)
+bind!(:placeholder, "u", "annuler le snippet"; group = :edit)
+
 scope!(:tap, "Tap (:tap / :bpm)"; layer = :transient, modes = (:play,))
-bind!(:tap, "Space", "frapper"; group = :audio)
-bind!(:tap, "Enter", "valider"; group = :audio)
-bind!(:tap, "Esc", "annuler"; group = :audio)
+bind!(:tap, "Space", "frapper"; group = :audio, action = _tap_hit!)
+bind!(:tap, "Enter", "valider"; group = :audio, action = _tap_commit!)
+bind!(:tap, "Esc", "annuler"; group = :audio, action = _tap_cancel!)
 
 scope!(:piano, "Piano (:piano)"; layer = :transient, modes = (:play,))
-bind!(:piano, "z x c v b n m ,", "notes (rangée du bas = naturelles)"; group = :audio)
-bind!(:piano, "s d g h j", "dièses"; group = :audio)
-bind!(:piano, ["[", "]"], "octave − / +"; group = :audio)
-bind!(:piano, "Enter", "valider l'enregistrement"; group = :audio)
-bind!(:piano, "Esc", "quitter"; group = :audio)
+# Les lettres du piano viennent de `_PIANO_KEYMAP` (rangée du bas =
+# naturelles, celle du milieu = dièses ; z et w pour le do, qwerty/azerty).
+let naturals = (0, 2, 4, 5, 7, 9, 11, 12)
+    keys_of(pred) = sort!([string(c) for (c, n) in _PIANO_KEYMAP if pred(n)])
+    play = (m, evt) -> _piano_play!(m, _PIANO_KEYMAP[evt.char])
+    bind!(:piano, keys_of(n -> n in naturals), "notes (rangée du bas = naturelles)"; short = "notes", group = :audio, action = play)
+    bind!(:piano, keys_of(n -> !(n in naturals)), "dièses"; group = :audio, action = play)
+end
+bind!(:piano, ["[", "]"], "octave − / +"; group = :audio,
+      action = (m, evt) -> _piano_octave!(m, evt.char == '[' ? -1 : +1))
+bind!(:piano, "Enter", "valider l'enregistrement"; group = :audio,
+      action = m -> (m.piano_rec ? _piano_commit!(m) : _piano_stop!(m)))
+bind!(:piano, "Esc", "quitter"; group = :audio, action = _piano_stop!)
 
 # Entrée en mode visuel (v / V), partagée par les deux bindings.
 function _visual_enter!(m::RessacApp, kind::Symbol)
     ed = _km_ed(m)
     m.visual_active = true
+    m.transient_ed = ed
     m.visual_kind = kind
     m.visual_anchor_row = ed.cursor_row
     m.visual_anchor_col = ed.cursor_col

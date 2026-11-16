@@ -12,10 +12,8 @@
 #                          accepts via _accept_ghost!. Usage is logged to
 #                          ~/.config/ressac/usage.toml so heavy-used
 #                          candidates float to the top over time.
-#   • Tab in :command    — _try_ex_autocomplete!: completes either the
-#                          verb itself (`:syn<Tab>` → `:synth`) or its
-#                          argument (`:doc gai<Tab>` → `:doc gain`),
-#                          driven by _EX_COMMAND_ARG_KIND.
+#   • Tab in the command bar — `_command_completion_candidates`
+#                          (app_ex_registry.jl): the verb, then its argument.
 #
 # Depends on _fuzzy_score (editor_fuzzy.jl),
 # RessacApp, the three registries (_SAMPLE/_INSTRUMENT/_SYNTH_REGISTRY),
@@ -191,7 +189,7 @@ function _make_editor_splicer(m::RessacApp, ed::TK.CodeEditor,
                    replacement *
                    (end_col >= length(chars) ? "" : String(chars[(end_col + 1):end]))
         lines[row] = new_line
-        TK.set_text!(ed, join(lines, '\n'))
+        _edit_text!(ed, join(lines, '\n'))
         ed.cursor_row = row
         ed.cursor_col = start_col + length(replacement)
         return
@@ -220,44 +218,10 @@ accent style. Auto-scrolls vertically when the grid is taller than
 the pane.
 """
 function _render_completion_picker!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    n = length(m.completion_candidates)
-    n == 0 && return
-    body_h = area.height
-    body_h <= 0 && return
-
-    # Column layout: width per cell = longest candidate + marker (2)
-    # + trailing gutter (2). Minimum cell width prevents an absurd
-    # single-column rendering when there's just one short candidate
-    # but plenty of width.
-    max_cand_w = maximum(textwidth(c) for c in m.completion_candidates)
-    col_w = max(max_cand_w + 4, 14)
-    cols = max(1, area.width ÷ col_w)
-    cols = min(cols, n)
-    rows = cld(n, cols)
-    # Publish the column count for arrow-key navigation in :command mode.
-    m.completion_cols = cols
-
-    # Selected cell coordinates (row-major: idx → (row, col)).
-    sel_row = cld(m.completion_idx, cols)
-    scroll = _scroll_to_show(sel_row, rows, body_h, 0)
-    first_row = scroll + 1
-    last_row  = min(rows, scroll + body_h)
-
-    for r in first_row:last_row
-        y = area.y + (r - first_row)
-        for c in 1:cols
-            idx = (r - 1) * cols + c
-            idx > n && break
-            cand = m.completion_candidates[idx]
-            is_cur = idx == m.completion_idx
-            marker = is_cur ? "▶ " : "  "
-            style  = is_cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
-            x = area.x + (c - 1) * col_w
-            # rpad to col_w - 1 leaves a one-cell gutter between columns.
-            text = first(rpad(marker * cand, col_w - 1), col_w - 1)
-            TK.set_string!(buf, x, y, text, style)
-        end
-    end
+    isempty(m.completion_candidates) && return
+    # Le nombre de colonnes est publié pour les flèches (↑ / ↓ = ± une ligne).
+    m.completion_cols = _render_candidate_grid!(buf, area, m.completion_candidates, m.completion_idx)
+    return
 end
 
 """
@@ -278,7 +242,7 @@ end
 # Ghost autocomplete — Copilot-style faded suggestion at the cursor
 # ---------------------------------------------------------------------
 
-const _GHOST_USAGE_PATH = joinpath(homedir(), ".config", "ressac", "usage.toml")
+_ghost_usage_path() = joinpath(_config_dir(), "usage.toml")
 
 # In-memory mirror of the usage counts. Loaded lazily; persisted after
 # every accept. Keys are "kind:value" so we can rank within a category
@@ -289,9 +253,9 @@ const _GHOST_USAGE_LOADED = Ref{Bool}(false)
 function _load_ghost_usage!()
     _GHOST_USAGE_LOADED[] && return
     _GHOST_USAGE_LOADED[] = true
-    isfile(_GHOST_USAGE_PATH) || return
+    isfile(_ghost_usage_path()) || return
     try
-        data = TOML.parsefile(_GHOST_USAGE_PATH)
+        data = TOML.parsefile(_ghost_usage_path())
         if haskey(data, "counts") && data["counts"] isa AbstractDict
             for (k, v) in data["counts"]
                 v isa Number && (_GHOST_USAGE[][String(k)] = Int(v))
@@ -302,10 +266,10 @@ function _load_ghost_usage!()
 end
 
 function _save_ghost_usage!()
-    dir = dirname(_GHOST_USAGE_PATH)
+    dir = dirname(_ghost_usage_path())
     isdir(dir) || mkpath(dir)
     try
-        open(_GHOST_USAGE_PATH, "w") do io
+        open(_ghost_usage_path(), "w") do io
             println(io, "# Ressac ghost-autocomplete usage counts.")
             println(io, "# Higher counts → ranked first in suggestions.")
             println(io, "[counts]")
@@ -452,9 +416,7 @@ function _accept_ghost!(m::RessacApp)
     # and crash on multi-byte chars like ¹ ° ▓ when col is a char count.
     before, after = _char_split(line, col)
     new_line = before * m.ghost * after
-    TK.set_text!(ed, _set_one_line(ed, m.ghost_row, new_line))
-    ed.cursor_row = m.ghost_row
-    ed.cursor_col = col + length(m.ghost)
+    _edit_line!(ed, m.ghost_row, new_line; col = col + length(m.ghost))
     # Bump usage. Recompute the full token (partial + accepted suffix)
     # so the ranking key is the full identifier.
     kind, partial, _ = _ghost_context(line, col)
@@ -508,7 +470,6 @@ end
 # finds gain). The empty value `:_all` is a sentinel — see the lookup.
 const _EX_COMMAND_ARG_KIND = Dict{String,Symbol}(
     "synth"          => :synths,
-    "save-synth-as"  => :synths,
     "browse"         => :all,
     "doc"            => :all,
     "starter"        => :starters,
@@ -528,88 +489,6 @@ const _EX_COMMAND_ARG_LITERALS = Dict{String,Vector{String}}(
                 "reservoir", "reservoir-graph"],
 )
 
-"""
-    _try_ex_autocomplete!(m, ed) -> Bool
-
-Tab inside the ex-command line. Splits `command_buffer` on the first
-space:
-  * no space → cycle over ex-command verbs
-  * with space → cycle over the verb-specific argument set
-
-Opens a `_start_completion_session!` so the picker UI (LOG pane
-swap) lights up just like the :insert path, and subsequent Tab
-presses cycle. Returns true iff Tab was consumed.
-"""
-function _try_ex_autocomplete!(m::RessacApp, ed::TK.CodeEditor)
-    # Active cycle on the same ex-command session → advance.
-    if _completion_picker_active(m) && startswith(m.completion_label, "ex:")
-        return _advance_completion_session!(m)
-    end
-    _reset_completion!(m)
-    buf = String(ed.command_buffer)
-    isempty(buf) && return false
-    sp = findfirst(' ', buf)
-    if sp === nothing
-        # Verb completion.
-        partial = buf
-        ranked = _fuzzy_rank(partial, _ex_verbs_for_mode(m))
-        isempty(ranked) && return false
-        top = first(ranked, 200)
-        splice = _make_ex_verb_splicer(m, ed)
-        return _start_completion_session!(m, top, splice; label = "ex:verb")
-    else
-        # Argument completion for a known verb.
-        verb = buf[1:sp-1]
-        rest = buf[sp+1:end]
-        toks = String.(split(rest, ' '; keepempty=true))
-        partial = isempty(toks) ? "" : toks[end]
-        candidates = _ex_arg_candidates(verb)
-        isempty(candidates) && return false
-        ranked = _fuzzy_rank(partial, candidates)
-        isempty(ranked) && return false
-        top = first(ranked, 200)
-        splice = _make_ex_arg_splicer(m, ed, verb, toks)
-        return _start_completion_session!(m, top, splice; label = "ex:$verb")
-    end
-end
-
-"""
-    _make_ex_verb_splicer(m, ed) -> Function
-
-Splice for ex-command VERB completion. The whole `command_buffer`
-gets replaced with the chosen verb (verbs have no space, so the
-whole buffer IS the partial).
-"""
-function _make_ex_verb_splicer(m::RessacApp, ed::TK.CodeEditor)
-    return function (i::Int)
-        i in eachindex(m.completion_candidates) || return
-        empty!(ed.command_buffer)
-        append!(ed.command_buffer, collect(m.completion_candidates[i]))
-        return
-    end
-end
-
-"""
-    _make_ex_arg_splicer(m, ed, verb, toks) -> Function
-
-Splice for ex-command ARGUMENT completion. The verb + the leading
-tokens stay verbatim; only the LAST token (the partial) is
-replaced with the chosen candidate. `toks` is the original split
-of the rest, captured at session start.
-"""
-function _make_ex_arg_splicer(m::RessacApp, ed::TK.CodeEditor,
-                              verb::AbstractString, toks::Vector{String})
-    head = String(verb) * " " *
-           (length(toks) > 1 ? join(toks[1:end-1], ' ') * " " : "")
-    return function (i::Int)
-        i in eachindex(m.completion_candidates) || return
-        new_buf = head * m.completion_candidates[i]
-        empty!(ed.command_buffer)
-        append!(ed.command_buffer, collect(new_buf))
-        return
-    end
-end
-
 function _ex_arg_candidates(verb::AbstractString)
     kind = get(_EX_COMMAND_ARG_KIND, String(verb), nothing)
     kind === nothing && return String[]
@@ -624,7 +503,7 @@ function _ex_arg_candidates(verb::AbstractString)
     elseif kind === :slots
         return [string('d', i) for i in 1:16]   # :mute d3 etc.
     elseif kind === :sessions
-        dir = joinpath(pwd(), "sessions")
+        dir = joinpath(_project_dir(), "sessions")
         isdir(dir) || return String[]
         return [splitext(f)[1] for f in readdir(dir) if endswith(f, ".txt")]
     elseif kind === :all

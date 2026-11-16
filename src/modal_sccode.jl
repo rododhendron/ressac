@@ -13,77 +13,92 @@
 #   _load_sccode!                 ↵ import the cursor entry
 #   _render_sccode_modal!         the modal renderer
 #
-# Extracted from app.jl as part of the maintainability sprint
-# (Sprint 3.4). The model fields it touches (sccode_*) live on
-# RessacApp in app.jl.
+# The model fields it touches (sccode_*) live on RessacApp
+# (app_model.jl). Network calls run in the background (app_jobs.jl).
 
 """
-    _open_sccode!(m)
+    _open_sccode!(m; tag = "")
 
-Open the sccode browser modal and synchronously fetch the first page
-of entries. Sccode loads in 1-2s typically; if the user wants more
-they hit `n`/`p` to paginate.
+Ouvre le navigateur sccode et lance le chargement de la première page — en
+fond : la modale s'affiche tout de suite (« chargement… »), l'app reste
+jouable, la liste arrive quand sccode.org répond. `n` / `p` paginent.
 """
 function _open_sccode!(m::RessacApp; tag::AbstractString = "")
     _open_modal!(m, :sccode)
     _picker_reset!(m.sccode); _picker_search!(m.sccode, false)
-    m.sccode_page = 1
-    m.sccode_loading = true
     m.sccode_tag = String(tag)
-    banner = isempty(tag) ? "page 1" : "tag=$(tag), page 1"
-    _push_app_log!(m, "[INFO] sccode : chargement $(banner)…")
-    try
-        m.sccode_entries = _sccode_fetch_list(1; tag = m.sccode_tag)
+    m.sccode_entries = _SccodeEntry[]
+    _sccode_load_page!(m, 1)
+end
+
+# Charge la page `page` de la liste. La réponse n'est appliquée que si elle
+# est encore celle qu'on attend (le joueur a pu changer de page, de tag, ou
+# fermer la modale entre-temps).
+function _sccode_load_page!(m::RessacApp, page::Int)
+    tag = m.sccode_tag
+    m.sccode_loading = true
+    m.sccode_wanted = (page, tag)
+    _push_app_log!(m, "[INFO] sccode : chargement $(isempty(tag) ? "" : "tag=$(tag), ")page $(page)…")
+    _background!(() -> _sccode_fetch_list(page; tag = tag)) do entries, err
+        m.sccode_wanted == (page, tag) || return          # une demande plus récente est en route
         m.sccode_loading = false
-        _push_app_log!(m, "[INFO] sccode : $(length(m.sccode_entries)) entrées chargées")
-    catch err
-        m.sccode_loading = false
-        m.sccode_entries = _SccodeEntry[]
-        _push_app_log!(m, "[ERROR] sccode liste : $(sprint(showerror, err))")
+        if err !== nothing
+            _push_app_log!(m, "[ERROR] sccode page $page : $(sprint(showerror, err))")
+            return
+        end
+        m.sccode_entries = entries
+        m.sccode_page = page
+        m.sccode.list.selected = 1; m.sccode.list.offset = 0
+        _push_app_log!(m, "[INFO] sccode page $page — $(length(entries)) entrées")
     end
+    return
 end
 
 """
-    _sccode_import!(m, id; title="") -> Union{Nothing, String}
+    _sccode_import!(m, id; title = "", then = nothing)
 
 Single source of truth for "fetch sccode/<id>, write a unique .scd
 under `plugins/user-synths/`, register it, open it in a tab". Used
 by `:sccode <id|url>`, by Enter on a row in the picker modal, and by
 `_direct_load_sccode!` for URL-paste flows.
 
-Returns the final filename (suffixed `-2`, `-3`, … if needed to
-avoid clobbering an existing file), or `nothing` on failure.
+Le téléchargement se fait en fond ; quand la source est là, le fichier est
+écrit (suffixé `-2`, `-3`… pour ne rien écraser), le synth enregistré et
+ouvert, puis `then(nom)` est appelé s'il est donné. En cas d'échec le
+journal le dit et `then` ne l'est pas.
 """
-function _sccode_import!(m::RessacApp, id::AbstractString; title::AbstractString = "")
+function _sccode_import!(m::RessacApp, id::AbstractString; title::AbstractString = "", then = nothing)
     id = String(id)
-    src = try
-        _sccode_fetch_source(id)
-    catch err
-        _push_app_log!(m, "[ERROR] sccode fetch $(id): $(sprint(showerror, err))")
-        return nothing
-    end
-    base = _sccode_extract_synthdef_name(src)
-    base === nothing && (base = "sccode_" * replace(id, "-" => "_"))
-    dir = joinpath(pwd(), "plugins", "user-synths")
-    isdir(dir) || mkpath(dir)
-    final_name = base
-    target = joinpath(dir, "$(final_name).scd")
-    n = 1
-    while isfile(target)
-        n += 1
-        final_name = "$base-$n"
+    _push_app_log!(m, "[INFO] sccode/$(id) : téléchargement…")
+    _background!(() -> _sccode_fetch_source(id)) do src, err
+        if err !== nothing
+            _push_app_log!(m, "[ERROR] sccode fetch $(id): $(sprint(showerror, err))")
+            return
+        end
+        base = _sccode_extract_synthdef_name(src)
+        (base === nothing || !SynthDSL.valid_synth_name(base)) && (base = "sccode_" * replace(id, r"[^A-Za-z0-9_]" => "_"))
+        dir = joinpath(_project_dir(), "plugins", "user-synths")
+        isdir(dir) || mkpath(dir)
+        final_name = base
         target = joinpath(dir, "$(final_name).scd")
+        n = 1
+        while isfile(target)
+            n += 1
+            final_name = "$(base)_$n"                  # un nom de synth reste un identifiant
+            target = joinpath(dir, "$(final_name).scd")
+        end
+        header = isempty(title) ?
+            "// Imported from sccode.org/$(id)\n//\n" :
+            "// Imported from sccode.org/$(id) — \"$(title)\"\n//\n"
+        write(target, header * src)
+        register_synth!(SynthEntry(Symbol(final_name), "user-synths",
+                                   Dict{String,Any}("description" => "imported from sccode",
+                                                    "tags" => ["sccode"])); update = true)
+        _open_synth_tab!(m, final_name)
+        _push_app_log!(m, "[INFO] sccode/$(id) → plugins/user-synths/$(final_name).scd")
+        then === nothing || then(final_name)
     end
-    header = isempty(title) ?
-        "// Imported from sccode.org/$(id)\n//\n" :
-        "// Imported from sccode.org/$(id) — \"$(title)\"\n//\n"
-    write(target, header * src)
-    register_synth!(SynthEntry(Symbol(final_name), "user-synths",
-                               Dict{String,Any}("description" => "imported from sccode",
-                                                "tags" => ["sccode"])))
-    _open_synth_tab!(m, final_name)
-    _push_app_log!(m, "[INFO] sccode/$(id) → plugins/user-synths/$(final_name).scd")
-    return final_name
+    return
 end
 
 """
@@ -150,41 +165,31 @@ end
 function _preview_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
-    src = try
-        _sccode_fetch_source(entry.id)
-    catch err
-        _push_app_log!(m, "[ERROR] sccode fetch $(entry.id): $(sprint(showerror, err))")
-        return
+    _background!(() -> _sccode_fetch_source(entry.id)) do src, err
+        if err !== nothing
+            _push_app_log!(m, "[ERROR] sccode fetch $(entry.id): $(sprint(showerror, err))")
+            return
+        end
+        name = _sccode_extract_synthdef_name(src)
+        if name === nothing
+            _push_app_log!(m, "[WARN] sccode $(entry.id) : pas de SynthDef, éval brute")
+            send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[entry.id, src])))
+            return
+        end
+        send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[name, src])))
+        _push_app_log!(m, "[INFO] écoute sccode/$(entry.id) → $(name)")
     end
-    name = _sccode_extract_synthdef_name(src)
-    if name === nothing
-        _push_app_log!(m, "[WARN] sccode $(entry.id) : pas de SynthDef, éval brute")
-        send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[entry.id, src])))
-        return
-    end
-    send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay", Any[name, src])))
-    _push_app_log!(m, "[INFO] écoute sccode/$(entry.id) → $(name)")
+    return
 end
 
-function _load_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry)
-    _sccode_import!(m, entry.id; title = entry.title) === nothing && return
-    m.modal = :none
-end
+# Entrée sur une ligne : importe, et ferme la modale une fois le synth ouvert.
+_load_sccode_by_entry!(m::RessacApp, entry::_SccodeEntry) =
+    _sccode_import!(m, entry.id; title = entry.title, then = _ -> (m.modal === :sccode && (m.modal = :none)))
 
 function _sccode_paginate!(m::RessacApp, delta::Int)
     new_page = max(1, m.sccode_page + delta)
     new_page == m.sccode_page && return
-    m.sccode_loading = true
-    try
-        m.sccode_entries = _sccode_fetch_list(new_page; tag = m.sccode_tag)
-        m.sccode_page = new_page
-        m.sccode.list.selected = 1; m.sccode.list.offset = 0
-        _push_app_log!(m, "[INFO] sccode page $new_page — $(length(m.sccode_entries)) entrées")
-    catch err
-        _push_app_log!(m, "[ERROR] sccode page $new_page: $(sprint(showerror, err))")
-    finally
-        m.sccode_loading = false
-    end
+    _sccode_load_page!(m, new_page)
 end
 
 # L'entrée sélectionnée (dans la liste filtrée) : écoute, ou charge dans une pane.

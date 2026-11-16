@@ -144,20 +144,6 @@ function _inner_rect(rect::TK.Rect)
             max(0, rect.width - 2), max(0, rect.height - 2))
 end
 
-"""
-    _active_slots_summary(m) -> String
-
-Compact list of slot ids currently scheduled, e.g. "@d1 @d2 @d4".
-Empty string when nothing is playing. Goes in the patterns block title
-so the user always sees what's live.
-"""
-function _active_slots_summary(m::RessacApp)
-    slots = pattern_keys(m.scheduler)
-    isempty(slots) && return ""
-    sort!(slots;
-          by = s -> try parse(Int, String(s)[2:end]) catch; 999 end)
-    join(("@" * String(s) for s in slots), " ")
-end
 
 
 """
@@ -236,7 +222,7 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
             # global lu par _render_pane_block_simple!.
             _PANE_FOCUS_COLOR[] = node.id == focused_id ? _mode_color(m) : nothing
             try
-                render!(pane, rect, buf)
+                _render_pane_guarded!(m, pane, rect, buf)
             finally
                 _PANE_FOCUS_COLOR[] = nothing
             end
@@ -252,8 +238,24 @@ end
 function _render_floats!(floats::Vector{FloatingPane}, buf::TK.Buffer,
                          m::RessacApp)
     for f in sort(floats; by = x -> x.z_order)
-        render!(f.pane, TK.Rect(f.x, f.y, f.w, f.h), buf)
+        _render_pane_guarded!(m, f.pane, TK.Rect(f.x, f.y, f.w, f.h), buf)
     end
+end
+
+# Une pane dont le rendu lève ne fait tomber ni l'app ni ses voisines : son
+# rectangle affiche l'erreur, le journal la garde (dédupliquée d'une frame à
+# l'autre par `_push_app_log!`).
+function _render_pane_guarded!(m::RessacApp, pane::PaneImpl, rect::TK.Rect, buf::TK.Buffer)
+    try
+        render!(pane, rect, buf)
+    catch err
+        msg = first(sprint(showerror, err), 160)
+        _push_app_log!(m, "[ERROR] affichage de la pane « $(title(pane)) » — $msg")
+        rect.width > 0 && rect.height > 0 &&
+            TK.set_string!(buf, rect.x, rect.y,
+                           first("✗ " * msg, rect.width), TK.tstyle(:error))
+    end
+    return nothing
 end
 
 """
@@ -285,6 +287,23 @@ function _cycle_log_tail!(m::RessacApp, n::Union{Nothing,Int} = nothing)
 end
 
 function TK.view(m::RessacApp, f::TK.Frame)
+    # Ce que les threads de fond (scheduler, écoute OSC) ont à dire.
+    for line in _drain_notices!()
+        _push_app_log!(m, line)
+    end
+    # …et les résultats des travaux de fond (requêtes, rendus hors-ligne).
+    _drain_jobs!(m)
+    # Dernier filet, comme pour les touches : Tachikoma relance toute
+    # exception sortie de `view`, ce qui ferme la session en plein jeu.
+    try
+        _view!(m, f)
+    catch err
+        _push_app_log!(m, "[ERROR] affichage — $(first(sprint(showerror, err), 160))")
+    end
+    return
+end
+
+function _view!(m::RessacApp, f::TK.Frame)
     # Paused: skip the whole draw so the terminal's last frame stays put
     # and the user can shift-drag-select + copy without our next render
     # wiping the highlight. update! flips paused=false on any keypress,
@@ -552,7 +571,7 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                        is_cur ? _pill_style(:accent) : _band_style(fg = TK.theme().text_dim))
         let idx = i
             push!(m._status_hits, (wsx, wsx + textwidth(label) - 1,
-                                   () -> (cmd_workspace_switch!(m.workspaces, idx); _ensure_default_workspace!(m))))
+                                   () -> (_switch_workspace!(m, idx); _ensure_default_workspace!(m))))
         end
     end
     # La pastille RESSAC ouvre l'aide.
@@ -645,16 +664,6 @@ function _current_mode_symbol(m::RessacApp)
     return ed === nothing ? :normal : ed.mode   # no editor → neutral NORMAL
 end
 
-"""
-    _mode_style(mode; bold=false) -> TK.Style
-
-Map a mode symbol to its accent style. Unknown modes fall back to
-:accent so the UI never goes uncoloured.
-"""
-function _mode_style(mode::Symbol; bold::Bool = false)
-    palette = get(_MODE_COLORS, mode, :accent)
-    return TK.tstyle(palette, bold = bold)
-end
 # Couleur (du thème) du mode courant — cadre de la pane focalisée, badge.
 _mode_color(m::RessacApp) = getfield(TK.theme(), get(_MODE_COLORS, _current_mode_symbol(m), :accent))
 # Bandeau de chrome (status line, barre de touches) : texte sur la couleur

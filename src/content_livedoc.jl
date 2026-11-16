@@ -578,7 +578,6 @@ A single-row widget showing the live doc for the word under the
 cursor. Empty when no doc is found. Always rendered between footer
 and logs so the user has docs at a glance.
 """
-# The RessacApp path renders livedoc
-# inline via the editor's hint strip (see `app.jl`).
-# `_word_under_cursor` + `_lookup_livedoc` (defined above) are the
-# pure helpers it shares with the deleted widget.
+# The RessacApp path renders livedoc inline via the editor's hint strip
+# and the DOC pane (see app_livedoc.jl), on top of the pure helpers
+# `_word_under_cursor` + `_lookup_livedoc` defined above.

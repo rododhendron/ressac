@@ -1,6 +1,6 @@
 # Synth library picker — preview + instantiate from the built-in
 # library (src/synth_library.jl) and any user-saved synths in
-# plugins/user-synths/. Extracted from app.jl.
+# plugins/user-synths/.
 
 function _open_synth_library!(m::RessacApp)
     _open_modal!(m, :synth_library)
@@ -38,7 +38,7 @@ description, so the modal renders them alongside the built-ins.
 """
 function _synthlib_all_entries()
     entries = copy(_SYNTH_LIBRARY)
-    dir = joinpath(pwd(), "plugins", "user-synths")
+    dir = joinpath(_project_dir(), "plugins", "user-synths")
     isdir(dir) || return entries
     for f in sort!(readdir(dir))
         name, ext = splitext(f)
@@ -160,7 +160,7 @@ renommant si un fichier du même nom existe déjà.
 """
 function _write_library_synth(entry::_SynthLibEntry)
     name = entry.name
-    dir = joinpath(pwd(), "plugins", "user-synths")
+    dir = joinpath(_project_dir(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
     ext = entry.mode === :dsl ? ".jl" : ".scd"
     target = joinpath(dir, "$name$ext")

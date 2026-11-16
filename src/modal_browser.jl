@@ -2,7 +2,7 @@
 # instruments and synths. Owns the open/handle/preview/insert/render
 # path AND the shared types/helpers (`_BrowserEntry`, the three
 # `_*_summary` rendering helpers, and the `_PREVIEW_CUT_GROUP`
-# constant — moved here from the deleted tui_browser.jl).
+# constant).
 
 """
     _BrowserEntry(kind, name, plugin, summary)
@@ -170,13 +170,10 @@ function _browser_insert!(m::RessacApp, entry::_BrowserEntry)
     row = ed.cursor_row
     1 <= row <= length(lines) || (push!(lines, ""); row = length(lines))
     line = lines[row]
-    col = clamp(ed.cursor_col, 0, lastindex(line))
+    col = clamp(ed.cursor_col, 0, length(line))            # en caractères, comme le curseur
     name = String(entry.name)
-    prefix = col > 0 ? line[1:col] : ""
-    suffix = col >= lastindex(line) ? "" : line[col+1:end]
-    lines[row] = prefix * name * suffix
-    TK.set_text!(ed, join(lines, '\n'))
-    ed.cursor_col = lastindex(prefix) + lastindex(name)
+    lines[row] = _take_chars(line, col) * name * _drop_chars(line, col)
+    _edit_text!(ed, join(lines, '\n'); row = row, col = col + length(name))
     _push_app_log!(m, "[INFO] $(entry.kind) $name inséré")
 end
 
@@ -191,21 +188,8 @@ function _render_browser_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     inner.width < 20 && return
     # ── Row 1: category tab strip ─────────────────────────────────
     filters = (:all, :instruments, :samples, :synths)
-    tab_x = inner.x
-    for (i, f) in enumerate(filters)
-        label = String(f)
-        chip  = " " * label * " "
-        is_active = f === m.browser_filter
-        sty = is_active ? TK.tstyle(:accent, bold = true) :
-                          TK.tstyle(:text_dim)
-        tab_x + textwidth(chip) > inner.x + inner.width && break
-        TK.set_string!(buf, tab_x, inner.y, chip, sty)
-        tab_x += textwidth(chip)
-        if i < length(filters) && tab_x + 2 < inner.x + inner.width
-            TK.set_string!(buf, tab_x, inner.y, "·", TK.tstyle(:text_dim))
-            tab_x += 1
-        end
-    end
+    _render_tabs!(buf, TK.Rect(inner.x, inner.y, inner.width, 1), String[String(f) for f in filters],
+                  something(findfirst(==(m.browser_filter), filters), 1))
     # ── Row 2: search bar ─────────────────────────────────────────
     count_txt = "$(n) son$(n == 1 ? "" : "s")" *
                 (n == 0 ? "" : "  ·  $(m.browser_cursor)/$n")

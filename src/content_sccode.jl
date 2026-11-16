@@ -17,6 +17,16 @@ end
 # refetch. Keyed by id, value is the raw SC source.
 const _SCCODE_SOURCE_CACHE = Dict{String,String}()
 
+# Le seul point de sortie réseau du fichier : une fonction `url -> corps`.
+# Dans une Ref pour que la suite de tests la remplace — elle ne touche
+# jamais sccode.org.
+function _sccode_http_get(url::AbstractString)
+    r = HTTP.get(url; readtimeout = 15, connect_timeout = 5, retry = false, status_exception = false)
+    r.status == 200 || error("sccode HTTP $(r.status) pour $url")
+    return String(r.body)
+end
+const _SCCODE_GET = Ref{Function}(_sccode_http_get)
+
 """
     _sccode_fetch_list(page=1; tag="") -> Vector{_SccodeEntry}
 
@@ -43,9 +53,7 @@ function _sccode_fetch_list(page::Int = 1; tag::AbstractString = "")
     end
     sep = occursin('?', base) ? "&" : "?"
     url = "$(base)$(sep)page=$(page)"
-    r = HTTP.get(url; readtimeout = 15, status_exception = false)
-    r.status == 200 || throw(error("sccode list HTTP $(r.status) for $url"))
-    body = String(r.body)
+    body = _SCCODE_GET[](url)
     out = _SccodeEntry[]
     seen = Set{String}()
     # Sccode marks the code-page link with `class="object"`; user profile
@@ -74,9 +82,7 @@ function _sccode_fetch_source(id::AbstractString)
     sid = String(id)
     haskey(_SCCODE_SOURCE_CACHE, sid) && return _SCCODE_SOURCE_CACHE[sid]
     url = "$(_SCCODE_BASE)/$(sid)"
-    r = HTTP.get(url; readtimeout = 15, status_exception = false)
-    r.status == 200 || throw(error("sccode source HTTP $(r.status) for $url"))
-    body = String(r.body)
+    body = _SCCODE_GET[](url)
     # Collect every <pre>…</pre>; the code is in the one that doesn't look
     # like a column of line numbers.
     blocks = String[]

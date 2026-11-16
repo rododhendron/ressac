@@ -72,7 +72,7 @@ function _sculpt_command!(m::RessacApp, name::AbstractString)
         txt_for_msg = ed === nothing ? "" : TK.text(ed)
         ed === nothing ? nothing : _genome_from_any(txt_for_msg)
     else
-        path = joinpath(pwd(), "plugins", "user-synths", "$nm.jl")
+        path = joinpath(_project_dir(), "plugins", "user-synths", "$nm.jl")
         if isfile(path)
             txt_for_msg = read(path, String)
             _genome_from_any(txt_for_msg)
@@ -143,7 +143,10 @@ function _sculpt_refusal(nm::AbstractString, txt::AbstractString)
     isempty(txt) && return "« $nm » introuvable dans plugins/user-synths (.jl)"
     occursin("Sig(", txt) && return "« $nm » est un synth SC brut (Sig) — pas sculptable ; :synth $nm pour l'éditer"
     occursin("SynthDef(", txt) && return "« $nm » est du SuperCollider brut — pas sculptable ; :synth $nm pour l'éditer"
-    return "« $nm » n'est pas un DSL @synth parsable"
+    # Un DSL qui ne se relit pas entièrement : on dit ce qui a manqué plutôt
+    # que de sculpter un son amputé.
+    (_, why) = parse_dsl_synth(txt)
+    return "« $nm » ne se relit pas en entier — $why"
 end
 
 # Sauve le génome sculpté (pane focalisée, ou `pane`) en synth DSL (.jl)
@@ -163,7 +166,8 @@ function _save_sculpt!(m::RessacApp, name::AbstractString; pane = nothing)
     register_synth!(SynthEntry(sym, "user-synths",
         Dict{String,Any}("description" => "sculpted synth",
                          "tags" => ["user", "dsl", "sculpt"],
-                         "params" => Dict{String,Any}(String(k) => v for (k, v) in p.genome.controls))))
+                         "params" => Dict{String,Any}(String(k) => v for (k, v) in p.genome.controls)));
+                    update = true)
     p.label = nm
     _push_app_log!(m, "[INFO] sculpt sauvé → $path")
     return
@@ -182,29 +186,41 @@ function _prune_synth_buffer!(m::RessacApp, thr::Real)
     tab === nothing && return
     ed = tab.code_editor
     text = TK.text(ed)
-    g = genome_from_dsl(text)
-    g === nothing && (_push_app_log!(m, "[WARN] :prune — le buffer n'est pas un synth DSL analysable"); return)
+    (g, why) = parse_dsl_synth(text)
+    g === nothing && (_push_app_log!(m, "[WARN] :prune — le buffer ne se relit pas en entier, rien n'est touché : $why"); return)
+    plural(n) = n > 1 ? "s" : ""
+    # 1. Ce que la structure désigne : immédiat.
     removed = static_prune!(g)
-    measured = Int[]
-    note = ""
-    try
-        imps = measure_impacts(g)
+    if !isempty(removed)
+        _edit_text!(ed, replace_synth_block(text, render_dsl(g, Symbol(tab.name))); col = 0)
+        _push_app_log!(m, "[INFO] :prune — $(length(removed)) nœud$(plural(length(removed))) retiré$(plural(length(removed))) d'après la structure ($(join(("#$id" for id in removed), " "))) · mesure en cours…")
+    else
+        _push_app_log!(m, "[INFO] :prune — rien de suspect dans la structure · mesure en cours…")
+    end
+    # 2. Ce que la mesure désigne : un rendu sclang hors-ligne, en fond (il
+    #    prend des secondes — on continue à jouer). Le résultat n'est
+    #    appliqué que si le texte est encore celui qu'on a mesuré.
+    after_static = TK.text(ed)
+    measured_g = _copy_genome(g)
+    _background!(() -> measure_impacts(measured_g)) do imps, err
+        if err !== nothing
+            _push_app_log!(m, "[INFO] :prune — mesure indisponible : $(first(sprint(showerror, err), 80))" *
+                              (isempty(removed) ? "" : " — T pour écouter, :w pour sauver"))
+            return
+        end
+        if TK.text(ed) != after_static
+            _push_app_log!(m, "[WARN] :prune — le texte a changé pendant la mesure : rien de plus n'est retiré, relance :prune")
+            return
+        end
         measured = prune!(g, imps; threshold = thr)
-    catch err
-        note = first(sprint(showerror, err), 60)
+        if isempty(measured)
+            _push_app_log!(m, isempty(removed) ? "[INFO] :prune — rien sous $thr, tout s'entend" :
+                                                 "[INFO] :prune — rien de plus sous $thr — T pour écouter, :w pour sauver")
+            return
+        end
+        _edit_text!(ed, replace_synth_block(after_static, render_dsl(g, Symbol(tab.name))); col = 0)
+        _push_app_log!(m, "[INFO] :prune — $(length(measured)) nœud$(plural(length(measured))) inaudible$(plural(length(measured))) retiré$(plural(length(measured))) ($(join(("#$id" for id in measured), " "))) — T pour écouter, :w pour sauver")
     end
-    all_removed = vcat(removed, measured)
-    if isempty(all_removed)
-        _push_app_log!(m, isempty(note) ? "[INFO] :prune — rien sous $thr, tout s'entend" :
-                                          "[INFO] :prune — rien de suspect dans la structure (mesure indisponible : $note)")
-        return
-    end
-    row = ed.cursor_row
-    TK.set_text!(ed, replace_synth_block(text, render_dsl(g, Symbol(tab.name))))
-    ed.cursor_row = clamp(row, 1, length(ed.lines)); ed.cursor_col = 0
-    what = join(("#$id" for id in all_removed), " ")
-    _push_app_log!(m, "[INFO] :prune — $(length(all_removed)) nœud$(length(all_removed) > 1 ? "s" : "") retiré$(length(all_removed) > 1 ? "s" : "") ($what)" *
-                      (isempty(note) ? "" : " · mesure indisponible : $note") * " — T pour écouter, :w pour sauver")
     return
 end
 
@@ -218,16 +234,14 @@ function _todsl_command!(m::RessacApp)
         _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » est déjà en DSL")
         return
     end
-    r = synthdef_to_dsl(text)
+    (r, why) = synthdef_to_dsl_reason(text)
     if r === nothing
-        _push_app_log!(m, "[ERROR] :todsl — pas de SynthDef(\\nom, { |args| … Out.ar(out, …) }) reconnaissable dans « $(tab.name) »")
+        _push_app_log!(m, "[ERROR] :todsl — « $(tab.name) » n'est pas converti, le texte reste tel quel : $why")
         return
     end
     (_, dsl) = r
     header = "# converti depuis SuperCollider par :todsl — T teste, :w sauve en .jl, u annule\n\n"
-    TK._push_undo!(ed; force = true)
-    TK.set_text!(ed, header * _align_dsl_synth_name(dsl, tab.name))
-    ed.cursor_row = 3; ed.cursor_col = 0
+    _edit_text!(ed, header * _align_dsl_synth_name(dsl, tab.name); row = 3, col = 0)
     tab.synth_mode = :dsl
     _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » en DSL : le studio suit, T teste, :w sauve en .jl (u annule)")
     return

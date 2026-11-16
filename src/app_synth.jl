@@ -117,35 +117,13 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
         pane isa EditorPane || return
         eb = pane.tabs[1]
         eb.synth_mode = mode
-        TK.set_text!(eb.code_editor, src)
+        _load_text!(eb.code_editor, src)
     end
     eb.code_editor.mode = :normal
     eb.code_editor.focused = true
     _push_app_log!(m, "[INFO] synth « $name » ouvert [$mode] — T teste, :w sauve, U l'utilise dans un pattern")
 end
 
-"""
-    _close_synth_pane!(m)
-
-Close every synth pane in the workspace. Triggered by `:back`. To
-drop just the focused synth, see `_close_active_synth_tab!`.
-"""
-function _close_synth_pane!(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return
-    closed = 0
-    # Re-fetch each iteration: cmd_close! mutates the tree.
-    while true
-        syn = _all_synth_buffers(m)
-        isempty(syn) && break
-        ws.focused_pane = syn[1][1].id
-        cmd_close!(m.workspaces)
-        _drone_release_buffer!(m, syn[1][2].name)
-        closed += 1
-        closed > 64 && break   # safety against a stuck close
-    end
-    closed == 0 || _push_app_log!(m, "[INFO] $closed pane(s) synth fermée(s)")
-end
 
 """
     _close_active_synth_tab!(m)
@@ -253,19 +231,19 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
     tab = _current_synth_tab(m)
     old_name = tab.name
     text = TK.text(tab.code_editor)
-    dir = joinpath(pwd(), "plugins", "user-synths")
+    dir = joinpath(_project_dir(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
     align = tab.synth_mode === :dsl ? _align_dsl_synth_name : _align_synthdef_name
     if new_name === nothing
         # Plain :w — overwrite the current tab's backing file at the
         # extension that matches its mode (.jl for DSL, .scd for SC).
         text = align(text, old_name)
-        TK.set_text!(tab.code_editor, text)
+        _edit_text!(tab.code_editor, text)
         write(_app_synth_path(old_name; mode = tab.synth_mode), text)
         register_synth!(SynthEntry(Symbol(old_name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
                              "tags" => ["user", String(tab.synth_mode)],
-                             "params" => _dsl_params_from_text(text))))
+                             "params" => _dsl_params_from_text(text))); update = true)
         _push_app_log!(m, "[INFO] synth sauvé → $(_app_synth_path(old_name; mode = tab.synth_mode))")
     else
         # :w newname — Save-As. Same mode as the originating tab; the
@@ -276,7 +254,7 @@ function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractStri
         register_synth!(SynthEntry(Symbol(name), "user-synths",
             Dict{String,Any}("description" => "live-edited synth",
                              "tags" => ["user", String(tab.synth_mode)],
-                             "params" => _dsl_params_from_text(new_text))))
+                             "params" => _dsl_params_from_text(new_text))); update = true)
         _push_app_log!(m, "[INFO] synth sauvé sous → $(_app_synth_path(name; mode = tab.synth_mode))")
         _open_synth_tab!(m, name)
     end
@@ -582,7 +560,7 @@ function _append_pattern_line!(ed::TK.CodeEditor, line::AbstractString)
     lines = collect(split(TK.text(ed), '\n'; keepempty = true))
     last = something(findlast(l -> !isempty(strip(l)), lines), 0)
     insert!(lines, last + 1, String(line))
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     ed.cursor_row = last + 1
     ed.cursor_col = 0
     return
@@ -599,7 +577,7 @@ function _use_synth_in_pattern!(m::RessacApp, name::AbstractString)
     _switch_workspace_named!(m, "PLAY")
     ed = _patterns_editor!(m)
     ed === nothing && (_push_app_log!(m, "[ERROR] U — pas d'éditeur patterns"); return)
-    slot = _next_free_d_slot(ed)
+    slot = _next_free_slot(ed)
     line = "@d$slot p\"$(name)*4\""
     _append_pattern_line!(ed, line)
     ed.mode = :normal

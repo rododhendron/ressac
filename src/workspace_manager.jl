@@ -81,16 +81,18 @@ end
     _split_at!(container, child_idx, direction, new_leaf)
 
 Insert `new_leaf` as a sibling of `container.children[child_idx]`.
-If `direction == container.direction`, append as a sibling and
-recompute equal ratios. If different, wrap the existing child in a
-new container of `direction`.
+If `direction == container.direction`, the split pane shares its own room
+with the new one, half each — like tmux: splitting a pane splits *that*
+pane, the others keep the size the player gave them. If different, wrap
+the existing child in a new container of `direction`.
 """
 function _split_at!(container::Container, child_idx::Int,
                     direction::Symbol, new_leaf::PaneLeaf)
     if direction === container.direction
+        half = container.ratios[child_idx] / 2
+        container.ratios[child_idx] = half
         insert!(container.children, child_idx + 1, new_leaf)
-        n = length(container.children)
-        container.ratios = fill(1.0 / n, n)
+        insert!(container.ratios, child_idx + 1, half)
     else
         old_child = container.children[child_idx]
         sub = Container(direction, LayoutNode[old_child, new_leaf], [0.5, 0.5])
@@ -124,28 +126,32 @@ end
     _close_at(root, leaf_id) -> LayoutNode | Nothing
 
 Remove the leaf with the given id. Collapses unary containers
-(a container with one remaining child becomes that child). Returns
-the new root, or `nothing` if the only leaf is removed.
+(a container with one remaining child becomes that child) and keeps the
+remaining proportions. Returns the new root, or `nothing` if the only
+leaf is removed.
 """
 function _close_at(root::LayoutNode, leaf_id::Int)
     if root isa PaneLeaf
         return root.id == leaf_id ? nothing : root
     end
-    # Container
-    new_children = LayoutNode[]
-    for c in root.children
-        if c isa PaneLeaf && c.id == leaf_id
+    # La place d'une pane fermée revient à sa voisine — celle de gauche (ou
+    # du haut), à défaut celle de droite : l'inverse exact d'une scission,
+    # donc ouvrir une pane puis la fermer rend la disposition d'avant. Rien
+    # d'autre ne bouge, ni ici ni dans le reste de l'arbre.
+    children = LayoutNode[]; ratios = Float64[]
+    orphan = 0.0                                   # place libérée avant tout survivant
+    for (c, r) in zip(root.children, root.ratios)
+        rc = _close_at(c, leaf_id)
+        if rc === nothing
+            isempty(ratios) ? (orphan += r) : (ratios[end] += r)
             continue
         end
-        rc = _close_at(c, leaf_id)
-        rc === nothing || push!(new_children, rc)
+        push!(children, rc); push!(ratios, r + orphan)
+        orphan = 0.0
     end
-    isempty(new_children) && return nothing
-    if length(new_children) == 1
-        return new_children[1]   # collapse unary
-    end
-    n = length(new_children)
-    return Container(root.direction, new_children, fill(1.0 / n, n))
+    isempty(children) && return nothing
+    length(children) == 1 && return children[1]   # collapse unary: it takes its parent's slot
+    return Container(root.direction, children, ratios)
 end
 
 """
@@ -246,23 +252,36 @@ function _fill_rects!(node::LayoutNode, area::NamedTuple, out::Dict)
         out[node.id] = area
         return
     end
-    if node.direction === :h
-        x = area.x
-        for (i, child) in enumerate(node.children)
-            w = round(Int, area.w * node.ratios[i])
-            sub_area = (x=x, y=area.y, w=w, h=area.h)
-            _fill_rects!(child, sub_area, out)
-            x += w
-        end
-    else
-        y = area.y
-        for (i, child) in enumerate(node.children)
-            h = round(Int, area.h * node.ratios[i])
-            sub_area = (x=area.x, y=y, w=area.w, h=h)
-            _fill_rects!(child, sub_area, out)
-            y += h
-        end
+    for (child, sub) in zip(node.children, _child_areas(node, area))
+        _fill_rects!(child, sub, out)
     end
+end
+
+"""
+    _child_areas(container, area) -> Vector{NamedTuple}
+
+Le rectangle de chaque enfant. Les coupes sont posées aux proportions
+cumulées et le dernier enfant prend ce qui reste : les enfants pavent
+l'aire exactement — ni colonne en trop (deux moitiés de 119 faisaient
+60 + 60), ni colonne perdue (trois tiers de 100 faisaient 99). Rendu et
+frontières de redimensionnement lisent tous deux cette fonction.
+"""
+function _child_areas(node::Container, area::NamedTuple)
+    horizontal = node.direction === :h
+    extent = horizontal ? area.w : area.h
+    origin = horizontal ? area.x : area.y
+    n = length(node.children)
+    total = sum(node.ratios)
+    out = NamedTuple[]
+    cut = 0; acc = 0.0
+    for i in 1:n
+        acc += node.ratios[i]
+        next_cut = i == n ? extent : clamp(round(Int, extent * acc / total), cut, extent)
+        push!(out, horizontal ? (x = origin + cut, y = area.y, w = next_cut - cut, h = area.h) :
+                                (x = area.x, y = origin + cut, w = area.w, h = next_cut - cut))
+        cut = next_cut
+    end
+    return out
 end
 
 # ── Workspace lifecycle ────────────────────────────────────────────

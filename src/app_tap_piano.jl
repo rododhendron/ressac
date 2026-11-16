@@ -8,9 +8,9 @@
 # (tested in test/test_tap_detection.jl). Constants tuned with
 # hot_threshold = ⌈2·n_reps/3⌉, n_bins = 16, n_reps_best floor 1.25.
 #
-# Extracted from app.jl; load order assumes RessacApp, _push_app_log!,
+# Load order assumes RessacApp, _push_app_log!,
 # _LIVE_SCHEDULER, _eval_pattern_blocks!, set_cps!, _insert_line_after_cursor!,
-# _next_free_d_slot, send_osc/encode/OSCMessage are all in scope by the
+# _next_free_slot, send_osc/encode/OSCMessage are all in scope by the
 # time this file is included.
 
 # ---------------------------------------------------------------------
@@ -115,7 +115,7 @@ function _piano_commit!(m::RessacApp)
     end
     ed = _active_editor(m)
     ed === nothing && return
-    slot = _next_free_d_slot(ed)
+    slot = _next_free_slot(ed)
     line = "@d$(slot) :$(m.piano_synth) |> n(p\"" * join(cells, " ") * "\")"
     _insert_line_after_cursor!(ed, line)
     empty!(m.piano_events)
@@ -431,7 +431,7 @@ end
 function _tap_emit_line!(m::RessacApp, cells, suffix)
     ed = _active_editor(m)
     ed === nothing && return 0
-    slot = _next_free_d_slot(ed)
+    slot = _next_free_slot(ed)
     line = "@d$(slot) p\"" * join(cells, " ") * "\""
     _insert_line_after_cursor!(ed, line)
     empty!(m.tap_events)
@@ -462,4 +462,19 @@ function _tap_apply_tempo!(m::RessacApp)
     bpm = cps * 4 * 60
     _push_app_log!(m, "[INFO] tap-tempo → cps=$(round(cps; digits=3))  (~$(round(Int, bpm)) BPM, $(n) taps)")
     empty!(m.tap_events)
+end
+
+# ── Gestes du registre (scopes :tap et :piano, voir app_keymap.jl) ────
+
+"Échap pendant un tap : on jette les coups déjà frappés."
+function _tap_cancel!(m::RessacApp)
+    m.tap_recording = false
+    empty!(m.tap_events)
+    _push_app_log!(m, "[INFO] tap annulé")
+end
+
+"`[` / `]` au piano : une octave plus bas / plus haut (de 0 à 9)."
+function _piano_octave!(m::RessacApp, delta::Int)
+    m.piano_octave = clamp(m.piano_octave + delta, 0, 9)
+    _push_app_log!(m, "[INFO] piano octave $(m.piano_octave)")
 end

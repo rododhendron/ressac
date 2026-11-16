@@ -139,7 +139,7 @@ function _mixer_nudge_gain!(m::RessacApp, slot::Symbol, delta::Real)
     row = findfirst(line -> occursin(Regex("^\\s*@$(slot_id)\\b"), String(line)), lines)
     row === nothing && return _push_app_log!(m, "[WARN] mixer +/- : pas de ligne @$(slot_id) dans le buffer")
     lines[row] = _apply_gain_delta_to_line(String(lines[row]), delta)
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     _eval_pattern_blocks!(m, [slot])
 end
 

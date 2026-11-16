@@ -16,7 +16,7 @@ function _start_recording!(m::RessacApp, name=nothing)
         _push_app_log!(m, "[WARN] rec : déjà en enregistrement → $(m.recording_path)")
         return
     end
-    dir = joinpath(pwd(), "recordings")
+    dir = joinpath(_project_dir(), "recordings")
     isdir(dir) || mkpath(dir)
     fname = if name === nothing
         ts = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
@@ -63,14 +63,14 @@ One-shot WAV export of the currently-open synth. Sequence:
   1. Pull all patterns (`hush!`) so nothing else lands in the take.
   2. Write to `./recordings/<synthname>_<ts>.wav`, sample the SC
      master out for `duration` seconds.
-  3. While the recording is live, fire the synth once via the same
-     /ressac/evalAndPlay path that T uses (so we capture exactly
-     what the user hears when they hit T).
+  3. While the recording is live, fire the synth once through
+     `_test_current_synth!` — the very function T calls, so the take is
+     exactly what the user hears when they hit T, DSL or raw SC.
   4. After `duration` seconds, stop the recording.
 
 Runs the timing on an `@async` Task so the UI stays interactive.
 """
-function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
+function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0, pre_roll::Float64 = 0.3)
     _synth_pane_open(m) ||
         (_push_app_log!(m, "[ERROR] export : ouvre d'abord un synth (:synth <nom>)"); return)
     sched = _LIVE_SCHEDULER[]
@@ -79,8 +79,7 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
     m.recording &&
         (_push_app_log!(m, "[WARN] export : arrête d'abord le :rec en cours"); return)
     tab = _current_synth_tab(m)
-    src = TK.text(tab.code_editor)
-    dir = joinpath(pwd(), "recordings")
+    dir = joinpath(_project_dir(), "recordings")
     isdir(dir) || mkpath(dir)
     ts = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
     fname = "$(tab.name)_$(ts).wav"
@@ -102,10 +101,12 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0)
             # OSCdef to actually engage record before we fire the note.
             # A side-effect of the wait: the WAV has a fade-in margin of
             # silence which is convenient for downstream editing.
-            sleep(0.3)
-            send_osc(sched.osc,
-                     encode(OSCMessage("/ressac/evalAndPlay",
-                                        Any[tab.name, src])))
+            sleep(pre_roll)
+            # Le chemin de T, exactement : un synth DSL est évalué en Julia
+            # puis compilé en SC, un .scd part tel quel. (Envoyer le texte
+            # du buffer à sclang donnait une prise muette pour tout synth
+            # écrit en DSL.)
+            _test_current_synth!(m)
             sleep(duration)
             send_osc(sched.osc, encode(OSCMessage("/ressac/recStop", Any[])))
             m.recording = false

@@ -143,7 +143,7 @@ function _expand_snippet!(m::RessacApp, ed::TK.CodeEditor, template::AbstractStr
         line = lines[row]
         lines[row] = _take_chars(line, col) * text * _drop_chars(line, col)
     end
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     ed.cursor_row = row
     if isempty(ph_offsets)
         ed.cursor_col = col + length(text)
@@ -154,6 +154,7 @@ function _expand_snippet!(m::RessacApp, ed::TK.CodeEditor, template::AbstractStr
     m.placeholder_cols   = [col + off for off in ph_offsets]
     m.placeholder_idx    = 1
     m.placeholder_active = true
+    m.transient_ed       = ed
     ed.cursor_col = m.placeholder_cols[1]
     # On reste en mode NORMAL : Tab / Maj-Tab sautent entre les trous, `i`
     # remplit, `u` annule tout de suite si le snippet ne convient pas.
@@ -173,8 +174,6 @@ function _block_end_row(lines::Vector{String}, row::Int)
     return r
 end
 
-_take_chars(s::AbstractString, n::Int) = String(collect(s)[1:min(n, length(s))])
-_drop_chars(s::AbstractString, n::Int) = String(collect(s)[min(n, length(s)) + 1:end])
 
 """
     _next_free_slot(ed) -> Int
@@ -213,6 +212,11 @@ insert so the user can keep typing).
 """
 function _placeholder_jump!(m::RessacApp, ed::TK.CodeEditor, dir::Int)
     m.placeholder_active || return false
+    # La ligne des trous a pu disparaître (un `dd` entre deux Tab).
+    if !(1 <= m.placeholder_row <= length(ed.lines))
+        m.placeholder_active = false
+        return true
+    end
     new_idx = m.placeholder_idx + dir
     if new_idx < 1 || new_idx > length(m.placeholder_cols)
         m.placeholder_active = false

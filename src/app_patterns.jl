@@ -15,8 +15,8 @@ uncommented `@dN ...` slot def → prefix it with `# ` and call
 and re-eval so the pattern comes back. Other lines log a warning.
 """
 function _toggle_mute_current_line!(m::RessacApp)
-    ed = _active_editor(m)
-    ed === nothing && return
+    _guard_patterns_only!(m, "m (mute)") || return
+    ed = _patterns_editor(m)
     txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty=true))
     row = ed.cursor_row
@@ -36,7 +36,7 @@ function _toggle_mute_current_line!(m::RessacApp)
         for r in root_row:end_row
             lines[r] = "# " * lines[r]
         end
-        TK.set_text!(ed, join(lines, '\n'))
+        _edit_text!(ed, join(lines, '\n'))
         ed.cursor_row = row
         ed.cursor_col = col + 2
         unset_pattern!(m.scheduler, slot)
@@ -56,7 +56,7 @@ function _toggle_mute_current_line!(m::RessacApp)
                 lines[r] = s[2:end]
             end
         end
-        TK.set_text!(ed, join(lines, '\n'))
+        _edit_text!(ed, join(lines, '\n'))
         ed.cursor_row = row
         ed.cursor_col = max(0, col - 2)
         # Re-eval so the slot comes back live — `_eval_current_line!`
@@ -218,22 +218,12 @@ function _solo_pattern_slot!(m::RessacApp, solo_slot::Symbol)
     _push_app_log!(m, "[INFO] solo $solo_slot ($muted autres mutés)")
 end
 
-function _next_free_d_slot(ed::TK.CodeEditor)
-    used = Set{Int}()
-    for mt in eachmatch(r"@d(\d+)", TK.text(ed))
-        push!(used, parse(Int, mt.captures[1]))
-    end
-    n = 1
-    while n in used; n += 1; end
-    return n
-end
-
 function _insert_line_after_cursor!(ed::TK.CodeEditor, line::AbstractString)
     txt = TK.text(ed)
     lines = collect(split(txt, '\n'; keepempty=true))
     row = clamp(ed.cursor_row, 1, length(lines))
     insert!(lines, row + 1, String(line))
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     ed.cursor_row = row + 1
     ed.cursor_col = length(line)
 end
@@ -298,8 +288,8 @@ wins. Then eval each block whose slot is in `target` (or all of
 them when `target === :all`). Logs a one-line summary.
 """
 function _eval_pattern_blocks!(m::RessacApp, target)
-    _guard_patterns_only!(m, "E (eval all blocks)") || return
-    txt = TK.text(_active_editor(m))
+    _guard_patterns_only!(m, "E (tout évaluer)") || return
+    txt = TK.text(_patterns_editor(m))
     lines = collect(split(txt, '\n'; keepempty=true))
     blocks = Dict{Symbol,String}()
     prelude = String[]                  # tout ce qui n'est pas un slot, dans l'ordre
@@ -322,16 +312,16 @@ function _eval_pattern_blocks!(m::RessacApp, target)
             i = b + 1
             continue
         end
-        # Capture the whole block: this line + continuation lines.
-        j = i + 1
-        while j <= length(lines) && startswith(lstrip(lines[j]), "|>")
-            j += 1
-        end
+        # Le bloc entier, comme `e` le délimite : les lignes `|>` qui
+        # suivent, mais aussi une parenthèse ou un crochet resté ouvert
+        # (`@d1 stack([p"bd",` / `p"hh"])`). `E` et `e` lisent le même bloc.
+        (_, b) = _logical_block_range(lines, i)
+        b = max(b, i)
         if mt.captures[1] === nothing
             slot = Symbol("d", mt.captures[2])
-            blocks[slot] = _join_logical_block(lines[i:j-1])
+            blocks[slot] = _join_logical_block(lines[i:b])
         end
-        i = j
+        i = b + 1
     end
     targets = target === :all ?
         sort!(collect(keys(blocks)); by=s -> parse(Int, String(s)[2:end])) :
@@ -553,25 +543,17 @@ end
 # pane, no workspace). Prevents Meta.parse from being handed
 # SuperCollider source it can't read.
 function _guard_patterns_only!(m::RessacApp, action::AbstractString)
-    ws = current_workspace(m.workspaces)
-    if ws !== nothing
-        leaf = _find_leaf_by_id(ws.tree, ws.focused_pane)
-        if leaf isa PaneLeaf && 1 <= leaf.current_tab <= length(leaf.tabs)
-            pane = leaf.tabs[leaf.current_tab]
-            if pane isa EditorPane && !isempty(pane.tabs) &&
-               pane.tabs[pane.current_tab].role === :patterns
-                return true
-            end
-        end
-    end
-    _push_app_log!(m,
-        "[WARN] $action ne marche que dans une pane patterns — Ctrl-w h/j/k/l pour la focaliser")
+    # La cible est le texte des patterns du workspace, quelle que soit la
+    # pane focalisée (voir `_patterns_editor`) : `e` depuis le wiki évalue
+    # la ligne du curseur des patterns, comme la barre de touches l'annonce.
+    _patterns_editor(m) === nothing || return true
+    _push_app_log!(m, "[WARN] $action : pas de patterns dans ce workspace — Ctrl-1 revient à PLAY")
     return false
 end
 
 function _eval_current_line!(m::RessacApp)
-    _guard_patterns_only!(m, "e (eval current line)") || return
-    ce = _active_editor(m)
+    _guard_patterns_only!(m, "e (évaluer la ligne)") || return
+    ce = _patterns_editor(m)
     txt = TK.text(ce)
     lines = collect(split(txt, '\n'; keepempty=true))
     row = ce.cursor_row
@@ -711,5 +693,5 @@ _refs_any(::Any, ::Set{Symbol}) = false
 # ---------------------------------------------------------------------
 
 _app_synth_path(name::AbstractString; mode::Symbol = :dsl) =
-    joinpath(pwd(), "plugins", "user-synths",
+    joinpath(_project_dir(), "plugins", "user-synths",
              String(name) * (mode === :dsl ? ".jl" : ".scd"))

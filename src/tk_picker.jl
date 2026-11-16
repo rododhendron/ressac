@@ -41,7 +41,7 @@ _search_input() = TK.TextInput(; label = "⌕ ", style = TK.tstyle(:accent, bold
 function _search_type!(input::TK.TextInput, evt::TK.KeyEvent)
     input.focused || return false
     if evt.key === :char
-        (evt.char != '\0' && _is_typable_ascii(evt.char)) || return false
+        _is_typable(evt.char) || return false
         return TK.handle_key!(input, evt)
     end
     evt.key in (:backspace, :delete, :left, :right) || return false
@@ -212,4 +212,55 @@ function _datatable_cell_xy(dt::TK.DataTable, row::Int, col::Int)
     (y < a.y + 2 || y >= a.y + a.height) && return nothing
     x = a.x + 1 + sum(dt.last_widths[1:col-1]; init = 0) + (col - 1)     # marge + séparateurs
     return (x, y)
+end
+
+# ── Deux formes partagées ─────────────────────────────────────────────
+
+"""
+    _render_tabs!(buf, rect, labels, active)
+
+Une rangée d'onglets (les catégories d'une modale) : le `TabBar` de
+Tachikoma, sans cadre, l'onglet actif en accent.
+"""
+function _render_tabs!(buf::TK.Buffer, rect::TK.Rect, labels::Vector{String}, active::Int)
+    (rect.width < 4 || rect.height < 1 || isempty(labels)) && return
+    bar = TK.TabBar(labels; active = clamp(active, 1, length(labels)),
+                    tab_style = TK.TabBarStyle(decoration = TK.PlainTabs(), separator = " · "))
+    TK.render(bar, rect, buf)
+    return
+end
+
+"""
+    _render_candidate_grid!(buf, area, candidates, selected; min_cell = 14) -> cols
+
+La grille des candidats d'une complétion, en colonnes : `▶` devant le
+candidat choisi, la ligne qui le porte toujours visible. Tachikoma n'a pas
+de liste à plusieurs colonnes ; celle-ci sert à la fois à la complétion de
+l'éditeur et à celle de la barre de commande. Rend le nombre de colonnes
+(les flèches ↑ / ↓ s'en servent pour sauter d'une ligne).
+"""
+function _render_candidate_grid!(buf::TK.Buffer, area::TK.Rect, candidates::Vector{String}, selected::Int;
+                                 min_cell::Int = 14)
+    n = length(candidates)
+    (n == 0 || area.height < 1 || area.width < 4) && return 1
+    # La zone est effacée d'abord : une liste qui raccourcit ne laisse pas
+    # voir la frame d'avant (ni le journal, quand la grille le recouvre).
+    blank = repeat(' ', area.width)
+    for y in area.y:(area.y + area.height - 1)
+        TK.set_string!(buf, area.x, y, blank, TK.tstyle(:text))
+    end
+    cell_w = max(maximum(textwidth, candidates) + 4, min_cell)   # « ▶ » + libellé + gouttière
+    cols = clamp(area.width ÷ cell_w, 1, n)
+    rows = cld(n, cols)
+    sel_row = cld(max(selected, 1), cols)
+    first_row = _scroll_to_show(sel_row, rows, area.height, 0) + 1
+    for r in first_row:min(rows, first_row + area.height - 1), c in 1:cols
+        i = (r - 1) * cols + c
+        i > n && break
+        cur = i == selected
+        text = first(rpad((cur ? "▶ " : "  ") * candidates[i], cell_w - 1), cell_w - 1)
+        TK.set_string!(buf, area.x + (c - 1) * cell_w, area.y + (r - first_row), text,
+                       cur ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text))
+    end
+    return cols
 end

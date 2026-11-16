@@ -3,6 +3,48 @@
 # nudge des nombres sous le curseur, raccourcis pattern (:sg0.9…), style
 # du curseur. Ne dépend pas du scheduler.
 
+# ── Les nombres sous le curseur ──────────────────────────────────────
+# Number-nudge regex: optional sign, digits, optional fractional part.
+const _NUMBER_RX = r"-?\d+(?:\.\d+)?"
+
+"""
+    _number_at(ed, row, col) -> (first, last, text) | nothing
+
+Le littéral numérique de la ligne `row` qui couvre la colonne `col` (ou
+dont elle touche le bord gauche). `first` et `last` sont des colonnes de
+caractères 0-based, `last` exclu — les mêmes unités que le curseur, quels
+que soient les accents à gauche.
+"""
+function _number_at(ed::TK.CodeEditor, row::Int, col::Int)
+    1 <= row <= length(ed.lines) || return nothing
+    line = String(ed.lines[row])
+    for mt in eachmatch(_NUMBER_RX, line)
+        (first, last) = _char_span(line, mt)
+        # dedans, ou juste après son dernier chiffre
+        first <= col <= last && return (first, last, String(mt.match))
+    end
+    return nothing
+end
+
+# Le nombre après un pas de `step` : un entier bouge de `step` ; un flottant
+# garde sa précision d'écriture (±10 → ±0.1, ±1 → ±1.0).
+function _nudged_number(txt::AbstractString, step::Int)
+    occursin('.', txt) || return string(parse(Int, txt) + step)
+    delta = abs(step) == 10 ? (step > 0 ? 0.1 : -0.1) : Float64(step)
+    decimals = length(txt) - findfirst('.', txt)
+    return string(round(parse(Float64, txt) + delta; digits = decimals))
+end
+
+# Remplace le nombre trouvé par `_number_at` ; rend la nouvelle écriture.
+function _replace_number!(ed::TK.CodeEditor, row::Int, found, step::Int; col::Union{Nothing,Int} = nothing)
+    (first, last, txt) = found
+    new_str = _nudged_number(txt, step)
+    lines = _buffer_lines(ed)
+    splice!(lines[row], (first + 1):last, collect(new_str))
+    _edit_lines!(ed, lines; row = col === nothing ? nothing : row, col = col)
+    return new_str
+end
+
 """
     _try_nudge_at!(m, ed, row, col, step) -> Bool
 
@@ -12,69 +54,10 @@ Doesn't touch the keyboard cursor — useful for wheel-over-number
 hover.
 """
 function _try_nudge_at!(m::RessacApp, ed::TK.CodeEditor, row::Int, col::Int, step::Int)
-    1 <= row <= length(ed.lines) || return false
-    line = String(ed.lines[row])
-    best = nothing
-    for mt in eachmatch(_NUMBER_RX, line)
-        s = mt.offset
-        e = s + length(mt.match) - 1
-        s - 1 <= col <= e && (best = mt; break)
-    end
-    best === nothing && return false
-    txt = best.match
-    s = best.offset
-    e = s + length(txt) - 1
-    is_float = occursin('.', txt)
-    new_str = if is_float
-        delta = abs(step) == 10 ? (step > 0 ? 0.1 : -0.1) : Float64(step)
-        val = parse(Float64, txt) + delta
-        dot = findfirst('.', txt)
-        decimals = length(txt) - dot
-        string(round(val; digits = decimals))
-    else
-        string(parse(Int, txt) + step)
-    end
-    new_line = (s > 1 ? line[1:s-1] : "") * new_str *
-               (e >= lastindex(line) ? "" : line[e+1:end])
-    TK.set_text!(ed, _set_one_line(ed, row, new_line))
-    _push_app_log!(m, "[INFO] nudge $txt → $new_str  @ row $row")
-    return true
-end
-
-"""
-    _try_scale_at!(m, ed, row, col, factor) -> Bool
-
-Multiplicative nudge of the number under (row, col) by `factor` (e.g.
-`2.0` for `*`, `0.5` for `/`). Integer values round to int; floats
-keep their decimal places. Returns true iff a number was found.
-"""
-function _try_scale_at!(m::RessacApp, ed::TK.CodeEditor,
-                        row::Int, col::Int, factor::Float64)
-    1 <= row <= length(ed.lines) || return false
-    line = String(ed.lines[row])
-    best = nothing
-    for mt in eachmatch(_NUMBER_RX, line)
-        s = mt.offset
-        e = s + length(mt.match) - 1
-        s - 1 <= col <= e && (best = mt; break)
-    end
-    best === nothing && return false
-    txt = best.match
-    s = best.offset
-    e = s + length(txt) - 1
-    is_float = occursin('.', txt)
-    new_str = if is_float
-        val = parse(Float64, txt) * factor
-        dot = findfirst('.', txt)
-        decimals = length(txt) - dot
-        string(round(val; digits = decimals))
-    else
-        string(Int(round(parse(Int, txt) * factor)))
-    end
-    new_line = (s > 1 ? line[1:s-1] : "") * new_str *
-               (e >= lastindex(line) ? "" : line[e+1:end])
-    TK.set_text!(ed, _set_one_line(ed, row, new_line))
-    _push_app_log!(m, "[INFO] scale $txt → $new_str  @ row $row")
+    found = _number_at(ed, row, col)
+    found === nothing && return false
+    new_str = _replace_number!(ed, row, found, step)
+    _push_app_log!(m, "[INFO] nudge $(found[3]) → $new_str  @ row $row")
     return true
 end
 
@@ -250,78 +233,10 @@ function _word_end_motion!(ed::TK.CodeEditor, kind::Symbol)
 end
 
 """
-    _big_word_motion!(ed, dir, target)
-
-Legacy E (end-of-word) motion, kept for the `E` key wire-up. Forward-
-only, lands on the last char of the current/next word.
-"""
-function _big_word_motion!(ed::TK.CodeEditor, dir::Int, target::Symbol)
-    is_space(c) = c == ' ' || c == '\t'
-    n_rows = length(ed.lines)
-    n_rows == 0 && return
-    row = ed.cursor_row
-    col = ed.cursor_col  # 0-based
-    line = ed.lines[row]
-
-    # Convert to 1-based pos in current line; handle line wraps as we go.
-    pos = col + 1
-    line_len = length(line)
-
-    if dir > 0
-        # Forward: W → next word start ; E → next word end.
-        if target === :start
-            # Skip the current non-space run, then any whitespace.
-            while pos <= line_len && !is_space(line[pos]); pos += 1; end
-            while pos <= line_len && is_space(line[pos]); pos += 1; end
-            while pos > line_len && row < n_rows
-                row += 1; line = ed.lines[row]; line_len = length(line); pos = 1
-                while pos <= line_len && is_space(line[pos]); pos += 1; end
-            end
-        else  # :end
-            # If already at/past end of current word, advance into next.
-            if pos > line_len || is_space(line[pos])
-                while pos <= line_len && is_space(line[pos]); pos += 1; end
-                while pos > line_len && row < n_rows
-                    row += 1; line = ed.lines[row]; line_len = length(line); pos = 1
-                    while pos <= line_len && is_space(line[pos]); pos += 1; end
-                end
-            elseif pos < line_len && is_space(line[pos + 1])
-                # On last char of a word — jump to next.
-                while pos <= line_len && !is_space(line[pos]); pos += 1; end
-                while pos <= line_len && is_space(line[pos]); pos += 1; end
-                while pos > line_len && row < n_rows
-                    row += 1; line = ed.lines[row]; line_len = length(line); pos = 1
-                    while pos <= line_len && is_space(line[pos]); pos += 1; end
-                end
-            end
-            # Now pos is the first char of a word — advance to its end.
-            while pos < line_len && !is_space(line[pos + 1]); pos += 1; end
-        end
-    else
-        # Backward (B): move to previous word's start.
-        if pos > 1
-            pos -= 1
-            while pos > 0 && is_space(line[pos]); pos -= 1; end
-            while pos > 1 && !is_space(line[pos - 1]); pos -= 1; end
-        elseif row > 1
-            row -= 1; line = ed.lines[row]; line_len = length(line)
-            pos = line_len
-            while pos > 0 && is_space(line[pos]); pos -= 1; end
-            while pos > 1 && !is_space(line[pos - 1]); pos -= 1; end
-        end
-    end
-
-    pos = clamp(pos, 1, max(line_len, 1))
-    ed.cursor_row = row
-    ed.cursor_col = clamp(pos - 1, 0, max(line_len - 1, 0))
-    return
-end
-
-"""
     _op_with_motion!(m, ed, op::Char, motion::Char)
 
 Run a vim operator-motion combo (`cw`/`dw`/`yw`/`cW`/`dW`/`yW`/`ce`/
-`de`/`ye`/`cE`/`dE`/`yE`). Computes the motion's target, deletes (or
+`de`/`ye`/`cE`/`dE`/`yE`, and the end / start of line forms `d\$`, `c\$`, `y\$`, `d0`, `c0`, `y0`). Computes the motion's target, deletes (or
 yanks) the range from the cursor to that target, and — for `c` —
 drops into insert mode. **Preserves `scroll_offset` end-to-end** so
 the buffer view stays put even though the text mutated.
@@ -345,10 +260,16 @@ function _op_with_motion!(m::RessacApp, ed::TK.CodeEditor,
     # Compute the target by running the motion on a tiny clone so the
     # real editor state is untouched until we apply the edit.
     probe = TK.CodeEditor()
-    TK.set_text!(probe, TK.text(ed))
+    _load_text!(probe, TK.text(ed))
     probe.cursor_row = src_row
     probe.cursor_col = src_col
-    if use_end
+    if motion == '$'            # jusqu'à la fin de la ligne
+        dst_row = src_row
+        dst_col = length(ed.lines[src_row])
+    elseif motion == '0'        # jusqu'au début de la ligne
+        dst_row = src_row
+        dst_col = 0
+    elseif use_end
         _word_end_motion!(probe, kind)
         dst_row = probe.cursor_row
         dst_col = probe.cursor_col + 1   # +1 = exclusive end (include last word char)
@@ -356,6 +277,20 @@ function _op_with_motion!(m::RessacApp, ed::TK.CodeEditor,
         _word_motion!(probe, dir, kind)
         dst_row = probe.cursor_row
         dst_col = probe.cursor_col
+        if dir > 0
+            # Comme vim, sur le dernier mot d'une ligne `dw` s'arrête à la
+            # fin de la ligne : il ne recolle pas la suivante, et il ne
+            # laisse pas le dernier caractère (le mouvement `w`, faute de
+            # mot suivant, s'était posé dessus).
+            line = ed.lines[src_row]
+            cls(c) = isspace(c) ? 0 : (kind === :big || isletter(c) || isdigit(c) || c == '_') ? 1 : 2
+            stuck = dst_row == src_row && dst_col == length(line) - 1 && src_col < length(line) &&
+                    all(c -> cls(c) == cls(line[src_col + 1]), @view line[(src_col + 1):(dst_col + 1)])
+            if dst_row > src_row || stuck
+                dst_row = src_row
+                dst_col = length(line)
+            end
+        end
     end
 
     # Normalise so (src) <= (dst) — backward motions (b/B) flip.
@@ -366,21 +301,20 @@ function _op_with_motion!(m::RessacApp, ed::TK.CodeEditor,
         return
     end
 
-    # Build the yanked text. Char-wise yank (yank_is_linewise=false).
-    lines = collect(split(TK.text(ed), '\n'; keepempty = true))
+    # Le texte visé, en caractères (les colonnes du curseur en sont).
+    lines = _buffer_lines(ed)
     dst_col = clamp(dst_col, 0, length(lines[dst_row]))
     src_col = clamp(src_col, 0, length(lines[src_row]))
-    yanked_str = if src_row == dst_row
-        SubString(lines[src_row], src_col + 1, dst_col)
+    yanked = if src_row == dst_row
+        Vector{Char}[lines[src_row][(src_col + 1):dst_col]]
     else
-        first_part = SubString(lines[src_row], src_col + 1, length(lines[src_row]))
-        middle = src_row + 1 <= dst_row - 1 ?
-                 lines[src_row + 1 : dst_row - 1] : SubString{String}[]
-        last_part = SubString(lines[dst_row], 1, dst_col)
-        join([first_part, middle..., last_part], '\n')
+        vcat(Vector{Char}[lines[src_row][(src_col + 1):end]],
+             lines[(src_row + 1):(dst_row - 1)],
+             Vector{Char}[lines[dst_row][1:dst_col]])
     end
-    ed.yank_buffer = [collect(line) for line in split(yanked_str, '\n')]
+    ed.yank_buffer = yanked
     ed.yank_is_linewise = false
+    n_chars = sum(length, yanked) + length(yanked) - 1
 
     if op == 'y'
         # Yank only — leave cursor at the original position (vim quirk
@@ -388,27 +322,17 @@ function _op_with_motion!(m::RessacApp, ed::TK.CodeEditor,
         ed.cursor_row = src_row
         ed.cursor_col = src_col
         ed.scroll_offset = saved_scroll
-        _push_app_log!(m, "[INFO] $op$motion — $(length(yanked_str)) caractère(s) copié(s)")
+        _push_app_log!(m, "[INFO] $op$motion — $(n_chars) caractère(s) copié(s)")
         return
     end
 
-    # Delete the range. Rebuild affected lines, then collapse.
-    if src_row == dst_row
-        lines[src_row] = lines[src_row][1:src_col] *
-                         lines[src_row][dst_col + 1 : end]
-    else
-        lines[src_row] = lines[src_row][1:src_col] *
-                         lines[dst_row][dst_col + 1 : end]
-        deleteat!(lines, src_row + 1 : dst_row)
-    end
-    isempty(lines) && push!(lines, "")
-
-    # `set_text!` resets scroll_offset to 0 — save & restore.
-    TK.set_text!(ed, join(lines, '\n'))
-    ed.cursor_row = clamp(src_row, 1, length(ed.lines))
-    ed.cursor_col = clamp(src_col, 0,
-                          max(length(ed.lines[ed.cursor_row]) - 1, 0))
-    ed.scroll_offset = saved_scroll
+    # Delete the range: the head of the first line joins the tail of the last.
+    lines[src_row] = vcat(lines[src_row][1:src_col], lines[dst_row][(dst_col + 1):end])
+    src_row == dst_row || deleteat!(lines, (src_row + 1):dst_row)
+    # En mode normal le curseur ne dépasse pas le dernier caractère ; pour
+    # `c` (on passe en insertion) il peut se poser juste après.
+    last_col = op == 'c' ? length(lines[src_row]) : max(length(lines[src_row]) - 1, 0)
+    _edit_lines!(ed, lines; row = src_row, col = min(src_col, last_col))
 
     if op == 'c'
         ed.mode = :insert
@@ -513,35 +437,19 @@ function _apply_pattern_shortcut!(m::RessacApp, nl_before::Bool,
         ed.cursor_row += 1
         ed.cursor_col = length(next_indent)
     end
-    TK.set_text!(ed, join(lines, '\n'))
+    _edit_text!(ed, join(lines, '\n'))
     _push_app_log!(m, "[INFO] raccourci → $(strip(snippet))")
 end
 
-
-# Number-nudge regex: optional sign, digits, optional fractional part.
-# Anchored at the START of the candidate span, not the line — we'll
-# scan around the cursor for the nearest match.
-const _NUMBER_RX = r"-?\d+(?:\.\d+)?"
 
 """
     _has_number_under_cursor(ed) -> Bool
 
 True iff the cursor sits inside a numeric literal — used to decide
 whether + / - in normal mode should nudge the value or fall through
-to scope zoom. Cheap: a regex scan of one line.
+to scope zoom.
 """
-function _has_number_under_cursor(ed::TK.CodeEditor)
-    row = ed.cursor_row
-    1 <= row <= length(ed.lines) || return false
-    line = String(ed.lines[row])
-    col = ed.cursor_col
-    for mt in eachmatch(_NUMBER_RX, line)
-        s = mt.offset
-        e = s + length(mt.match) - 1
-        s - 1 <= col <= e && return true
-    end
-    return false
-end
+_has_number_under_cursor(ed::TK.CodeEditor) = _number_at(ed, ed.cursor_row, ed.cursor_col) !== nothing
 
 """
     _nudge_number_under_cursor!(m, ed, step)
@@ -552,62 +460,14 @@ get +/- step as-is; floats get scaled (step=±10 → ±0.1, step=±1 →
 number's decimal precision (1.20 stays two-decimal).
 """
 function _nudge_number_under_cursor!(m::RessacApp, ed::TK.CodeEditor, step::Int)
-    row = ed.cursor_row
-    1 <= row <= length(ed.lines) || return
-    line = String(ed.lines[row])
-    col = ed.cursor_col
-    # Find the number-match whose span covers col, or the nearest one.
-    best = nothing
-    for mt in eachmatch(_NUMBER_RX, line)
-        s = mt.offset
-        e = s + length(mt.match) - 1
-        if s - 1 <= col <= e   # 0-based col vs 1-based offsets
-            best = mt
-            break
-        end
-    end
-    best === nothing && return
-    txt = best.match
-    s = best.offset
-    e = s + length(txt) - 1
-    is_float = occursin('.', txt)
-    new_str = if is_float
-        delta = abs(step) == 10 ? (step > 0 ? 0.1 : -0.1) : Float64(step)
-        val = parse(Float64, txt) + delta
-        # Preserve precision of the original (count decimals).
-        dot = findfirst('.', txt)
-        decimals = length(txt) - dot
-        # Round to that many decimals to avoid 0.1+0.2 floating noise.
-        rounded = round(val; digits = decimals)
-        # Format with fixed decimals so "1.2 → 1.3" keeps one digit.
-        string(rounded)
-    else
-        val = parse(Int, txt) + step
-        string(val)
-    end
-    new_line = (s > 1 ? line[1:s-1] : "") * new_str *
-               (e >= lastindex(line) ? "" : line[e+1:end])
-    TK.set_text!(ed, _set_one_line(ed, row, new_line))
-    ed.cursor_row = row
-    # Keep cursor on the same logical position relative to the number's start.
-    ed.cursor_col = clamp(col + (length(new_str) - length(txt)), 0,
-                          length(ed.lines[row]))
+    row, col = ed.cursor_row, ed.cursor_col
+    found = _number_at(ed, row, col)
+    found === nothing && return
+    txt = found[3]
+    # Le curseur garde sa place par rapport au début du nombre.
+    new_str = _nudged_number(txt, step)
+    _replace_number!(ed, row, found, step; col = max(0, col + (length(new_str) - length(txt))))
     _push_app_log!(m, "[INFO] nudge $txt → $new_str")
-end
-
-"""
-    _set_one_line(ed, row, new_line) -> joined text
-
-Build the full buffer text with `row` replaced by `new_line`. Helper
-for nudge so we don't have to expand split/join inline at the call
-site.
-"""
-function _set_one_line(ed::TK.CodeEditor, row::Int, new_line::AbstractString)
-    txt = TK.text(ed)
-    lines = collect(split(txt, '\n'; keepempty=true))
-    1 <= row <= length(lines) || return txt
-    lines[row] = String(new_line)
-    return join(lines, '\n')
 end
 
 """

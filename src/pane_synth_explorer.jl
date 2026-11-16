@@ -905,8 +905,9 @@ function _explorer_naming_key!(p::SynthExplorerPane, evt::TK.KeyEvent)
     elseif evt.key === :backspace
         isempty(p.name_buf) || (p.name_buf = p.name_buf[1:end-1])
         return true
-    elseif evt.char isa Char && (isletter(evt.char) || isdigit(evt.char) ||
-                                 evt.char == '_' || evt.char == '-')
+    elseif evt.char isa Char && SynthDSL.valid_synth_name(p.name_buf * evt.char)
+        # Un nom de synth est un identifiant (voir `valid_synth_name`) : un
+        # tiret ou un chiffre en tête ne s'écrit pas.
         p.name_buf *= evt.char
         return true
     end
@@ -921,7 +922,7 @@ function _explorer_commit_named!(p::SynthExplorerPane)
         save_seed(p.name_buf, g; dir = dir)
     elseif p.naming === :synth
         dir = p.user_synth_dir_override === nothing ?
-              joinpath(pwd(), "plugins", "user-synths") : p.user_synth_dir_override
+              joinpath(_project_dir(), "plugins", "user-synths") : p.user_synth_dir_override
         isdir(dir) || mkpath(dir)
         write(joinpath(dir, "$(p.name_buf).jl"), _explorer_export_text(g, p.name_buf))
     elseif p.naming === :export
