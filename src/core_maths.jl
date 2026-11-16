@@ -13,14 +13,12 @@
 # l'événement, pas d'un état caché. Deux rendus du même cycle donnent le
 # même son, ce qui rend une session reproductible.
 
-# Uniforme [0, 1) déterministe à partir d'une graine quelconque.
-_u01(seed) = (hash(seed) % UInt32) / Float64(typemax(UInt32))
-_u01(seed, salt::Integer) = _u01((seed, salt))
+# (Le tirage lui-même, `_u01`, vit dans core_patterns.jl.)
 
 # Construit un signal continu dont la valeur est tirée à chaque fenêtre
 # de requête, à partir du milieu de la fenêtre (comme `rand_pat`).
 function _stochastic(f, salt::Integer)
-    Pattern{Float64}((s::Rational, e::Rational) -> begin
+    _signal((s::Rational, e::Rational) -> begin
         mid = (s + e) / 2
         u = _u01((Float64(mid), floor(Int, s)), salt)
         [Event{Float64}(s, e, f(u, (Float64(mid), salt)))]
@@ -98,16 +96,39 @@ Marche aléatoire : la valeur d'un cycle part de celle du précédent, à un
 `uniform` saute partout.
 """
 function walk(step::Real = 0.1; lo::Real = 0.0, hi::Real = 1.0)
-    Pattern{Float64}((s::Rational, e::Rational) -> begin
-        cyc = floor(Int, s)
-        # Somme des pas depuis le cycle 0, repliée dans [lo, hi].
-        v = 0.5
-        for c in 0:cyc
-            v += step * (2 * _u01(c, 13) - 1)
-            v = v < 0 ? -v : v > 1 ? 2 - v : v      # rebond aux bords
-        end
+    # Un pas par cycle, depuis 0.5, avec rebond aux bords.
+    chain = _CycleChain(0.5, (v, c) -> begin
+        v += step * (2 * _u01(c, 13) - 1)
+        v < 0 ? -v : v > 1 ? 2 - v : v
+    end)
+    _signal((s::Rational, e::Rational) -> begin
+        v = _chain_at(chain, floor(Int, s) + 1)
         [Event{Float64}(s, e, lo + (hi - lo) * clamp(v, 0.0, 1.0))]
     end)
+end
+
+# Une suite déterministe indexée par le cycle : x₀ = `init`,
+# xₙ₊₁ = `step(xₙ, n)`. `walk` et `markov` en ont besoin à chaque requête ;
+# la rejouer depuis 0 coûtait un temps proportionnel à l'âge de la session,
+# quarante fois par seconde. Elle est calculée une fois et gardée — sous
+# verrou, le scheduler et l'UI interrogent le même pattern.
+struct _CycleChain{S}
+    values::Vector{S}          # values[n + 1] = xₙ
+    step::Function
+    lock::ReentrantLock
+end
+_CycleChain(init::S, step) where {S} = _CycleChain{S}(S[init], step, ReentrantLock())
+
+"`xₙ` — l'état après `n` pas (`n ≤ 0` : l'état initial)."
+function _chain_at(ch::_CycleChain{S}, n::Int) where {S}
+    n <= 0 && return ch.values[1]
+    lock(ch.lock) do
+        while length(ch.values) <= n
+            k = length(ch.values) - 1
+            push!(ch.values, ch.step(ch.values[end], k)::S)
+        end
+        return ch.values[n + 1]
+    end
 end
 
 """
@@ -123,16 +144,14 @@ l'état `i` vers chacun des autres, un pas par cycle.
 function markov(transitions::AbstractVector, states::AbstractVector{T}) where {T}
     n = length(states)
     n == length(transitions) || throw(ArgumentError("markov : autant de lignes que d'états"))
+    weights = [Float64.(collect(row)) for row in transitions]
+    chain = _CycleChain(1, (i, c) -> _weighted_index(weights[i], _u01(c, 17)))
     Pattern{T}((s::Rational, e::Rational) -> begin
         out = Event{T}[]
         for cyc in _cycles(s, e)
-            i = 1
-            for c in 0:(cyc - 1)                       # rejoue la chaîne depuis 0
-                w = Float64.(collect(transitions[i]))
-                i = _weighted_index(w, _u01(c, 17))
-            end
-            a = max(Rational{Int64}(cyc), s); b = min(Rational{Int64}(cyc + 1), e)
-            a < b && push!(out, Event{T}(a, b, states[i]))
+            # Un événement par cycle, entier, dans la fenêtre de son attaque.
+            a = Rational{Int64}(cyc)
+            s <= a < e && push!(out, Event{T}(a, a + 1, states[_chain_at(chain, cyc)]))
         end
         out
     end)

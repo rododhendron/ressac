@@ -19,24 +19,33 @@ Alias for `Pattern{ControlMap}`. The result type of every effect helper.
 """
 const ControlPattern = Pattern{ControlMap}
 
+# ── Variantes « nom:3 » ──────────────────────────────────────────────
+"""
+    _split_variant(sym) -> (base::Symbol, idx::Union{Nothing,Int})
+
+`Symbol("sn:3")` → `(:sn, 3)` ; `:sn` → `(:sn, nothing)`. SuperDirt ne
+sépare pas lui-même : c'est nous qui envoyons `s sn n 3` (comme Tidal).
+Un suffixe qui n'est pas un entier (`bd:x`) fait partie du nom.
+"""
+function _split_variant(sym::Symbol)
+    str = String(sym)
+    i = findlast(':', str)
+    i === nothing && return (sym, nothing)
+    idx = tryparse(Int, str[nextind(str, i):end])
+    idx === nothing && return (sym, nothing)
+    return (Symbol(str[1:prevind(str, i)]), idx)
+end
+
 """
     _symbol_to_control_map(sym) -> ControlMap
 
 Lift a single `Pattern{Symbol}` event value into the ControlMap shape:
-`:bd` → `{:s => :bd}`; `Symbol("bd:1")` → `{:s => :bd, :n => 1}`.
-
-Used by `_lift_to_control` to bridge the sample-name form with
-the new effect DSL. The `:N` suffix split is what the K preview already
-does (see `_WORD_RX` in tui_bindings.jl) — same convention, same parse.
+`:bd` → `{:s => :bd}`; `Symbol("bd:1")` → `{:s => :bd, :n => 1}`
+(see [`_split_variant`](@ref) — the one place that reads the `:N` suffix).
 """
 function _symbol_to_control_map(sym::Symbol)::ControlMap
-    str = String(sym)
-    idx = findfirst(':', str)
-    if idx === nothing
-        return ControlMap(:s => sym)
-    end
-    return ControlMap(:s => Symbol(str[1:idx-1]),
-                      :n => parse(Int, str[idx+1:end]))
+    base, idx = _split_variant(sym)
+    return idx === nothing ? ControlMap(:s => base) : ControlMap(:s => base, :n => idx)
 end
 
 """
@@ -47,18 +56,29 @@ to accept either flavour of pattern transparently. Idempotent: lifting
 an already-lifted pattern returns it unchanged (no nested wrapping).
 """
 function _lift_to_control(p::Pattern{Symbol})::ControlPattern
-    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
-        inner = p(s, e)
-        out = Vector{Event{ControlMap}}(undef, length(inner))
-        for (i, ev) in enumerate(inner)
-            out[i] = Event{ControlMap}(ev.start, ev.stop,
-                                       _symbol_to_control_map(ev.value))
-        end
-        out
-    end)
+    lifted(evs) = Event{ControlMap}[Event{ControlMap}(ev.start, ev.stop, _symbol_to_control_map(ev.value))
+                                    for ev in evs]
+    Pattern{ControlMap}((s::Rational, e::Rational) -> lifted(p(s, e)),
+                        (s::Rational, e::Rational) -> lifted(_held(p, s, e)))
 end
 
 _lift_to_control(p::ControlPattern) = p
+
+# Type d'élément inconnu d'avance (`Pattern{Any}` : `slot(1)`, arithmétique
+# mixte…) : chaque valeur est levée d'après ce qu'elle est vraiment.
+function _lift_to_control(p::Pattern)::ControlPattern
+    lifted(evs) = Event{ControlMap}[Event{ControlMap}(ev.start, ev.stop, _value_to_control_map(ev.value))
+                                    for ev in evs]
+    Pattern{ControlMap}((s::Rational, e::Rational) -> lifted(p(s, e)),
+                        (s::Rational, e::Rational) -> lifted(_held(p, s, e)))
+end
+
+_value_to_control_map(v::ControlMap) = v
+_value_to_control_map(v::Symbol) = _symbol_to_control_map(v)
+_value_to_control_map(v::AbstractString) = _symbol_to_control_map(Symbol(v))
+_value_to_control_map(v) = throw(ArgumentError(
+    "la valeur $(repr(v)) ($(typeof(v))) n'est ni un nom de son ni un jeu de contrôles — " *
+    "un contrôle (`gain`, `lpf`, …) ne s'applique qu'à un pattern de sons"))
 
 """
     set(key::Symbol, val) -> (Pattern -> ControlPattern)
@@ -119,7 +139,7 @@ end
 
 function set(key::Symbol, pat::Pattern)
     return function (p)
-        mode = _CONTROL_STRUCT[]
+        mode = _control_struct()
         lifted = _lift_to_control(_as_pattern(p))
         _apply_control_pattern(lifted, pat, mode) do cm, v
             cm[key] = _resolve_value(v)
@@ -136,17 +156,14 @@ end
 # (`:bd |> n("0 1 2")` fait trois coups). `sampled(f)` impose la gauche
 # même là ; `both(f)` découpe aux intersections (le `|>|` de Tidal), ce
 # que `pump` et `bend` demandent.
-const _CONTROL_STRUCT = Ref{Symbol}(:left)      # :left | :strict | :both
+#
+# Le mode est une portée dynamique, propre à la tâche : `both(f)` sur la
+# tâche UI ne doit pas changer ce que voit le scheduler quand il appelle,
+# sur son thread, un `f(p)` construit à la requête. (Un Ref global partagé
+# faisait exactement ça.)
+_control_struct() = get(task_local_storage(), :ressac_control_struct, :left)::Symbol   # :left | :strict | :both
 
-function _with_control_struct(mode::Symbol, f)
-    old = _CONTROL_STRUCT[]
-    _CONTROL_STRUCT[] = mode
-    try
-        return f()
-    finally
-        _CONTROL_STRUCT[] = old
-    end
-end
+_with_control_struct(mode::Symbol, f) = task_local_storage(f, :ressac_control_struct, mode)
 
 """
     both(f) -> (Pattern -> ControlPattern)
@@ -173,32 +190,42 @@ _whole_cycle(ev) = ev.start == floor(ev.start) && ev.stop == ev.start + 1
     _apply_control_pattern(combine!, lifted, val, mode) -> ControlPattern
 
 Pose la valeur de `val` sur chaque événement de `lifted` via
-`combine!(cm, v)` (qui mute `cm`), selon `mode` (voir `_CONTROL_STRUCT`).
+`combine!(cm, v)` (qui mute `cm`), selon `mode` (voir `_control_struct`).
 """
 function _apply_control_pattern(combine!, lifted::ControlPattern, val::Pattern, mode::Symbol)
     Pattern{ControlMap}((s::Rational, e::Rational) -> begin
         out = Event{ControlMap}[]
-        evs_in = lifted(s, e)
-        evs_val = val(s, e)
-        for ev_in in evs_in
-            if mode === :both || (mode === :left && _whole_cycle(ev_in))
-                # Intersections : le rythme vient (aussi) du contrôle.
-                for ev_v in evs_val
-                    a = max(ev_in.start, ev_v.start)
-                    b = min(ev_in.stop,  ev_v.stop)
-                    a < b || continue
-                    cm = copy(ev_in.value); combine!(cm, ev_v.value)
-                    push!(out, Event{ControlMap}(a, b, cm))
+        # Le contrôle est lu par sa tenue : une valeur posée avant la
+        # fenêtre (`"<400 2000>/2"`, `slow(4, …)`) vaut encore dedans.
+        evs_val = _held(val, s, e)
+        # Découpe aux intersections : le rythme vient (aussi) du contrôle,
+        # et chaque morceau compte là où il commence.
+        cut!(ev_in) = for ev_v in evs_val
+            a = max(ev_in.start, ev_v.start)
+            b = min(ev_in.stop,  ev_v.stop)
+            (a < b && s <= a < e) || continue
+            cm = copy(ev_in.value); combine!(cm, ev_v.value)
+            push!(out, Event{ControlMap}(a, b, cm))
+        end
+        if mode === :both
+            foreach(cut!, _held(lifted, s, e))
+        else
+            for ev_in in lifted(s, e)
+                if mode === :left && _whole_cycle(ev_in)
+                    cut!(ev_in)          # un son sans rythme prend celui du contrôle
+                    continue
                 end
-            else
-                # Structure de gauche : la valeur lue à l'attaque, dans le
-                # cycle de l'attaque (les requêtes rendent ce qui y commence).
-                c = Rational{Int64}(floor(Int, ev_in.start))
-                hit = val(c, c + 1)
-                i = findfirst(x -> x.start <= ev_in.start < x.stop, hit)
-                i === nothing && (i = findlast(x -> x.start <= ev_in.start, hit))
-                i === nothing && continue
-                cm = copy(ev_in.value); combine!(cm, hit[i].value)
+                # Structure de gauche : la valeur en cours à l'attaque ; à
+                # défaut (un silence dans le contrôle), la dernière posée
+                # dans le cycle.
+                hit = _event_at(val, ev_in.start)
+                if hit === nothing
+                    c = Rational{Int64}(floor(Int, ev_in.start))
+                    earlier = [x for x in val(c, c + 1) if x.start <= ev_in.start]
+                    isempty(earlier) && continue
+                    hit = last(earlier)
+                end
+                cm = copy(ev_in.value); combine!(cm, hit.value)
                 push!(out, Event{ControlMap}(ev_in.start, ev_in.stop, cm))
             end
         end
@@ -238,7 +265,7 @@ function _control_op(key::Symbol, op, val)
         p isa Pattern || throw(MethodError(_control_op, (key, op, val, p)))
         lifted = _lift_to_control(p)
         if val isa Pattern
-            mode = _CONTROL_STRUCT[]
+            mode = _control_struct()
             _apply_control_pattern(lifted, val, mode) do cm, v
                 r = resolve(v)
                 cm[key] = haskey(cm, key) ? op(cm[key], r) : r
@@ -535,13 +562,11 @@ function bend(curve::Pattern)
             out = Vector{Event{ControlMap}}(undef, length(inner))
             for (i, ev) in enumerate(inner)
                 cm = copy(ev.value)
-                # Sample the curve at this event's start. Continuous
-                # patterns return one event for any arc; discrete
-                # patterns may have several within (s, e) — we take
-                # the first whose arc contains the event start.
-                bend_evs = curve(ev.start, ev.start + Rational(1, 1_000_000))
-                cents = isempty(bend_evs) ? 0.0 :
-                        Float64(_resolve_value(bend_evs[1].value))
+                # La courbe est lue à l'attaque : un signal continu y est
+                # échantillonné, une courbe en paliers donne le palier en
+                # cours (même commencé avant).
+                hit = _event_at(curve, ev.start)
+                cents = hit === nothing ? 0.0 : Float64(_resolve_value(hit.value))
                 shift = cents / 100.0
                 cm[:note] = haskey(cm, :note) ? cm[:note] + shift : shift
                 out[i] = Event{ControlMap}(ev.start, ev.stop, cm)

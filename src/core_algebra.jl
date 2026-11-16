@@ -4,20 +4,24 @@ import Base: +, -, *, /
     _combine(op, p, q, ::Type{V}) -> Pattern{V}
 
 Combine two patterns by intersecting every pair of overlapping arcs and
-applying `op` to the values. The resulting events are clipped to the actual
-intersection arc; non-overlapping events are dropped.
+applying `op` to the values. Each result event is the intersection arc;
+non-overlapping events are dropped.
+
+Both sides are read through [`_held`](@ref) — an event that started before
+the window still intersects what happens in it — and an intersection counts
+in the window where it starts.
 
 Used as the engine behind `+`, `-`, `*`, `/` on two patterns.
 """
 function _combine(op, p::Pattern{T}, q::Pattern{U}, ::Type{V}) where {T,U,V}
     Pattern{V}((s::Rational, e::Rational) -> begin
-        evs_p = p(s, e)
-        evs_q = q(s, e)
+        evs_p = _held(p, s, e)
+        evs_q = _held(q, s, e)
         out = Event{V}[]
         for ev_p in evs_p, ev_q in evs_q
             a = max(ev_p.start, ev_q.start)
             b = min(ev_p.stop,  ev_q.stop)
-            a < b && push!(out, Event{V}(a, b, op(ev_p.value, ev_q.value)))
+            (a < b && s <= a < e) && push!(out, Event{V}(a, b, op(ev_p.value, ev_q.value)))
         end
         sort!(out, by = ev -> ev.start)
         out
@@ -30,9 +34,9 @@ end
 Map `f` over every event's value, preserving arcs. Used for `Pattern op scalar`.
 """
 function _mapvals(f, p::Pattern{T}, ::Type{V}) where {T,V}
-    Pattern{V}((s::Rational, e::Rational) -> begin
-        [Event{V}(ev.start, ev.stop, f(ev.value)) for ev in p(s, e)]
-    end)
+    mapped(evs) = Event{V}[Event{V}(ev.start, ev.stop, f(ev.value)) for ev in evs]
+    Pattern{V}((s::Rational, e::Rational) -> mapped(p(s, e)),
+               (s::Rational, e::Rational) -> mapped(_held(p, s, e)))
 end
 
 # --- Pattern op Pattern ---------------------------------------------------
@@ -75,15 +79,15 @@ pattern with a rhythmic pattern of booleans without requiring `T <: Number`.
 """
 function mask(p::Pattern{T}, q::Pattern{Bool}) where {T}
     Pattern{T}((s::Rational, e::Rational) -> begin
-        evs_p = p(s, e)
-        evs_q = q(s, e)
+        evs_p = _held(p, s, e)
+        evs_q = _held(q, s, e)
         out = Event{T}[]
         for ev_q in evs_q
             ev_q.value || continue
             for ev_p in evs_p
                 a = max(ev_p.start, ev_q.start)
                 b = min(ev_p.stop,  ev_q.stop)
-                a < b && push!(out, Event{T}(a, b, ev_p.value))
+                (a < b && s <= a < e) && push!(out, Event{T}(a, b, ev_p.value))
             end
         end
         sort!(out, by = ev -> ev.start)

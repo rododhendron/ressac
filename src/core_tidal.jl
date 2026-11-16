@@ -20,15 +20,6 @@ _num_pattern(x::Real) = pure(x)
 _num_pattern(x::AbstractString) = parse_minino(String(x))
 _num_pattern(x::Pattern) = x
 
-# Liste de patterns homogène : même T, sinon tout le monde monte en ControlMap.
-function _same_patterns(xs)
-    ps = Any[_as_pattern(x) for x in xs]
-    isempty(ps) && throw(ArgumentError("il faut au moins un pattern"))
-    T = typeof(ps[1]).parameters[1]
-    all(p -> p isa Pattern{T}, ps) && return Pattern{T}[p for p in ps]
-    return ControlPattern[_lift_to_control(p) for p in ps]
-end
-
 # Déplace le cycle `cyc` (temps [cyc, cyc+1)) de `p` dans la fenêtre [a, b).
 function _squeeze_cycle!(out::Vector{Event{T}}, p::Pattern{T}, cyc::Int,
                          a::Rational, b::Rational, s::Rational, e::Rational) where {T}
@@ -53,22 +44,6 @@ function _squeeze_slice!(out::Vector{Event{T}}, p::Pattern{T}, ts::Rational, te:
         na >= s && na < e && push!(out, Event{T}(na, nb, ev.value))
     end
     return out
-end
-
-# Applique `f` sur les cycles où `test(cycle)` est vrai.
-function _when_cycle(test, f, p0::Pattern)
-    p, fp = _same_patterns((p0, f(p0)))
-    T = typeof(p).parameters[1]
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        out = Event{T}[]
-        for cyc in _cycles(s, e)
-            a = max(Rational{Int64}(cyc), s); b = min(Rational{Int64}(cyc + 1), e)
-            a < b || continue
-            append!(out, (test(cyc) ? fp : p)(a, b))
-        end
-        sort!(out, by = ev -> ev.start)
-        out
-    end)
 end
 
 # Pattern{Bool} à partir d'une chaîne, d'un Pattern{Symbol} ou d'un Pattern{Bool}.
@@ -102,7 +77,7 @@ même cycle, `overlay` les superpose (= `stack`).
 append(a, b) = slowcat(a, b)
 slowAppend(a, b) = slowcat(a, b)
 fastAppend(a, b) = fastcat(a, b)
-overlay(a, b) = stack(_same_patterns((a, b))...)
+overlay(a, b) = _stack(_same_patterns((a, b)))
 
 """
     timeCat([(poids, pattern), ...])
@@ -122,7 +97,7 @@ function timeCat(pairs::AbstractVector)
         push!(parts, compress(pos / total, (pos + w) / total, p))
         pos += w
     end
-    return stack(parts...)
+    return _stack(parts)
 end
 
 """
@@ -174,8 +149,7 @@ function wrandcat(pairs::AbstractVector)
     end)
 end
 
-_cycle_rand(cyc::Int, salt::Integer = 0) =
-    (hash(cyc, UInt(0x9e3779b97f4a7c15) ⊻ UInt(salt)) % UInt32) / Float64(typemax(UInt32))
+_cycle_rand(cyc::Int, salt::Integer = 0) = _u01((cyc, :cycle), salt)
 function _weighted_index(ws::Vector{Float64}, r::Float64)
     total = sum(ws)
     acc = 0.0
@@ -416,10 +390,10 @@ always(f, p::Pattern) = f(p)
 always(f) = p -> always(f, _as_pattern(p))
 never(f, p::Pattern) = p
 never(f) = p -> never(f, _as_pattern(p))
-almostAlways(f, p::Pattern) = sometimesBy(0.9, f, p)
-almostAlways(f) = p -> almostAlways(f, _as_pattern(p))
-almostNever(f, p::Pattern) = sometimesBy(0.1, f, p)
-almostNever(f) = p -> almostNever(f, _as_pattern(p))
+almostAlways(f, p::Pattern; seed::Integer = 0) = sometimesBy(0.9, f, p; seed)
+almostAlways(f; seed::Integer = 0) = p -> almostAlways(f, _as_pattern(p); seed)
+almostNever(f, p::Pattern; seed::Integer = 0) = sometimesBy(0.1, f, p; seed)
+almostNever(f; seed::Integer = 0) = p -> almostNever(f, _as_pattern(p); seed)
 const somecycles = someCycles
 const somecyclesBy = someCyclesBy
 
@@ -518,14 +492,12 @@ const cycleChoose = choose
 Complément de `degradeBy` : garde exactement les événements que
 `degradeBy(prob)` aurait laissés tomber.
 """
-function unDegradeBy(prob::Real, p::Pattern{T}) where {T}
+function unDegradeBy(prob::Real, p::Pattern{T}; seed::Integer = 0) where {T}
     pr = clamp(float(prob), 0.0, 1.0)
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        [ev for ev in p(s, e) if
-         (hash(ev.start) % UInt32(1_000_000)) / 1_000_000.0 < pr]
-    end)
+    Pattern{T}((s::Rational, e::Rational) ->
+        Event{T}[ev for ev in p(s, e) if _rand01(ev.start, seed) < pr])
 end
-unDegradeBy(prob::Real) = p -> unDegradeBy(prob, _as_pattern(p))
+unDegradeBy(prob::Real; seed::Integer = 0) = p -> unDegradeBy(prob, _as_pattern(p); seed)
 
 """
     randslice(n, p)
@@ -755,7 +727,7 @@ function echoWith(n::Int, time::Real, f, p)
         cur = f(late(time, cur))
         push!(layers, cur)
     end
-    return stack(_same_patterns(layers)...)
+    return _stack(_same_patterns(layers))
 end
 echoWith(n::Int, time::Real, f) = p -> echoWith(n, time, f, p)
 const stutWith = echoWith
@@ -774,7 +746,7 @@ function plyWith(n::Int, f, p)
     for _ in 2:n
         cur = f(cur); push!(layers, cur)
     end
-    return arpeggiate(stack(_same_patterns(layers)...))
+    return arpeggiate(_stack(_same_patterns(layers)))
 end
 plyWith(n::Int, f) = p -> plyWith(n, f, p)
 
@@ -831,24 +803,7 @@ const spreadr = spreadChoose
 
 Comme `chunk` mais les morceaux défilent à l'envers (le `chunk'` de Tidal).
 """
-function chunkBack(n::Int, f, p0::Pattern)
-    n >= 1 || throw(ArgumentError("chunkBack : n ≥ 1"))
-    p, fp = _same_patterns((p0, f(p0)))
-    T = typeof(p).parameters[1]
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        out = Event{T}[]
-        for cyc in _cycles(s, e)
-            base = Rational{Int64}(cyc)
-            active = mod(-cyc - 1, n)
-            for k in 0:(n - 1)
-                a = max(base + Rational{Int64}(k, n), s); b = min(base + Rational{Int64}(k + 1, n), e)
-                a < b || continue
-                append!(out, (k == active ? fp : p)(a, b))
-            end
-        end
-        out
-    end)
-end
+chunkBack(n::Int, f, p::Pattern) = _chunked(n, f, p, cyc -> mod(-cyc - 1, n))
 chunkBack(n::Int, f) = p -> chunkBack(n, f, _as_pattern(p))
 
 """
@@ -920,14 +875,14 @@ function weave(t::Real, ctrl, sig::Pattern, xs::AbstractVector)
     l = length(ps)
     tr = _to_rat(t)
     layers = [ps[i] |> ctrl(late(tr * (i - 1) / l, slow(tr, sig))) for i in 1:l]
-    return stack(layers...)
+    return _stack(layers)
 end
 function weaveWith(t::Real, p, fs::AbstractVector)
     pp = _as_pattern(p)
     l = length(fs)
     tr = _to_rat(t)
     layers = [late(Rational{Int64}(i - 1) // l, inside(tr, fs[i], fast(tr, pp))) for i in 1:l]
-    return slow(tr, stack(_same_patterns(layers)...))
+    return slow(tr, _stack(_same_patterns(layers)))
 end
 
 """
@@ -1003,12 +958,13 @@ smooth(p) = smooth(_as_pattern(p))
 """
     rangex(lo, hi, p)
 
-Comme `range_pat` mais en échelle exponentielle (fréquences) :
-`lpf(sine() |> rangex(200, 8000))`.
+Comme `range_pat` (de `[0, 1]` vers `[lo, hi]`) mais en échelle exponentielle
+— celle des fréquences : `lpf(sine() |> rangex(200, 8000))`. `lo` et `hi`
+strictement positifs.
 """
 function rangex(lo::Real, hi::Real, p::Pattern{Float64})
     llo = log(lo); lhi = log(hi)
-    _mapvals(v -> exp(llo + (lhi - llo) * ((v + 1) / 2)), p, Float64)
+    _mapvals(v -> exp(llo + (lhi - llo) * v), p, Float64)
 end
 rangex(lo::Real, hi::Real) = p -> rangex(lo, hi, _as_pattern(p))
 

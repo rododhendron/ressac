@@ -342,9 +342,20 @@ function slot(name::Symbol)
     Pattern{Any}((s::Rational, e::Rational) -> begin
         sched = _LIVE_SCHEDULER[]
         sched === nothing && return Event{Any}[]
-        p = get(sched.patterns, name, nothing)
+        # Un slot qui se désigne lui-même, directement ou par un détour
+        # (`@d1 … duck(slot(2))`, `@d2 … duck(slot(1))`), tournerait sans
+        # fin. La pile des slots en cours de lecture vit dans la tâche :
+        # revenir sur un slot déjà ouvert rend le silence.
+        open_slots = get!(() -> Symbol[], task_local_storage(), :ressac_open_slots)::Vector{Symbol}
+        name in open_slots && return Event{Any}[]
+        p = pattern_get(sched, name)
         p === nothing && return Event{Any}[]
-        return Event{Any}[Event{Any}(ev.start, ev.stop, ev.value)
-                          for ev in Base.invokelatest(p, s, e)]
+        push!(open_slots, name)
+        try
+            return Event{Any}[Event{Any}(ev.start, ev.stop, ev.value)
+                              for ev in Base.invokelatest(p, s, e)]
+        finally
+            pop!(open_slots)
+        end
     end)
 end

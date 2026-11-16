@@ -31,7 +31,10 @@ function pure(v::T) where {T}
             end
         end
         events
-    end)
+    end,
+    # Tenue : chaque cycle touché par la fenêtre.
+    (s::Rational, e::Rational) ->
+        Event{T}[Event{T}(Rational{Int64}(n), Rational{Int64}(n + 1), v) for n in _cycles(s, e)])
 end
 
 """
@@ -41,7 +44,8 @@ The empty pattern for value type `T`. Useful as a placeholder when wiring
 slots and for algebraic identities (`stack(p, silence(T)) ≡ p`).
 """
 silence(::Type{T}) where {T} =
-    Pattern{T}((_s::Rational, _e::Rational) -> Event{T}[])
+    Pattern{T}((_s::Rational, _e::Rational) -> Event{T}[],
+               (_s::Rational, _e::Rational) -> Event{T}[])
 
 """
     _as_pattern(p) -> Pattern
@@ -92,10 +96,9 @@ Throws `ArgumentError` if `n == 0`.
 function fast(n::Real, p::Pattern{T}) where {T}
     n_rat = _to_rat(n)
     iszero(n_rat) && throw(ArgumentError("fast factor cannot be zero"))
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        inner = p(s * n_rat, e * n_rat)
-        [Event{T}(ev.start / n_rat, ev.stop / n_rat, ev.value) for ev in inner]
-    end)
+    scaled(evs) = Event{T}[Event{T}(ev.start / n_rat, ev.stop / n_rat, ev.value) for ev in evs]
+    Pattern{T}((s::Rational, e::Rational) -> scaled(p(s * n_rat, e * n_rat)),
+               (s::Rational, e::Rational) -> scaled(_held(p, s * n_rat, e * n_rat)))
 end
 
 """
@@ -179,49 +182,84 @@ intuitive. We'll lift this restriction when adding `compound` events.
 """
 function rev(p::Pattern{T}) where {T}
     Pattern{T}((s::Rational, e::Rational) -> begin
-        n_start = floor(Int, s)
-        n_stop = ceil(Int, e)
-        inner = p(Rational{Int64}(n_start), Rational{Int64}(n_stop))
+        # Chaque cycle est retourné sur lui-même : tout ce qui y est tenu
+        # (commencé là ou avant) est réfléchi autour de son milieu, créneau
+        # entier, et compte s'il commence alors dans ce cycle — et dans la
+        # fenêtre. Un événement à cheval sur deux cycles est donc réfléchi
+        # dans chacun, comme les fragments de Tidal, sans qu'un fragment
+        # soit jamais pris pour une attaque.
         out = Event{T}[]
-        for ev in inner
-            n = floor(Int, ev.start)
-            mirror = Rational{Int64}(2n + 1)
-            new_start = mirror - ev.stop
-            new_stop  = mirror - ev.start
-            a = max(new_start, s)
-            b = min(new_stop, e)
-            a < b && push!(out, Event{T}(a, b, ev.value))
+        for n in _cycles(s, e)
+            c0 = Rational{Int64}(n); c1 = c0 + 1
+            mirror = c0 + c1
+            for ev in _held(p, c0, c1)
+                new_start = mirror - ev.stop
+                (c0 <= new_start < c1 && s <= new_start < e) || continue
+                push!(out, Event{T}(new_start, mirror - ev.start, ev.value))
+            end
         end
         sort!(out, by = ev -> ev.start)
         out
     end)
 end
 
+# ── Un pattern et sa version transformée ─────────────────────────────
+# `every`, `lastOf`, `sometimesBy`, `whenmod`, `chunk`, `off`… jouent tantôt
+# `p`, tantôt `f(p)`. Deux règles communes, tenues ici une fois pour toutes :
+#   • `f(p)` est construit UNE fois, à la construction — jamais à la requête
+#     (une erreur dans `f` se lit à l'évaluation, pas dans le scheduler) ;
+#   • `f` peut changer le type des valeurs (`gain(0.5)` fait d'un pattern de
+#     noms un pattern de contrôles) : les deux sont alors montés au même type.
+
+# Liste de patterns homogène : même T, sinon tout le monde monte en ControlMap.
+function _same_patterns(xs)
+    ps = Any[_as_pattern(x) for x in xs]
+    isempty(ps) && throw(ArgumentError("il faut au moins un pattern"))
+    T = typeof(ps[1]).parameters[1]
+    all(p -> p isa Pattern{T}, ps) && return Pattern{T}[p for p in ps]
+    return ControlPattern[_lift_to_control(p) for p in ps]
+end
+
+
+# Applique `f` sur les cycles où `test(cycle)` est vrai.
+function _when_cycle(test, f, p0::Pattern)
+    p, fp = _same_patterns((p0, f(p0)))
+    T = typeof(p).parameters[1]
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        out = Event{T}[]
+        for cyc in _cycles(s, e)
+            a = max(Rational{Int64}(cyc), s); b = min(Rational{Int64}(cyc + 1), e)
+            a < b || continue
+            append!(out, (test(cyc) ? fp : p)(a, b))
+        end
+        sort!(out, by = ev -> ev.start)
+        out
+    end)
+end
+
+
 """
-    every(n, f, p) -> Pattern{T}
+    _rand01(key, seed = 0) -> Float64 dans [0, 1)
+
+Le tirage de tous les combinateurs aléatoires : une fonction du temps (ou du
+cycle), donc reproductible d'un rendu à l'autre. Deux combinateurs sur la
+même grille tirent les mêmes nombres — comme dans Tidal — sauf si on leur
+donne des `seed` différents : `degradeBy(0.5; seed = 1)`.
+"""
+_rand01(key, seed::Integer = 0) = seed == 0 ? _u01(key) : _u01(key, seed)
+
+"""
+    every(n, f, p) -> Pattern
 
 Apply transformation `f` to `p` on every `n`-th cycle (cycles `0, n, 2n, ...`);
 play `p` unchanged on the other cycles.
 
 `f` is called **once**, at construction time, to build the transformed pattern.
+It may change the value type (`every(2, gain(0.5), p"bd")`).
 """
-function every(n::Int, f, p::Pattern{T}) where {T}
+function every(n::Int, f, p::Pattern)
     n > 0 || throw(ArgumentError("every needs n > 0"))
-    transformed = f(p)::Pattern{T}
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        n_start = floor(Int, s)
-        n_stop = ceil(Int, e)
-        out = Event{T}[]
-        for cyc in n_start:(n_stop - 1)
-            a = max(Rational{Int64}(cyc), s)
-            b = min(Rational{Int64}(cyc + 1), e)
-            a < b || continue
-            chosen = (mod(cyc, n) == 0) ? transformed : p
-            append!(out, chosen(a, b))
-        end
-        sort!(out, by = ev -> ev.start)
-        out
-    end)
+    return _when_cycle(cyc -> mod(cyc, n) == 0, f, p)
 end
 
 """
@@ -232,30 +270,40 @@ Curried form: `every(n, f)(p) == every(n, f, p)`.
 every(n::Int, f) = x -> every(n, f, _as_pattern(x))
 
 """
-    stack(ps::Pattern{T}...) -> Pattern{T}
+    stack(p, q, …) -> Pattern
 
 Layer patterns in parallel: every event of every input pattern is emitted.
-Extends `Base.stack`.
+The first argument is a pattern; the others may be patterns, strings or
+names. Mixed kinds are fine — `stack(p"bd*4", "hh*8" |> gain(0.6))` — they
+are all lifted to the same value type. Extends `Base.stack`.
 """
-function stack(ps::Pattern{T}...) where {T}
-    Pattern{T}((s::Rational, e::Rational) -> begin
+stack(p::Pattern, q, rest...) = _stack(_same_patterns((p, q, rest...)))
+
+"""
+    stack(q) -> (Pattern -> Pattern)
+
+Curried form, for the pipe: `p |> stack(q)` is `stack(p, q)`.
+"""
+stack(q::Pattern) = p -> stack(_as_pattern(p), q)
+
+# L'empilement lui-même, sur une liste déjà homogène (voir `_same_patterns`).
+# Le code interne passe par ici, jamais par `stack(liste...)` : avec un seul
+# élément, la forme publique est la forme au pipe et rendrait une fonction.
+function _stack(ps::AbstractVector{<:Pattern})
+    isempty(ps) && throw(ArgumentError("stack needs at least one pattern"))
+    length(ps) == 1 && return ps[1]
+    T = typeof(ps[1]).parameters[1]
+    gather(q, s, e) = begin
         out = Event{T}[]
         for p in ps
-            append!(out, p(s, e))
+            append!(out, q(p, s, e))
         end
         sort!(out, by = ev -> ev.start)
         out
-    end)
+    end
+    Pattern{T}((s::Rational, e::Rational) -> gather((p, a, b) -> p(a, b), s, e),
+               (s::Rational, e::Rational) -> gather(_held, s, e))
 end
-
-"""
-    stack(q::Pattern{T}) -> (Pattern{T} -> Pattern{T})
-
-Curried form: `stack(q)(p) == stack(p, q)`. Note: existing
-`stack(ps::Vararg{Pattern{T}})` already covers `stack(p, q, r, …)`, so
-this single-arg version disambiguates as "curry on the lone arg".
-"""
-stack(q::Pattern{T}) where {T} = p::Pattern{T} -> stack(p, q)
 
 """
     cat(ps::Vector{<:Pattern{T}}) -> Pattern{T}
@@ -382,78 +430,60 @@ Overlay `p` with a copy of `f(p)` shifted forward by `t` cycles.
 The "shift" is a phase offset: the copy plays t-cycles later within
 its own cycle, wrapping at the boundary.
 """
-function off(t::Real, f, p::Pattern{T}) where {T}
-    t_rat = _to_rat(t)
-    shifted = Pattern{T}((s::Rational, e::Rational) -> begin
-        inner = f(p)(s - t_rat, e - t_rat)
-        [Event{T}(ev.start + t_rat, ev.stop + t_rat, ev.value) for ev in inner]
-    end)
-    return stack(p, shifted)
-end
+off(t::Real, f, p::Pattern) = _stack(_same_patterns((p, late(t, f(p)))))
 off(t::Real, f) = p -> off(t, f, _as_pattern(p))
 
 """
     degradeBy(prob, p) -> Pattern{T}
 
-Drop each event from `p` with probability `prob` (0..1). Seeded by
-`hash(ev.start)` so successive renders produce the same drops — the
-groove is repeatable.
+Drop each event from `p` with probability `prob` (0..1). The draw is a
+function of the event's start, so successive renders produce the same drops —
+the groove is repeatable. Two `degradeBy` on the same grid drop the same
+events; give them different `seed`s to decorrelate them:
+`p |> degradeBy(0.5) |> degradeBy(0.5; seed = 1)`.
 """
-function degradeBy(prob::Real, p::Pattern{T}) where {T}
+function degradeBy(prob::Real, p::Pattern{T}; seed::Integer = 0) where {T}
     pr = clamp(float(prob), 0.0, 1.0)
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        [ev for ev in p(s, e) if
-         (hash(ev.start) % UInt32(1_000_000)) / 1_000_000.0 >= pr]
-    end)
+    Pattern{T}((s::Rational, e::Rational) ->
+        Event{T}[ev for ev in p(s, e) if _rand01(ev.start, seed) >= pr])
 end
-degradeBy(prob::Real) = p -> degradeBy(prob, _as_pattern(p))
+degradeBy(prob::Real; seed::Integer = 0) = p -> degradeBy(prob, _as_pattern(p); seed)
 
 """
     degrade(p) -> Pattern{T}
 
 Shortcut for `degradeBy(0.5, p)`. Drops half the events at random.
 """
-degrade(p) = degradeBy(0.5, _as_pattern(p))
+degrade(p; seed::Integer = 0) = degradeBy(0.5, _as_pattern(p); seed)
 
 """
     sometimesBy(prob, f, p) -> Pattern{T}
 
 Apply transform `f` to `p` with probability `prob` per cycle. The
 decision is per cycle (not per event) so a "sometimes faster" treats
-the whole cycle uniformly.
+the whole cycle uniformly. The draw depends only on the cycle number: every
+`sometimes` of the session fires on the same cycles unless given its own
+`seed` (`sometimes(rev; seed = 2)`).
 """
-function sometimesBy(prob::Real, f, p::Pattern{T}) where {T}
+function sometimesBy(prob::Real, f, p::Pattern; seed::Integer = 0)
     pr = clamp(float(prob), 0.0, 1.0)
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        out = Event{T}[]
-        n_start = floor(Int, s)
-        n_stop  = ceil(Int, e)
-        for cyc in n_start:(n_stop - 1)
-            a = max(Rational{Int64}(cyc), s)
-            b = min(Rational{Int64}(cyc + 1), e)
-            a < b || continue
-            r = (hash(cyc) % UInt32(1_000_000)) / 1_000_000.0
-            chosen = r < pr ? f(p) : p
-            for ev in chosen(a, b)
-                push!(out, ev)
-            end
-        end
-        out
-    end)
+    return _when_cycle(cyc -> _rand01(cyc, seed) < pr, f, p)
 end
-sometimesBy(prob::Real, f) = p -> sometimesBy(prob, f, _as_pattern(p))
+sometimesBy(prob::Real, f; seed::Integer = 0) = p -> sometimesBy(prob, f, _as_pattern(p); seed)
 
 """
     sometimes(f, p) — `sometimesBy(0.5, …)`
     often(f, p)     — `sometimesBy(0.75, …)`
     rarely(f, p)    — `sometimesBy(0.25, …)`
+
+All take `seed` like [`sometimesBy`](@ref).
 """
-sometimes(f, p) = sometimesBy(0.5, f, _as_pattern(p))
-sometimes(f)    = p -> sometimes(f, p)
-often(f, p)     = sometimesBy(0.75, f, _as_pattern(p))
-often(f)        = p -> often(f, p)
-rarely(f, p)    = sometimesBy(0.25, f, _as_pattern(p))
-rarely(f)       = p -> rarely(f, p)
+sometimes(f, p; seed::Integer = 0) = sometimesBy(0.5, f, _as_pattern(p); seed)
+sometimes(f; seed::Integer = 0)    = p -> sometimes(f, p; seed)
+often(f, p; seed::Integer = 0)     = sometimesBy(0.75, f, _as_pattern(p); seed)
+often(f; seed::Integer = 0)        = p -> often(f, p; seed)
+rarely(f, p; seed::Integer = 0)    = sometimesBy(0.25, f, _as_pattern(p); seed)
+rarely(f; seed::Integer = 0)       = p -> rarely(f, p; seed)
 
 """
     palindrome(p) -> Pattern{T}
@@ -504,29 +534,23 @@ Split each cycle into `n` equal chunks; apply `f` to a different
 chunk per cycle, leaving the others as-is. Cycles through chunks
 0..n-1 then repeats.
 """
-function chunk(n::Int, f, p::Pattern{T}) where {T}
+chunk(n::Int, f, p::Pattern) = _chunked(n, f, p, cyc -> mod(cyc, n))
+
+# `chunk` et `chunkBack` : le cycle en `n` morceaux, `f` sur celui que
+# désigne `active(cycle)`.
+function _chunked(n::Int, f, p0::Pattern, active)
     n >= 1 || throw(ArgumentError("chunk count must be ≥ 1"))
+    p, fp = _same_patterns((p0, f(p0)))
+    T = typeof(p).parameters[1]
     Pattern{T}((s::Rational, e::Rational) -> begin
         out = Event{T}[]
-        n_start = floor(Int, s)
-        n_stop  = ceil(Int, e)
-        chunk_dur = Rational{Int64}(1, n)
-        for cyc in n_start:(n_stop - 1)
+        for cyc in _cycles(s, e)
             base = Rational{Int64}(cyc)
-            a = max(base, s)
-            b = min(base + 1, e)
-            a < b || continue
-            active = cyc % n  # which chunk gets the transform this cycle
+            k_active = active(cyc)
             for k in 0:(n - 1)
-                seg_start = base + k * chunk_dur
-                seg_stop  = base + (k + 1) * chunk_dur
-                seg_a = max(seg_start, a)
-                seg_b = min(seg_stop,  b)
-                seg_a < seg_b || continue
-                pp = (k == active) ? f(p) : p
-                for ev in pp(seg_a, seg_b)
-                    push!(out, ev)
-                end
+                a = max(base + Rational{Int64}(k, n), s); b = min(base + Rational{Int64}(k + 1, n), e)
+                a < b || continue
+                append!(out, (k == k_active ? fp : p)(a, b))
             end
         end
         out
@@ -559,23 +583,9 @@ cycle starting from the LAST one in the period. Counterpart of
 [`every`](@ref) (which fires on cycles `0, n, 2n, …`). Same as
 Tidal's `lastOf`.
 """
-function lastOf(n::Int, f, p::Pattern{T}) where {T}
+function lastOf(n::Int, f, p::Pattern)
     n > 0 || throw(ArgumentError("lastOf needs n > 0"))
-    transformed = f(p)::Pattern{T}
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        n_start = floor(Int, s)
-        n_stop  = ceil(Int, e)
-        out = Event{T}[]
-        for cyc in n_start:(n_stop - 1)
-            a = max(Rational{Int64}(cyc), s)
-            b = min(Rational{Int64}(cyc + 1), e)
-            a < b || continue
-            chosen = (mod(cyc + 1, n) == 0) ? transformed : p
-            append!(out, chosen(a, b))
-        end
-        sort!(out, by = ev -> ev.start)
-        out
-    end)
+    return _when_cycle(cyc -> mod(cyc + 1, n) == 0, f, p)
 end
 lastOf(n::Int, f) = p -> lastOf(n, f, _as_pattern(p))
 
@@ -590,10 +600,9 @@ time). Reciprocal of [`late`](@ref).
 """
 function early(t::Real, p::Pattern{T}) where {T}
     dt = _to_rat(t)
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        inner = p(s + dt, e + dt)
-        [Event{T}(ev.start - dt, ev.stop - dt, ev.value) for ev in inner]
-    end)
+    shifted(evs) = Event{T}[Event{T}(ev.start - dt, ev.stop - dt, ev.value) for ev in evs]
+    Pattern{T}((s::Rational, e::Rational) -> shifted(p(s + dt, e + dt)),
+               (s::Rational, e::Rational) -> shifted(_held(p, s + dt, e + dt)))
 end
 early(t::Real) = p -> early(t, _as_pattern(p))
 
@@ -614,17 +623,18 @@ Repeat each event `n` times within its own slot (Tidal's `ply`).
 function ply(n::Int, p::Pattern{T}) where {T}
     n > 0 || throw(ArgumentError("ply needs n > 0"))
     Pattern{T}((s::Rational, e::Rational) -> begin
-        inner = p(s, e)
         out = Event{T}[]
         n_rat = Rational{Int64}(n)
-        for ev in inner
+        # Les répétitions d'un événement long tombent dans les cycles
+        # suivants : on part de ce qui est tenu, et chaque répétition compte
+        # là où elle commence.
+        for ev in _held(p, s, e)
             width = ev.stop - ev.start
             slice = width / n_rat
             for i in 0:(n - 1)
                 a = ev.start + slice * i
                 b = i == n - 1 ? ev.stop : ev.start + slice * (i + 1)
-                a < e && b > s &&
-                    push!(out, Event{T}(max(a, s), min(b, e), ev.value))
+                s <= a < e && push!(out, Event{T}(a, b, ev.value))
             end
         end
         sort!(out, by = ev -> ev.start)
@@ -671,9 +681,8 @@ const runp = run
 """
     choose(xs) -> Pattern{T}
 
-One random pick from `xs` per cycle. Same seed → same pick (the
-choice is `hash(cycle) mod length(xs)`), so the result is
-deterministic for a given session start.
+One random pick from `xs` per cycle — a deterministic function of the cycle
+number, so the same cycle always makes the same pick.
 """
 function choose(xs::AbstractVector{T}) where {T}
     n = length(xs)
@@ -683,10 +692,9 @@ function choose(xs::AbstractVector{T}) where {T}
         n_stop  = ceil(Int, e)
         out = Event{T}[]
         for cyc in n_start:(n_stop - 1)
-            idx = mod(hash(cyc) % UInt32, UInt32(n)) + 1
-            a = max(Rational{Int64}(cyc), s)
-            b = min(Rational{Int64}(cyc + 1), e)
-            a < b && push!(out, Event{T}(a, b, xs[idx]))
+            # Un événement par cycle, entier, rendu dans la fenêtre de son attaque.
+            a = Rational{Int64}(cyc)
+            s <= a < e && push!(out, Event{T}(a, a + 1, xs[_pick(n, (cyc, :choose))]))
         end
         out
     end)
@@ -746,13 +754,16 @@ structPat(bools::Pattern{Bool}) = p -> structPat(bools, _as_pattern(p))
 """
     sine() / cosine() / tri() / saw() / square() -> Pattern{Float64}
 
-Continuous waveform patterns, one cycle = one period. Output range
-`[-1, 1]` for sine/cosine/tri, `[0, 1]` for saw, `{0, 1}` for square.
-Used with `range(min, max)` and `segment(n)` to modulate other patterns.
+Continuous waveform patterns, one cycle = one period. **All of them live in
+`[0, 1]`**, like Tidal's: `pan(sine())` sweeps the whole stereo field as is,
+and `range_pat(lo, hi)` maps any of them (and `rand_pat`, `perlin`, the
+`core_maths` curves) onto `[lo, hi]`. `sine` starts at 0.5 and rises, `cosine`
+is `sine` a quarter cycle early, `tri` goes 0 → 1 → 0, `saw` 0 → 1,
+`square` is 0 then 1.
 """
-sine()   = _continuous(t -> sin(2π * t))
-cosine() = _continuous(t -> cos(2π * t))
-tri()    = _continuous(t -> begin u = mod(t, 1.0); u < 0.5 ? (4u - 1) : (3 - 4u) end)
+sine()   = _continuous(t -> (sin(2π * t) + 1) / 2)
+cosine() = _continuous(t -> (cos(2π * t) + 1) / 2)
+tri()    = _continuous(t -> begin u = mod(t, 1.0); u < 0.5 ? 2u : 2 - 2u end)
 saw()    = _continuous(t -> mod(t, 1.0))
 square() = _continuous(t -> mod(t, 1.0) < 0.5 ? 0.0 : 1.0)
 
@@ -764,11 +775,9 @@ varying across cycles (so it doesn't freeze on a single value).
 Output `[0, 1)`. For discrete sampling use `rand() |> segment(n)`.
 """
 function rand_pat()
-    Pattern{Float64}((s::Rational, e::Rational) -> begin
-        cyc = floor(Int, s)
+    _signal((s::Rational, e::Rational) -> begin
         mid = (s + e) / 2
-        v = (hash(cyc, hash(Float64(mid))) % UInt32) / Float64(typemax(UInt32))
-        [Event{Float64}(s, e, v)]
+        [Event{Float64}(s, e, _u01((floor(Int, s), Float64(mid), :rand)))]
     end)
 end
 
@@ -780,8 +789,8 @@ but the use-case is identical: slowly-changing random in [0, 1)).
 Adjacent cycles' values are interpolated via cosine smoothstep.
 """
 function perlin()
-    _h(c) = (hash(c, UInt(0x517cc1b727220a95)) % UInt32) / Float64(typemax(UInt32))
-    Pattern{Float64}((s::Rational, e::Rational) -> begin
+    _h(c) = _u01((c, :perlin))
+    _signal((s::Rational, e::Rational) -> begin
         mid = Float64((s + e) / 2)
         c0 = floor(Int, mid)
         c1 = c0 + 1
@@ -795,32 +804,25 @@ end
 
 # Internal: lift `t -> Float64` into a Pattern{Float64} that emits a
 # single event covering the query arc, value sampled at the midpoint.
-function _continuous(f)
-    Pattern{Float64}((s::Rational, e::Rational) -> begin
-        mid = Float64((s + e) / 2)
-        [Event{Float64}(s, e, f(mid))]
-    end)
-end
+_continuous(f) = _signal((s::Rational, e::Rational) -> begin
+    mid = Float64((s + e) / 2)
+    [Event{Float64}(s, e, f(mid))]
+end)
+
+# Un signal répond à toute fenêtre par un échantillon : sa tenue est sa requête.
+_signal(sample) = Pattern{Float64}(sample, sample)
 
 """
-    range(lo, hi, p) -> Pattern{Float64}
-    range(lo, hi)    -> (Pattern -> Pattern)
+    range_pat(lo, hi, p) -> Pattern{Float64}
+    range_pat(lo, hi)    -> (Pattern -> Pattern)
 
-Linearly remap `p`'s output from `[-1, 1]` (or `[0, 1]` — whichever
-is its natural range) into `[lo, hi]`. The detection is naive:
-values in `[-1, 0)` are rescaled assuming a bipolar source; values
-in `[0, 1]` from a unipolar source pass through `[lo, hi]` directly.
-
-In practice, `sine() |> range(400, 4000)` does what you'd expect.
+Linearly remap `p` from `[0, 1]` — the range of every signal (`sine`, `saw`,
+`rand_pat`, `perlin`…) — onto `[lo, hi]`: 0 gives `lo`, 1 gives `hi`.
+`sine() |> range_pat(400, 4000)` sweeps a filter between those two values.
 """
 function range_pat(lo::Real, hi::Real, p::Pattern{Float64})
     lo_f = Float64(lo); hi_f = Float64(hi)
-    Pattern{Float64}((s::Rational, e::Rational) -> begin
-        inner = p(s, e)
-        [Event{Float64}(ev.start, ev.stop,
-                        lo_f + (hi_f - lo_f) * ((ev.value + 1) / 2))
-         for ev in inner]
-    end)
+    return _mapvals(v -> lo_f + (hi_f - lo_f) * v, p, Float64)
 end
 range_pat(lo::Real, hi::Real) = p -> range_pat(lo, hi, _as_pattern(p))
 
@@ -879,7 +881,7 @@ function chop(n::Int, p)
     Pattern{ControlMap}((s::Rational, e::Rational) -> begin
         out = Event{ControlMap}[]
         n_rat = Rational{Int64}(n)
-        for ev in cp(floor(Int, s) // 1, e)
+        for ev in _held(cp, s, e)
             width = ev.stop - ev.start
             slice = width / n_rat
             for i in 0:(n - 1)
@@ -986,12 +988,9 @@ _cycles(s::Rational, e::Rational) = floor(Int, s):(ceil(Int, e) - 1)
 # Un événement « démarre » dans la fenêtre (sémantique onset des patterns).
 _onset_in(ev, s, e) = ev.start >= s && ev.start < e
 # Valeur de `p` active à l'instant t (l'événement dont le créneau contient t).
-function _value_at(p::Pattern{T}, t::Rational) where {T}
-    c = Rational{Int64}(floor(Int, t))
-    for ev in p(c, c + 1)
-        ev.start <= t < ev.stop && return ev.value
-    end
-    return nothing
+function _value_at(p::Pattern, t::Rational)
+    ev = _event_at(p, t)
+    return ev === nothing ? nothing : ev.value
 end
 
 """
@@ -1050,7 +1049,7 @@ function shuffle(n::Int, p::Pattern{T}) where {T}
     Pattern{T}((s::Rational, e::Rational) -> begin
         out = Event{T}[]
         for cyc in _cycles(s, e)
-            perm = sortperm([hash((cyc, i, :shuffle)) for i in 1:n])
+            perm = sortperm([_u01((cyc, i, :shuffle)) for i in 1:n])
             for (dst, src) in enumerate(perm)
                 _slice_moved(p, cyc, src - 1, dst - 1, n, out, s, e)
             end
@@ -1066,7 +1065,7 @@ function scramble(n::Int, p::Pattern{T}) where {T}
     Pattern{T}((s::Rational, e::Rational) -> begin
         out = Event{T}[]
         for cyc in _cycles(s, e), dst in 0:(n - 1)
-            src = Int(hash((cyc, dst, :scramble)) % UInt(n))
+            src = _pick(n, (cyc, dst, :scramble)) - 1
             _slice_moved(p, cyc, src, dst, n, out, s, e)
         end
         sort!(out, by = ev -> ev.start)
@@ -1132,28 +1131,17 @@ swing(n::Int) = p -> swing(n, _as_pattern(p))
     whenmod(a, b, f, p) — applique `f` aux cycles dont le numéro modulo `a`
     est ≥ `b` : `whenmod(8, 6, rev)` inverse les cycles 6 et 7 sur 8.
 """
-function whenmod(a::Int, b::Int, f, p::Pattern{T}) where {T}
-    fp = f(p)
-    Pattern{T}((s::Rational, e::Rational) -> begin
-        out = Event{T}[]
-        for cyc in _cycles(s, e)
-            q = mod(cyc, a) >= b ? fp : p
-            lo = max(Rational{Int64}(cyc), s); hi = min(Rational{Int64}(cyc + 1), e)
-            lo < hi && append!(out, q(lo, hi))
-        end
-        out
-    end)
-end
+whenmod(a::Int, b::Int, f, p::Pattern) = _when_cycle(cyc -> mod(cyc, a) >= b, f, p)
 whenmod(a::Int, b::Int, f) = p -> whenmod(a, b, f, _as_pattern(p))
 
 """
     someCyclesBy(prob, f, p) / someCycles(f, p) — `f` sur certains cycles
     entiers (tirage déterministe par cycle). Alias Tidal de sometimesBy ici.
 """
-someCyclesBy(prob::Real, f, p::Pattern) = sometimesBy(prob, f, p)
-someCyclesBy(prob::Real, f) = p -> someCyclesBy(prob, f, _as_pattern(p))
-someCycles(f, p::Pattern) = someCyclesBy(0.5, f, p)
-someCycles(f) = p -> someCycles(f, _as_pattern(p))
+someCyclesBy(prob::Real, f, p::Pattern; seed::Integer = 0) = sometimesBy(prob, f, p; seed)
+someCyclesBy(prob::Real, f; seed::Integer = 0) = p -> someCyclesBy(prob, f, _as_pattern(p); seed)
+someCycles(f, p::Pattern; seed::Integer = 0) = someCyclesBy(0.5, f, p; seed)
+someCycles(f; seed::Integer = 0) = p -> someCycles(f, _as_pattern(p); seed)
 
 """
     compress(b, e, p) — tasse chaque cycle de `p` dans l'intervalle [b, e)
@@ -1239,9 +1227,9 @@ euclidOff(k::Int, n::Int, r::Int) = p -> euclidOff(k, n, r, _as_pattern(p))
     superimpose(f, p) — p plus f(p) par-dessus : `superimpose(fast(2))`.
     layer([f, g], p) — empile f(p), g(p), … (sans p lui-même).
 """
-superimpose(f, p::Pattern) = stack(_same_patterns((p, f(p)))...)
+superimpose(f, p::Pattern) = _stack(_same_patterns((p, f(p))))
 superimpose(f) = p -> superimpose(f, _as_pattern(p))
-layer(fs, p::Pattern) = stack(_same_patterns([f(p) for f in fs])...)
+layer(fs, p::Pattern) = _stack(_same_patterns([f(p) for f in fs]))
 layer(fs) = p -> layer(fs, _as_pattern(p))
 
 """
@@ -1310,6 +1298,6 @@ function stut(n::Int, feedback::Real, time::Real, p)
     n >= 1 || throw(ArgumentError("stut needs n ≥ 1"))
     base = _lift_to_control(_as_pattern(p))
     layers = [i == 0 ? base : (late(time * i, base) |> gain(feedback^i)) for i in 0:(n - 1)]
-    return stack(layers...)
+    return _stack(layers)
 end
 stut(n::Int, feedback::Real, time::Real) = p -> stut(n, feedback, time, p)

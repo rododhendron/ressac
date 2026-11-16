@@ -11,25 +11,20 @@
 # `perlin()`, `chaos.lorenz()`, so it slots into existing pipelines
 # with no special handling at the scheduler level.
 
-"Default bipolar normaliser per reservoir kind + readout. Used when
-`modulator(scale=:auto)` so the output sits in [-1, 1] and composes
-with `range_pat(lo, hi)` out of the box."
+"Default normaliser per reservoir kind + readout. Used when
+`modulator(scale=:auto)` so the output sits in [0, 1] — the range of every
+Ressac signal — and composes with `range_pat(lo, hi)` out of the box."
 _default_modulator_scale(::AdExReservoir, kind::Symbol) =
-    # AdEx :V swings ~[-70, +20] mV. Centre at -25 mV (mid-range),
-    # half-width 45 mV, then clamp to [-1, +1] so spike upswings don't
-    # punch past the target range.
-    kind === :V       ? v -> clamp((v + 25.0) / 45.0, -1.0, 1.0) :
-    kind === :w       ? v -> clamp(v / 200.0, -1.0, 1.0) :
-    kind === :spike   ? v -> 2v - 1.0 :
-    kind === :density ? v -> 2v - 1.0 :
-                         identity
+    # AdEx :V swings ~[-70 (rest), +20 (peak)] mV : mapped onto [0, 1] and
+    # clamped so spike upswings don't punch past the target range.
+    # :w (adaptation current) swings ~[-200, +200] pA.
+    # :spike and :density are already 0..1.
+    kind === :V ? v -> clamp((v + 70.0) / 90.0, 0.0, 1.0) :
+    kind === :w ? v -> clamp((v + 200.0) / 400.0, 0.0, 1.0) :
+                  identity
 
-_default_modulator_scale(::RECAReservoir, kind::Symbol) =
-    # RECA always emits 0/1 ; map to -1/+1.
-    kind === :bit     ? v -> 2v - 1.0 :
-    kind === :spike   ? v -> 2v - 1.0 :
-    kind === :density ? v -> 2v - 1.0 :
-                         identity
+# RECA always emits 0/1 (bit, spike) or a density in [0, 1]: already a signal.
+_default_modulator_scale(::RECAReservoir, kind::Symbol) = identity
 
 """
     modulator(r; neuron=1, kind=:auto, scale=:auto,
@@ -41,7 +36,7 @@ Build a scalar modulator from reservoir `r`.
 - `kind`    which scalar to read. `:auto` picks each type's default
             (AdEx → `:V`, RECA → `:bit`). Other kinds depend on type:
             see `read_state` docstring for each.
-- `scale`   `:auto` (default) normalises the raw reading into `[-1, 1]`
+- `scale`   `:auto` (default) normalises the raw reading into `[0, 1]`
             so `|> range_pat(lo, hi)` remaps cleanly. Pass `identity` to
             get the raw value (mV for AdEx :V, 0/1 for RECA :bit, …),
             or any `Float64 -> Float64` for custom mapping.
@@ -74,7 +69,7 @@ function modulator(r;
     drive_source = _make_drive_source(drive, N, spc)
     input = Vector{Float64}(undef, N)
     last_step = Ref(0)
-    Pattern{Float64}((s::Rational, e::Rational) -> begin
+    sample = (s::Rational, e::Rational) -> begin
         target = ceil(Int, Float64(e) * spc)
         while last_step[] < target
             cycle_idx = last_step[] ÷ spc
@@ -85,5 +80,7 @@ function modulator(r;
         end
         v = Float64(actual_scale(read_state(r, actual_kind, neuron)))
         [Event{Float64}(s, e, v)]
-    end)
+    end
+    # A signal answers any window with one sample: its held query is its query.
+    Pattern{Float64}(sample, sample)
 end

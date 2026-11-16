@@ -17,7 +17,7 @@ struct SlowNode      <: MNode; child::MNode; n::Any end                # `a/n` (
 struct EuclidNode    <: MNode; child::MNode; k::Any; n::Any; rot::Any end
 struct DegradeNode   <: MNode; child::MNode; prob::Float64 end          # `a?` / `a?0.3`
 struct ChordNode     <: MNode; children::Vector{MNode} end              # `[a b, c d]` : voix parallèles
-struct RandomAltNode <: MNode; children::Vector{MNode} end              # `a | b | c`
+struct RandomAltNode <: MNode; children::Vector{MNode}; seed::UInt end  # `a | b | c` (seed : son rang dans la chaîne)
 # `{a b, c d e}%n` : chaque voix garde son nombre de pas, `n` pas par cycle.
 struct PolyNode      <: MNode; voices::Vector{Vector{MNode}}; steps::Any end
 
@@ -77,6 +77,11 @@ function _tokenize(s::String)
                 while k <= n && isdigit(s[k])
                     k = nextind(s, k)
                 end
+                k = _sci_exponent_end(s, k, n)
+                push_tok!(MToken(:float, parse(Float64, s[i:prevind(s, k)]), i))
+                i = k
+            elseif (k = _sci_exponent_end(s, j, n)) != j
+                # `1e3`, `2e-2` : un nombre, pas le pas `1` suivi du nom `e3`.
                 push_tok!(MToken(:float, parse(Float64, s[i:prevind(s, k)]), i))
                 i = k
             elseif j <= n && s[j] == '\''
@@ -109,6 +114,20 @@ function _tokenize(s::String)
     return tokens
 end
 
+# Fin d'un exposant `e3` / `E-2` commençant à `j` (rend `j` s'il n'y en a pas).
+function _sci_exponent_end(s::String, j::Int, n::Int)
+    (j <= n && (s[j] == 'e' || s[j] == 'E')) || return j
+    k = nextind(s, j)
+    k <= n && (s[k] == '-' || s[k] == '+') && (k = nextind(s, k))
+    (k <= n && isdigit(s[k])) || return j
+    while k <= n && isdigit(s[k])
+        k = nextind(s, k)
+    end
+    # `1e3x` serait un nom collé : on ne coupe pas au milieu d'un mot.
+    (k <= n && (isletter(s[k]) || s[k] == '_')) && return j
+    return k
+end
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -116,7 +135,9 @@ end
 mutable struct ParseState
     tokens::Vector{MToken}
     pos::Int
+    n_random::Int        # nombre de `a | b` déjà rencontrés : chacun tire pour soi
 end
+ParseState(tokens::Vector{MToken}, pos::Int) = ParseState(tokens, pos, 0)
 
 _peek(ps::ParseState) = ps.pos <= length(ps.tokens) ? ps.tokens[ps.pos] : nothing
 function _advance!(ps::ParseState)
@@ -175,10 +196,7 @@ function _parse_unit!(ps::ParseState)
         node = _parse_seq_or_chord!(ps, :rbracket)
     elseif t.kind == :langle
         _advance!(ps)
-        raw = _parse_seq_until!(ps, :rangle)
-        expanded = MNode[c for (c, _) in raw]
-        isempty(expanded) && throw(ArgumentError("Empty alternation group at position $(t.pos)"))
-        node = AltNode(expanded)
+        node = _parse_alt!(ps, t.pos)
     elseif t.kind == :lbrace
         _advance!(ps)
         node = _parse_poly!(ps, t.pos)
@@ -204,7 +222,8 @@ function _parse_unit!(ps::ParseState)
             nxt.spaced && break
             _advance!(ps)
             la = _peek(ps)
-            if la !== nothing && la.kind == :int
+            # Le compte est collé au `!` : dans `bd! 3`, le 3 est un pas.
+            if la !== nothing && la.kind == :int && !la.spaced
                 _advance!(ps)
                 la.value > 0 || throw(ArgumentError("'!' requires positive count at position $(la.pos)"))
                 reps *= la.value
@@ -230,6 +249,10 @@ function _parse_unit!(ps::ParseState)
                 rot = _parse_arg!(ps, "nombre ou pattern après la seconde ','")
             end
             _expect!(ps, :rparen, "')' closing Euclidean rhythm")
+            # Un nombre de pas littéral se vérifie ici, à l'évaluation, pas
+            # dans le scheduler au moment de jouer.
+            (nn isa Real && nn <= 0) &&
+                throw(ArgumentError("rythme euclidien : le nombre de pas doit être > 0 (position $(nxt.pos))"))
             node = EuclidNode(node, k, nn, rot)
         elseif nxt.kind == :question
             _advance!(ps)
@@ -237,7 +260,8 @@ function _parse_unit!(ps::ParseState)
             # Without a number, defaults to 50%.
             prob = 0.5
             la = _peek(ps)
-            if la !== nothing && (la.kind == :float || la.kind == :int)
+            # La probabilité est collée au `?` : dans `bd? 3`, le 3 est un pas.
+            if la !== nothing && (la.kind == :float || la.kind == :int) && !la.spaced
                 _advance!(ps); prob = float(la.value)
             end
             prob = clamp(prob, 0.0, 1.0)
@@ -278,6 +302,40 @@ function _parse_poly!(ps::ParseState, pos::Int)
     return PolyNode(voices, steps)
 end
 
+# `<a b c>` : un pas par cycle. Les poids comptent (`<a@3 b>`, `<a _ b>` :
+# `a` tient trois cycles d'un seul tenant) et les virgules empilent des voix
+# qui tournent chacune à leur pas (`<a b, c d e>`).
+function _parse_alt!(ps::ParseState, pos::Int)
+    voices = MNode[]
+    while true
+        steps = Tuple{MNode,MWeight}[]
+        closed = false
+        while true
+            t = _peek(ps)
+            t === nothing && throw(ArgumentError("Unclosed group: expected rangle"))
+            if t.kind == :rangle
+                _advance!(ps); closed = true; break
+            elseif t.kind == :comma
+                _advance!(ps); break
+            end
+            _push_step!(ps, steps, t)
+        end
+        isempty(steps) && throw(ArgumentError("Empty alternation group at position $pos"))
+        push!(voices, _alt_voice(steps))
+        closed && break
+    end
+    return length(voices) == 1 ? voices[1] : ChordNode(voices)
+end
+
+# Tous les pas de poids 1 : une alternance simple. Sinon c'est la séquence
+# pondérée étirée sur autant de cycles que la somme des poids — ce qu'est
+# `<…>` en général (`<a b c>` ≡ `[a b c]/3`).
+function _alt_voice(steps::Vector{Tuple{MNode,MWeight}})
+    all(st -> st[2] == 1, steps) && return AltNode(MNode[st[1] for st in steps])
+    total = sum(st[2] for st in steps)
+    return SlowNode(SeqNode(steps), isinteger(total) ? Int(total) : total)
+end
+
 # Une suite de pas (utilisée par `<…>`), avec `!` `@` `_` et `..`.
 function _parse_seq_until!(ps::ParseState, end_kind::Symbol)
     children = Tuple{MNode,MWeight}[]
@@ -312,7 +370,8 @@ function _push_step!(ps::ParseState, children::Vector{Tuple{MNode,MWeight}}, t::
         _advance!(ps)
         la = _peek(ps)
         reps = 1
-        if la !== nothing && la.kind == :int
+        # `bd !3` : le compte est collé au `!`. Dans `0 ! 3`, le 3 est un pas.
+        if la !== nothing && la.kind == :int && !la.spaced
             _advance!(ps); reps = max(1, la.value - 1)
         end
         isempty(children) && throw(ArgumentError("'!' sans pas précédent, position $(t.pos)"))
@@ -387,7 +446,7 @@ function _parse_seq_or_chord!(ps::ParseState, end_kind::Symbol)
     end
     close_voice!()
 
-    voice_nodes = MNode[length(a) == 1 ? a[1] : RandomAltNode(a) for a in voices]
+    voice_nodes = MNode[length(a) == 1 ? a[1] : RandomAltNode(a, UInt(ps.n_random += 1)) for a in voices]
     return length(voice_nodes) == 1 ? voice_nodes[1] : ChordNode(voice_nodes)
 end
 
@@ -407,13 +466,31 @@ end
 # Renderer
 # ---------------------------------------------------------------------------
 
-# Euclidean distribution: returns a Bool vector of length n with k hits.
-# Simple closed-form distribution (i*k mod n < k); deterministic and stable.
+# Répartition euclidienne : `k` coups sur `n` pas, par l'algorithme de
+# Bjorklund — celui de Tidal, avec la même rotation : (3,8) → x..x..x. ,
+# (5,8) → x.xx.xx. . `k` négatif inverse les coups et les silences.
 function _euclidean_pulses(k::Int, n::Int)
     n > 0 || throw(ArgumentError("Euclidean needs n > 0"))
-    k <= 0 && return falses(n)
+    k < 0 && return .!(_euclidean_pulses(-k, n))
+    k == 0 && return falses(n)
     k >= n && return trues(n)
-    return [((i * k) % n) < k for i in 0:(n-1)]
+    i, j = k, n - k
+    xs = [Bool[true] for _ in 1:i]
+    ys = [Bool[false] for _ in 1:j]
+    while min(i, j) > 1
+        if i > j
+            head, rest = xs[1:j], xs[(j + 1):end]
+            xs = [vcat(a, b) for (a, b) in zip(head, ys)]
+            ys = rest
+            i, j = j, i - j
+        else
+            head, rest = ys[1:i], ys[(i + 1):end]
+            xs = [vcat(a, b) for (a, b) in zip(xs, head)]
+            ys = rest
+            j = j - i
+        end
+    end
+    return BitVector(vcat(reduce(vcat, xs; init = Bool[]), reduce(vcat, ys; init = Bool[])))
 end
 
 function _emit!(out::Vector{Event{Symbol}}, node::AtomNode,
@@ -439,11 +516,10 @@ function _emit!(out::Vector{Event{Symbol}}, node::RandomAltNode,
                 a::Rational, b::Rational, cycle::Int)
     n = length(node.children)
     n == 0 && return
-    # Hash mixed with a fixed salt so different RandomAltNodes in
-    # the same cycle don't lockstep to the same choice.
-    salt = UInt(0x9e3779b97f4a7c15)
-    idx = mod(hash(cycle, salt) % UInt32, UInt32(n)) + 1
-    _emit!(out, node.children[idx], a, b, cycle)
+    # Le tirage dépend du cycle, du créneau et du rang du `|` dans la
+    # chaîne : deux `[a|b]` — côte à côte, empilés, ou le même répété par
+    # `*2` — choisissent chacun pour soi.
+    _emit!(out, node.children[_pick(n, (cycle, a, node.seed, :alt))], a, b, cycle)
 end
 
 function _emit!(::Vector{Event{Symbol}}, ::SilenceNode,
@@ -467,8 +543,11 @@ end
 
 function _emit!(out::Vector{Event{Symbol}}, node::AltNode,
                 a::Rational, b::Rational, cycle::Int)
-    chosen = node.children[mod(cycle, length(node.children)) + 1]
-    _emit!(out, chosen, a, b, cycle)
+    n = length(node.children)
+    chosen = node.children[mod(cycle, n) + 1]
+    # Le pas choisi avance d'un cycle à chacun de ses passages (`slowcat`) :
+    # `<a <b c>>` donne a b a c, pas a c a c.
+    _emit!(out, chosen, a, b, fld(cycle, n))
 end
 
 # Valeur numérique d'un argument de modificateur : littéral, ou pattern
@@ -500,12 +579,15 @@ function _emit!(out::Vector{Event{Symbol}}, node::RepeatNode,
     n > 0 || return
     width = b - a
     step = width / n
+    # Chaque répétition est un cycle du contenu : `<bd sn>*2` avance dans
+    # l'alternance deux fois par cycle (bd sn), comme `fast(2, "<bd sn>")`.
+    first_sub = floor(Int, cycle * n)
     i = 0
     while true
         sub_a = a + step * i
         sub_a < b || break
         sub_b = sub_a + step
-        _emit!(out, node.child, sub_a, sub_b, cycle)
+        _emit!(out, node.child, sub_a, sub_b, first_sub + i)
         i += 1
         i > 10_000 && break
     end
@@ -549,7 +631,9 @@ end
 function _emit!(out::Vector{Event{Symbol}}, node::EuclidNode,
                 a::Rational, b::Rational, cycle::Int)
     k = _arg_int(node.k, cycle); n = _arg_int(node.n, cycle); rot = _arg_int(node.rot, cycle)
-    (k >= 0 && n > 0) || throw(ArgumentError("Invalid Euclidean parameters ($k,$n)"))
+    # Un argument patterné qui tombe sur 0 pas (`bd(3,<8 0>)`) : silence ce
+    # cycle-là, pas une exception dans le scheduler.
+    n > 0 || return
     pulses = _euclidean_pulses(k, n)
     # Rotation comme Tidal : `bd(3,8,2)` tourne les pas de 2 vers la
     # GAUCHE — [1,0,0,1,0,0,1,0] devient [0,1,0,0,1,0,1,0].
@@ -569,27 +653,59 @@ function _emit!(out::Vector{Event{Symbol}}, node::DegradeNode,
                 a::Rational, b::Rational, cycle::Int)
     # Deterministic per-event drop based on hash(start). Same start
     # across renders ⇒ same drop decision ⇒ groove is stable.
-    r = (hash((a, cycle)) % UInt32(1_000_000)) / 1_000_000.0
-    r < node.prob && return
+    _u01((a, cycle, :degrade)) < node.prob && return
     _emit!(out, node.child, a, b, cycle)
 end
 
+# Durée maximale d'un événement émis par `node`, en multiple du créneau où
+# il est émis. Sert à la tenue : pour savoir ce qui dure encore au début
+# d'une fenêtre, il suffit de remonter de cette durée. Un argument patterné
+# (`a/<2 4>`) n'a pas de borne lisible : on prend `_HELD_LOOKBACK`.
+_node_span(::AtomNode)    = 1 // 1
+_node_span(::SilenceNode) = 0 // 1
+_node_span(n::Union{ChordNode,RandomAltNode,AltNode}) =
+    maximum(_node_span, n.children; init = 0 // 1)
+function _node_span(n::SeqNode)
+    total = sum(c[2] for c in n.children; init = 0 // 1)
+    total == 0 && return 0 // 1
+    return maximum(_node_span(c) * w // total for (c, w) in n.children; init = 0 // 1)
+end
+_node_span(n::RepeatNode) = n.n isa Real && n.n > 0 ?
+    _node_span(n.child) / rationalize(Int64, float(n.n); tol = 1e-6) : Rational{Int64}(_HELD_LOOKBACK)
+_node_span(n::SlowNode) = n.n isa Real && n.n > 0 ?
+    _node_span(n.child) * rationalize(Int64, float(n.n); tol = 1e-6) : Rational{Int64}(_HELD_LOOKBACK)
+_node_span(n::EuclidNode)  = _node_span(n.child)
+_node_span(n::DegradeNode) = _node_span(n.child)
+_node_span(n::PolyNode) =
+    maximum(_node_span(c) for v in n.voices for c in v; init = 0 // 1)
+
 function _build_pattern(root::MNode)
-    Pattern{Symbol}((s::Rational, e::Rational) -> begin
+    # Tout ce que les cycles [c0, c1) émettent, chaque événement une fois
+    # (un `a/n` n'émet un événement que dans le cycle de son attaque).
+    emit(c0::Int, c1::Int) = begin
         events = Event{Symbol}[]
-        n_start = floor(Int, s)
-        n_stop  = ceil(Int, e)
-        for cyc in n_start:(n_stop - 1)
-            _emit!(events, root,
-                   Rational{Int64}(cyc), Rational{Int64}(cyc + 1), cyc)
+        for cyc in c0:(c1 - 1)
+            _emit!(events, root, Rational{Int64}(cyc), Rational{Int64}(cyc + 1), cyc)
         end
+        events
+    end
+    lookback = ceil(Int, _node_span(root))
+    Pattern{Symbol}((s::Rational, e::Rational) -> begin
         # Sémantique « onset » comme `pure` : un événement est émis entier
         # si et seulement s'il DÉMARRE dans [s, e). Couper des fragments
         # faisait rejouer un coup à cheval sur deux fenêtres (late, off,
         # stut… doublaient des coups).
-        clipped = Event{Symbol}[ev for ev in events if s <= ev.start < e]
-        sort!(clipped, by = ev -> ev.start)
-        clipped
+        out = Event{Symbol}[ev for ev in emit(floor(Int, s), ceil(Int, e)) if s <= ev.start < e]
+        sort!(out, by = ev -> ev.start)
+        out
+    end,
+    # Tenue : on remonte de la plus longue durée possible et on garde ce
+    # qui recouvre la fenêtre.
+    (s::Rational, e::Rational) -> begin
+        out = Event{Symbol}[ev for ev in emit(floor(Int, s) - lookback, ceil(Int, e))
+                            if ev.start < e && ev.stop > s]
+        sort!(out, by = ev -> ev.start)
+        out
     end)
 end
 

@@ -20,7 +20,7 @@ struct PatternEntry
     path::String
 end
 
-_pattern_dir() = joinpath(pwd(), "plugins", "user-patterns")
+_pattern_dir() = joinpath(_project_dir(), "plugins", "user-patterns")
 
 # Nom de fichier sûr : lettres, chiffres, tiret, souligné.
 _pattern_slug(name::AbstractString) = replace(strip(String(name)), r"[^\w\-]" => "-")

@@ -122,18 +122,28 @@ at the REPL via `register_scale!`. Lookup by symbol via
 """
 const _SCALES = Dict{Symbol, Scale}()
 
-"""
-    register_scale!(s::Scale) -> Scale
+# Qui a posé chaque gamme : "ressac" pour celles du moteur, le nom du plugin
+# pour les siennes, "joueur" pour une gamme définie en session.
+const _SCALE_OWNERS = Dict{Symbol,String}()
+const _SCALE_PLAYER = "joueur"
 
-Register `s` under its `name`. Last-wins on collision with a
-warning naming both names so the user can chase a surprise
-override. Returns `s` for chaining.
 """
-function register_scale!(s::Scale)
-    if haskey(_SCALES, s.name)
-        @warn "scale ':$(s.name)' shadowed; previous definition replaced"
+    register_scale!(s::Scale; plugin = nothing) -> Scale
+
+Register `s` under its `name` — same rule as every other registry
+(`_register!`, plugin_registry.jl): the last definition wins. The same
+owner redefining its scale (a plugin reloaded) is silent; a different one —
+another plugin, or the player at the REPL / with `:scale edo …` — replaces
+it with a warning naming who had it. Returns `s` for chaining.
+"""
+function register_scale!(s::Scale; plugin::Union{Nothing,AbstractString} = nothing)
+    owner = plugin === nothing ? _SCALE_PLAYER : String(plugin)
+    previous = get(_SCALE_OWNERS, s.name, nothing)
+    if haskey(_SCALES, s.name) && (previous != owner || plugin === nothing)
+        @warn "scale ':$(s.name)' shadowed by $(plugin === nothing ? "a new definition" : "plugin '$owner'") (previously from '$(something(previous, "?"))')"
     end
     _SCALES[s.name] = s
+    _SCALE_OWNERS[s.name] = owner
     return s
 end
 
@@ -430,5 +440,5 @@ const _BUILTIN_12EDO_SCALES = Dict{Symbol,Vector{Int}}(
 )
 
 for (name, steps) in _BUILTIN_12EDO_SCALES
-    register_scale!(Scale(name, Float64.(steps) .* 100.0, 1200.0))
+    register_scale!(Scale(name, Float64.(steps) .* 100.0, 1200.0); plugin = "ressac")
 end
