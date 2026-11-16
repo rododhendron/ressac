@@ -13,17 +13,19 @@
 # Windows. The `just live-fast` recipe picks the right one automatically.
 
 using Pkg
-Pkg.activate(joinpath(@__DIR__, ".."))
 
-# Lazy-install PackageCompiler if missing. Keeps the dep out of the
-# project's runtime deps (it's only needed for this build step).
-try
-    using PackageCompiler
-catch
-    @info "Installing PackageCompiler.jl (one-time, ~30s)…"
+const ROOT = normpath(joinpath(@__DIR__, ".."))
+
+# PackageCompiler n'est PAS une dépendance de Ressac : il ne sert qu'ici. Il
+# vit dans un environnement partagé à part (`@ressac-sysimage`), pour que ce
+# script ne l'ajoute jamais au Project.toml du projet. Le projet lui-même
+# est désigné à `create_sysimage` par `project = ROOT`.
+Pkg.activate("ressac-sysimage"; shared = true, io = devnull)
+if !haskey(Pkg.project().dependencies, "PackageCompiler")
+    @info "Installing PackageCompiler.jl in the shared env @ressac-sysimage (one-time, ~30s)…"
     Pkg.add("PackageCompiler")
-    using PackageCompiler
 end
+using PackageCompiler
 
 const OUT = if Sys.iswindows()
     "ressac.dll"
@@ -34,13 +36,21 @@ else
 end
 
 precompile_file = joinpath(@__DIR__, "precompile_workload.jl")
-out_path = joinpath(@__DIR__, "..", OUT)
+out_path = joinpath(ROOT, OUT)
 
 @info "Building sysimage → $OUT (this takes 2-4 minutes)…"
 @info "Precompile workload: $precompile_file"
 
+# RESSAC_SYSIMAGE_DRYRUN=1 s'arrête ici : de quoi vérifier que le script
+# trouve PackageCompiler et le projet, sans trois minutes de compilation.
+if get(ENV, "RESSAC_SYSIMAGE_DRYRUN", "") == "1"
+    @info "Dry run: PackageCompiler $(pkgversion(PackageCompiler)) ready, project = $ROOT — nothing built."
+    exit(0)
+end
+
 create_sysimage(
     [:Ressac];
+    project = ROOT,
     sysimage_path = out_path,
     precompile_execution_file = precompile_file,
     include_transitive_dependencies = true,

@@ -27,6 +27,9 @@ sessions/*.txt
 !sessions/.keep
 tachikoma_*.tach
 
+# Prises audio de `:rec` et `:export` (données du joueur, plusieurs Mo)
+recordings/
+
 # Superpowers brainstorming companion (HTML mockups + state)
 .superpowers/
 /test/sessions/

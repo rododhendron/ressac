@@ -4,7 +4,7 @@ set shell := ["bash", "-c"]
 default:
     @just --list
 
-# Run the full test suite (944+ tests)
+# Run the full test suite (~2 min)
 test:
     julia --project=. -e 'using Pkg; Pkg.test()'
 
@@ -89,8 +89,9 @@ update:
 sysimage:
     julia --project=. -t auto scripts/build_sysimage.jl
 
-# Same as `live` but uses the prebuilt sysimage if present. Falls
-# back to a fresh load if the sysimage doesn't exist yet.
+# Same as `live` but uses the prebuilt sysimage if present AND up to date.
+# Falls back to a fresh load if the sysimage doesn't exist yet, or is older
+# than the source (it would silently run the old code).
 live-fast:
     #!/usr/bin/env bash
     set -e
@@ -101,6 +102,16 @@ live-fast:
     if [ -z "$img" ]; then
         echo "No sysimage found. Run 'just sysimage' first (one-time ~3 min)."
         echo "Falling back to standard 'just live'..."
+        exec julia --project=. -t auto scripts/live.jl
+    fi
+    # Une image contient Ressac tel qu'il était quand on l'a construite : un
+    # paquet cuit dans une sysimage n'est PAS relu depuis src/. Si le code a
+    # bougé depuis, on ne lance pas l'ancienne en silence.
+    stale=$(find src Project.toml Manifest.toml -newer "$img" -print -quit 2>/dev/null || true)
+    if [ -n "$stale" ]; then
+        echo "L'image $img est plus ancienne que le code ($stale a changé depuis)."
+        echo "Elle ferait tourner l'ancien Ressac : lancement depuis les sources (~12 s)."
+        echo "→ 'just sysimage' la reconstruit (~3 min) pour retrouver le démarrage rapide."
         exec julia --project=. -t auto scripts/live.jl
     fi
     echo "Using sysimage: $img"
