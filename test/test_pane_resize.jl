@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Redimensionner les panes : mode pane (< > - + = r), glisser une bordure
 # à la souris, bornes, surbrillance, proportions sauvées.
 using Test

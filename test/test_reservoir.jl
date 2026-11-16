@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests for the reservoir plugin (plugins/reservoir/).
 #
 # Same fixture pattern as test_chaos.jl: a tiny fixture plugin loads
@@ -407,21 +408,25 @@
         @test v > -65.0
     end
 
-    @testset "modulator: scale=:auto maps AdEx :V into [-1, 1]" begin
+    @testset "modulator: scale=:auto maps AdEx :V into [0, 1]" begin
         r = Main.Reservoir.adex(N = 4, seed = 14)
         m = Main.Reservoir.modulator(r, neuron = 1, kind = :V, drive = 600.0)
         v = m(0//1, 1//1)[1].value
-        @test -1.0 <= v <= 1.0
+        @test 0.0 <= v <= 1.0
+        # Au repos (≈ -70 mV) le signal est près de 0, pas au milieu.
+        rest = Main.Reservoir.modulator(Main.Reservoir.adex(N = 4, seed = 14, p_connect = 0.0),
+                                        neuron = 1, kind = :V)(0//1, 1//1)[1].value
+        @test rest < 0.1
     end
 
-    @testset "modulator: RECA :bit raw returns 0/1, :auto returns ±1" begin
+    @testset "modulator: RECA :bit is already a signal — 0/1, raw or :auto" begin
         r1 = Main.Reservoir.reca(N = 16, rule = 30, init = :single)
         v_raw = Main.Reservoir.modulator(r1, neuron = 8,
                                           scale = identity)(0//1, 1//1)[1].value
         @test v_raw in (0.0, 1.0)
         r2 = Main.Reservoir.reca(N = 16, rule = 30, init = :single)
         v_auto = Main.Reservoir.modulator(r2, neuron = 8)(0//1, 1//1)[1].value
-        @test v_auto in (-1.0, 1.0)
+        @test v_auto in (0.0, 1.0)
     end
 
     @testset "modulator: scale function is applied" begin
@@ -435,12 +440,12 @@
     @testset "modulator: composes with range_pat" begin
         r = Main.Reservoir.reca(N = 16, rule = 30, init = :single,
                                 steps_per_cycle = 4)
-        # RECA :bit is in {0, 1}; range_pat treats positives as already-
-        # unipolar (range [0, 1] → [lo, hi]).
+        # RECA :bit is in {0, 1}, the range of a signal: range_pat sends it
+        # to one bound or the other.
         m = Main.Reservoir.modulator(r, neuron = 8) |> range_pat(200.0, 4000.0)
         for c in 0:5
             v = m(Rational(c), Rational(c + 1))[1].value
-            @test 200.0 <= v <= 4000.0
+            @test v in (200.0, 4000.0)
         end
     end
 

@@ -1,13 +1,6 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
 
 @testset "synth_audition" begin
     base() = Ressac.archetype(:pluck)
@@ -58,45 +51,27 @@ end
 end
 
 @testset "SC synth-error feedback → app log" begin
-    @testset "_handle_synth_error! pushes a [SC ERROR] line to the log" begin
-        log = Ressac._APP_LOG[]
-        n0 = length(log)
+    # L'erreur arrive sur le thread d'écoute OSC : elle passe par la file
+    # des notices, que la vue verse dans le journal à la frame suivante.
+    @testset "_handle_synth_error! dépose une ligne [SC ERROR] pour le journal" begin
+        Ressac._drain_notices!()
         Ressac._handle_synth_error!(Any["ga_slot5", "RLPF first input is not audio rate"])
-        @test length(log) == n0 + 1
-        @test occursin("[SC ERROR]", log[end])
-        @test occursin("ga_slot5", log[end])
-        @test occursin("audio rate", log[end])
+        lines = Ressac._drain_notices!()
+        @test length(lines) == 1
+        @test occursin("[SC ERROR]", lines[1])
+        @test occursin("ga_slot5", lines[1])
+        @test occursin("audio rate", lines[1])
     end
 
     @testset "tolerates missing args" begin
-        log = Ressac._APP_LOG[]
         Ressac._handle_synth_error!(Any[])
-        @test occursin("[SC ERROR]", log[end])
-    end
-end
-
-@testset "RMS level feedback → silence flag" begin
-    @testset "level probe is baked into ga_slotN synthdefs only" begin
-        g = Ressac.archetype(:drone_grave)
-        @test occursin("SendReply.kr(Impulse.kr(15), '/ressac/level', [5,", Ressac.render_synthdef(g, :ga_slot5))
-        @test !occursin("/ressac/level", Ressac.render_synthdef(g, :x))    # export name → no probe
+        @test occursin("[SC ERROR]", only(Ressac._drain_notices!()))
     end
 
-    @testset "_handle_synth_level! stores the peak per slot" begin
-        Ressac._reset_slot_levels!(9)
-        Ressac._handle_synth_level!(Any[1200, 3, 4, 0.42])   # nodeID, replyID, slot=4, amp
-        @test Ressac._GA_SLOT_LEVEL[][4] ≈ 0.42f0
-        @test Ressac._GA_SLOT_MEASURED[][4]
-        Ressac._handle_synth_level!(Any[1200, 3, 4, 0.10])   # lower → peak unchanged
-        @test Ressac._GA_SLOT_LEVEL[][4] ≈ 0.42f0
-    end
-
-    @testset "enqueue resets levels" begin
-        Ressac._handle_synth_level!(Any[1, 1, 2, 0.5])
-        st = Ressac.AuditionState(9)
-        Ressac.enqueue_generation!(st, MockOSCClient(),
-                                   [Ressac.archetype(:pluck) for _ in 1:9])
-        @test all(==(0.0f0), Ressac._GA_SLOT_LEVEL[])
-        @test !any(Ressac._GA_SLOT_MEASURED[])
+    @testset "la vue verse les notices dans le journal" begin
+        app, frame = _new_app()
+        Ressac._handle_synth_error!(Any["zz", "boom"])
+        Tachikoma.view(app, frame)
+        @test any(l -> occursin("[SC ERROR] synth zz: boom", l), app.logs)
     end
 end

@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Visual integration tests — drive a real RessacApp through view()
 # and assert on the rendered character buffer. Catches "I typed but
 # nothing appeared" regressions that pure-state e2e tests miss.
@@ -9,33 +10,8 @@ using Test
 using Ressac
 import Tachikoma
 
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
-
 const _VIS_W = 120
 const _VIS_H = 35
-
-# La disposition PLAY par défaut ouvre wiki + doc à droite (voir
-# `_play_side_panes!`). Les tests de mécanique de panes (split, fermeture,
-# zoom, comptage) veulent un point de départ à une seule pane : on replie
-# l'arbre sur l'éditeur, explicitement, sans état global partagé.
-function _only_patterns!(app)
-    ws = Ressac.current_workspace(app.workspaces)
-    ws === nothing && return app
-    for leaf in Ressac._all_leaves(ws.tree)
-        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
-            ws.tree = leaf
-            ws.focused_pane = leaf.id
-            break
-        end
-    end
-    return app
-end
 
 function _vis_app()
     mock = MockOSCClient()

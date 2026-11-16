@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 import Tachikoma
@@ -46,27 +47,9 @@ Ressac.title(::_NullPane) = "null"
     end
 end
 
-# Reload the core pane kind files to restore registrations that the
-# testsets above wiped via `empty!(Ressac._PANE_KINDS)`. Idempotent —
-# include only the files that exist (the 4 core kinds land in 4
-# separate Tasks 4-7; earlier tasks have fewer files on disk).
-function _reload_core_pane_kinds()
-    for f in ("pane_editor.jl", "pane_log.jl", "pane_doc.jl",
-              "pane_scope.jl", "pane_tuning.jl")
-        path = joinpath(@__DIR__, "..", "src", f)
-        isfile(path) && Base.include(Ressac, path)
-    end
-    # Le wiki n'est pas ré-inclus (ses bind! doubleraient) : juste le kind.
-    Ressac.register_pane_kind!(:wiki, Ressac._wiki_pane_ctor)
-    Ressac.register_pane_kind!(:notes, Ressac._notes_pane_ctor)
-    Ressac.register_pane_kind!(:tutorial, Ressac._tutorial_pane_ctor)
-    Ressac.register_pane_kind!(:drone, Ressac._drone_pane_ctor)
-    Ressac.register_pane_kind!(:synthdoc, Ressac._synthdoc_pane_ctor)
-    # DESIGN a besoin du studio, EXPLORE de l'explorateur : sans eux, tout
-    # pont vers ces workspaces (`:synth` depuis PLAY) échoue en silence.
-    Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
-    Ressac.register_pane_kind!(:explorer, Ressac._synth_explorer_pane_ctor)
-end
+# Les testsets ci-dessus vident `_PANE_KINDS` : on le remet dans l'état de
+# référence (helpers.jl), sans ré-inclure de fichier source.
+_reload_core_pane_kinds() = _restore_globals!(Ressac._PANE_KINDS)
 
 @testset "pane_editor — :editor kind" begin
     _reload_core_pane_kinds()
@@ -124,8 +107,8 @@ end
     end
 
     @testset "handle_key! delegates all keys to the TK.CodeEditor" begin
-        # Eval shortcuts (e / T) are routed at the app level in
-        # tui_app.jl — the pane just forwards keys to its editor, so
+        # Eval shortcuts (e / T) are routed at the app level (the key
+        # layers, app_layers.jl) — the pane just forwards keys to its editor, so
         # handle_key! returns whatever TK.handle_key! returns (a Bool)
         # without intercepting e/T itself.
         ep = Ressac._pane_new(:editor, Dict{String,Any}())

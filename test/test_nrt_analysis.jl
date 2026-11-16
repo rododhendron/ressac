@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
@@ -36,10 +37,47 @@ using Ressac
         @test d[6] ≈ 0.8 atol = 0.05           # pitchconf
     end
 
+    # Le lanceur lui-même, sur un faux sclang (un script shell) : aucun vrai
+    # sclang ici, donc dans la suite par défaut.
+    @testset "_run_sclang — délai borné, processus tué" begin
+        dir = mktempdir()
+        fake(body) = (p = joinpath(dir, "fake-" * string(hash(body); base = 16));
+                      write(p, "#!/bin/sh\n" * body * "\n"); chmod(p, 0o755); p)
+        old = Ressac._SCLANG_BIN[]
+        try
+            # Un sclang resté dans sa boucle d'interprétation (erreur de syntaxe).
+            Ressac._SCLANG_BIN[] = fake("exec sleep 30")
+            t0 = time()
+            err = try Ressac._run_sclang("x.scd"; timeout = 0.3); nothing catch e; e end
+            @test err isa ErrorException && occursin("n'a pas rendu la main", err.msg)
+            @test time() - t0 < 5.0
+            # Sortie normale et sortie en erreur (le `1.exit` du try SC).
+            Ressac._SCLANG_BIN[] = fake("exit 0")
+            @test Ressac._run_sclang("x.scd"; timeout = 5) == 0
+            Ressac._SCLANG_BIN[] = fake("exit 1")
+            @test Ressac._run_sclang("x.scd"; timeout = 5) == 1
+        finally
+            Ressac._SCLANG_BIN[] = old
+        end
+    end
+
+    @testset "les scripts NRT sortent toujours de sclang" begin
+        g = Ressac.Genome()
+        n = Ressac.add_node!(g, :WhiteNoise, :ar, Ressac.Arg[]); g.output_id = n
+        for script in (Ressac._build_nrt_script(Ressac.Genome[g], "o.wav", "o.osc"),
+                       Ressac._build_audio_script(g, "o.wav", "o.osc", 0.5))
+            @test startswith(script, "try {")
+            @test occursin("action: { 0.exit }", script)
+            @test occursin("{ |err| err.reportError; 1.exit };", script)
+        end
+    end
+
     # Intégration NRT réelle : LENTE (sclang compile sa classlib ~15 s par
     # appel) → JAMAIS dans la suite par défaut. Opt-in explicite via
     # RESSAC_NRT_TESTS=1 (et sclang dispo). `just test-nrt` la lance.
-    if get(ENV, "RESSAC_NRT_TESTS", "") == "1" && Ressac._sclang_available()
+    if get(ENV, "RESSAC_NRT_TESTS", "") == "1"
+        # Opt-in demandé : l'absence de sclang est un échec, pas un saut.
+        @test Ressac._sclang_available()
         @testset "rendu NRT headless : sinus grave vs bruit blanc" begin
             gs = Ressac.Genome()
             s = Ressac.add_node!(gs, :SinOsc, :ar,
@@ -62,7 +100,9 @@ using Ressac
         @info "nrt: test d'intégration sauté (RESSAC_NRT_TESTS=1 pour le lancer)"
     end
 
-    if get(ENV, "RESSAC_NRT_TESTS", "") == "1" && Ressac._sclang_available()
+    if get(ENV, "RESSAC_NRT_TESTS", "") == "1"
+        # Opt-in demandé : l'absence de sclang est un échec, pas un saut.
+        @test Ressac._sclang_available()
         @testset "render_genome_audio capture l'onde complète (mono)" begin
             g = Ressac.Genome()
             s = Ressac.add_node!(g, :SinOsc, :ar,

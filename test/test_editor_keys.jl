@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Touches de l'éditeur qui attendent un caractère littéral (r, f, t) : rien
 # ne doit les intercepter, ni le panic global ni le menu Espace.
 using Test

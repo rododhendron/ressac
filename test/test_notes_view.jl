@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Voir ce qui joue : référence de slot, visualiseur de notes, aperçu en
 # bout de ligne.
 using Test

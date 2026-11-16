@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Les gabarits Tachikoma de Ressac : ScrollPane partagé (tk_scroll.jl) et
 # picker saisie + liste (tk_picker.jl), puis la palette qui s'en sert.
 using Test
@@ -72,14 +73,6 @@ end
     Ressac._picker_search!(pk, true)
     @test Ressac._picker_type!(pk, _ev('j')) && Ressac._picker_query(pk) == "j"
     Ressac._picker_clear!(pk); @test isempty(Ressac._picker_query(pk)) && pk.searching
-end
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
 end
 
 @testset "palette — flèches, Entrée, clic et molette passent par le picker" begin

@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Workspace synth (DESIGN) : forme fixe texte | studio / doc, onglets de
 # synths, synchronisation texte ⟷ studio, doc à onglets, persistance.
 using Test

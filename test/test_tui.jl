@@ -1,26 +1,11 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 import Tachikoma
 
-# The LiveModel-rendered TUI.view tests that lived here were removed
-# in the phase-1 cleanup that deleted tui_view.jl. The kept test
-# (live API helpers without an active session) is independent of any
-# UI model and belongs in the live_api regression set.
-
-# La disposition PLAY par défaut ouvre wiki + doc à droite. Les tests de
-# mécanique de panes repartent d'une seule pane, explicitement.
-function _only_patterns!(app)
-    ws = Ressac.current_workspace(app.workspaces)
-    ws === nothing && return app
-    for leaf in Ressac._all_leaves(ws.tree)
-        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
-            ws.tree = leaf
-            ws.focused_pane = leaf.id
-            break
-        end
-    end
-    return app
-end
+# Live API helpers without an active session, the default workspaces,
+# and the named-layout round trip. (The end-to-end TUI flows live in
+# test_ui_integration.jl.)
 
 @testset "live API errors without an active session" begin
     Ressac._LIVE_SCHEDULER[] = nothing
@@ -32,14 +17,6 @@ end
 
 # Sub-project 9 — workspace bootstrap. Reuses the same MockOSCClient
 # convention as test_scheduler.jl / test_sc_autodiscover.jl.
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
-
 @testset "_ensure_default_workspace! crée PLAY/DESIGN/EXPLORE et remplit PLAY d'un éditeur" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)

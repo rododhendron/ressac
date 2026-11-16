@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Unit tests for src/core_tuning.jl — the Scale type, degree math,
 # and the registry. Higher-level constructors (edo, from_ratios,
 # bohlen_pierce, etc.) are tested in test_tuning_constructors.jl.

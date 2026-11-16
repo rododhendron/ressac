@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
@@ -23,7 +24,7 @@ using Ressac
         @test Ressac.lookup_doc("nonexistent") === nothing
     end
 
-    @testset "register_doc! last-wins with warning on conflict" begin
+    @testset "register_doc! — le dernier chargé l'emporte, avec un avertissement" begin
         empty!(Ressac._DOCS)
         e1 = Ressac.DocEntry("foo", "first", Symbol[], Symbol[], String[],
                              String[], "", "plugA", "/a/foo.md")
@@ -123,7 +124,7 @@ using Ressac
         @test Ressac.list_starters() == ["mango", "zeta"]
     end
 
-    @testset "register_snippet! last-wins with warning on conflict" begin
+    @testset "register_snippet! — le dernier chargé l'emporte, avec un avertissement" begin
         empty!(Ressac._SNIPPETS)
         e1 = Ressac.SnippetEntry("foo", :block, "v1", Symbol[], :any,
                                   String[], String[], "a", Any[], "plugA", "")

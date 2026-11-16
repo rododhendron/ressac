@@ -1,10 +1,7 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 import Tachikoma
-
-# test_pane_interface.jl vide _PANE_KINDS et ne ré-enregistre que les
-# kinds core ; on ré-inclut le fichier du pane pour re-déclarer :explorer.
-Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_synth_explorer.jl"))
 
 @testset "synth explorer pane — render" begin
     @testset "ctor builds a 9-candidate population from a seed" begin
@@ -113,11 +110,6 @@ end
     end
 
     @testset "Space plays via the live scheduler (mock)" begin
-        if !isdefined(Main, :MockOSCClient)
-            mutable struct MockOSCClient; sent::Vector{Vector{UInt8}}; end
-            MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-            Ressac.send_osc(c::MockOSCClient, b::Vector{UInt8}) = push!(c.sent, b)
-        end
         mock = MockOSCClient()
         sched = Ressac.Scheduler(mock; cps = 0.5)
         Ressac._LIVE_SCHEDULER[] = sched

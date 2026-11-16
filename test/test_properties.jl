@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests par propriétés (Supposition.jl) : des invariants vérifiés sur des
 # entrées générées, pour couvrir les angles morts qu'un exemple choisi à
 # la main ne voit pas. Chaque contre-exemple trouvé est rétréci et rejoué.

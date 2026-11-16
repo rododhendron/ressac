@@ -1,33 +1,9 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Ponts son ⟷ patterns : workspaces PLAY / DESIGN / EXPLORE, gs, U,
 # :synth <nom> depuis la librairie, :sculpt robuste, export explorer.
 using Test
 using Ressac
 import Tachikoma
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
-
-# La disposition PLAY par défaut ouvre wiki + doc à droite (voir
-# `_play_side_panes!`). Les tests de mécanique de panes (split, fermeture,
-# zoom, comptage) veulent un point de départ à une seule pane : on replie
-# l'arbre sur l'éditeur, explicitement, sans état global partagé.
-function _only_patterns!(app)
-    ws = Ressac.current_workspace(app.workspaces)
-    ws === nothing && return app
-    for leaf in Ressac._all_leaves(ws.tree)
-        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
-            ws.tree = leaf
-            ws.focused_pane = leaf.id
-            break
-        end
-    end
-    return app
-end
 
 function _br_app()
     sched = Ressac.Scheduler(MockOSCClient(); cps = 0.5)

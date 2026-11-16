@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Glossaire : fiches en anglais étiquetées glossary, index des termes,
 # soulignement dans le markdown, bulle de survol (ouverture, suivi,
 # verrou par le temps ou l'entrée de la souris, bulles en chaîne, sortie

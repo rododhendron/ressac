@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Expression SC → Genome (sc_expr_parse.jl) et genome_from_dsl par
 # évaluation du corps : la sculpture et l'explication lisent le vrai son.
 using Test
@@ -41,9 +42,9 @@ const _CTL = (:freq, :sustain, :gain, :release)
     g = Ressac.genome_from_sc("{ SinOsc.ar(freq) }.value", _CTL); @test _names(g) == ["Raw"]
     # chaîne de sécurité retirée
     g = Ressac.genome_from_sc("Limiter.ar(LeakDC.ar(Sanitize.ar(Saw.ar(freq))), 0.95)", _CTL); @test _out(g).ugen === :Saw
-    # un identifiant inconnu vaut 0, pi vaut pi
+    # pi vaut pi ; un identifiant inconnu n'est pas un 0 silencieux : rien n'est rendu
     g = Ressac.genome_from_sc("SinOsc.ar(freq, pi)", _CTL); @test _out(g).args[2] == Ressac.ConstArg(Float64(pi))
-    g = Ressac.genome_from_sc("SinOsc.ar(machin)", _CTL); @test _out(g).args[1] == Ressac.ConstArg(0.0)
+    @test Ressac.genome_from_sc("SinOsc.ar(machin)", _CTL) === nothing
 end
 
 @testset "genome_from_dsl — le vocabulaire réel du DSL" begin

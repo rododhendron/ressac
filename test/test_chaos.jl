@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests for the chaos plugin (plugins/chaos/).
 #
 # Loads the real chaos.jl via a small fixture plugin (chaos-fixture)
@@ -111,13 +112,29 @@
     end
 
     @testset "composes with range_pat and segment" begin
-        # range_pat needs bipolar input ([-1, 1]); logistic is unipolar
-        # (0..1) so we feed it through a quick scale to bipolar first.
-        # Simpler check: segment carves the chaos into N events/cycle.
         p = Main.Chaos.logistic()
         seg = p |> segment(8)
         evs = seg(0//1, 1//1)
         @test length(evs) == 8
         @test all(0.0 .<= [e.value for e in evs] .<= 1.0)
     end
+
+    @testset "every system is a signal in [0, 1] — range_pat lands in its band" begin
+        C = Main.Chaos
+        for mk in (() -> C.lorenz(), () -> C.lorenz(axis = :y), () -> C.lorenz(axis = :z),
+                   () -> C.henon(), () -> C.henon(axis = :y), () -> C.logistic(),
+                   () -> C.rossler(), () -> C.rossler(axis = :z),
+                   () -> C.standard(), () -> C.standard(axis = :θ))
+            sig = mk()
+            vs = [sig(Rational(c, 4), Rational(c + 1, 4))[1].value for c in 0:399]
+            @test all(v -> 0.0 <= v <= 1.0, vs)
+            @test maximum(vs) - minimum(vs) > 0.2          # il bouge, il n'est pas écrasé sur un bord
+            band = mk() |> range_pat(400, 3500)
+            @test all(c -> 400 <= band(Rational(c, 4), Rational(c + 1, 4))[1].value <= 3500, 0:399)
+        end
+        # `raw = true` rend l'état lui-même.
+        raw = C.lorenz(raw = true)
+        @test maximum(abs(raw(Rational(c), Rational(c + 1))[1].value) for c in 0:50) > 2
+    end
+
 end

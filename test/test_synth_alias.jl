@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests for the synth alias system: a user-facing short name (the
 # alias) that resolves to a SC SynthDef name (typically derived from
 # the source filename). Lets users type `:wob` in patterns while SC

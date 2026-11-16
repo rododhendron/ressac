@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Guidage de la création : pane wiki, pane doc (:doc, K), placement des
 # snippets Espace, slot pré-rempli, indices de la barre, sons inconnus.
 using Test
@@ -10,23 +11,6 @@ if !@isdefined(_GdMock)
     end
     _GdMock() = _GdMock(Vector{UInt8}[])
     Ressac.send_osc(c::_GdMock, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
-
-# La disposition PLAY par défaut ouvre wiki + doc à droite (voir
-# `_play_side_panes!`). Les tests de mécanique de panes (split, fermeture,
-# zoom, comptage) veulent un point de départ à une seule pane : on replie
-# l'arbre sur l'éditeur, explicitement, sans état global partagé.
-function _only_patterns!(app)
-    ws = Ressac.current_workspace(app.workspaces)
-    ws === nothing && return app
-    for leaf in Ressac._all_leaves(ws.tree)
-        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
-            ws.tree = leaf
-            ws.focused_pane = leaf.id
-            break
-        end
-    end
-    return app
 end
 
 function _gd_app()

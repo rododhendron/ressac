@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # UI integration tests — drive a real RessacApp via Tachikoma.update!
 # and assert end-to-end outcomes. The pattern stays small: build the
 # app, ship a sequence of KeyEvent / MouseEvent, check state. Each
@@ -7,66 +8,6 @@
 using Test
 using Ressac
 import Tachikoma
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
-
-# Boots a fresh app + paints one frame so view-side state
-# (_last_ws_area, focus flags, m.layout_patterns) is populated. Most
-# integration tests want the post-first-frame world.
-# La disposition PLAY par défaut ouvre wiki + doc à droite (voir
-# `_play_side_panes!`). Les tests de mécanique de panes (split, fermeture,
-# zoom, comptage) veulent un point de départ à une seule pane : on replie
-# l'arbre sur l'éditeur, explicitement, sans état global partagé.
-function _only_patterns!(app)
-    ws = Ressac.current_workspace(app.workspaces)
-    ws === nothing && return app
-    for leaf in Ressac._all_leaves(ws.tree)
-        if any(t -> t isa Ressac.EditorPane, leaf.tabs)
-            ws.tree = leaf
-            ws.focused_pane = leaf.id
-            break
-        end
-    end
-    return app
-end
-
-function _new_app()
-    mock = MockOSCClient()
-    sched = Ressac.Scheduler(mock; cps = 0.5)
-    app = Ressac.RessacApp(; scheduler = sched)
-    tb = Tachikoma.TestBackend(120, 40)
-    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 120, 40),
-                            Tachikoma.GraphicsRegion[],
-                            Tachikoma.PixelSnapshot[])
-    Tachikoma.view(app, frame)
-    _only_patterns!(app)
-    Ressac._PANE_MODE.active = false
-    return app, frame
-end
-
-# Type a String of plain characters as KeyEvents. Caller is
-# responsible for the editor being in insert mode first.
-function _type!(app::Ressac.RessacApp, s::AbstractString)
-    for c in s
-        Tachikoma.update!(app, Tachikoma.KeyEvent(c))
-    end
-end
-
-# Drive an ex command (`:foo bar`) end-to-end via the focused pane's
-# command-mode editor. The pending_command! bridge in
-# _route_key_to_focused_pane! (or the legacy update! body for the
-# patterns pane) dispatches to Ressac's _handle_ex_command!.
-function _exec_ex_command!(app::Ressac.RessacApp, cmd::AbstractString)
-    Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
-    _type!(app, String(cmd))
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
-end
 
 # Find the EditorPane that holds Ressac._active_editor(m) (the patterns pane) in
 # the focused workspace's tree. Returns the leaf id.
@@ -298,10 +239,8 @@ end
     Tachikoma.update!(app, Tachikoma.KeyEvent('v'))
     Tachikoma.update!(app, Tachikoma.KeyEvent('s'))
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
-    # Move the saved-layout path to a temp file so we don't clobber
-    # the user's real layout during the test run. Easiest: stub
-    # _default_layout_path via monkey-patch? No — just trust the
-    # write; the path is under HOME and the test environment owns it.
+    # Le layout part dans le bac à sable (RESSAC_CONFIG_DIR, helpers.jl).
+    @test startswith(Ressac._default_layout_path(), _TEST_SANDBOX)
     # :q ferme d'abord une pane (workspace multi-panes) ; :qa quitte et
     # sauve le layout.
     Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
@@ -835,9 +774,20 @@ end
 
 @testset ":hush + :panic flip silence flags without crash" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "hush")    # no-op on empty scheduler
-    _exec_ex_command!(app, "panic")
-    @test true   # smoke — these dispatch through and don't throw
+    # Sans session live : rien à arrêter, pas d'exception.
+    _exec_ex_command!(app, "hush"); @test !app.quit
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    try
+        set_pattern!(app.scheduler, :d1, pure(:bd))
+        @test any(l -> occursin("hush", l), _cmd_logs(app, "hush"))
+        @test isempty(Ressac.pattern_keys(app.scheduler))
+        set_pattern!(app.scheduler, :d1, pure(:bd))
+        @test any(l -> occursin("PANIC", l), _cmd_logs(app, "panic"))
+        @test isempty(Ressac.pattern_keys(app.scheduler))
+        @test any(b -> occursin("/ressac/panic", String(copy(b))), app.scheduler.osc.sent)
+    finally
+        Ressac._LIVE_SCHEDULER[] = nothing
+    end
 end
 
 @testset ":explain opens a scrollable explainer modal" begin
@@ -1076,10 +1026,9 @@ end
         Tachikoma.update!(app, wheel)
         @test !app.log_view.following && app.log_view.offset < Ressac._scroll_last(app.log_view)
     else
-        # If the chrome log row collapsed (e.g. a LogPane was in the
-        # tree by default), the wheel-over path isn't exercisable —
-        # treat the absence as a pass for the smoke goal.
-        @test true
+        # Sans journal dans le chrome, rien à faire défiler : on vérifie
+        # que c'est bien le cas, pas que le test « passe ».
+        @test Ressac._global_log_tail_height(app) == 0
     end
 end
 
@@ -1087,10 +1036,10 @@ end
 
 @testset ":sg<n> shortcut sets gain via SHORTCUT_RX" begin
     app, _ = _new_app()
-    # The shortcut regex catches `:sg<n>` and applies it. Without
-    # a live scheduler this only logs — assert dispatch doesn't crash.
-    _exec_ex_command!(app, "sg0.5")
-    @test true
+    _set_buffer!(app, "@d1 \"bd*4\"")
+    logs = _cmd_logs(app, "sg0.5")
+    @test _buffer_text(app) == "@d1 \"bd*4\" |> gain(0.5)"
+    @test any(l -> occursin("raccourci → |> gain(0.5)", l), logs)
 end
 
 # ── Logging-side behaviors ─────────────────────────────────────────
@@ -1126,9 +1075,12 @@ end
 
 @testset ":aliases lists registered aliases" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "aliases")
-    # Logs a list or a "no aliases" notice — either is fine.
-    @test true
+    with_clean_registries() do
+        empty!(Ressac._SYNTH_ALIASES)
+        @test any(l -> occursin("aucun alias", l), _cmd_logs(app, "aliases"))
+        Ressac.register_synth_alias!(:wob, :wob1)
+        @test any(l -> occursin("wob", l) && occursin("wob1", l), _cmd_logs(app, "aliases"))
+    end
 end
 
 # ── :doc / :scope reservoir ────────────────────────────────────────
@@ -1167,22 +1119,23 @@ end
 
 @testset ":theme <name> doesn't crash on unknown themes" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "theme totally-unknown")
-    # Logs a warn — doesn't throw.
-    @test true
+    @test any(l -> startswith(l, "[ERROR]") || startswith(l, "[WARN]"), _cmd_logs(app, "theme totally-unknown"))
+    @test any(l -> occursin("thème « inconnu » introuvable", l), _cmd_logs(app, "theme inconnu"))
+    @test !app.quit
 end
 
 @testset ":safety on/off toggles a flag" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "safety off")
-    _exec_ex_command!(app, "safety on")
-    @test true
+    _with_test_scheduler() do mock, sched
+        @test any(l -> occursin("safety OFF", l), _cmd_logs(app, "safety off"))
+        @test any(l -> occursin("safety ON", l), _cmd_logs(app, "safety on"))
+        @test count(b -> occursin("/ressac/safety", String(copy(b))), mock.sent) == 2
+    end
 end
 
 @testset ":reload-config triggers config reload path" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "reload-config")
-    @test true
+    @test any(l -> occursin("config rechargée", l), _cmd_logs(app, "reload-config"))
 end
 
 # ── :pause and resumption ──────────────────────────────────────────
@@ -1200,19 +1153,16 @@ end
 
 @testset ":audio-in start/stop don't crash without a live session" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "audio-in start")
-    _exec_ex_command!(app, "audio-in stop")
-    @test true
+    @test any(l -> occursin(":audio-in start — pas de session live", l), _cmd_logs(app, "audio-in start"))
+    @test any(l -> occursin(":audio-in stop — pas de session live", l), _cmd_logs(app, "audio-in stop"))
 end
 
 # ── Scope variants ─────────────────────────────────────────────────
 
 @testset ":scope reservoir <name> sets reservoir scope state" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "scope reservoir testres")
-    # Logs at least — type may or may not flip depending on
-    # whether a reservoir named testres exists.
-    @test true
+    @test any(l -> occursin("« testres » n'est pas défini dans Main", l),
+              _cmd_logs(app, "scope reservoir testres"))
 end
 
 # ── Ex command history navigation ──────────────────────────────────
@@ -1261,15 +1211,41 @@ end
     @test Ressac._focused_role(app) === :patterns
 end
 
-# ── Search (Ctrl-F) ────────────────────────────────────────────────
+# ── Ctrl-f (floats) et la recherche `/` ────────────────────────────
 
-@testset "Ctrl-F enters editor :search mode" begin
+@testset "Ctrl-f montre / cache les floats, comme le registre le dit" begin
     app, _ = _new_app()
-    Ressac.TK.set_text!(Ressac._active_editor(app), "find me here")
     Ressac._active_editor(app).mode = :normal
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'f'))
-    @test Ressac._active_editor(app).mode === :search
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+    @test Ressac.lookup(:global, "Ctrl-f"; target = app) !== nothing
+    for c in ('f', 'F')                       # certains terminaux envoient la majuscule
+        before = app.floats_hidden
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, c))
+        @test app.floats_hidden == !before
+        @test Ressac._active_editor(app).mode === :normal
+    end
+end
+
+@testset "/texte cherche dans l'éditeur ; n et N parcourent les occurrences" begin
+    app, _ = _new_app()
+    ed = _set_buffer!(app, "@d1 \"bd hh\"\n@d2 \"hh*8\"\n@d3 \"cp\"")
+    Tachikoma.update!(app, Tachikoma.KeyEvent('/'))
+    @test Ressac.is_active(app.command_line)
+    _type!(app, "hh")
+    Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
+    @test length(ed.search_matches) == 2
+    @test (ed.cursor_row, ed.cursor_col) == (1, 8)
+    @test any(l -> occursin("/hh — 1/2", l), app.logs)
+    Tachikoma.update!(app, Tachikoma.KeyEvent('n'))
+    @test (ed.cursor_row, ed.cursor_col) == (2, 5)
+    Tachikoma.update!(app, Tachikoma.KeyEvent('n'))
+    @test (ed.cursor_row, ed.cursor_col) == (1, 8)                 # boucle
+    Tachikoma.update!(app, Tachikoma.KeyEvent('N'))
+    @test (ed.cursor_row, ed.cursor_col) == (2, 5)
+    Ressac._ex_search!(app, "nexistepas")
+    @test isempty(ed.search_matches) && any(l -> occursin("/nexistepas — introuvable", l), app.logs)
+    @test (ed.cursor_row, ed.cursor_col) == (2, 5)                 # le curseur ne bouge pas
+    Ressac._ex_search!(app, "")
+    @test isempty(ed.search_query)
 end
 
 # ── Word motions: dw / cw / w / b ──────────────────────────────────
@@ -1324,27 +1300,48 @@ end
 
 @testset ":sn-2 / :sg2.0 dispatch through shortcut path" begin
     app, _ = _new_app()
+    # `:sn…` n'est pas « s + n » : c'est le saut de ligne avant, et il lui
+    # faut un verbe. `:sn-2` n'en a pas → commande inconnue, buffer intact.
+    _set_buffer!(app, "@d1 \"bd\"")
     _exec_ex_command!(app, "sn-2")
-    _exec_ex_command!(app, "sg2.0")
-    @test true   # smoke — no crash
+    @test _buffer_text(app) == "@d1 \"bd\""
+    _exec_ex_command!(app, "sng2.0")
+    @test _buffer_text(app) == "@d1 \"bd\"\n    |> gain(2.0)"
 end
 
 # ── Plugin sccode flows ────────────────────────────────────────────
 
 @testset ":sc <query> doesn't crash on a string query" begin
     app, _ = _new_app()
-    _exec_ex_command!(app, "sc reverb")
-    @test true
+    # Réseau coupé (helpers.jl) : l'erreur se lit, rien n'est importé.
+    @test any(l -> occursin("[ERROR] sccode fetch reverb", l), _cmd_logs(app, "sc reverb"))
+    # Avec une page servie : le SynthDef est écrit, enregistré, ouvert.
+    with_clean_registries() do
+        _SCCODE_PAGES["https://sccode.org/1-4Qy"] =
+            "<pre>1\n2</pre><pre>SynthDef(\\uiitverb, { |out=0| Out.ar(out, SinOsc.ar(220)) }).add;</pre>"
+        try
+            _exec_ex_command!(app, "sc 1-4Qy")
+            path = joinpath(pwd(), "plugins", "user-synths", "uiitverb.scd")
+            @test isfile(path) && occursin("SynthDef(\\uiitverb", read(path, String))
+            @test Ressac.synth_info(:uiitverb) !== nothing
+        finally
+            delete!(_SCCODE_PAGES, "https://sccode.org/1-4Qy")
+            empty!(Ressac._SCCODE_SOURCE_CACHE)
+        end
+    end
 end
 
 # ── Sccode aliasing ────────────────────────────────────────────────
 
 @testset ":alias / :alias-rm round-trip" begin
     app, _ = _new_app()
-    alias = "uiit-rm-$(rand(UInt16))"
-    _exec_ex_command!(app, "alias $alias bd")
-    _exec_ex_command!(app, "alias-rm $alias")
-    @test true
+    alias = "uiit_rm_$(rand(UInt16))"
+    with_clean_registries() do
+        _exec_ex_command!(app, "alias $alias bd")
+        @test Ressac.resolve_synth_name(Symbol(alias)) === :bd
+        @test any(l -> occursin("retiré", l), _cmd_logs(app, "alias-rm $alias"))
+        @test Ressac.resolve_synth_name(Symbol(alias)) === Symbol(alias)
+    end
 end
 
 # ── Ctrl-Shift-F toggle is observable across view frames ──────────

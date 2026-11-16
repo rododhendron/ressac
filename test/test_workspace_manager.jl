@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
@@ -33,7 +34,8 @@ end
         Ressac._split_at!(root, 1, :h, new_leaf)
         @test length(root.children) == 3
         @test root.children[2] === new_leaf
-        @test root.ratios ≈ [0.333, 0.333, 0.333] atol=0.01
+        # La pane scindée partage sa place avec la nouvelle ; l'autre garde la sienne.
+        @test root.ratios ≈ [0.25, 0.25, 0.5]
     end
 
     @testset "_split_root wraps standalone leaf when direction differs" begin

@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Drones : variante à porte du DSL, registre + OSC, D / T dans l'éditeur,
 # pane MODULATION (clavier, saisie, molette), hush / panic / fermeture.
 using Test
@@ -169,7 +170,7 @@ end
                 @test p isa Ressac.DronePane
                 @test Ressac._focused_role(app) === :synth
                 scr = _drscreen(app, tb, frame)
-                @test occursin("MODULATION · dronetest ▶ dron", scr)
+                @test occursin("MODULATION · dron", scr)   # la pane partage la place du synth : titre abrégé
                 @test occursin(r"▸ freq\s+220\s+─+●─+", scr)
                 @test occursin(r"cutoff\s+800", scr)
 

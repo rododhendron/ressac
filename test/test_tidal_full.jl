@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Couverture complète du vocabulaire Tidal (core_tidal.jl) + sucre `@d1 n "0 2"`.
 using Test
 using Ressac

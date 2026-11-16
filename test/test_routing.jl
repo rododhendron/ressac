@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Routage OSC : variantes « sn:3 », effets SuperDirt sur un synth utilisateur.
 using Test
 using Ressac

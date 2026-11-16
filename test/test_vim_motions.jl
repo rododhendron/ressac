@@ -1,10 +1,11 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Regression tests for the vim motion + operator-motion overrides that
-# live in tui_app.jl / tui_editor_ops.jl. These hit the full TK.update!
+# live in app_editor.jl / editor_vim_ops.jl. These hit the full TK.update!
 # dispatch path so we catch interactions with TK's pending_key state,
 # the cw/dw/yw intercepts, and the visual-mode wrappers.
 
 @testset "vim motions + operators" begin
-    sched = Ressac.Scheduler(Ressac.OSCClient("127.0.0.1", 57120))
+    sched = Ressac.Scheduler(MockOSCClient())
     import Tachikoma
     TK = Tachikoma
 

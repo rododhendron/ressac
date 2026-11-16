@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests for the Synth DSL — generic UGen escape hatch `ugen()`.
 # Wrapped UGens (saw, sin_osc, …) are exercised indirectly through
 # the @synth-based tests; this file pins down `ugen()` specifically

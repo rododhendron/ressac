@@ -1,17 +1,10 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Le tour du clavier : chaque pane reçoit chacune de ses touches, sans
 # exception et en restant rendable ; et les priorités du pipeline
 # (`_KEY_STAGES`) tiennent depuis n'importe quelle pane.
 using Test
 using Ressac
 using Tachikoma
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
 
 function _kt_app()
     app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))

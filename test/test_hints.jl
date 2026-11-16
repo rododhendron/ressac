@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
@@ -87,7 +88,7 @@ Ressac.send_osc(c::_HintsMockClient, bytes::Vector{UInt8}) = push!(c.sent, bytes
     end
 
     # _compute_completions(::LiveModel) testsets removed in phase-3
-    # cleanup. The RessacApp path uses `_try_ex_autocomplete!` from
-    # autocomplete.jl (see test_modal_helpers.jl for its structural
+    # cleanup. The RessacApp path is the command line's Tab completion,
+    # `_command_completion_candidates` (see test_modal_helpers.jl for its structural
     # coverage — every regex dispatcher extracts ≥ 1 verb, etc.).
 end

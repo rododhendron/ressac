@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
@@ -315,10 +316,33 @@ using Ressac
         p = sine() |> segment(4)
         evs = query(p, 0, 1)
         @test length(evs) == 4
-        # Midpoints at 1/8, 3/8, 5/8, 7/8 cycle:
-        # sin(2π · 1/8) = sin(π/4) ≈ √2/2 ≈ 0.707
-        @test isapprox(evs[1].value, sqrt(2)/2; atol=1e-3)
-        @test isapprox(evs[3].value, -sqrt(2)/2; atol=1e-3)
+        # Midpoints at 1/8, 3/8, 5/8, 7/8 cycle. Un signal vit dans [0, 1] :
+        # (sin(2π · 1/8) + 1) / 2 = (√2/2 + 1) / 2 ≈ 0.854
+        @test isapprox(evs[1].value, (sqrt(2)/2 + 1) / 2; atol=1e-3)
+        @test isapprox(evs[3].value, (1 - sqrt(2)/2) / 2; atol=1e-3)
+    end
+
+    @testset "tous les signaux vivent dans [0, 1] ; range_pat les envoie sur [lo, hi]" begin
+        at(sig, t) = Ressac._value_at(sig, Ressac._to_rat(t))
+        for sig in (sine(), cosine(), tri(), saw(), square(), rand_pat(), perlin())
+            vs = [at(sig, k / 64) for k in 0:255]
+            @test all(v -> 0.0 <= v <= 1.0, vs)
+            @test maximum(vs) > 0.8 && minimum(vs) < 0.2
+            band = [at(sig |> range_pat(200, 4000), k / 64) for k in 0:255]
+            @test all(v -> 200 <= v <= 4000, band)
+            @test maximum(band) > 3000 && minimum(band) < 1000
+            xband = [at(sig |> rangex(200, 8000), k / 64) for k in 0:255]
+            @test all(v -> 200 - 1e-6 <= v <= 8000 + 1e-6, xband)
+        end
+        # Les bornes tombent où on les attend.
+        @test at(range_pat(0, 100, saw()), 1 // 2) ≈ 50 atol = 0.1
+        @test at(range_pat(0, 100, tri()), 1 // 2) ≈ 100 atol = 0.5
+        @test at(range_pat(0, 100, sine()), 1 // 4) ≈ 100 atol = 0.1
+        @test at(range_pat(0, 100, cosine()), 0 // 1) ≈ 100 atol = 0.1
+        @test at(rangex(100, 10000, saw()), 1 // 2) ≈ 1000 atol = 10
+        # `pan(sine())` balaie tout le champ, comme dans Tidal.
+        pans = [ev.value[:pan] for ev in ("hh*8" |> pan(sine()))(0 // 1, 1 // 1)]
+        @test minimum(pans) < 0.2 && maximum(pans) > 0.8 && all(v -> 0 <= v <= 1, pans)
     end
 
     @testset "saw() ramps 0→1 over a cycle" begin

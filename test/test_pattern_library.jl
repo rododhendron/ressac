@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Bibliothèque de patterns : ranger, retrouver, recharger sur un slot.
 using Test
 using Ressac

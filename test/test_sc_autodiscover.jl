@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using TOML
 using Ressac
@@ -6,25 +7,19 @@ using Sockets
 # Same mock used by test_scheduler.jl — captures OSC bytes in a vector
 # so tests don't actually open a UDP socket. Redefining locally here
 # rather than depending on test_scheduler.jl's load order.
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
-
 @testset "sc-autodiscover" begin
     @testset "_sc_cache_dir defaults to ~/.cache/ressac/plugins/sc-autodiscover" begin
         delete!(ENV, "RESSAC_CACHE_DIR")
-        @test Main._sc_cache_dir() ==
+        @test Main.ScDiscoverer._sc_cache_dir() ==
             joinpath(homedir(), ".cache", "ressac", "plugins", "sc-autodiscover")
+        # …et c'est la racine de cache de Ressac, pas une seconde lecture de l'environnement.
+        @test Main.ScDiscoverer._sc_cache_dir() == joinpath(Ressac._cache_dir(), "plugins", "sc-autodiscover")
     end
 
     @testset "_sc_cache_dir honours RESSAC_CACHE_DIR env var" begin
         ENV["RESSAC_CACHE_DIR"] = "/tmp/myressac"
         try
-            @test Main._sc_cache_dir() ==
+            @test Main.ScDiscoverer._sc_cache_dir() ==
                 joinpath("/tmp/myressac", "plugins", "sc-autodiscover")
         finally
             delete!(ENV, "RESSAC_CACHE_DIR")
@@ -36,8 +31,8 @@ end
         try
             p = joinpath(tmpdir, "discover.scd")
             write(p, "// hello\n")
-            h1 = Main._sc_script_sha256(p)
-            h2 = Main._sc_script_sha256(p)
+            h1 = Main.ScDiscoverer._sc_script_sha256(p)
+            h2 = Main.ScDiscoverer._sc_script_sha256(p)
             @test h1 == h2
             @test length(h1) == 64
         finally
@@ -50,9 +45,9 @@ end
         try
             p = joinpath(tmpdir, "discover.scd")
             write(p, "// hello\n")
-            h1 = Main._sc_script_sha256(p)
+            h1 = Main.ScDiscoverer._sc_script_sha256(p)
             write(p, "// hello!\n")
-            h2 = Main._sc_script_sha256(p)
+            h2 = Main.ScDiscoverer._sc_script_sha256(p)
             @test h1 != h2
         finally
             rm(tmpdir; recursive=true, force=true)
@@ -64,7 +59,7 @@ end
         try
             scd = joinpath(tmpdir, "discover.scd")
             write(scd, "// noop")
-            @test Main._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == false
+            @test Main.ScDiscoverer._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == false
         finally
             rm(tmpdir; recursive=true, force=true)
         end
@@ -75,7 +70,7 @@ end
         try
             scd = joinpath(tmpdir, "discover.scd")
             write(scd, "// content\n")
-            sha = Main._sc_script_sha256(scd)
+            sha = Main.ScDiscoverer._sc_script_sha256(scd)
             meta_path = joinpath(tmpdir, "cache_meta.toml")
             open(meta_path, "w") do io
                 println(io, """
@@ -85,7 +80,7 @@ end
                 discover_script_sha256 = "$sha"
                 """)
             end
-            @test Main._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == true
+            @test Main.ScDiscoverer._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == true
         finally
             rm(tmpdir; recursive=true, force=true)
         end
@@ -96,7 +91,7 @@ end
         try
             scd = joinpath(tmpdir, "discover.scd")
             write(scd, "// content\n")
-            sha = Main._sc_script_sha256(scd)
+            sha = Main.ScDiscoverer._sc_script_sha256(scd)
             meta_path = joinpath(tmpdir, "cache_meta.toml")
             open(meta_path, "w") do io
                 println(io, """
@@ -106,7 +101,7 @@ end
                 discover_script_sha256 = "$sha"
                 """)
             end
-            @test Main._sc_cache_valid(tmpdir, scd; sc_meta = ("3.14.0", 587)) == false
+            @test Main.ScDiscoverer._sc_cache_valid(tmpdir, scd; sc_meta = ("3.14.0", 587)) == false
         finally
             rm(tmpdir; recursive=true, force=true)
         end
@@ -117,7 +112,7 @@ end
         try
             scd = joinpath(tmpdir, "discover.scd")
             write(scd, "// content\n")
-            sha = Main._sc_script_sha256(scd)
+            sha = Main.ScDiscoverer._sc_script_sha256(scd)
             meta_path = joinpath(tmpdir, "cache_meta.toml")
             open(meta_path, "w") do io
                 println(io, """
@@ -127,7 +122,7 @@ end
                 discover_script_sha256 = "$sha"
                 """)
             end
-            @test Main._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 600)) == false
+            @test Main.ScDiscoverer._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 600)) == false
         finally
             rm(tmpdir; recursive=true, force=true)
         end
@@ -147,7 +142,7 @@ end
                 discover_script_sha256 = "wronghashvalue"
                 """)
             end
-            @test Main._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == false
+            @test Main.ScDiscoverer._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == false
         finally
             rm(tmpdir; recursive=true, force=true)
         end
@@ -161,7 +156,7 @@ end
             meta_path = joinpath(tmpdir, "cache_meta.toml")
             write(meta_path, "not = valid = toml = [[")
             @test_logs (:warn, r"corrupted") begin
-                @test Main._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == false
+                @test Main.ScDiscoverer._sc_cache_valid(tmpdir, scd; sc_meta = ("3.13.0", 587)) == false
             end
         finally
             rm(tmpdir; recursive=true, force=true)
@@ -173,7 +168,7 @@ end
         try
             scd = joinpath(tmpdir, "discover.scd")
             write(scd, "// content\n")
-            sha = Main._sc_script_sha256(scd)
+            sha = Main.ScDiscoverer._sc_script_sha256(scd)
             meta_path = joinpath(tmpdir, "cache_meta.toml")
             open(meta_path, "w") do io
                 println(io, """
@@ -183,7 +178,7 @@ end
                 discover_script_sha256 = "$sha"
                 """)
             end
-            @test Main._sc_cache_valid(tmpdir, scd; sc_meta = nothing) == false
+            @test Main.ScDiscoverer._sc_cache_valid(tmpdir, scd; sc_meta = nothing) == false
         finally
             rm(tmpdir; recursive=true, force=true)
         end
@@ -192,12 +187,12 @@ end
     @testset "_take_with_timeout — fires when value arrives" begin
         ch = Channel{Int}(1)
         @async (sleep(0.05); put!(ch, 42))
-        @test Main._take_with_timeout(ch, 1.0) == 42
+        @test Main.ScDiscoverer._take_with_timeout(ch, 1.0) == 42
     end
 
     @testset "_take_with_timeout — returns nothing on timeout" begin
         ch = Channel{Int}(1)
-        @test Main._take_with_timeout(ch, 0.1) === nothing
+        @test Main.ScDiscoverer._take_with_timeout(ch, 0.1) === nothing
     end
 
     @testset "_sc_meta_roundtrip returns nothing when no scheduler" begin
@@ -206,7 +201,7 @@ end
         prev = Ressac._LIVE_SCHEDULER[]
         Ressac._LIVE_SCHEDULER[] = nothing
         try
-            @test Main._sc_meta_roundtrip(timeout = 0.5) === nothing
+            @test Main.ScDiscoverer._sc_meta_roundtrip(timeout = 0.5) === nothing
         finally
             Ressac._LIVE_SCHEDULER[] = prev
         end
@@ -217,7 +212,7 @@ end
         Ressac._LIVE_SCHEDULER[] = nothing
         try
             @test_logs (:warn, r"no live session") begin
-                @test Main._handle_sc_discover("/nonexistent", Dict{String,Any}(),
+                @test Main.ScDiscoverer._handle_sc_discover("/nonexistent", Dict{String,Any}(),
                                                 "sc-discoverer") === nothing
             end
         finally
@@ -234,7 +229,7 @@ end
         plugin_dir = mktempdir()
         scd_path = joinpath(plugin_dir, "discover.scd")
         write(scd_path, "// fixture content\n")
-        sha = Main._sc_script_sha256(scd_path)
+        sha = Main.ScDiscoverer._sc_script_sha256(scd_path)
 
         open(joinpath(cache_dir, "cache_meta.toml"), "w") do io
             println(io, """
@@ -254,7 +249,7 @@ end
         Ressac._LIVE_SCHEDULER[] = mock_sched
         try
             @test_logs (:info, r"cache fresh") begin
-                @test Main._handle_sc_discover(plugin_dir, Dict{String,Any}(),
+                @test Main.ScDiscoverer._handle_sc_discover(plugin_dir, Dict{String,Any}(),
                     "sc-discoverer";
                     sc_meta_override = ("3.13.0", 587)) === nothing
             end
@@ -271,11 +266,11 @@ end
         try
             scd = joinpath(tmpdir, "discover.scd")
             write(scd, "// payload\n")
-            Main._write_cache_meta(tmpdir, scd, ("3.13.1", 612))
+            Main.ScDiscoverer._write_cache_meta(tmpdir, scd, ("3.13.1", 612))
             meta = TOML.parsefile(joinpath(tmpdir, "cache_meta.toml"))
             @test meta["sc_version"] == "3.13.1"
             @test meta["ugen_count"] == 612
-            @test meta["discover_script_sha256"] == Main._sc_script_sha256(scd)
+            @test meta["discover_script_sha256"] == Main.ScDiscoverer._sc_script_sha256(scd)
             @test haskey(meta, "generated_at")
         finally
             rm(tmpdir; recursive=true, force=true)
@@ -310,7 +305,7 @@ end
         # invoke it with [664].
         ack_task = @async begin
             for _ in 1:200
-                h = get(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-discovery-done", nothing)
+                h = Ressac._osc_reply_handler("/ressac/sc-discovery-done")
                 if h !== nothing
                     h([Int32(664)])
                     return
@@ -320,7 +315,7 @@ end
         end
 
         try
-            Main._handle_sc_discover(plugin_dir, Dict{String,Any}(),
+            Main.ScDiscoverer._handle_sc_discover(plugin_dir, Dict{String,Any}(),
                 "sc-discoverer";
                 sc_meta_override = ("3.13.1", 664),
                 discovery_timeout = 5.0)
@@ -331,11 +326,11 @@ end
             meta = TOML.parsefile(meta_path)
             @test meta["sc_version"] == "3.13.1"
             @test meta["ugen_count"] == 664
-            @test meta["discover_script_sha256"] == Main._sc_script_sha256(scd_path)
+            @test meta["discover_script_sha256"] == Main.ScDiscoverer._sc_script_sha256(scd_path)
 
             # Second invocation: cache is now valid → must short-circuit.
             @test_logs (:info, r"cache fresh") begin
-                Main._handle_sc_discover(plugin_dir, Dict{String,Any}(),
+                Main.ScDiscoverer._handle_sc_discover(plugin_dir, Dict{String,Any}(),
                     "sc-discoverer";
                     sc_meta_override = ("3.13.1", 664))
             end
@@ -348,21 +343,24 @@ end
     end
 end
 
-@testset "port 57121 occupé — la découverte le dit et n'attend pas" begin
+@testset "port d'écoute occupé — la découverte le dit et n'attend pas" begin
     # Le cas vécu : un sclang de trop s'était posé sur 57121 (57120 pris),
     # avalait toutes les réponses, et chaque boot attendait 3 s + 120 s.
+    # Ici le port « occupé » est un port libre pris par le test lui-même :
+    # le résultat ne dépend pas de ce qui tourne sur la machine.
     prev_sock = Ressac._SCOPE_LISTENER_SOCKET[]
     prev_sched = Ressac._LIVE_SCHEDULER[]
-    blocker = Sockets.UDPSocket()
-    bound = try
-        Sockets.bind(blocker, Sockets.ip"127.0.0.1", Ressac._SCOPE_LISTEN_PORT)
-    catch
-        false
-    end
-    if !bound && prev_sock !== nothing
-        # la suite écoute déjà sur le port : on simule l'échec en libérant le Ref
+    prev_port = Ressac._SCOPE_LISTEN_PORT[]
+    # Un port libre, trouvé par essais bornés dans la plage éphémère.
+    blocker = Sockets.UDPSocket(); port = 0
+    for candidate in rand(49152:65000, 20)
+        if Sockets.bind(blocker, Sockets.ip"127.0.0.1", candidate)
+            port = candidate; break
+        end
         close(blocker); blocker = Sockets.UDPSocket()
     end
+    @test port != 0
+    Ressac._SCOPE_LISTEN_PORT[] = port
     Ressac._SCOPE_LISTENER_SOCKET[] = nothing
     mktempdir() do tmp
         ENV["RESSAC_CACHE_DIR"] = tmp
@@ -370,21 +368,16 @@ end
             Ressac._LIVE_SCHEDULER[] = Ressac.Scheduler(MockOSCClient(); cps = 0.5)
             plugin_dir = joinpath(@__DIR__, "..", "plugins", "sc-discoverer")
             t0 = time()
-            if prev_sock === nothing || bound
-                @test_logs (:error, r"port UDP 57121 indisponible") begin
-                    Main._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
-                end
-            else
-                # le port est tenu par la suite elle-même : même garde, même message
-                @test_logs (:error, r"port UDP 57121 indisponible") begin
-                    Main._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
-                end
+            @test_logs (:error, Regex("port UDP $(port) indisponible")) begin
+                Main.ScDiscoverer._handle_sc_discover(plugin_dir, Dict{String,Any}(), "sc-discoverer")
             end
             @test time() - t0 < 2.0                           # pas de 3 s + 120 s
             @test !isempty(Ressac._SCOPE_LISTENER_ERROR[])
+            @test Ressac._SCOPE_LISTENER_SOCKET[] === nothing  # le bind raté n'a rien laissé
         finally
             Ressac._LIVE_SCHEDULER[] = prev_sched
             Ressac._SCOPE_LISTENER_SOCKET[] = prev_sock
+            Ressac._SCOPE_LISTEN_PORT[] = prev_port
             Ressac._SCOPE_LISTENER_ERROR[] = ""
             delete!(ENV, "RESSAC_CACHE_DIR")
             close(blocker)

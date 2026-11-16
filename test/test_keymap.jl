@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Registre de bindings — tests purs (aucune app, aucune pane).
 using Test
 using Ressac

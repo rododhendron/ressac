@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Livedoc et bout en bout du DSL sur une collection de synths.
 #
 # 1. Chaque nom exporté par SynthDSL a une doc vivante (K, pane DOC).

@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests for the pure helpers inside the modal_*.jl files. These are
 # the functions that can be exercised without standing up a full
 # RessacApp — string parsers, regex line-mutators, template parsers.
@@ -82,7 +83,7 @@
               "@d1 p\"bd\" |> fast(2) |> gain(0.6) |> room(0.3)"
     end
 
-    # ── leader_snippets.jl ──
+    # ── editor_snippets.jl ──
     @testset "_parse_snippet_template — no placeholders" begin
         (text, cols) = Ressac._parse_snippet_template("rev")
         @test text == "rev"
@@ -131,7 +132,7 @@
         end
     end
 
-    # ── app.jl — ex-command verb derivation ──
+    # ── app_ex_registry.jl — ex-command verb derivation ──
     #
     # The point of deriving the autocomplete verb list from the dispatch
     # tables was to eliminate hand-maintained lists that drift. So these
@@ -244,45 +245,38 @@
 
 
 
-    # ── autocomplete.jl — completion picker state ──
-    @testset "ex-command Tab cycles + picks up via picker" begin
-        # Regression: `:starter <Tab>` used to silently splice the
-        # first match without showing alternatives. Now both modes
-        # (:insert + :command) share the session API so the picker
-        # lights up either way.
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        app = Ressac.RessacApp(; scheduler = sched)
-        Ressac._active_editor(app).mode = :command
-        empty!(Ressac._active_editor(app).command_buffer)
-        append!(Ressac._active_editor(app).command_buffer, collect("starter "))
-        # First Tab: opens session, splices best candidate.
-        @test Ressac._try_ex_autocomplete!(app, Ressac._active_editor(app)) == true
-        @test Ressac._completion_picker_active(app) == true
-        @test startswith(app.completion_label, "ex:")
-        @test length(app.completion_candidates) > 1   # multiple starters
-        first_buf = String(Ressac._active_editor(app).command_buffer)
-        @test startswith(first_buf, "starter ")
-        # Second Tab: advances to next, buffer changes.
-        Ressac._try_ex_autocomplete!(app, Ressac._active_editor(app))
-        @test app.completion_idx == 2
-        @test String(Ressac._active_editor(app).command_buffer) != first_buf
-        @test startswith(String(Ressac._active_editor(app).command_buffer), "starter ")
+    # ── La barre de commande : Tab complète le verbe, puis l'argument ──
+    @testset "barre de commande — Tab propose et parcourt les candidats" begin
+        app, _ = _new_app()
+        Ressac._active_editor(app).mode = :normal
+        # `:starter <Tab>` : plusieurs starters, chacun une commande complète.
+        cands = Ressac._command_completion_candidates(app, "starter ")
+        @test length(cands) > 1 && all(c -> startswith(c, "starter "), cands)
+        Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
+        _type!(app, "starter ")
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:tab))
+        @test Ressac.completion_active(app.command_line)
+        first_buf = Ressac.current_text(app.command_line)
+        @test first_buf in cands
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:tab))
+        @test Ressac.current_text(app.command_line) != first_buf
+        @test startswith(Ressac.current_text(app.command_line), "starter ")
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+        @test !Ressac.is_active(app.command_line)
     end
 
-    @testset "ex-command Tab on bare verb prefix (no space)" begin
-        # `:sta<Tab>` → cycles verbs that fuzzy-match "sta" (e.g. starter, start).
-        mock = MockOSCClient()
-        sched = Scheduler(mock; cps=0.5)
-        app = Ressac.RessacApp(; scheduler = sched)
-        Ressac._active_editor(app).mode = :command
-        empty!(Ressac._active_editor(app).command_buffer)
-        append!(Ressac._active_editor(app).command_buffer, collect("sta"))
-        @test Ressac._try_ex_autocomplete!(app, Ressac._active_editor(app)) == true
-        @test app.completion_label == "ex:verb"
-        @test !isempty(app.completion_candidates)
-        # Buffer is just the chosen verb (no leading "sta " prefix).
-        @test String(Ressac._active_editor(app).command_buffer) == app.completion_candidates[1]
+    @testset "barre de commande — Tab sur un début de verbe" begin
+        app, _ = _new_app()
+        Ressac._active_editor(app).mode = :normal
+        cands = Ressac._command_completion_candidates(app, "sta")
+        @test "starter" in cands && !any(c -> occursin(' ', c), cands)
+        Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
+        _type!(app, "sta")
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:tab))
+        @test Ressac.current_text(app.command_line) == cands[1]
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
+        # Un verbe sans argument connu : rien à proposer.
+        @test isempty(Ressac._command_completion_candidates(app, "hush x"))
     end
 
     @testset "_completion_picker_active reflects Tab-cycle state" begin
@@ -333,7 +327,7 @@
         @test Ressac._extract_regex_verbs(r"foo\s+bar") == String[]
     end
 
-    # ── app.jl — _scroll_to_show ──
+    # ── app_modal.jl — _scroll_to_show ──
     @testset "_scroll_to_show — keep cursor visible in list modals" begin
         # Cursor inside window: scroll stays put (no jumpy recentering).
         @test Ressac._scroll_to_show(5,  100, 10, 0) == 0

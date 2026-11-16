@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Rendu markdown partagé (content_markdown.jl) : wiki et fiches de doc.
 using Test
 using Ressac

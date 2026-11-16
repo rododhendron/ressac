@@ -1,9 +1,7 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 import Tachikoma
-
-# Réenregistre le kind :waveform si test_pane_interface a vidé le registre.
-Base.include(Ressac, joinpath(@__DIR__, "..", "src", "pane_waveform.jl"))
 
 @testset "waveform pane — viewer + zoom-to-pointer" begin
     # buffer sinus synthétique (pas de sclang)

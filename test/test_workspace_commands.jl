@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
@@ -63,46 +64,67 @@ using Ressac
     end
 end
 
-@testset "workspace_keymap — pane mode dispatch" begin
-    @testset "pane mode single-shot exits after one op" begin
-        wm = Ressac.WorkspaceManager()
-        Ressac.create_workspace!(wm, "")
-        ws = Ressac.current_workspace(wm)
-        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
-        ws.tree.current_tab = 1
+@testset "mode pane — ses touches sont celles du registre" begin
+    # Une app, Ctrl-w, puis les touches : ce que le scope :pane_mode déclare
+    # est ce qui s'exécute.
+    function pm_app()
+        app, frame = _new_app()
+        Ressac._active_editor(app).mode = :normal
+        _key!(app, :ctrl, 'w')
+        @assert Ressac._PANE_MODE.active
+        return app, Ressac.current_workspace(app.workspaces)
+    end
+    leaves(ws) = length(Ressac._all_leaves(ws.tree))
 
-        Ressac._PANE_MODE.active = true
-        @test Ressac._dispatch_pane_mode_key(wm, 'v') == true
-        @test Ressac._PANE_MODE.active == true     # persistent — no auto-exit
-        @test ws.tree isa Ressac.Container         # vsplit took effect
+    @testset "une opération laisse le mode actif, pour enchaîner" begin
+        app, ws = pm_app()
+        _key!(app, 'v')
+        @test ws.tree isa Ressac.Container && ws.tree.direction === :h && leaves(ws) == 2
+        @test Ressac._PANE_MODE.active
+        right = ws.focused_pane
+        _key!(app, 'h')
+        @test ws.focused_pane != right && Ressac._PANE_MODE.active
+        _key!(app, :right)                                  # les flèches aussi
+        @test ws.focused_pane == right
+        _key!(app, 's')
+        @test leaves(ws) == 3
+        _key!(app, 'c')
+        @test leaves(ws) == 2
+        _key!(app, '<')
+        @test ws.tree.ratios[1] != 0.5
+        _key!(app, '=')
+        @test ws.tree.ratios ≈ [0.5, 0.5]
+        _key!(app, 'r')
+        @test ws.tree.direction === :v
+        _key!(app, 'z')
+        @test app.zoom_leaf == ws.focused_pane
         Ressac._PANE_MODE.active = false
     end
 
-    @testset "pane mode is persistent across multiple ops" begin
-        wm = Ressac.WorkspaceManager()
-        Ressac.create_workspace!(wm, "")
-        ws = Ressac.current_workspace(wm)
-        push!(ws.tree.tabs, Ressac._pane_new(:editor, Dict{String,Any}()))
-        ws.tree.current_tab = 1
-
-        Ressac._PANE_MODE.active = true
-        Ressac._dispatch_pane_mode_key(wm, 'v')
-        @test Ressac._PANE_MODE.active == true
-        Ressac._dispatch_pane_mode_key(wm, 'h')
-        @test Ressac._PANE_MODE.active == true
-
+    @testset "une touche inconnue est avalée, sans sortir ni toucher au texte" begin
+        app, ws = pm_app()
+        before = _buffer_text(app)
+        _key!(app, 'x'); _key!(app, 'q')
+        @test Ressac._PANE_MODE.active && _buffer_text(app) == before && leaves(ws) == 1
         Ressac._PANE_MODE.active = false
     end
 
-    @testset "unknown char returns false, doesn't exit mode" begin
-        wm = Ressac.WorkspaceManager()
-        Ressac.create_workspace!(wm, "")
-        push!(Ressac.current_workspace(wm).tree.tabs,
-              Ressac._pane_new(:editor, Dict{String,Any}()))
-        Ressac._PANE_MODE.active = true
-        @test Ressac._dispatch_pane_mode_key(wm, 'z') == false
-        @test Ressac._PANE_MODE.active == true     # not auto-exited
-        Ressac._PANE_MODE.active = false
+    @testset "Échap, Entrée et Ctrl-w sortent" begin
+        for exit! in (a -> _key!(a, :escape), a -> _key!(a, :enter), a -> _key!(a, :ctrl, 'w'))
+            app, ws = pm_app()
+            exit!(app)
+            @test !Ressac._PANE_MODE.active
+        end
+    end
+
+    @testset "chaque touche déclarée a une action" begin
+        @test all(b -> b.action !== nothing, Ressac.bindings(:pane_mode))
+        @test all(b -> b.action !== nothing, Ressac.bindings(:tap))
+        @test all(b -> b.action !== nothing, Ressac.bindings(:piano))
+        @test all(b -> b.action !== nothing, Ressac.bindings(:visual))
+        # tout ce que `_PIANO_KEYMAP` connaît est une touche du piano
+        declared = Set(k for b in Ressac.bindings(:piano) for k in b.keys)
+        @test all(c -> string(c) in declared, keys(Ressac._PIANO_KEYMAP))
     end
 end
 

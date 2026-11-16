@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Trous Tidal comblés et opérateurs de concaténation : substruct, sampled
 # (structure de gauche), secs/msecs, [a b] / [a; b] / & / |, transitions.
 using Test
@@ -36,7 +37,7 @@ end
     @test [ev.value[:room] for ev in ("bd*2" |> set(:room, "0.1 0.9 0.5"))(0 // 1, 1 // 1)] == [0.1, 0.9]
     @test [ev.value[:gain] for ev in ("bd*2" |> gain(0.5) |> gain("1 0.5 1 0.5"))(0 // 1, 1 // 1)] == [0.5, 0.5]
     # both est bien délimité : après lui, le défaut revient
-    @test Ressac._CONTROL_STRUCT[] === :left
+    @test Ressac._control_struct() === :left
     # pump découpe encore (il demande both lui-même)
     @test length(("bd sn" |> pump())(0 // 1, 1 // 1)) == 4
     # un contrôle qui alterne par cycle, lu au bon cycle

@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests for orbit-routing: every `@dN` pattern slot is auto-mapped to
 # SuperDirt orbit N-1 via the `_inject_orbit!` helper that mutates each
 # outgoing /dirt/play OSC message. This is what powers per-slot RMS in

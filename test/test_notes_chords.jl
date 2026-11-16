@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Noms de notes, accords c'maj, arp, snippets en mode normal.
 using Test
 using Ressac

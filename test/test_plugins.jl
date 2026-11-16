@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
@@ -215,7 +216,7 @@ using Ressac
             Ressac.register_section_handler!(:samples, (_, _, name) -> push!(calls, name))
             try
                 Ressac._LIVE_SCHEDULER[] = nothing
-                sched = start_live!(plugins=false)
+                sched = start_live!(plugins=false, client=MockOSCClient())
                 try
                     @test isempty(calls)
                 finally
@@ -248,14 +249,14 @@ using Ressac
             @test Ressac.sample_info(:does_not_exist) === nothing
         end
 
-        @testset "shadow: second registration with same name warns and is skipped" begin
+        @testset "shadow: un autre plugin qui reprend le nom l'emporte, avec un avertissement" begin
             a = Ressac.SampleEntry(:dup, "p1", "/a", ["/a"], Dict{String,Any}())
             b = Ressac.SampleEntry(:dup, "p2", "/b", ["/b"], Dict{String,Any}())
             Ressac.register_sample!(a)
             @test_logs (:warn, r"dup.*shadow") match_mode=:any begin
                 Ressac.register_sample!(b)
             end
-            @test Ressac.sample_info(:dup).plugin == "p1"
+            @test Ressac.sample_info(:dup).plugin == "p2"      # le dernier chargé (voir _register!)
             empty!(Ressac._SAMPLE_REGISTRY)
         end
 
@@ -309,7 +310,7 @@ using Ressac
             @test Ressac.instrument_info(:nope) === nothing
         end
 
-        @testset "shadow: second registration with same name warns and is skipped" begin
+        @testset "shadow: un autre plugin qui reprend le nom l'emporte, avec un avertissement" begin
             a = Ressac.InstrumentEntry(:dup, "p1",
                 Pair{String,Any}["s" => "bd"], Dict{String,Any}())
             b = Ressac.InstrumentEntry(:dup, "p2",
@@ -318,7 +319,7 @@ using Ressac
             @test_logs (:warn, r"dup.*shadow") match_mode=:any begin
                 Ressac.register_instrument!(b)
             end
-            @test Ressac.instrument_info(:dup).plugin == "p1"
+            @test Ressac.instrument_info(:dup).plugin == "p2"      # le dernier chargé (voir _register!)
             empty!(Ressac._INSTRUMENT_REGISTRY)
         end
 
@@ -376,7 +377,7 @@ using Ressac
             @test_logs (:warn, r"dup.*shadow") match_mode=:any begin
                 Ressac.register_synth!(b)
             end
-            @test Ressac.synth_info(:dup).plugin == "p1"
+            @test Ressac.synth_info(:dup).plugin == "p2"      # le dernier chargé (voir _register!)
             empty!(Ressac._SYNTH_REGISTRY)
         end
     end
@@ -386,10 +387,10 @@ using Ressac
         delete!(ENV, "RESSAC_PLUGIN_PATH")
         try
             path = Ressac.default_plugin_path()
-            cache_entry = joinpath(homedir(), ".cache", "ressac", "plugins")
+            cache_entry = joinpath(Ressac._cache_dir(), "plugins")
             @test cache_entry in path
             # Order: project > config > cache
-            config_entry = joinpath(homedir(), ".config", "ressac", "plugins")
+            config_entry = joinpath(Ressac._config_dir(), "plugins")
             config_idx = findfirst(==(config_entry), path)
             cache_idx = findfirst(==(cache_entry), path)
             @test config_idx < cache_idx

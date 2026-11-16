@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Régressions d'entrée et d'analyse remontées en jouant (2026-09-29) :
 # surlignage d'un slot commenté, fichier de synth à plusieurs expressions,
 # pavé numérique ignoré hors de l'éditeur.
@@ -51,14 +52,6 @@ end
 # Le bug d'origine : `=` ouvre la saisie, les chiffres du pavé (`:kp_3`…)
 # n'y entraient pas parce qu'ils n'étaient traduits qu'après le routage
 # vers la pane. Ici on rejoue la scène entière à travers `Tachikoma.update!`.
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
-
 function _ib_app()
     app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))
     tb = Tachikoma.TestBackend(120, 40)

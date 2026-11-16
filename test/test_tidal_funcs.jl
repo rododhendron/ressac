@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tour des fonctions Tidal ajoutées : rot, hurry, shuffle, scramble, linger,
 # swing, whenmod, someCycles, fastGap, compress, zoom, euclid*, superimpose,
 # layer, inside/outside, rolled, brak, stut, mask("…").

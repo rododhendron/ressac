@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Tests for the tap-period detector — pins down the heuristic
 # constants so future tuning doesn't silently regress the
 # musically-important cases.

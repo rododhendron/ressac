@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # L'élagage : indices statiques, impact mesuré (analyse simulée), prune!,
 # et le studio sculpt (P, ✂, :prune).
 using Test
@@ -66,13 +67,6 @@ end
 end
 
 @testset "élagage — le studio sculpt : P, ✂, :prune" begin
-    if !isdefined(Main, :MockOSCClient)
-        @eval Main begin
-            mutable struct MockOSCClient; sent::Vector{Vector{UInt8}}; end
-            MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-            Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-        end
-    end
     old_an = Ressac._PRUNE_ANALYZE[]; old_render = Ressac._WAVE_RENDER[]; old_sync = Ressac._WAVE_SYNC[]
     Ressac._PRUNE_ANALYZE[] = _fake_analyze
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100)
@@ -140,7 +134,10 @@ end
         @test startswith(txt, "# mon synth\n@synth :truc") && occursin("# note finale", txt)
         @test count("fold2", txt) == 1 || !occursin("Fold2", txt) || count("Fold2", txt) <= 1
         @test !occursin("ugen(:Saw, 0.0)", txt)
-        @test occursin("|> rlpf(", txt) && occursin("retiré", app.logs[end])
+        # deux lignes au journal : ce que la structure a retiré, puis le verdict de la mesure
+        @test occursin("|> rlpf(", txt)
+        @test any(l -> occursin(":prune — ", l) && occursin("retiré", l) && occursin("d'après la structure", l), app.logs[(end - 1):end])
+        @test occursin(":prune — rien de plus sous", app.logs[end])
         g2 = Ressac.genome_from_dsl(txt)
         @test g2 !== nothing && isempty(Ressac.static_prune_hints(g2))     # plus rien à élaguer
         # remplacement de bloc : pas de @synth → texte inchangé

@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Dégagement du mix : duck, avoid, band, slot_band, fan, declash, clashes.
 using Test
 using Ressac

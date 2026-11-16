@@ -1,15 +1,8 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Aide `?` générée depuis le registre — bout en bout via TK.update!.
 using Test
 using Ressac
 import Tachikoma
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
 
 # Sandbox : :synth / U écrivent dans plugins/user-synths → on travaille
 # dans un répertoire temporaire pour ne rien laisser dans le dépôt.
@@ -246,12 +239,8 @@ end
     @test startswith(md, "# Touches")
     @test occursin("## Pane patterns", md) && occursin("| `e` | évaluer la ligne |", md)
     @test occursin("## Explorateur de synths (GA)", md)
-    if read(path, String) != md
-        @test false   # → julia --project=. scripts/gen_keys_wiki.jl
-        println("docs/wiki/04-keys.md diverge du registre : lance scripts/gen_keys_wiki.jl")
-    else
-        @test true
-    end
+    # S'il diverge : julia --project=. scripts/gen_keys_wiki.jl
+    @test read(path, String) == md
 end
 
 # ── Géométrie du chrome ─────────────────────────────────────────────

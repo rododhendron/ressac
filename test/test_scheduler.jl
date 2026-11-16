@@ -1,30 +1,7 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using Ressac
 
-# Test-only OSC sink: records every byte payload that the scheduler sends,
-# so we can assert on counts and contents without a live UDP socket.
-mutable struct MockOSCClient
-    sent::Vector{Vector{UInt8}}
-end
-MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-
-"""
-    _with_test_scheduler(f; cps=0.5)
-
-Run `f(mock, sched)` with a fresh `MockOSCClient` + `Scheduler`
-installed as the live session, and restore `_LIVE_SCHEDULER[]` to
-`nothing` in a `finally` block (even if `f` throws). Replaces the
-mock/sched/try/finally boilerplate that was repeated 15+ times
-across test_plugin_handlers.jl and test_live_api.jl.
-
-```julia
-_with_test_scheduler() do mock, sched
-    Ressac._handle_synthdefs(...)
-    @test length(mock.sent) == 1
-end
-```
-"""
 # Locked-snapshot helpers — used by UI thread to read scheduler
 # state without racing the audio thread.
 @testset "scheduler locked snapshots" begin
@@ -42,17 +19,6 @@ end
     snap = Ressac.pattern_snapshot(s)
     @test length(snap) == 2
     @test all(p -> p.first in (:d1, :d2), snap)
-end
-
-function _with_test_scheduler(f; cps::Real = 0.5)
-    mock = MockOSCClient()
-    sched = Scheduler(mock; cps = cps)
-    Ressac._LIVE_SCHEDULER[] = sched
-    try
-        f(mock, sched)
-    finally
-        Ressac._LIVE_SCHEDULER[] = nothing
-    end
 end
 
 @testset "scheduler" begin
@@ -308,11 +274,11 @@ end
         s = Scheduler(mock; cps=4.0, lookahead=0.02)
         set_pattern!(s, :d1, pure(:bd))
         start!(s)
-        sleep(0.15)
-        stop!(s)
-        sleep(0.1)  # give the loop a moment to observe the flag
+        # Attentes bornées sur une condition, pas des pauses à l'aveugle.
+        @test timedwait(() -> !isempty(mock.sent), 5.0) === :ok
+        @test stop!(s; wait_for = 5.0) === true
         @test s.running[] == false
-        @test length(mock.sent) > 0
+        @test istaskdone(s.task)
     end
 
     @testset "schedule_pattern! queues, _step! installs at apply_at" begin

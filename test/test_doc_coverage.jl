@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Chaque nom exporté qui fait partie du vocabulaire de live-coding a une
 # fiche `:doc`. Ce test empêche qu'une fonction se « perde » : ajouter un
 # export sans fiche le fait échouer, avec le nom manquant dans le message.

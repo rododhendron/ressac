@@ -1,15 +1,8 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Le tutoriel pas à pas : une pane qui suit ce que fait le joueur.
 using Test
 using Ressac
 using Tachikoma
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
-end
 
 function _tu_app()
     app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))

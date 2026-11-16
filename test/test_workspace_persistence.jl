@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 using Test
 using TOML
 using Ressac
@@ -53,7 +54,7 @@ using Ressac
 
     @testset "load on missing file warns + leaves manager empty" begin
         wm = Ressac.WorkspaceManager()
-        @test_logs (:warn, r"not found") begin
+        @test_logs (:warn, r"introuvable") begin
             Ressac.load_layout!(wm, "/nonexistent/path/layout.toml")
         end
         @test isempty(wm.workspaces)
@@ -65,7 +66,7 @@ using Ressac
         try
             path = joinpath(tmp, "bad.toml")
             write(path, "totally not = valid = toml [[[")
-            @test_logs (:warn, r"parse failed") begin
+            @test_logs (:warn, r"ne se lit pas") begin
                 Ressac.load_layout!(wm, path)
             end
             @test isempty(wm.workspaces)

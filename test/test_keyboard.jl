@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # La disposition du clavier : table Maj AZERTY, détection, commande.
 using Test
 using Ressac
@@ -46,14 +47,6 @@ end
     @test r[2] in ("localectl", "défaut")
     @test Ressac._cmd_output(["commande-qui-nexiste-pas-xyz"]) == ""
     @test Ressac._cmd_output(["sleep", "5"]; timeout = 0.2) == ""       # borné
-end
-
-if !isdefined(Main, :MockOSCClient)
-    mutable struct MockOSCClient
-        sent::Vector{Vector{UInt8}}
-    end
-    MockOSCClient() = MockOSCClient(Vector{UInt8}[])
-    Ressac.send_osc(c::MockOSCClient, bytes::Vector{UInt8}) = push!(c.sent, bytes)
 end
 
 @testset "clavier — :keyboard change la table en session" begin

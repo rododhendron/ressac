@@ -1,3 +1,4 @@
+include(joinpath(@__DIR__, "helpers.jl"))
 # Les trois modes compartimentés (palette, complétion, aide, pont des
 # commandes), workspaces à neuf (:design! :reset), DESIGN remis en forme,
 # Échap deux fois partout, souris avec onglets, Space dans le synth,
@@ -90,10 +91,25 @@ end
         Ressac._focus_pane!(app, studio); Ressac.cmd_close!(app.workspaces)
         Ressac._focus_pane!(app, sdoc); Ressac.cmd_close!(app.workspaces)
         @test Ressac._synth_workspace_parts(app) === nothing
+        # …et une pane ouverte à côté, avec un texte à ne pas perdre
+        _mfex(app, "vsplit editor")
+        Ressac._edit_text!(Ressac._active_editor(app), "brouillon à garder")
+        n_before = length(Ressac._all_leaves(ws.tree))
         _mfex(app, "play"); _mfex(app, "design")
-        @test Ressac._synth_workspace_parts(app) !== nothing
-        @test occursin("freq=110", Tachikoma.text(Ressac._synth_workspace_parts(app)[1].tabs[1].code_editor))
-        @test any(l -> occursin("DESIGN remis en forme", l), app.logs)
+        parts = Ressac._synth_workspace_parts(app)
+        @test parts !== nothing && parts[3] !== nothing                     # studio et doc reposés
+        @test occursin("freq=110", Tachikoma.text(parts[1].tabs[1].code_editor))
+        @test any(l -> occursin("DESIGN : studio, doc reposés", l), app.logs)
+        # rien n'a été jeté : la pane d'à côté et son texte sont toujours là
+        leaves = Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)
+        @test length(leaves) == n_before + 2
+        @test any(l -> any(t -> t isa Ressac.EditorPane && any(b -> Tachikoma.text(b.code_editor) == "brouillon à garder", t.tabs), l.tabs), leaves)
+        # Ctrl-2 passe par le même chemin que :design
+        (_, studio2, _) = Ressac._synth_workspace_parts(app)
+        Ressac._focus_pane!(app, studio2); Ressac.cmd_close!(app.workspaces)
+        _mfex(app, "play")
+        Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '2'))
+        @test Ressac.current_workspace(app.workspaces).name == "DESIGN" && Ressac._synth_workspace_parts(app) !== nothing
         # :design! repart de zéro (le texte est perdu, le sketch revient)
         _mfex(app, "design!")
         @test length(Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)) == 3
