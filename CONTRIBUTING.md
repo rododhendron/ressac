@@ -10,7 +10,7 @@ real "how it works" lives.
 git clone https://github.com/<you>/ressac && cd ressac
 # Pick the install script for your OS, e.g.:
 bash install/install-debian.sh
-just test                  # 629 tests, ~10s
+just test                  # the whole suite, ~2 min
 just live                  # start the TUI (needs `just audio` running)
 ```
 
@@ -61,7 +61,10 @@ top-level rules:
 just test
 ```
 
-runs the full suite (629 tests at last count). When you add a function:
+runs the full suite. Every `test/test_*.jl` also runs on its own
+(`julia --project=. test/test_scheduler.jl`): they all start with
+`include("helpers.jl")`, which sandboxes the disk, stubs the network and
+provides the shared helpers. When you add a function:
 
 - A unit test that covers the happy path
 - One that covers an edge case (empty input, malformed input, etc.)
@@ -99,9 +102,11 @@ The mental flow that works in this codebase:
    What do they see in response? Write it down in the issue, then
    code to that.
 2. **Find the right file.** New modal → `modal_<name>.jl`. New
-   pattern op → `pattern_editor.jl`. New control → `controls.jl`. New
-   combinator → `combinators.jl`. New DSL UGen → `synth_dsl.jl`. New
-   snippet → `snippets.jl`. New starter → `tui_docs.jl::_STARTER_PACKS`.
+   pattern op → `editor_pattern.jl`. New control → `core_controls.jl`. New
+   combinator → `core_combinators.jl` (or `core_tidal.jl` for the Tidal
+   vocabulary). New DSL UGen → `synth_dsl.jl`. New snippet or starter → a
+   `.toml` + `.jl` pair under `plugins/core/snippets/`. Every exported
+   name needs a fiche in `plugins/core/docs/` (a test checks it).
 3. **Register dispatch if needed** — ex-commands in `app_commands.jl`
    (`_register_*!`), leader snippets in `editor_snippets.jl`, keys in
    `app_keymap.jl` or the pane's own `bind!` calls.
@@ -113,8 +118,8 @@ The mental flow that works in this codebase:
 ## Larger refactors
 
 Look at the recent commits in `git log --oneline -20` — most of the
-`refactor:` ones extract a cohesive block from `app.jl` into its own
-file. The pattern that worked:
+`refactor:` ones extract a cohesive block from a file that had grown too
+large into its own file. The pattern that worked:
 
 1. Identify a contiguous block of related functions.
 2. Move them verbatim to `src/<area>.jl` (no rewrites).
@@ -161,7 +166,7 @@ src/
   content_*.jl             markdown, glossary, wiki pages, livedoc tables
   tk_*.jl                  Tachikoma helpers (scroll panes, pickers, patches)
 scripts/                  live.jl, build_sysimage.jl, sc-setup.scd
-test/                     629 tests
+test/                     one test_<area>.jl per area + helpers.jl (shared sandbox and helpers)
 ```
 
 ## License

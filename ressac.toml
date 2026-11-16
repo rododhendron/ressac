@@ -1,6 +1,6 @@
 # Ressac project config. Edit + `:reload-config` to apply without
 # restarting. Every key here mirrors a field of `RessacConfig` in
-# src/config.jl — see there for documentation.
+# src/session_config.jl — see there for documentation.
 
 [ui]
 # Theme name. Customs: cyberpunk, solarpunk. Tachikoma built-ins

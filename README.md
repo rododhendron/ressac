@@ -5,7 +5,7 @@
 
 **A Julia-based live-coding environment for SuperCollider / SuperDirt.**
 Terminal UI · TidalCycles-style mini-notation · synth design in a Julia
-DSL that compiles to SC · 629 tests, 0 known regressions.
+DSL that compiles to SC.
 
 ```julia
 @d1 "bd(3,8) cp(1,8,4)"           # jersey kick + offset clap
@@ -150,7 +150,7 @@ or as Markdown in [docs/wiki/](docs/wiki/):
 ## Development
 
 ```bash
-just test          # 629 tests, ~10s
+just test          # the whole suite, ~2 min
 just instantiate   # resolve deps after Project.toml changes
 just update        # update Julia deps + Nix flake inputs
 just repl          # bare REPL with Ressac loaded

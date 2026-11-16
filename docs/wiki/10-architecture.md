@@ -12,7 +12,7 @@ boucle terminal Tachikoma (~/.julia/packages/Tachikoma)
       ↓ KeyEvent
 src/app_input.jl :: TK.update!(m, evt)
       ↓ mute l'éditeur / le scheduler
-src/io_scheduler.jl :: _step! (tâche de fond, toutes les lookahead/2 s)
+src/io_scheduler.jl :: _tick! (tâche de fond, toutes les lookahead/2 s)
       ↓ interroge les patterns, construit les bundles OSC
 src/io_osc.jl :: encode → datagramme UDP
       ↓
@@ -32,9 +32,11 @@ responsabilité, pas la visibilité.
 ```
 src/
   Ressac.jl                ★ racine du module : ordre d'include + exports
+  paths.jl                   où Ressac écrit : _config_dir / _cache_dir / _project_dir
 
   ── Domaine pur (aucune I/O) ──
-  core_patterns.jl         ★ Pattern{T}, Event{T}, query
+  core_patterns.jl         ★ Pattern{T}, Event{T} — requête d'attaque, requête de
+                             tenue (_held), hasard déterministe (_u01)
   core_mininotation.jl       le parseur de p"…"
   core_combinators.jl        fast/slow/jux/every/sometimes/…
   core_algebra.jl            stack/cat/mask
@@ -42,6 +44,7 @@ src/
   core_controls.jl           gain/lpf/hpf/pan/n/… (les |> )
 
   ── I/O ──
+  io_notices.jl              threads de fond → journal de l'app (_notify!)
   io_osc.jl                  format OSC (encode/decode, pas de réseau)
   io_scheduler.jl          ★ la boucle temps réel — le chemin chaud.
                              Voir « discipline de verrou » plus bas.
@@ -156,19 +159,42 @@ _EXPLORER_EXPORT_REQUEST / _EXPLORER_WAVEFORM_REQUEST / _EXPLORER_SCULPT_REQUEST
   prochain update! (une pane ne connaît pas RessacApp).
 ```
 
+## Deux questions à un pattern (core_patterns.jl)
+
+Un `Pattern` répond d'abord à la **requête d'attaque** : `p(s, e)` rend les
+événements qui *commencent* dans `[s, e)`, chacun avec son créneau entier
+(jamais rogné). C'est ce que joue le scheduler : chaque attaque part une
+fois, et aucun fragment n'est pris pour un coup.
+
+La seconde est la **requête de tenue**, `_held(p, s, e)` : tout ce dont le
+créneau *recouvre* `[s, e)`, y compris ce qui a commencé avant. C'est la
+question d'un contrôle (`lpf("<400 2000>/2")`), d'un masque, d'un facteur
+patterné, de `chop` / `ply` / `rev` : « quelle valeur est en cours ? ». Un
+combinateur qui lit une valeur passe par `_held` (ou `_value_at`), jamais
+par la requête d'attaque — sinon tout événement de plus d'un cycle
+disparaît hors du cycle de son attaque.
+
+Les sources et les transformations de temps (`pure`, la mini-notation,
+`fast` / `slow`, `early` / `late`, `stack`, les signaux) donnent leur tenue
+exactement. Un combinateur qui ne la transmet pas retombe sur un repli :
+`_HELD_LOOKBACK` (16) cycles en arrière.
+
 ## Discipline de verrou (io_scheduler.jl)
 
-Le scheduler détient le seul état synchronisé de Ressac : le dict de
-patterns (`s.patterns`), le curseur de cycle (`s.last_end_cycles`), le
-tempo (`s.cps`). Tous protégés par `s.lock`. Le chemin chaud `_step!` est
-en deux phases :
+Le scheduler détient le dict de patterns (`s.patterns`), le curseur de
+cycle (`s.last_end_cycles`), le tempo (`s.cps`), tous protégés par
+`s.lock`. Le chemin chaud (`_tick!` pour la boucle live, `_step!` pour les
+tests et le rendu hors-ligne) est en deux phases :
 
-1. **Snapshot** (verrou tenu, rapide) : draine les swaps de patterns en
-   attente, copie `cps`, `t_start` et une copie superficielle du dict,
-   avance `last_end_cycles`.
+1. **Snapshot** (verrou tenu, rapide) : lit l'horloge, draine les swaps de
+   patterns en attente, copie `cps`, `t_start` et une copie superficielle
+   du dict, avance `last_end_cycles`. La boucle live borne ici son
+   rattrapage : après un gel, elle reprend au présent.
 2. **Query + envoi** (verrou relâché) : pour chaque (slot, pattern),
    interroge les events de la fenêtre de lookahead, encode le bundle,
-   envoie en UDP, accumule `last_fired_at` localement.
+   envoie en UDP, accumule `last_fired_at` localement. **Chaque slot est
+   isolé** : un pattern qui lève est retiré et annoncé une fois, les autres
+   jouent leur fenêtre.
 
 Une troisième prise de verrou minuscule réécrit `last_fired_at`. Les
 mutateurs `set_pattern!` / `set_cps!` / `hush!` ne sont donc JAMAIS
@@ -177,6 +203,13 @@ l'audio.
 
 Si tu ajoutes de l'état au scheduler, garde la même discipline :
 snapshot + avance + relâche avant tout travail long.
+
+Trois autres états sont partagés avec ce thread, chacun sous son verrou :
+les registres de sons (`_REGISTRY_LOCK` — toute lecture et écriture passe
+par `sample_info` / `synth_info` / `register_*!`…), les notes jouées de la
+pane d'accordage, et les destinataires OSC éphémères. Un thread de fond ne
+touche **jamais** au journal de l'app : il dépose une ligne avec
+`_notify!`, que la vue verse à la frame suivante.
 
 ## Routage OSC
 
@@ -290,6 +323,9 @@ moniteur stdin          Tachikoma — réveille la boucle de rendu.
 rendu sculpt            pane_waveform.jl — Threads.@spawn par
                         version demandée, résultat déposé sous verrou.
 sauvegarde ghost usage  écriture asynchrone de ghost_usage.json.
+travaux de fond         app_jobs.jl::_background! — requêtes sccode, mesure
+                        d'impact de :prune ; le résultat revient à la tâche
+                        UI par une file que la vue vide (_drain_jobs!).
 fetch sccode            synchrone (bloque le modal).
 ```
 
