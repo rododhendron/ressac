@@ -29,16 +29,34 @@ mutable struct Scheduler{C}
     last_end_cycles::Float64
     lock::ReentrantLock
     events_shipped::Threads.Atomic{Int}
+    task::Union{Task,Nothing}        # la boucle lancée par `start!`, pour l'attendre à l'arrêt
 end
 
+# Bornes du tempo. `Inf`, `NaN` ou un `1e9` de faute de frappe ne passent
+# pas : un cps infini rebase `t_start` à -Inf et le scheduler ne sort plus
+# rien jusqu'au redémarrage. 64 cycles/s, c'est 15 360 BPM — au-delà de tout
+# usage musical, en deçà de ce qui noie la boucle.
+const _CPS_MAX = 64.0
+
+function _check_cps(cps::Real)
+    (isfinite(cps) && 0 < cps <= _CPS_MAX) ||
+        throw(ArgumentError("cps doit être un nombre fini entre 0 (exclu) et $(_CPS_MAX) — reçu $(cps)"))
+    return Float64(cps)
+end
+
+# Au-delà de ce retard (secondes), la boucle live ne rattrape pas : après une
+# mise en veille ou un long gel, rejouer d'un coup tout ce qui a été manqué
+# enverrait des milliers de bundles déjà périmés. On reprend au présent.
+const _CATCHUP_MAX = 1.0
+
 function Scheduler(osc; cps::Real = 0.5, lookahead::Real = 0.05)
-    cps > 0 || throw(ArgumentError("cps must be positive"))
-    lookahead > 0 || throw(ArgumentError("lookahead must be positive"))
+    cps = _check_cps(cps)
+    (isfinite(lookahead) && lookahead > 0) || throw(ArgumentError("lookahead must be positive"))
     Scheduler{typeof(osc)}(
         Dict{Symbol,Pattern}(),
         Dict{Symbol,Tuple{Pattern,Rational{Int64}}}(),
         Dict{Symbol,Float64}(),
-        Float64(cps),
+        cps,
         Float64(lookahead),
         osc,
         Threads.Atomic{Bool}(false),
@@ -46,6 +64,7 @@ function Scheduler(osc; cps::Real = 0.5, lookahead::Real = 0.05)
         0.0,
         ReentrantLock(),
         Threads.Atomic{Int}(0),
+        nothing,
     )
 end
 
@@ -84,22 +103,7 @@ For `Event{Symbol}`, dispatch is two-tier:
 
 Override by adding a method for your own event value types.
 """
-# ── Variantes « nom:3 » et effets SuperDirt ────────────────────────
-"""
-    _split_variant(sym) -> (base::Symbol, idx::Union{Nothing,Int})
-
-`Symbol("sn:3")` → `(:sn, 3)` ; `:sn` → `(:sn, nothing)`. SuperDirt ne
-sépare pas lui-même : c'est nous qui envoyons `s sn n 3` (comme Tidal).
-"""
-function _split_variant(sym::Symbol)
-    str = String(sym)
-    i = findlast(':', str)
-    i === nothing && return (sym, nothing)
-    idx = tryparse(Int, str[nextind(str, i):end])
-    idx === nothing && return (sym, nothing)
-    return (Symbol(str[1:prevind(str, i)]), idx)
-end
-
+# ── Effets SuperDirt ───────────────────────────────────────────────
 # Paramètres que SuperDirt applique lui-même (filtres, réverb, delay,
 # waveshaping…). Un synth utilisateur qui en porte un doit passer par
 # SuperDirt (/dirt/play) — le chemin direct /ressac/play les ignorerait.
@@ -386,8 +390,17 @@ function _is_user_synth(name::Symbol)
     return entry.plugin == "user-synths" || entry.plugin == "user-dsl"
 end
 
-event_to_osc(ev::Event) = throw(ArgumentError(
-    "No event_to_osc method for Event{$(typeof(ev.value))}; define one."))
+# Repli : un pattern dont le type d'élément n'est pas connu d'avance
+# (`Pattern{Any}` — `slot(1)`, `p"0 1" + 1`, tout ce qui mélange) se joue
+# d'après la valeur réelle de chaque événement. Si cette valeur n'a pas de
+# forme OSC (un nombre nu, par exemple), l'erreur dit laquelle.
+function event_to_osc(ev::Event{T}; cps = nothing) where {T}
+    V = typeof(ev.value)
+    (V !== T && hasmethod(event_to_osc, Tuple{Event{V}})) ||
+        throw(ArgumentError("un événement de valeur $(repr(ev.value)) ($(V)) ne se joue pas tel quel — " *
+                            "il manque un son : `s(…)`, `n(…) |> s(…)`, ou un nom de sample"))
+    return event_to_osc(Event{V}(ev.start, ev.stop, ev.value); cps = cps)
+end
 
 """
     _orbit_for_slot(slot::Symbol) -> Union{Int, Nothing}
@@ -448,8 +461,24 @@ new slice. Updates `last_end_cycles` so the next call only touches events
 that haven't yet been seen — this is the canonical defence against the
 "sub-window re-fire" bug where a single long event gets shipped repeatedly
 because each successive lookahead window contains a clipped fragment of it.
+
+`now` is seconds since `t_start`. The live loop does not use this entry
+point: it calls [`_tick!`](@ref), which reads the clock under the lock and
+bounds the catch-up.
 """
-function _step!(s::Scheduler, now::Float64)
+_step!(s::Scheduler, now::Float64) = _advance!(s, () -> now, Inf)
+
+"""
+    _tick!(s::Scheduler)
+
+Un pas de la boucle live. L'heure est lue **sous le verrou**, en même temps
+que `t_start` et `cps` : un `set_cps!` qui rebase `t_start` entre la lecture
+de l'horloge et celle du tempo ferait sinon sauter le curseur de centaines
+de cycles. Le rattrapage est borné à `_CATCHUP_MAX` secondes.
+"""
+_tick!(s::Scheduler) = _advance!(s, () -> time() - s.t_start, _CATCHUP_MAX)
+
+function _advance!(s::Scheduler, clock, catchup::Float64)
     # ── Snapshot phase (lock held only here) ──
     # Pull the state we need to query into local variables, drain
     # pending pattern swaps, advance last_end_cycles. The lock is then
@@ -460,10 +489,11 @@ function _step!(s::Scheduler, now::Float64)
     # would block until a full pattern query completed — eval on a
     # complex chain stutters the audio.
     local cps, t_start, start_cycles, end_cycles, patterns_snapshot
+    skipped = 0.0
     lock(s.lock) do
         cps = s.cps
         t_start = s.t_start
-        end_cycles = (now + s.lookahead) * cps
+        end_cycles = (clock() + s.lookahead) * cps
         # Drain any pending pattern swaps whose apply_at_cycle has arrived.
         to_install = Symbol[]
         for (slot, (_, at)) in pairs(s.pending)
@@ -474,7 +504,13 @@ function _step!(s::Scheduler, now::Float64)
             delete!(s.pending, slot)
         end
         start_cycles = s.last_end_cycles
-        # Advance the cursor NOW so any concurrent _step! sees the new
+        # Trop de retard : on saute au présent plutôt que de tout rejouer.
+        floor_cycles = end_cycles - (catchup + s.lookahead) * cps
+        if start_cycles < floor_cycles
+            skipped = floor_cycles - start_cycles
+            start_cycles = floor_cycles
+        end
+        # Advance the cursor NOW so any concurrent step sees the new
         # boundary; we'll skip the work outside the lock if start>=end.
         if end_cycles > start_cycles
             s.last_end_cycles = end_cycles
@@ -483,42 +519,20 @@ function _step!(s::Scheduler, now::Float64)
             patterns_snapshot = Pair{Symbol,Pattern}[]
         end
     end
+    skipped > 0 &&
+        _notify!("[WARN] scheduler en retard — $(round(skipped; digits = 1)) cycle(s) sautés, reprise au présent")
     isempty(patterns_snapshot) && return
     end_cycles > start_cycles || return
 
     # ── Query + ship phase (no lock) ──
-    n_start = floor(Int, start_cycles)
-    n_stop  = ceil(Int, end_cycles)
+    # Chaque slot est isolé : un pattern qui lève (à la requête ou à
+    # l'encodage) ne prive pas les autres de leur fenêtre.
     fired_at_local = Pair{Symbol,Float64}[]
     for (slot, pattern) in patterns_snapshot
-        for n in n_start:(n_stop - 1)
-            # `Base.invokelatest` lets us call closures defined in
-            # plugins loaded AFTER the scheduler task spawned. Without
-            # it, world-age limits raise MethodError when a plugin's
-            # Pattern is assigned to a slot post-boot (e.g. anything
-            # from the reservoir plugin built via `Reservoir.spike_burst`).
-            events = Base.invokelatest(pattern,
-                                       Rational{Int64}(n),
-                                       Rational{Int64}(n + 1))
-            for ev in events
-                ev_start = Float64(ev.start)
-                if start_cycles <= ev_start < end_cycles
-                    fire_time = t_start + ev_start / cps
-                    msg = _inject_orbit!(event_to_osc(ev; cps = cps), slot)
-                    msg.address == "/ressac/drone/set" && _drone_mirror!(slot, msg)
-                    bundle = OSCBundle(fire_time, [msg])
-                    send_osc(s.osc, encode(bundle))
-                    Threads.atomic_add!(s.events_shipped, 1)
-                    push!(fired_at_local, slot => time())
-                    # Feed the TuningPane's recently-played highlight.
-                    # Late-bound: pane_tuning.jl is included after this
-                    # file, but the call resolves at run time. Skip if
-                    # the event has no :note.
-                    if ev.value isa ControlMap && haskey(ev.value, :note)
-                        push_played_note!(ev.value[:note])
-                    end
-                end
-            end
+        try
+            _ship_slot!(s, slot, pattern, start_cycles, end_cycles, t_start, cps, fired_at_local)
+        catch err
+            _evict_faulty_slot!(s, slot, pattern, err)
         end
     end
     # Write back `last_fired_at` under lock — small, fast.
@@ -528,6 +542,56 @@ function _step!(s::Scheduler, now::Float64)
             s.last_fired_at[slot] = t
         end
     end
+end
+
+function _ship_slot!(s::Scheduler, slot::Symbol, pattern::Pattern,
+                     start_cycles::Float64, end_cycles::Float64,
+                     t_start::Float64, cps::Float64,
+                     fired::Vector{Pair{Symbol,Float64}})
+    for n in floor(Int, start_cycles):(ceil(Int, end_cycles) - 1)
+        # `Base.invokelatest` lets us call closures defined in
+        # plugins loaded AFTER the scheduler task spawned. Without
+        # it, world-age limits raise MethodError when a plugin's
+        # Pattern is assigned to a slot post-boot (e.g. anything
+        # from the reservoir plugin built via `Reservoir.spike_burst`).
+        events = Base.invokelatest(pattern, Rational{Int64}(n), Rational{Int64}(n + 1))
+        for ev in events
+            ev_start = Float64(ev.start)
+            start_cycles <= ev_start < end_cycles || continue
+            fire_time = t_start + ev_start / cps
+            msg = _inject_orbit!(event_to_osc(ev; cps = cps), slot)
+            msg.address == "/ressac/drone/set" && _drone_mirror!(slot, msg)
+            send_osc(s.osc, encode(OSCBundle(fire_time, [msg])))
+            Threads.atomic_add!(s.events_shipped, 1)
+            push!(fired, slot => time())
+            # Feed the TuningPane's recently-played highlight.
+            # Late-bound: pane_tuning.jl is included after this
+            # file, but the call resolves at run time.
+            if ev.value isa ControlMap
+                note = get(ev.value, :note, nothing)
+                note isa Real && push_played_note!(note)
+            end
+        end
+    end
+    return nothing
+end
+
+# Un slot dont le pattern lève est retiré — sauf s'il a déjà été remplacé
+# entre-temps — et le joueur est prévenu une fois, pas à chaque tick.
+function _evict_faulty_slot!(s::Scheduler, slot::Symbol, pattern::Pattern, err)
+    evicted = lock(s.lock) do
+        if get(s.patterns, slot, nothing) === pattern
+            delete!(s.patterns, slot)
+            true
+        else
+            false
+        end
+    end
+    evicted || return nothing
+    _drone_slot_release!(slot)
+    _notify!("[ERROR] @$(slot) coupé — son pattern a levé : " *
+             first(sprint(showerror, err), 200) * " (réévalue-le pour le relancer)")
+    return nothing
 end
 
 # ---------------------------------------------------------------------------
@@ -620,24 +684,22 @@ end
 """
     set_cps!(s, cps)
 
-Change tempo. Must be positive.
+Change tempo. `cps` doit être fini, strictement positif et au plus `_CPS_MAX`.
 """
 function set_cps!(s::Scheduler, cps::Real)
-    cps > 0 || throw(ArgumentError("cps must be positive"))
+    cps = _check_cps(cps)
     lock(s.lock) do
-        # Preserve the current cycle position across the tempo change.
-        # Without this rebase, `last_end_cycles` (expressed in cycles)
-        # stays at its old value while `_step!`'s `end_cycles = (now +
-        # lookahead) * new_cps` computes a smaller number when slowing
-        # down — `end_cycles > start_cycles` then becomes false and
-        # no events ship until time catches back up. After a few
-        # cps changes the scheduler can be stuck for minutes.
+        # La position en cycles est conservée à travers le changement :
+        # on rebase `t_start` pour que (now - t_start) * nouveau_cps donne
+        # le même cycle qu'avant. Le curseur `last_end_cycles`, lui, est
+        # déjà exprimé en cycles : il reste où il est. Le ramener à
+        # `current_cycles` ferait réexpédier ce que le lookahead a déjà
+        # envoyé (un flam à chaque coup de tap-tempo).
         now = time()
         current_cycles = max(0.0, (now - s.t_start) * s.cps)
-        s.cps = Float64(cps)
-        # Rebase t_start so (now - t_start) * new_cps == current_cycles.
+        s.cps = cps
         s.t_start = now - current_cycles / s.cps
-        s.last_end_cycles = current_cycles
+        s.last_end_cycles = max(s.last_end_cycles, current_cycles)
     end
     return nothing
 end
@@ -651,18 +713,22 @@ end
 
 Launch the scheduling loop on a background task. The loop polls every
 `lookahead / 2` seconds; exceptions in a step are logged but do not crash
-the loop.
+the loop. No-op if the loop is already running.
 """
 function start!(s::Scheduler)
-    s.running[] = true
-    s.t_start = time()
-    s.last_end_cycles = 0.0
-    Threads.@spawn begin
+    # Un seul démarrage : deux boucles sur le même scheduler se
+    # partageraient le curseur.
+    Threads.atomic_cas!(s.running, false, true) === false || return nothing
+    lock(s.lock) do
+        s.t_start = time()
+        s.last_end_cycles = 0.0
+    end
+    s.task = Threads.@spawn begin
         while s.running[]
             try
-                _step!(s, time() - s.t_start)
+                _tick!(s)
             catch err
-                @warn "Ressac scheduler step failed" exception=(err, catch_backtrace())
+                _notify!("[ERROR] scheduler : " * first(sprint(showerror, err), 200))
             end
             sleep(s.lookahead / 2)
         end
@@ -671,11 +737,15 @@ function start!(s::Scheduler)
 end
 
 """
-    stop!(s::Scheduler)
+    stop!(s::Scheduler; wait_for = 0)
 
-Signal the loop to exit at the start of its next iteration.
+Signal the loop to exit at the start of its next iteration. With
+`wait_for > 0`, wait up to that many seconds for the loop task to finish
+and return whether it did.
 """
-function stop!(s::Scheduler)
+function stop!(s::Scheduler; wait_for::Real = 0)
     s.running[] = false
-    return nothing
+    task = s.task
+    (task === nothing || wait_for <= 0) && return nothing
+    return timedwait(() -> istaskdone(task), wait_for) === :ok
 end

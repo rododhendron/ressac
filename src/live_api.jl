@@ -5,7 +5,8 @@
 
 const _EVAL_MODE = Ref{Tuple{Symbol,Int}}((:immediate, 0))
 
-_current_cycle(s::Scheduler) = (time() - s.t_start) * s.cps
+# `t_start` et `cps` changent ensemble (`set_cps!`) : lus sous le verrou.
+_current_cycle(s::Scheduler) = lock(() -> (time() - s.t_start) * s.cps, s.lock)
 
 # ── Transitions ─────────────────────────────────────────────────────
 # `_EVAL_MODE[]` : (:immediate, 0) pose tout de suite ; (:deferred, n)

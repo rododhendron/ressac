@@ -3,7 +3,9 @@
 # UDP port 57121; this file owns the listener, decodes frames into
 # m.scope_data, and renders ASCII viz inside the synth pane.
 
-const _SCOPE_LISTEN_PORT = 57121
+# Une Ref : la suite de tests y met un port libre pour ne pas dépendre de ce
+# qui tourne sur la machine (un Ressac en cours de jeu tient le 57121).
+const _SCOPE_LISTEN_PORT = Ref{Int}(57121)
 const _SCOPE_CYCLE_ORDER = (:off, :amp, :wave, :spectrum,
                             :xy, :goni, :spectrogram, :peak,
                             :pitch, :onset, :hist, :corr,
@@ -123,7 +125,23 @@ const _APP_SCOPE_RESERVOIR_SPAN = Ref{Float64}(1.5)
 const _SCOPE_RESERVOIR_CAPACITY = 4000
 # Rolling history for the waterfall spectrogram. Each entry is a
 # 32-band magnitude snapshot; oldest at front, newest at back.
+# Écrit par le thread d'écoute OSC, lu par le rendu : toujours sous
+# `_SPECTROGRAM_LOCK`, le rendu travaille sur `_spectrogram_snapshot()`.
 const _APP_SPECTROGRAM_HISTORY = Ref{Vector{Vector{Float32}}}(Vector{Float32}[])
+const _SPECTROGRAM_LOCK = ReentrantLock()
+
+function _spectrogram_push!(frame::Vector{Float32})
+    lock(_SPECTROGRAM_LOCK) do
+        hist = _APP_SPECTROGRAM_HISTORY[]
+        push!(hist, frame)
+        while length(hist) > 60
+            popfirst!(hist)
+        end
+    end
+    return nothing
+end
+
+_spectrogram_snapshot() = lock(() -> copy(_APP_SPECTROGRAM_HISTORY[]), _SPECTROGRAM_LOCK)
 
 """
     _OSC_AD_HOC_HANDLERS
@@ -135,8 +153,28 @@ need a one-off response (e.g. `_sc_meta_roundtrip` waiting for
 args and is typically expected to put a value into a caller-owned
 Channel. Caller is responsible for installing the entry before
 sending and removing it after (use a `finally`).
+
+The table is written by whoever waits for a reply and read by the OSC
+listener thread: go through `osc_reply_handler!`, `osc_reply_handler_remove!`
+and `_osc_reply_handler`, never through the Dict itself.
 """
 const _OSC_AD_HOC_HANDLERS = Dict{String,Function}()
+const _OSC_AD_HOC_LOCK = ReentrantLock()
+
+"""
+    osc_reply_handler!(f, addr)
+
+Installe `f(args)` comme destinataire des messages OSC reçus à `addr`.
+"""
+osc_reply_handler!(f::Function, addr::AbstractString) =
+    lock(() -> (_OSC_AD_HOC_HANDLERS[String(addr)] = f; nothing), _OSC_AD_HOC_LOCK)
+
+"Retire le destinataire installé par [`osc_reply_handler!`](@ref)."
+osc_reply_handler_remove!(addr::AbstractString) =
+    lock(() -> (delete!(_OSC_AD_HOC_HANDLERS, String(addr)); nothing), _OSC_AD_HOC_LOCK)
+
+_osc_reply_handler(addr::AbstractString) =
+    lock(() -> get(_OSC_AD_HOC_HANDLERS, String(addr), nothing), _OSC_AD_HOC_LOCK)
 
 const _SCOPE_LISTENER_TASK = Ref{Union{Task,Nothing}}(nothing)
 const _SCOPE_LISTENER_SOCKET = Ref{Union{UDPSocket,Nothing}}(nothing)
@@ -191,9 +229,9 @@ const _SCOPE_LISTENER_ERROR = Ref{String}("")
 
 function _ensure_app_scope_listener!()
     _SCOPE_LISTENER_SOCKET[] !== nothing && return true
+    sock = UDPSocket()
     try
-        sock = UDPSocket()
-        bind(sock, ip"127.0.0.1", _SCOPE_LISTEN_PORT) ||
+        bind(sock, ip"127.0.0.1", _SCOPE_LISTEN_PORT[]) ||
             error("bind refusé")
         _SCOPE_LISTENER_SOCKET[] = sock
         _SCOPE_LISTENER_RUNNING[] = true
@@ -201,8 +239,9 @@ function _ensure_app_scope_listener!()
         _SCOPE_LISTENER_ERROR[] = ""
         return true
     catch err
-        _SCOPE_LISTENER_ERROR[] = "port UDP $(_SCOPE_LISTEN_PORT) indisponible ($(sprint(showerror, err))) — " *
-            "un autre processus l'occupe ? `ss -ulnp | grep $(_SCOPE_LISTEN_PORT)` ; un sclang de trop se tue par son pid"
+        close(sock)                     # un bind raté ne laisse pas de socket ouvert
+        _SCOPE_LISTENER_ERROR[] = "port UDP $(_SCOPE_LISTEN_PORT[]) indisponible ($(sprint(showerror, err))) — " *
+            "un autre processus l'occupe ? `ss -ulnp | grep $(_SCOPE_LISTEN_PORT[])` ; un sclang de trop se tue par son pid"
         return false
     end
 end
@@ -211,6 +250,7 @@ end
 function _app_scope_listener_loop()
     sock = _SCOPE_LISTENER_SOCKET[]
     sock === nothing && return
+    failures = 0
     while _SCOPE_LISTENER_RUNNING[]
         try
             data = recv(sock)
@@ -242,15 +282,15 @@ function _app_scope_listener_loop()
             elseif addr == "/ressac/level"
                 _handle_synth_level!(msg.args)
                 continue
-            elseif haskey(_OSC_AD_HOC_HANDLERS, addr)
+            elseif (handler = _osc_reply_handler(addr)) !== nothing
                 # Ephemeral handler installed by short-lived callers
                 # (sc-discoverer waiting on /ressac/sc-meta-reply or
                 # /ressac/sc-discovery-done, etc.). Last in the chain
                 # so it can never override a built-in handler.
                 try
-                    _OSC_AD_HOC_HANDLERS[addr](msg.args)
+                    handler(msg.args)
                 catch err
-                    @warn "OSC ad-hoc handler '$addr' threw: $(sprint(showerror, err))"
+                    _notify!("[WARN] OSC $addr — le destinataire a levé : $(sprint(showerror, err))")
                 end
                 continue
             end
@@ -274,16 +314,19 @@ function _app_scope_listener_loop()
                 # frame regardless of current scope type — the renderer
                 # only reads it when type == :spectrogram, and the cost
                 # of keeping ~60 small Vector{Float32} alive is trivial.
-                if endswith(addr, "/spectrogram")
-                    hist = _APP_SPECTROGRAM_HISTORY[]
-                    push!(hist, copy(floats))
-                    while length(hist) > 60
-                        popfirst!(hist)
-                    end
-                end
+                endswith(addr, "/spectrogram") && _spectrogram_push!(copy(floats))
             end
+            failures = 0
         catch err
             err isa InterruptException && break
+            # Socket fermé (arrêt de la session) : on sort. Toute autre
+            # erreur est dite une fois, puis on temporise — un `recv` qui
+            # échoue en continu ne doit pas faire tourner la boucle à vide.
+            (isopen(sock) && _SCOPE_LISTENER_RUNNING[]) || break
+            failures += 1
+            failures == 1 &&
+                _notify!("[WARN] écoute OSC : $(first(sprint(showerror, err), 160))")
+            sleep(min(1.0, 0.01 * failures))
         end
     end
 end
@@ -294,7 +337,7 @@ end
 
 # RessacApp has its own scope renderers
 # (`_app_render_amp`, `_app_render_wave`, `_app_render_spectrum` in
-# app.jl) which use Tachikoma's buffer API directly.
+# app_scope.jl) which use Tachikoma's buffer API directly.
 
 # ---------------------------------------------------------------------
 # External OSC trigger / set — shared with the scope listener socket.
@@ -329,15 +372,13 @@ end
 
 `/ressac/synthError <name> <message>` — SC failed to build a SynthDef
 and reported it back instead of silently replaying the previous synth.
-Push the failure into the shared app log (`_APP_LOG[]` is rebound to
-`m.logs`) so it's visible in the LOGS pane + chrome row.
+Handed to the app log through `_notify!` (this runs on the OSC listener
+thread) so it's visible in the LOGS pane + chrome row.
 """
 function _handle_synth_error!(args::Vector)
     name = length(args) >= 1 ? string(args[1]) : "?"
     emsg = length(args) >= 2 ? string(args[2]) : "build failed"
-    log = _APP_LOG[]
-    push!(log, "[SC ERROR] synth $name: $emsg")
-    length(log) > 200 && popfirst!(log)
+    _notify!("[SC ERROR] synth $name: $emsg")
     return nothing
 end
 
@@ -357,7 +398,11 @@ function _handle_external_set!(args::Vector)
           args[1] isa Symbol ? String(args[1]) : return
     val = args[2]
     if key == "cps" && val isa Number
-        set_cps!(sched, Float64(val))
+        try
+            set_cps!(sched, Float64(val))
+        catch err
+            _notify!("[WARN] /ressac/set cps refusé : $(sprint(showerror, err))")
+        end
     end
 end
 

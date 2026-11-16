@@ -19,12 +19,15 @@ function start_live!(; host::AbstractString = "127.0.0.1",
                        port::Integer = 57120,
                        cps::Real = 0.5,
                        lookahead::Real = 0.05,
-                       plugins::Bool = true)
+                       plugins::Bool = true,
+                       client = nothing)
     if _LIVE_SCHEDULER[] !== nothing
         @warn "A live session is already running — returning the existing scheduler."
         return _LIVE_SCHEDULER[]
     end
-    client = OSCClient(host, port)
+    # `client` : n'importe quel puits qui a une méthode `send_osc` — un
+    # enregistreur pour les tests, un pont vers autre chose que SuperDirt.
+    client === nothing && (client = OSCClient(host, port))
     sched  = Scheduler(client; cps, lookahead)
     _LIVE_SCHEDULER[] = sched
     start!(sched)
@@ -35,11 +38,17 @@ end
 function stop_live!()
     s = _LIVE_SCHEDULER[]
     s === nothing && return nothing
-    stop!(s); hush!(s); _LIVE_SCHEDULER[] = nothing
+    stop!(s; wait_for = 1.0); hush!(s); _LIVE_SCHEDULER[] = nothing
+    # Le socket d'envoi appartient à la session : sans ça, chaque
+    # `restart_live!` en laissait un ouvert.
+    s.osc isa OSCClient && close(s.osc)
     return nothing
 end
 
-restart_live!(; kwargs...) = (stop_live!(); start_live!(; kwargs...))
+# Un redémarrage repart de registres vides : les plugins sont relus tels
+# qu'ils sont aujourd'hui (un manifeste édité, un synth retiré), au lieu de
+# se superposer à l'état d'avant.
+restart_live!(; kwargs...) = (stop_live!(); _reset_registries!(); start_live!(; kwargs...))
 
 """
     _request_alternate_keys()

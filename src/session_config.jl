@@ -45,7 +45,7 @@ _RESSAC_CONFIG = Ref{RessacConfig}(RessacConfig())
 The default file we look at on boot / `:reload-config`. Project-root
 relative — Ressac is meant to be launched from a project dir.
 """
-_ressac_config_path() = joinpath(pwd(), "ressac.toml")
+_ressac_config_path() = joinpath(_project_dir(), "ressac.toml")
 
 """
     _load_ressac_config!() -> RessacConfig

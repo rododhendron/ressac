@@ -224,6 +224,16 @@ OSCClient(host::AbstractString, port::Integer) = OSCClient(IPv4(host), port)
 Send raw OSC bytes (already encoded) over UDP. `payload` may also be an
 `OSCMessage` or `OSCBundle`, in which case it is encoded first.
 """
-send_osc(c::OSCClient, bytes::Vector{UInt8}) = Sockets.send(c.socket, c.host, c.port, bytes)
+# Un client fermé (session arrêtée) avale les envois : la boucle du scheduler
+# peut encore être dans son dernier pas quand `stop_live!` ferme le socket.
+# (Un UDPSocket neuf n'est pas encore « ouvert » au sens de libuv — il se lie
+# au premier envoi — d'où le test sur l'état fermé plutôt que `isopen`.)
+_osc_closed(c::OSCClient) = c.socket.status in (Base.StatusClosing, Base.StatusClosed)
+
+send_osc(c::OSCClient, bytes::Vector{UInt8}) =
+    _osc_closed(c) ? nothing : (Sockets.send(c.socket, c.host, c.port, bytes); nothing)
+
+"Ferme le socket UDP du client. Sans effet s'il l'est déjà."
+Base.close(c::OSCClient) = (_osc_closed(c) || close(c.socket); nothing)
 send_osc(c::OSCClient, msg::OSCMessage)      = send_osc(c, encode(msg))
 send_osc(c::OSCClient, bundle::OSCBundle)    = send_osc(c, encode(bundle))

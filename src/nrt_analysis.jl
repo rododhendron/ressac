@@ -16,7 +16,45 @@ const _NRT_GAP = 0.05          # silence entre candidats (s)
 # (sauf RESSAC_NRT_TESTS=1) pour qu'aucun chemin — récolte de
 # l'explorateur, onde d'une pane, sculpt — ne lance sclang par surprise.
 const _NRT_ALLOWED = Ref{Bool}(true)
-_sclang_available() = _NRT_ALLOWED[] && Sys.which("sclang") !== nothing
+# Le binaire lancé — une Ref pour que les tests y mettent un faux sclang.
+const _SCLANG_BIN = Ref{String}("sclang")
+_sclang_available() = _NRT_ALLOWED[] && Sys.which(_SCLANG_BIN[]) !== nothing
+
+# Délai par défaut d'un rendu hors-ligne. Un rendu sain prend quelques
+# secondes (compilation de la classlib comprise).
+const _NRT_TIMEOUT = 120.0
+
+"""
+    _run_sclang(scd; timeout) -> exit code
+
+Lance `sclang scd` sans tête et attend sa sortie, **au plus `timeout`
+secondes**. sclang ne rend la main que si le script appelle `exit` : une
+erreur de syntaxe dans le SynthDef généré le laisse dans sa boucle
+d'interprétation pour toujours. Passé le délai, le processus est tué et une
+erreur est levée — l'appelant (souvent la tâche UI) n'est jamais gelé.
+"""
+function _run_sclang(scd::AbstractString; timeout::Real = _NRT_TIMEOUT)
+    cmd = addenv(`$(_SCLANG_BIN[]) $scd`, "QT_QPA_PLATFORM" => "minimal")
+    proc = Base.run(pipeline(ignorestatus(cmd); stdin = devnull, stdout = devnull, stderr = devnull);
+                    wait = false)
+    killer = Timer(timeout) do _
+        process_running(proc) && kill(proc, Base.SIGKILL)
+    end
+    try
+        wait(proc)
+    finally
+        close(killer)
+    end
+    proc.termsignal == Base.SIGKILL &&
+        error("nrt: sclang n'a pas rendu la main en $(round(Int, timeout)) s — tué (SynthDef invalide ?)")
+    return proc.exitcode
+end
+
+# En-tête et pied communs aux scripts NRT : tout le corps tourne dans un
+# `try`, pour qu'une erreur à l'exécution sorte de sclang (code 1) au lieu de
+# le laisser attendre. Les erreurs de syntaxe, elles, relèvent du délai.
+const _NRT_SCRIPT_HEAD = "try {"
+const _NRT_SCRIPT_TAIL = "} { |err| err.reportError; 1.exit };"
 _nrt_slot_dt() = 0.01 + _NRT_WINDOW + 0.02 + _NRT_GAP   # durée d'un slot candidat
 
 # Script sclang : un Score qui charge tous les analysis-synthdefs (t=0) puis
@@ -24,7 +62,7 @@ _nrt_slot_dt() = 0.01 + _NRT_WINDOW + 0.02 + _NRT_GAP   # durée d'un slot candi
 function _build_nrt_script(genomes, wavpath::String, oscpath::String)
     dt = _nrt_slot_dt()
     io = IOBuffer()
-    println(io, "(")
+    println(io, _NRT_SCRIPT_HEAD)
     # SC : tous les `var` AVANT le 1er statement → on déclare defs/events en
     # tête, on construit le tableau de synthdefs d'un bloc, puis les events.
     println(io, "var defs, events;")
@@ -49,7 +87,7 @@ function _build_nrt_script(genomes, wavpath::String, oscpath::String)
     println(io, "  ServerOptions.new.numOutputBusChannels_(", N_ANALYSIS_CHANNELS, "),")
     println(io, "  duration: ", round(total; digits = 4), ",")
     println(io, "  action: { 0.exit });")
-    println(io, ")")
+    println(io, _NRT_SCRIPT_TAIL)
     return String(take!(io))
 end
 
@@ -112,7 +150,7 @@ Rend `genomes` en NRT headless et renvoie un vecteur descripteur (longueur
 `N_DESCRIPTORS`, normalisé ~[0,1]) par génome, dans l'ordre. Lève une erreur
 si `sclang` est indisponible ou si le rendu échoue (l'appelant gère le repli).
 """
-function analyze_genomes(genomes::Vector{Genome}; timeout::Int = 120)
+function analyze_genomes(genomes::Vector{Genome}; timeout::Real = _NRT_TIMEOUT)
     _sclang_available() || error("nrt: sclang introuvable")
     isempty(genomes) && return Vector{Float64}[]
     dir = mktempdir()
@@ -121,8 +159,7 @@ function analyze_genomes(genomes::Vector{Genome}; timeout::Int = 120)
         wav = joinpath(dir, "out.wav")
         osc = joinpath(dir, "score.osc")
         write(scd, _build_nrt_script(genomes, wav, osc))
-        cmd = addenv(`sclang $scd`, "QT_QPA_PLATFORM" => "minimal")
-        Base.run(pipeline(ignorestatus(cmd); stdout = devnull, stderr = devnull))
+        _run_sclang(scd; timeout = timeout)
         isfile(wav) || error("nrt: rendu échoué (pas de wav)")
         mat, sr = _read_wav_f32(wav)
         dt = _nrt_slot_dt()
@@ -137,7 +174,7 @@ end
 # Script sclang minimal : rend UN génome en audio mono vers `wavpath`.
 function _build_audio_script(g::Genome, wavpath::String, oscpath::String, dur::Float64)
     io = IOBuffer()
-    println(io, "(")
+    println(io, _NRT_SCRIPT_HEAD)
     println(io, "var d;")
     println(io, "d = ", render_audio_synthdef(g, :nrtaudio), ";")
     println(io, "Score([")
@@ -150,7 +187,7 @@ function _build_audio_script(g::Genome, wavpath::String, oscpath::String, dur::F
     println(io, "  ServerOptions.new.numOutputBusChannels_(1),")
     println(io, "  duration: ", round(dur; digits = 4), ",")
     println(io, "  action: { 0.exit });")
-    println(io, ")")
+    println(io, _NRT_SCRIPT_TAIL)
     return String(take!(io))
 end
 
@@ -161,7 +198,7 @@ Rend l'onde sonore COMPLÈTE d'un génome en NRT headless (mono, avec son
 enveloppe). Durée = attaque + sustain + release + `pad`, bornée à 6 s. Lève
 une erreur si sclang est indisponible ou si le rendu échoue.
 """
-function render_genome_audio(g::Genome; pad::Float64 = 0.15)
+function render_genome_audio(g::Genome; pad::Float64 = 0.15, timeout::Real = _NRT_TIMEOUT)
     _sclang_available() || error("nrt: sclang introuvable")
     dur = clamp(0.01 + control(g, :sustain) + control(g, :release) + pad, 0.2, 6.0)
     dir = mktempdir()
@@ -170,8 +207,7 @@ function render_genome_audio(g::Genome; pad::Float64 = 0.15)
         wav = joinpath(dir, "audio.wav")
         osc = joinpath(dir, "audio.osc")
         write(scd, _build_audio_script(g, wav, osc, dur))
-        cmd = addenv(`sclang $scd`, "QT_QPA_PLATFORM" => "minimal")
-        Base.run(pipeline(ignorestatus(cmd); stdout = devnull, stderr = devnull))
+        _run_sclang(scd; timeout = timeout)
         isfile(wav) || error("nrt: rendu audio échoué (pas de wav)")
         mat, sr = _read_wav_f32(wav)
         return Float32.(vec(mat[1, :])), sr
