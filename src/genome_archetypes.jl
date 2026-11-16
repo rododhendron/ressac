@@ -7,6 +7,7 @@ import JSON
 function _ser_arg(a::Arg)
     a isa ConstArg   && return Dict("t" => "const", "v" => a.value)
     a isa NodeRef    && return Dict("t" => "node",  "id" => a.id)
+    a isa LitArg     && return Dict("t" => "lit",   "code" => a.code)
     return Dict("t" => "ctrl", "name" => String(a.name))   # ControlRef
 end
 
@@ -14,6 +15,7 @@ function _deser_arg(d::AbstractDict)::Arg
     t = d["t"]
     t == "const" && return ConstArg(Float64(d["v"]))
     t == "node"  && return NodeRef(Int(d["id"]))
+    t == "lit"   && return LitArg(String(d["code"]))
     return ControlRef(Symbol(d["name"]))
 end
 
@@ -88,7 +90,7 @@ archetype_names() = sort!(collect(keys(_ARCHETYPES)))
 archetype(name::Symbol) = _ARCHETYPES[name]()
 
 # ── Persistance disque ─────────────────────────────────────────────
-seed_dir() = joinpath(pwd(), "plugins", "synth-seeds")
+seed_dir() = joinpath(_project_dir(), "plugins", "synth-seeds")
 
 function save_seed(name::AbstractString, g::Genome; dir = seed_dir())
     isdir(dir) || mkpath(dir)

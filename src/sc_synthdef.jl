@@ -8,23 +8,35 @@
 """
     synthdef_to_dsl(src) -> (name, dsl) | nothing
 
-`nothing` quand `src` ne contient pas de `SynthDef(\\nom, { |args| … })`
-dont on sache isoler la sortie.
+`nothing` quand `src` ne se convertit pas. [`synthdef_to_dsl_reason`](@ref)
+dit pourquoi.
 """
-function synthdef_to_dsl(src::AbstractString)
+synthdef_to_dsl(src::AbstractString) = first(synthdef_to_dsl_reason(src))
+
+"""
+    synthdef_to_dsl_reason(src) -> ((name, dsl) | nothing, raison::String)
+
+Convertit un `SynthDef(\\nom, { |args| … })` en DSL. Quand la sortie ne
+s'isole pas, ou que son expression ne se lit pas entièrement, rien n'est
+rendu et `raison` dit ce qui a manqué : un SynthDef à moitié compris
+donnerait un DSL qui ne sonne pas pareil.
+"""
+function synthdef_to_dsl_reason(src::AbstractString)
     parsed = parse_synthdef(src)
-    parsed === nothing && return nothing
+    parsed === nothing &&
+        return (nothing, "pas de SynthDef(\\nom, { |args| … Out.ar(out, …) }) reconnaissable")
     (name, args, expr) = parsed
     controls = Set{Symbol}(keys(args))
-    g = genome_from_sc(expr, controls)
-    g === nothing && return nothing
+    (g, why) = parse_sc_expr(expr, controls)
+    g === nothing && return (nothing, why)
     for (k, v) in args
         k in (:out, :pan) && continue
         g.controls[k] = v
     end
     haskey(g.controls, :freq) || (g.controls[:freq] = 220.0)
     haskey(g.controls, :sustain) || (g.controls[:sustain] = 0.5)
-    return (name, render_dsl(g, name))
+    SynthDSL.valid_synth_name(name) || return (nothing, "nom de SynthDef « $name » : pas un identifiant")
+    return ((name, render_dsl(g, name)), "")
 end
 
 """
@@ -73,7 +85,16 @@ function parse_synthdef(src::AbstractString)
     for st in stmts
         t = strip(st)
         isempty(t) && continue
-        startswith(t, "var ") && continue
+        if startswith(t, "var ")
+            # `var a = expr, b, c = expr2;` : une déclaration peut porter sa
+            # valeur. Chaque `nom = expr` est une affectation comme les autres.
+            for decl in _sc_split_top(t[5:end], ',')
+                md = match(r"^\s*([A-Za-z_]\w*)\s*=\s*(.*)$"s, decl)
+                md === nothing && continue
+                vars[String(md.captures[1])] = "(" * _sc_inline_vars(strip(String(md.captures[2])), vars) * ")"
+            end
+            continue
+        end
         mo = match(r"^(?:OffsetOut|Out)\.ar\s*\(", t)
         if mo !== nothing
             inner = _sc_block_body(t, mo.offset + ncodeunits(mo.match); open = '(', close = ')')

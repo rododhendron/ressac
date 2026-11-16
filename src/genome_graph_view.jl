@@ -42,6 +42,7 @@ function _graph_sub(g::Genome, n::UGenNode, skip::Int)
         i == skip && continue
         a isa ConstArg && push!(parts, _graph_fmt(a.value))
         a isa ControlRef && push!(parts, ":" * String(a.name))
+        a isa LitArg && push!(parts, a.code)
         length(parts) >= 3 && break
     end
     s = join(parts, " ")

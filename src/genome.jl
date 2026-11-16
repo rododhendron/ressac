@@ -6,7 +6,29 @@
 struct ConstArg;   value::Float64;  end
 struct NodeRef;    id::Int;         end
 struct ControlRef; name::Symbol;    end   # :freq | :sustain | :gain
-const Arg = Union{ConstArg, NodeRef, ControlRef}
+# Un littéral SC qui n'est ni un nombre ni un signal — un symbole (`\sin`,
+# la courbe d'une enveloppe), `nil`, une chaîne. Gardé tel quel : il ne se
+# règle pas, ne se mute pas, mais il ne se perd pas non plus à la relecture.
+struct LitArg;     code::String;    end
+const Arg = Union{ConstArg, NodeRef, ControlRef, LitArg}
+
+# ── Nœuds sans fiche au catalogue ────────────────────────────────────
+# Le catalogue (plus bas) décrit les UGens que la mutation sait manier.
+# Le parseur SC rencontre bien d'autres choses ; plutôt que de les réduire
+# à un zéro, il les garde sous quatre formes, reconnues à leur nom et
+# rendues telles quelles :
+#   :Chan            `[a, b, …]`          un tableau (expansion multicanal)
+#   :Ref             `` `x ``             une référence (les specs de Klang)
+#   Symbol(".abs")   `(x).abs(args…)`     une méthode sans fiche
+#   Symbol("Env.triangle") `Env.triangle(args…)`  une méthode de classe
+#   Symbol("**") …   `(a ** b)`           un opérateur binaire autre que + - * /
+const _SC_BINOPS = ("**", "%", ">=", "<=", "==", "!=", ">", "<")
+_is_method_node(u::Symbol)    = startswith(String(u), ".")
+_is_classcall_node(u::Symbol) = (s = String(u); !startswith(s, ".") && occursin('.', s))
+_is_binop_node(u::Symbol)     = String(u) in _SC_BINOPS
+"Un nœud de structure : il transporte ses arguments, il n'est pas un UGen."
+_is_structural_node(u::Symbol) =
+    u === :Chan || u === :Ref || _is_method_node(u) || _is_classcall_node(u) || _is_binop_node(u)
 
 mutable struct UGenNode
     id::Int
@@ -67,7 +89,7 @@ register_ugen!(s::UGenSpec) = (UGEN_CATALOG[s.name] = s)
 ugen_spec(name::Symbol) = get(UGEN_CATALOG, name, nothing)
 # Dans le catalogue pour être sculptés et expliqués, mais pas tirés par
 # la mutation ni par `o` : un bloc opaque, des tables, des conversions.
-const _NOT_FOR_MUTATION = Set{Symbol}((:Raw, :Klang, :Div, :Midicps, :Cpsmidi, :K2A, :DC,
+const _NOT_FOR_MUTATION = Set{Symbol}((:Raw, :Klang, :Div, :Midicps, :Cpsmidi, :K2A, :DC, :Abs, :Sqrt, :Pow,
                                        :EnvGen, :EnvPerc, :EnvLinen, :EnvAsr, :EnvAdsr))
 catalog_by_role(role::Symbol) =
     [s for s in values(UGEN_CATALOG) if s.role === role && !(s.name in _NOT_FOR_MUTATION)]
@@ -231,6 +253,9 @@ function _install_builtin_ugens!()
     # mise en forme, maths
     register_ugen!(UGenSpec(:Softclip, [:ar, :kr], [sig(:in, 0, -1, 1)], :math))
     register_ugen!(UGenSpec(:Cubed,    [:ar, :kr], [sig(:in, 0, -1, 1)], :math))
+    register_ugen!(UGenSpec(:Abs,      [:ar, :kr], [sig(:in, 0, -1, 1)], :math))
+    register_ugen!(UGenSpec(:Sqrt,     [:ar, :kr], [sig(:in, 0, 0, 1)], :math))
+    register_ugen!(UGenSpec(:Pow,      [:ar, :kr], [sig(:in, 0, -1, 1), sca(:exponent, 2, 0.1, 8)], :math))
     register_ugen!(UGenSpec(:Fold,     [:ar, :kr], [sig(:in, 0, -1, 1), sca(:lo, -1, -2, 0), sca(:hi, 1, 0, 2)], :math))
     register_ugen!(UGenSpec(:Wrap,     [:ar, :kr], [sig(:in, 0, -1, 1), sca(:lo, -1, -2, 0), sca(:hi, 1, 0, 2)], :math))
     register_ugen!(UGenSpec(:Clip,     [:ar, :kr], [sig(:in, 0, -1, 1), sca(:lo, -1, -2, 0), sca(:hi, 1, 0, 2)], :math))

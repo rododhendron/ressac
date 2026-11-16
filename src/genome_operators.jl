@@ -35,11 +35,19 @@ function _pick_node(g::Genome, rng::AbstractRNG; conservation::Float64 = 0.85)
     return rand(rng, ids)
 end
 
+# Les opérateurs ne manient que ce que le catalogue décrit. Un génome
+# remonté d'un texte (sculpt, graine prise dans un synth du joueur) contient
+# aussi des UGens sans fiche et des nœuds de structure (tableaux, méthodes) :
+# ils sont laissés tels quels, jamais tirés au sort.
+
+# Les constantes réglables : celles qui occupent un slot du catalogue.
 function _const_slots(g::Genome)
     out = Tuple{Int,Int}[]   # (node_id, arg_index)
     for (id, n) in g.nodes
+        spec = ugen_spec(n.ugen)
+        spec === nothing && continue
         for (i, a) in enumerate(n.args)
-            a isa ConstArg && push!(out, (id, i))
+            (a isa ConstArg && i <= length(spec.slots) && isfinite(a.value)) && push!(out, (id, i))
         end
     end
     return out
@@ -50,13 +58,18 @@ function op_perturb_const!(g::Genome, rng::AbstractRNG; radius::Float64 = 0.5)
     isempty(slots) && return g
     (nid, i) = rand(rng, slots)
     n = g.nodes[nid]
-    spec = ugen_spec(n.ugen)
-    i <= length(spec.slots) || return g   # arité transitoire (avant repair!)
-    sp = spec.slots[i]
-    span = sp.hi - sp.lo
+    sp = ugen_spec(n.ugen).slots[i]
     cur = n.args[i].value
-    new = cur + randn(rng) * span * 0.25 * radius
-    n.args[i] = ConstArg(clamp(new, sp.lo, sp.hi))
+    if sp.lo <= cur <= sp.hi
+        new = clamp(cur + randn(rng) * (sp.hi - sp.lo) * 0.25 * radius, sp.lo, sp.hi)
+    else
+        # Une valeur lue dans un texte peut sortir de la plage du catalogue
+        # (un `* 250 + 550` qui balaie un filtre, un `* -1` qui inverse) :
+        # la plage décrit ce que la mutation invente, pas ce qui est permis.
+        # On bouge autour de la valeur, en proportion, sans la ramener.
+        new = cur * exp(randn(rng) * 0.25 * radius)
+    end
+    n.args[i] = ConstArg(new)
     return g
 end
 
@@ -66,6 +79,7 @@ function op_change_rate!(g::Genome, rng::AbstractRNG)
     nid = rand(rng, ids)
     n = g.nodes[nid]
     spec = ugen_spec(n.ugen)
+    spec === nothing && return g
     length(spec.rates) > 1 && (n.rate = rand(rng, spec.rates))
     return g
 end
@@ -168,12 +182,18 @@ function _signal_slot_edges(g::Genome)
     return out
 end
 
-function _new_node_from_spec!(g::Genome, spec::UGenSpec, first_input::Arg)
-    args = Arg[]
-    for (i, sp) in enumerate(spec.slots)
-        push!(args, (i == 1 && _is_signalish(sp.kind)) ? first_input :
-                    ConstArg(sp.default))
-    end
+# Le slot où entre le signal qu'un nœud traite : son entrée audio s'il en a
+# une (ce n'est pas toujours la première — `Median.ar(length, in)`), sinon
+# son premier slot modulable. `nothing` pour une source sans entrée.
+function _input_slot(spec::UGenSpec)
+    i = findfirst(sp -> sp.kind === :audio, spec.slots)
+    i === nothing || return i
+    return findfirst(sp -> _is_signalish(sp.kind), spec.slots)
+end
+
+function _new_node_from_spec!(g::Genome, spec::UGenSpec, input::Arg)
+    at = _input_slot(spec)
+    args = Arg[i == at ? input : ConstArg(sp.default) for (i, sp) in enumerate(spec.slots)]
     return add_node!(g, spec.name, spec.rates[1], args)
 end
 
@@ -196,6 +216,7 @@ function op_remove_node!(g::Genome, rng::AbstractRNG)
     nid === nothing && return g
     n = g.nodes[nid]
     spec = ugen_spec(n.ugen)
+    spec === nothing && return g          # hors catalogue : on n'y touche pas
     # Bypass through the node's signal path: prefer its audio input
     # (the real signal it processes), else any signalish slot.
     sig_idxs = [i for (i, sp) in enumerate(spec.slots)
@@ -219,13 +240,41 @@ function op_swap_ugen!(g::Genome, rng::AbstractRNG)
     nid = _pick_node(g, rng)              # protège l'épine dorsale
     nid === nothing && return g
     n = g.nodes[nid]
-    role = ugen_spec(n.ugen).role
-    cands = [s for s in catalog_by_role(role) if s.name !== n.ugen]
+    old = ugen_spec(n.ugen)
+    old === nothing && return g           # hors catalogue : on n'y touche pas
+    cands = [s for s in catalog_by_role(old.role) if s.name !== n.ugen]
     isempty(cands) && return g
     spec = rand(rng, cands)
+    n.args = _remap_args(old, spec, n.args)
     n.ugen = spec.name
     n.rate in spec.rates || (n.rate = spec.rates[1])
-    return g   # repair! ajuste l'arité
+    return g
+end
+
+# Les arguments d'un nœud qui change d'UGen : chaque slot du nouveau reprend
+# l'argument du slot de même nom, à défaut le premier pas encore repris de
+# même nature (un signal reste un signal, un scalaire un scalaire), à défaut
+# sa valeur par défaut. Une constante reprise est ramenée dans la plage du
+# nouveau slot : la fréquence 220 d'un Saw ne devient pas le `chaos = 220`
+# d'un Logistic (plage 3.5–4).
+function _remap_args(old::UGenSpec, new::UGenSpec, args::Vector{Arg})
+    used = falses(length(args))
+    take!(pred) = begin
+        i = findfirst(k -> k <= length(old.slots) && !used[k] && pred(old.slots[k]), eachindex(args))
+        i === nothing && return nothing
+        used[i] = true
+        args[i]
+    end
+    out = Arg[]
+    for sp in new.slots
+        a = take!(o -> o.name === sp.name)
+        a === nothing && (a = take!(o -> o.kind === sp.kind))
+        a === nothing && (a = take!(o -> _is_signalish(o.kind) && _is_signalish(sp.kind)))
+        a === nothing && (a = ConstArg(sp.default))
+        a isa ConstArg && sp.lo < sp.hi && (a = ConstArg(clamp(a.value, sp.lo, sp.hi)))
+        push!(out, a)
+    end
+    return out
 end
 
 function op_rewire!(g::Genome, rng::AbstractRNG)

@@ -222,6 +222,7 @@ function _ugen_phrase(g::Genome, n::UGenNode)
         label = get(_SLOT_DESC, nm, String(nm))
         a isa ConstArg   && push!(params, "$label $(_explain_fmt(a.value))")
         a isa ControlRef && push!(params, "$label=$(a.name)")
+        a isa LitArg     && push!(params, "$label=$(a.code)")
     end
     return isempty(params) ? "$(n.ugen) — $desc" :
            "$(n.ugen) — $desc  [$(join(params, " · "))]"
@@ -558,40 +559,47 @@ function _apply_synth_params!(g::Genome, expr)
 end
 
 """
-    _dsl_eval_body(body) -> Union{Nothing,SynthDSL.Sig}
+    _dsl_eval_body(body) -> (Union{Nothing,SynthDSL.Sig}, raison::String)
 
 Évalue le corps d'un `@synth` dans `SynthDSL` — exactement ce que fait
 le DSL pour produire le son — et rend le signal final. `fb` (forme
-`feedback() do fb … end`) est lié au bus de feedback. `nothing` si le
-corps ne s'évalue pas ou ne finit pas sur un signal.
+`feedback() do fb … end`) est lié au bus de feedback. `nothing` et la
+raison si le corps ne s'évalue pas ou ne finit pas sur un signal.
 """
 function _dsl_eval_body(body::Expr)
     ex = Expr(:let, Expr(:block, :(fb = $(SynthDSL).Sig("fb"))), SynthDSL._elixir_pipes(body))
     v = try
         Base.invokelatest(Core.eval, SynthDSL, ex)
-    catch
-        return nothing
+    catch err
+        return (nothing, "le corps du @synth ne s'évalue pas : " * first(sprint(showerror, err), 120))
     end
-    return v isa SynthDSL.Sig ? v : nothing
+    v isa SynthDSL.Sig || return (nothing, "le corps du @synth ne finit pas sur un signal")
+    return (v, "")
 end
 
 """
-    genome_from_dsl(text) -> Union{Nothing,Genome}
+    parse_dsl_synth(text) -> (genome | nothing, raison::String)
 
 Le génome d'un fichier DSL `@synth` : la première `@synth` du fichier,
 son corps évalué en signal SC (voir `_dsl_eval_body`), puis remonté en
-DAG par `genome_from_sc`. Les paramètres du `@synth` deviennent les
-contrôles. Jamais d'exception : un DSL exotique donne `nothing`.
+DAG par `parse_sc_expr`. Les paramètres du `@synth` deviennent les
+contrôles. Jamais d'exception : quand le texte ne se lit pas entièrement,
+le génome est `nothing` et `raison` dit ce qui a manqué — `:sculpt`,
+`:prune` et `:explain` le répètent au joueur au lieu de travailler sur un
+son amputé.
 """
-function genome_from_dsl(text::AbstractString)
+function parse_dsl_synth(text::AbstractString)
     expr = SynthDSL._dsl_synth_expr(text)
-    expr === nothing && return nothing
+    expr === nothing && return (nothing, "pas de `@synth` dans ce texte")
     body = _synth_body(expr)
-    body === nothing && return nothing
+    body === nothing && return (nothing, "le `@synth` n'a pas de corps")
     g = Genome()
     _apply_synth_params!(g, expr)
-    sig = _dsl_eval_body(body)
-    sig === nothing && return nothing
+    (sig, why) = _dsl_eval_body(body)
+    sig === nothing && return (nothing, why)
     controls = union(Set(keys(g.controls)), Set(CONTROL_EDIT_ORDER), Set([:gate, :pan, :out]))
-    return genome_from_sc(sig.code, controls; g = g)
+    return parse_sc_expr(sig.code, controls; g = g)
 end
+
+"Le génome de [`parse_dsl_synth`](@ref), sans la raison."
+genome_from_dsl(text::AbstractString) = first(parse_dsl_synth(text))

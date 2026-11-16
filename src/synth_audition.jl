@@ -88,7 +88,11 @@ end
 function audition_hold!(st::AuditionState, osc, g::Genome,
                         freq::Float64, sustain::Float64)
     src = render_synthdef(g, _GA_HELD_NAME)
-    _send(osc, "/ressac/evalAndPlay", Any[String(_GA_HELD_NAME), src])
+    # La hauteur et la durée demandées partent avec la note, comme pour
+    # `audition_play!` (sans elles, le son tenu jouait toujours les défauts
+    # du génome).
+    _send(osc, "/ressac/evalAndPlay",
+          Any[String(_GA_HELD_NAME), src, "freq", Float32(freq), "sustain", Float32(sustain)])
     st.held_active = true
     return st
 end

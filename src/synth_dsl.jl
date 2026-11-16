@@ -94,15 +94,35 @@ const SigLike = Union{Sig,Real,Symbol}
 
 sc_arg(s::Sig)            = s.code
 sc_arg(s::Symbol)         = String(s)
-sc_arg(x::Real)           = string(x)
+sc_arg(x::Real)           = sc_num(x)
 sc_arg(x::Bool)           = string(x)
 sc_arg(x::AbstractString) = String(x)
+sc_arg(::Nothing)         = "nil"
 sc_arg(xs::AbstractVector) = "[" * join(sc_arg.(xs), ", ") * "]"
 
+"""
+    sc_num(x) -> String
+
+Un nombre Julia écrit en SuperCollider. Le seul endroit qui le fait : un
+rationnel `1//3` s'écrirait `1//3` (le début d'un commentaire en SC), `π`
+s'écrirait `π`, `Inf` s'écrit `inf` en SC. `NaN` est refusé.
+"""
+function sc_num(x::Real)
+    x isa Bool && return string(x)
+    x isa Integer && return string(x)
+    v = Float64(x)
+    isnan(v) && throw(ArgumentError("NaN n'a pas d'écriture en SuperCollider"))
+    isinf(v) && return v > 0 ? "inf" : "-inf"
+    return string(v)
+end
+
 # Render an SC symbol literal (e.g. `\lin`). Used for env curves and
-# any other place where SC expects a backslash-prefixed Symbol.
+# any other place where SC expects a backslash-prefixed Symbol. Une courbe
+# d'enveloppe peut aussi être un nombre (`curve = -4`) : il passe tel quel.
 sc_sym(s::Symbol)         = "\\" * String(s)
 sc_sym(s::AbstractString) = startswith(s, "\\") ? String(s) : "\\" * String(s)
+sc_sym(x::Real)           = sc_num(x)
+sc_sym(s::Sig)            = s.code
 
 """
     ugen(name::Symbol, args...; rate::Symbol = :ar) -> Sig
@@ -128,7 +148,9 @@ Pass `rate=:kr` for control-rate UGens.
 const _UGEN_METHOD_FORMS = Dict{Symbol,String}(
     :Softclip => "softclip", :Cubed => "cubed", :Midicps => "midicps", :Cpsmidi => "cpsmidi",
     :Fold => "fold", :Wrap => "wrap", :Clip => "clip", :Tanh => "tanh", :Fold2 => "fold2",
-    :Clip2 => "clip2", :Round => "round")
+    :Clip2 => "clip2", :Round => "round", :Abs => "abs", :Sqrt => "sqrt", :Pow => "pow")
+# Opérateurs binaires SC hors + - * / (voir `_SC_BINOPS` côté génome).
+const _UGEN_BINOPS = ("**", "%", ">=", "<=", "==", "!=", ">", "<")
 const _UGEN_ENV_FORMS = Dict{Symbol,String}(
     :EnvPerc => "perc", :EnvLinen => "linen", :EnvAsr => "asr", :EnvAdsr => "adsr")
 
@@ -140,6 +162,20 @@ function ugen(name::Symbol, args...; rate::Symbol = :ar)
     haskey(_UGEN_ENV_FORMS, name) && return Sig(string("Env.", _UGEN_ENV_FORMS[name], "(", join(sc_arg.(args), ", "), ")"))
     name === :Div && length(args) == 2 && return Sig(string("(", sc_arg(args[1]), " / ", sc_arg(args[2]), ")"))
     name === :Raw && return Sig("Silent.ar")
+    # Les formes de structure du génome (voir genome.jl) : un tableau, une
+    # référence, une méthode ou une méthode de classe sans wrapper, un
+    # opérateur binaire. Ce qu'un export écrit pour ce qu'il ne sait pas
+    # dire autrement — et qui doit rester du SC valide.
+    nm = String(name)
+    name === :Chan && return chan(args...)
+    name === :Ref && length(args) == 1 && return Sig("`" * sc_arg(args[1]))
+    if startswith(nm, ".") && !isempty(args)
+        rest = length(args) > 1 ? "(" * join(sc_arg.(args[2:end]), ", ") * ")" : ""
+        return Sig(string("(", sc_arg(args[1]), ")", nm, rest))
+    end
+    nm in _UGEN_BINOPS && length(args) == 2 &&
+        return Sig(string("(", sc_arg(args[1]), " ", nm, " ", sc_arg(args[2]), ")"))
+    occursin('.', nm) && return Sig(string(nm, "(", join(sc_arg.(args), ", "), ")"))
     Sig(string(name, ".", rate, "(", join(sc_arg.(args), ", "), ")"))
 end
 
@@ -331,10 +367,12 @@ decay2(s::SigLike, attack=0.01, release=1) = Sig("Decay2.ar($(sc_arg(s)), $(sc_a
 Pipe-friendly chorus. `rate` Hz LFO sweeps the delay time around
 ~10ms ±depth. `mix` (0..1) is the wet/dry blend.
 """
+# Chaque terme entre ses parenthèses : SC évalue les opérateurs de gauche à
+# droite, sans priorité — `a * x + b * y` y vaut `((a * x) + b) * y`.
 chorus(s::SigLike, rate=0.5, depth=0.002, mix=0.5) = Sig(
     "(($(sc_arg(s)) * (1 - $(sc_arg(mix)))) + " *
-    "DelayL.ar($(sc_arg(s)), 0.05, 0.01 + " *
-    "SinOsc.kr($(sc_arg(rate))).range(0, $(sc_arg(depth)))) * $(sc_arg(mix)))")
+    "(DelayL.ar($(sc_arg(s)), 0.05, (0.01 + " *
+    "SinOsc.kr($(sc_arg(rate))).range(0, $(sc_arg(depth))))) * $(sc_arg(mix))))")
 
 """
     flanger(rate=0.2, depth=0.005, feedback=0.3)
@@ -353,11 +391,18 @@ flanger(s::SigLike, rate=0.2, depth=0.005, feedback=0.3) = Sig(
 A classic 70s phaser sound. `depth` is the swing of the centre
 frequency around 800 Hz.
 """
-phaser(s::SigLike, rate=0.3, depth=800) = Sig(
-    "(0..3).inject($(sc_arg(s)), { |sig, i| " *
-    "AllpassC.ar(sig, 0.005, " *
-    "(SinOsc.kr($(sc_arg(rate)) * (1 + i*0.1)).range(200, 200 + $(sc_arg(depth))) * 1).reciprocal, " *
-    "0)})")
+function phaser(s::SigLike, rate=0.3, depth=800)
+    # Quatre étages écrits un par un (plutôt qu'un `inject` SC) : le son
+    # se relit, se sculpte et s'explique étage par étage. Chaque LFO va un
+    # peu plus vite que le précédent (× 1.0, 1.1, 1.2, 1.3).
+    code = sc_arg(s)
+    for i in 0:3
+        lfo_rate = rate isa Real ? sc_num(rate * (1 + i * 0.1)) : "($(sc_arg(rate)) * $(sc_num(1 + i * 0.1)))"
+        code = "AllpassC.ar($code, 0.005, " *
+               "(SinOsc.kr($lfo_rate).range(200, (200 + $(sc_arg(depth))))).reciprocal, 0)"
+    end
+    return Sig(code)
+end
 
 # ── Granular ─────────────────────────────────────────────────────
 # These take a buffer reference (use grain_buf to allocate, or
@@ -567,20 +612,20 @@ t_rand(low, high, trig) =
 # ════════════════════════════════════════════════════════════════════
 
 Base.:*(a::Sig, b::Sig)    = Sig("($(a.code) * $(b.code))")
-Base.:*(a::Sig, b::Real)   = Sig("($(a.code) * $b)")
-Base.:*(a::Real, b::Sig)   = Sig("($a * $(b.code))")
+Base.:*(a::Sig, b::Real)   = Sig("($(a.code) * $(sc_num(b)))")
+Base.:*(a::Real, b::Sig)   = Sig("($(sc_num(a)) * $(b.code))")
 Base.:*(a::Sig, b::Symbol) = Sig("($(a.code) * $b)")
 Base.:*(a::Symbol, b::Sig) = Sig("($a * $(b.code))")
 Base.:+(a::Sig, b::Sig)    = Sig("($(a.code) + $(b.code))")
-Base.:+(a::Sig, b::Real)   = Sig("($(a.code) + $b)")
-Base.:+(a::Real, b::Sig)   = Sig("($a + $(b.code))")
+Base.:+(a::Sig, b::Real)   = Sig("($(a.code) + $(sc_num(b)))")
+Base.:+(a::Real, b::Sig)   = Sig("($(sc_num(a)) + $(b.code))")
 Base.:+(a::Sig, b::Symbol) = Sig("($(a.code) + $b)")
 Base.:+(a::Symbol, b::Sig) = Sig("($a + $(b.code))")
 Base.:-(a::Sig, b::Sig)    = Sig("($(a.code) - $(b.code))")
-Base.:-(a::Sig, b::Real)   = Sig("($(a.code) - $b)")
-Base.:-(a::Real, b::Sig)   = Sig("($a - $(b.code))")
+Base.:-(a::Sig, b::Real)   = Sig("($(a.code) - $(sc_num(b)))")
+Base.:-(a::Real, b::Sig)   = Sig("($(sc_num(a)) - $(b.code))")
 Base.:-(a::Sig)            = Sig("($(a.code).neg)")
-Base.:/(a::Sig, b::Real)   = Sig("($(a.code) / $b)")
+Base.:/(a::Sig, b::Real)   = Sig("($(a.code) / $(sc_num(b)))")
 Base.:/(a::Sig, b::Sig)    = Sig("($(a.code) / $(b.code))")
 
 amp(s::Sig, x)    = s * x
@@ -616,26 +661,26 @@ export chan
 # define arithmetic), so this is purely additive — no surprise on
 # existing call sites. Returns a Sig containing the literal SC code
 # `freq * 2`, ready to be consumed by further DSL functions.
-Base.:*(a::Symbol, b::Real)   = Sig("($a * $b)")
-Base.:*(a::Real, b::Symbol)   = Sig("($a * $b)")
+Base.:*(a::Symbol, b::Real)   = Sig("($a * $(sc_num(b)))")
+Base.:*(a::Real, b::Symbol)   = Sig("($(sc_num(a)) * $b)")
 Base.:*(a::Symbol, b::Symbol) = Sig("($a * $b)")
-Base.:+(a::Symbol, b::Real)   = Sig("($a + $b)")
-Base.:+(a::Real, b::Symbol)   = Sig("($a + $b)")
+Base.:+(a::Symbol, b::Real)   = Sig("($a + $(sc_num(b)))")
+Base.:+(a::Real, b::Symbol)   = Sig("($(sc_num(a)) + $b)")
 Base.:+(a::Symbol, b::Symbol) = Sig("($a + $b)")
-Base.:-(a::Symbol, b::Real)   = Sig("($a - $b)")
-Base.:-(a::Real, b::Symbol)   = Sig("($a - $b)")
+Base.:-(a::Symbol, b::Real)   = Sig("($a - $(sc_num(b)))")
+Base.:-(a::Real, b::Symbol)   = Sig("($(sc_num(a)) - $b)")
 Base.:-(a::Symbol, b::Symbol) = Sig("($a - $b)")
-Base.:/(a::Symbol, b::Real)   = Sig("($a / $b)")
-Base.:/(a::Real, b::Symbol)   = Sig("($a / $b)")
+Base.:/(a::Symbol, b::Real)   = Sig("($a / $(sc_num(b)))")
+Base.:/(a::Real, b::Symbol)   = Sig("($(sc_num(a)) / $b)")
 Base.:/(a::Symbol, b::Symbol) = Sig("($a / $b)")
 
 # Puissance et moins unaire : `sin_osc(:freq) ^ 2` (mise en forme),
 # `:freq ^ 2`, `-saw(:freq)` (inversion de phase). SC a `**`.
-Base.:^(a::Sig, b::Real)      = Sig("($(a.code) ** $b)")
+Base.:^(a::Sig, b::Real)      = Sig("($(a.code) ** $(sc_num(b)))")
 Base.:^(a::Sig, b::Sig)       = Sig("($(a.code) ** $(b.code))")
-Base.:^(a::Symbol, b::Real)   = Sig("($a ** $b)")
+Base.:^(a::Symbol, b::Real)   = Sig("($a ** $(sc_num(b)))")
 Base.:^(a::Real, b::Sig)      = Sig("($a ** $(b.code))")
-Base.:^(a::Real, b::Symbol)   = Sig("($a ** $b)")
+Base.:^(a::Real, b::Symbol)   = Sig("($(sc_num(a)) ** $b)")
 Base.:-(a::Symbol)            = Sig("($a.neg)")
 
 # Sig×Symbol pairs for the operators that weren't already defined
@@ -713,6 +758,7 @@ function build_synth(name::Symbol, sig::Sig;
     # Merge default params in (user-provided keys win).
     merged = merge(_DEFAULT_PARAMS, local_params)
 
+    check_synth_name(name)
     code = sig.code
     if gate
         # Variante drone : le nœud tient tant que `gate` vaut 1 et se
@@ -724,8 +770,12 @@ function build_synth(name::Symbol, sig::Sig;
         code = "($code * EnvGen.kr(Env.asr(0.01, 1, release), gate, doneAction: 2))"
         haskey(merged, :gate) || (merged = merge(merged, (gate = 1,)))
         haskey(merged, :release) || (merged = merge(merged, (release = 0.1,)))
-    elseif auto_env && !occursin("EnvGen", code)
-        # Auto-envelope only when the chain doesn't already have one.
+    elseif auto_env && !_frees_itself(code)
+        # L'enveloppe automatique est ce qui libère le nœud en fin de note.
+        # On ne s'en passe que si la chaîne se libère déjà elle-même (un
+        # `doneAction` ≥ 2) — pas dès qu'un EnvGen y figure : une enveloppe
+        # qui module un filtre (`done_action = 0`) ne libère rien, et chaque
+        # note laisserait un nœud vivant sur le serveur.
         code = "($code * EnvGen.kr(Env.linen(0.01, sustain, 0.1), doneAction: 2))"
     end
     # Auto-gain. Wrapped after the env so :gain scales the final
@@ -737,13 +787,33 @@ function build_synth(name::Symbol, sig::Sig;
         code = "($code * gain)"
     end
 
-    param_parts = String["out", "pan = $(pan)"]
+    param_parts = String["out", "pan = $(sc_arg(pan))"]
     for (k, v) in pairs(merged)
-        push!(param_parts, "$k = $v")
+        push!(param_parts, "$k = $(sc_arg(v))")
     end
     param_decl = "|" * join(param_parts, ", ") * "|"
     body = "    OffsetOut.ar(out, DirtPan.ar($code, ~dirt.numChannels, pan));"
     "SynthDef(\\$name, { $param_decl\n$body\n}).add;\n"
+end
+
+# La chaîne libère-t-elle son nœud ? (`doneAction: 2` et au-delà ; 0 ne fait
+# rien, 1 met en pause.)
+_frees_itself(code::AbstractString) =
+    any(m -> parse(Int, m.captures[1]) >= 2, eachmatch(r"doneAction:\s*(\d+)", code))
+
+"""
+    valid_synth_name(name) -> Bool
+
+Un nom de synth est un identifiant : lettres, chiffres, `_`, sans chiffre
+en tête. C'est à la fois un symbole SC (`\\nom` — `\\my-synth` se lirait
+`\\my - synth`) et un symbole Julia (`@synth :nom` — `:303` est un entier).
+"""
+valid_synth_name(name) = occursin(r"^[A-Za-z_][A-Za-z0-9_]*$", String(name))
+
+function check_synth_name(name)
+    valid_synth_name(name) ||
+        throw(ArgumentError("nom de synth invalide « $name » : des lettres, des chiffres et `_`, sans chiffre en tête"))
+    return Symbol(name)
 end
 
 """
@@ -840,7 +910,8 @@ function _register_dsl_synth!(sc_name::Symbol, eff::NamedTuple, alias)
                                Dict{String,Any}("description" => "DSL-defined",
                                                 "tags" => ["dsl"],
                                                 "params" => Dict{String,Any}(String(k) => v for (k, v) in pairs(eff)
-                                                                             if v isa Real))))
+                                                                             if v isa Real)));
+                    update = true)
     alias !== nothing && register_synth_alias!(alias, sc_name)
     return nothing
 end

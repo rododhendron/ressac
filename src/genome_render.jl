@@ -5,42 +5,60 @@
 
 const _RATE_SUFFIX = Dict(:ar => "ar", :kr => "kr", :ir => "ir")
 
-_fmt_const(v::Float64) = isinteger(v) ? string(Int(v)) * ".0" : string(v)
+# Une constante du génome, en SC comme en Julia : toujours avec sa partie
+# décimale (`2.0`), les grands nombres sans passer par Int, l'infini par
+# `fmt_inf` (`inf` en SC, `Inf` en Julia). Un NaN n'a rien à faire dans un
+# génome : il s'écrit 0.0 plutôt que de produire un SynthDef invalide.
+function _fmt_const(v::Float64; inf::String = "inf")
+    isnan(v) && return "0.0"
+    isinf(v) && return v > 0 ? inf : "-" * inf
+    (isinteger(v) && abs(v) < 1e15) && return string(Int(v)) * ".0"
+    return string(v)
+end
 
+# Un nœud lu par plusieurs autres est écrit à chaque lecture — comme le DSL,
+# où `n = white()` puis `n + n` écrit deux `WhiteNoise.ar` : audition et
+# export disent la même chose. (Lire deux fois le MÊME bruit demanderait une
+# variable SC, que le DSL ne sait pas encore exprimer — roadmap, F5.)
 function _emit_arg(g::Genome, a::Arg)
     a isa ConstArg   && return _fmt_const(a.value)
     a isa ControlRef && return String(a.name)
     a isa NodeRef    && return _emit_node(g, a.id)
+    a isa LitArg     && return a.code
     return "0"
 end
 
 # Special operator-form renderers for math/synonym ugens.
 function _emit_special(g::Genome, n::UGenNode)
     A(i) = _emit_arg(g, n.args[i])
-    n.ugen === :Tanh     && return "($(A(1))).tanh"
-    n.ugen === :MulAdd   && return "(($(A(1)) * $(A(2))) + $(A(3)))"
-    n.ugen === :Mix      && return "($(A(1)) + $(A(2)))"
-    n.ugen === :SinOscKR && return "SinOsc.kr($(A(1)))"
-    n.ugen === :Fold2    && return "($(A(1))).fold2($(A(2)))"
-    n.ugen === :Clip2    && return "($(A(1))).clip2($(A(2)))"
-    n.ugen === :Round    && return "($(A(1))).round($(A(2)))"
-    n.ugen === :LFPulseKR && return "LFPulse.kr($(A(1)), $(A(2)), $(A(3)))"
-    n.ugen === :FbIn     && return "fb"   # lit le bus de feedback (var fb)
-    # Méthodes SC plutôt que classes : ce que les wrappers du DSL écrivent.
-    n.ugen === :Softclip && return "($(A(1))).softclip"
-    n.ugen === :Cubed    && return "($(A(1))).cubed"
-    n.ugen === :Midicps  && return "($(A(1))).midicps"
-    n.ugen === :Cpsmidi  && return "($(A(1))).cpsmidi"
-    n.ugen === :Fold     && return "($(A(1))).fold($(A(2)), $(A(3)))"
-    n.ugen === :Wrap     && return "($(A(1))).wrap($(A(2)), $(A(3)))"
-    n.ugen === :Clip     && return "($(A(1))).clip($(A(2)), $(A(3)))"
-    n.ugen === :Div      && return "($(A(1)) / $(A(2)))"
-    n.ugen === :EnvPerc  && return "Env.perc($(join((A(i) for i in 1:length(n.args)), ", ")))"
-    n.ugen === :EnvLinen && return "Env.linen($(join((A(i) for i in 1:length(n.args)), ", ")))"
-    n.ugen === :EnvAsr   && return "Env.asr($(join((A(i) for i in 1:length(n.args)), ", ")))"
-    n.ugen === :EnvAdsr  && return "Env.adsr($(join((A(i) for i in 1:length(n.args)), ", ")))"
-    n.ugen === :Raw      && return "Silent.ar"   # un bloc écrit à la main : pas re-rendable
-    (n.ugen === :Silent && isempty(n.args)) && return "Silent.ar"   # ce que l'export en fait
+    all_args() = join((A(i) for i in eachindex(n.args)), ", ")
+    u = n.ugen
+    u === :MulAdd && length(n.args) == 3 && return "(($(A(1)) * $(A(2))) + $(A(3)))"
+    u === :Mix && length(n.args) == 2 && return "($(A(1)) + $(A(2)))"
+    u === :Div && length(n.args) == 2 && return "($(A(1)) / $(A(2)))"
+    # Les variantes .kr du catalogue : tous leurs arguments, autant qu'il y
+    # en a (`LFPulse.kr(2)` n'en a qu'un, `SinOsc.kr(2, 1.5)` garde sa phase).
+    u === :SinOscKR  && return "SinOsc.kr($(all_args()))"
+    u === :LFPulseKR && return "LFPulse.kr($(all_args()))"
+    u === :FbIn && return "fb"   # lit le bus de feedback (var fb)
+    # Méthodes SC plutôt que classes : ce que les wrappers du DSL écrivent
+    # (`(x).tanh`, `(x).fold2(a)`, `(x).clip(lo, hi)`…).
+    if haskey(SynthDSL._UGEN_METHOD_FORMS, u) && !isempty(n.args)
+        rest = length(n.args) > 1 ? "(" * join((A(i) for i in 2:length(n.args)), ", ") * ")" : ""
+        return "($(A(1))).$(SynthDSL._UGEN_METHOD_FORMS[u])$rest"
+    end
+    haskey(SynthDSL._UGEN_ENV_FORMS, u) && return "Env.$(SynthDSL._UGEN_ENV_FORMS[u])($(all_args()))"
+    u === :Raw && return "Silent.ar"   # un bloc écrit à la main : pas re-rendable
+    (u === :Silent && isempty(n.args)) && return "Silent.ar"   # ce que l'export en fait
+    # Les nœuds de structure (voir genome.jl).
+    u === :Chan && return "[$(all_args())]"
+    u === :Ref && length(n.args) == 1 && return "`" * A(1)
+    if _is_method_node(u) && !isempty(n.args)
+        rest = length(n.args) > 1 ? "(" * join((A(i) for i in 2:length(n.args)), ", ") * ")" : ""
+        return "($(A(1)))$(u)$rest"
+    end
+    _is_binop_node(u) && length(n.args) == 2 && return "($(A(1)) $(u) $(A(2)))"
+    _is_classcall_node(u) && return "$(u)($(all_args()))"
     return nothing
 end
 
@@ -59,6 +77,9 @@ function _node_is_audio(g::Genome, id::Int, seen::Set{Int} = Set{Int}())
     n = g.nodes[id]
     n.ugen === :FbIn && return true
     (n.ugen === :DC || n.ugen === :K2A) && return n.rate === :ar   # c'est leur raison d'être
+    # Un nœud de structure (tableau, méthode, opérateur) porte de l'audio
+    # si l'un de ses arguments en porte.
+    _is_structural_node(n.ugen) && return any(a -> _is_audio_expr(g, a, seen), n.args)
     spec = ugen_spec(n.ugen)
     spec === nothing && return n.rate === :ar
     spec.role === :math && return any(a -> _is_audio_expr(g, a, seen), n.args)
@@ -99,10 +120,17 @@ end
 # Signal expression + safety stage, shared by both renderers.
 function _safe_signal_expr(g::Genome)
     body = g.output_id == 0 ? "Silent.ar" : _emit_node(g, g.output_id)
+    # Audition, analyse et rendu d'onde sont mono : un son à plusieurs
+    # voies (un tableau quelque part dans le graphe) y est ramené à leur
+    # moyenne, au lieu de déborder sur les bus voisins.
+    _has_multichannel(g) && (body = "($body).asArray.mean")
     return "Limiter.ar(LeakDC.ar(Sanitize.ar($body)), 0.95)"
 end
 
+_has_multichannel(g::Genome) = any(id -> g.nodes[id].ugen === :Chan, _topo_order(g))
+
 function render_synthdef(g::Genome, name::Symbol)
+    SynthDSL.check_synth_name(name)
     sig = _safe_signal_expr(g)
     fb  = _has_feedback(g)
     pre  = fb ? "    var fb = LocalIn.ar(1);\n" : ""
@@ -273,9 +301,39 @@ const _DSL_ENV_KWS = Dict{Symbol,Vector{Tuple{Int,String,Float64}}}(
 # autre opération prend des parenthèses ; comme argument d'un appel ou
 # tête d'un pipe, non.
 _dsl_arg(g, a::Arg, vars; operand::Bool = false) =
-    a isa ConstArg   ? _fmt_const(a.value) :
+    a isa ConstArg   ? _fmt_const(a.value; inf = "Inf") :
     a isa ControlRef ? ":$(a.name)" :
-    a isa NodeRef    ? _dsl_node_ref(g, a.id, vars; operand = operand) : "0"
+    a isa NodeRef    ? _dsl_node_ref(g, a.id, vars; operand = operand) :
+    a isa LitArg     ? _dsl_literal(a) : "0"
+
+# Un littéral SC dans le DSL : `nil` est `nothing`, le reste passe par un
+# Sig brut (`SynthDSL.Sig("\\sin")`), qui s'écrit tel quel.
+_dsl_literal(a::LitArg) = a.code == "nil" ? "nothing" : "SynthDSL.Sig($(repr(a.code)))"
+
+# Un tableau de constantes (ou de tableaux de constantes) s'écrit comme un
+# vecteur Julia ; dès qu'il contient un signal, c'est `chan(…)`.
+function _dsl_chan(g::Genome, n::UGenNode, vars)
+    plain(a::Arg) = a isa ConstArg || (a isa LitArg && a.code == "nil") ||
+        (a isa NodeRef && haskey(g.nodes, a.id) && g.nodes[a.id].ugen === :Chan &&
+         !haskey(vars, a.id) && all(plain, g.nodes[a.id].args))
+    vec(a::Arg) = a isa NodeRef ? "[" * join((vec(x) for x in g.nodes[a.id].args), ", ") * "]" : _dsl_arg(g, a, vars)
+    all(plain, n.args) && return "[" * join((vec(a) for a in n.args), ", ") * "]"
+    return "chan(" * join((_dsl_arg(g, a, vars) for a in n.args), ", ") * ")"
+end
+
+# `Klang.ar(`[freqs, amps, phases])` : la forme que `klang(…)` écrit.
+function _dsl_klang(g::Genome, n::UGenNode, vars)
+    (length(n.args) == 1 || (length(n.args) == 3 && n.args[2] == ConstArg(1.0) && n.args[3] == ConstArg(0.0))) || return nothing
+    ref = n.args[1] isa NodeRef ? get(g.nodes, n.args[1].id, nothing) : nothing
+    (ref !== nothing && ref.ugen === :Ref && length(ref.args) == 1 && ref.args[1] isa NodeRef) || return nothing
+    specs = get(g.nodes, ref.args[1].id, nothing)
+    (specs !== nothing && specs.ugen === :Chan && length(specs.args) == 3) || return nothing
+    part(a::Arg) = a isa NodeRef && haskey(g.nodes, a.id) && g.nodes[a.id].ugen === :Chan ?
+        _dsl_chan(g, g.nodes[a.id], vars) : _dsl_arg(g, a, vars)
+    parts = [part(a) for a in specs.args]
+    while length(parts) > 1 && parts[end] == "nothing"; pop!(parts); end
+    return "klang(" * join(parts, ", ") * ")"
+end
 
 # Une expression composée : une chaîne de pipes ou une opération de
 # surface (pas celle qui est entre parenthèses ou dans un appel).
@@ -284,7 +342,7 @@ function _dsl_is_compound(e::AbstractString)
     depth = 0
     for (i, c) in enumerate(e)
         c == '(' && (depth += 1); c == ')' && (depth -= 1)
-        depth == 0 && c in ('+', '*', '/') && i > 1 && return true
+        depth == 0 && c in ('+', '*', '/', '^') && i > 1 && return true
     end
     return false
 end
@@ -308,7 +366,19 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     u = n.ugen
     u === :FbIn && return "fb"
     u === :Raw && return "ugen(:Silent)"
+    u === :Chan && return _dsl_chan(g, n, vars)
+    if u === :Klang
+        k = _dsl_klang(g, n, vars)
+        k === nothing || return k
+    end
     O(i) = _dsl_arg(g, n.args[i], vars; operand = true)
+    # `a ** b` est `a ^ b` en Julia ; les autres nœuds de structure passent
+    # par `ugen(…)`, qui sait les écrire (voir SynthDSL.ugen).
+    u === Symbol("**") && length(n.args) == 2 && return "$(O(1)) ^ $(O(2))"
+    if _is_structural_node(u)
+        nm = Meta.isidentifier(u) ? ":$(u)" : "Symbol($(repr(String(u))))"
+        return "ugen($nm" * join((", " * _dsl_arg(g, a, vars) for a in n.args)) * ")"
+    end
     u === :Mix && return "$(O(1)) + $(O(2))"
     u === :Div && return "$(O(1)) / $(O(2))"
     u === :Midicps && return "midicps($(A(1)))"
@@ -331,6 +401,13 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
                     i <= length(env.args) || continue
                     a = env.args[i]
                     (a isa ConstArg && a.value == default) && continue
+                    # Une courbe nommée (`\sin`) : le symbole Julia `:sin` ;
+                    # `\lin` est la courbe 0.
+                    if a isa LitArg && startswith(a.code, "\\")
+                        (a.code == "\\lin" && default == 0.0) && continue
+                        push!(kws, "$key = :$(a.code[2:end])")
+                        continue
+                    end
                     push!(kws, "$key = $(_dsl_arg(g, a, vars))")
                 end
                 kwstr = isempty(kws) ? "" : "; " * join(kws, ", ")
@@ -369,8 +446,10 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
         S(i) = (a = n.args[i]; a isa ControlRef ? String(a.name) : A(i))
         return "SynthDSL.Sig(\"Env.$(lowercase(String(u)[4:end]))($(join((S(i) for i in 1:length(n.args)), ", ")))\")"
     end
-    if u === :SinOscKR && length(n.args) >= 1
+    if u === :SinOscKR && length(n.args) == 1
         return "lfo($(A(1)))"
+    elseif u === :SinOscKR
+        return "ugen(:SinOsc, $(_dsl_call_args(g, n, 1:length(n.args), vars)); rate = :kr)"
     elseif u === :LFPulseKR
         return "ugen(:LFPulse, $(_dsl_call_args(g, n, 1:length(n.args), vars)); rate = :kr)"
     end
@@ -383,7 +462,7 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     end
     # La tête d'un pipe : une somme ou un produit prend des parenthèses
     # (`(a + b) |> f`), une chaîne de pipes continue telle quelle.
-    H(i) = (e = A(i); (occursin(r" [+*/] ", e) && !occursin(" |> ", e)) ? "(" * e * ")" : e)
+    H(i) = (e = A(i); (occursin(r" [+*/^] ", e) && !occursin(" |> ", e)) ? "(" * e * ")" : e)
     si = _dsl_input_slot(n)
     if haskey(_DSL_STAGES, u) && si !== nothing && si <= length(n.args) && n.rate === :ar &&
        length(n.args) <= length(_DSL_STAGES[u][2]) + 1
@@ -500,12 +579,13 @@ function _dsl_body_lines(g::Genome, pad::String)
         push!(lines, "$(pad)n$k = " * _dsl_wrap_pipes(expr, pad))
     end
     out = g.output_id == 0 ? "ugen(:Silent)" : _dsl_node_ref(g, g.output_id, vars)
-    (occursin(r" [+*/] ", out) && !occursin(" |> ", out)) && (out = "(" * out * ")")   # `(a + b) |> safe()`
+    (occursin(r" [+*/^] ", out) && !occursin(" |> ", out)) && (out = "(" * out * ")")   # `(a + b) |> safe()`
     push!(lines, pad * _dsl_wrap_pipes(out * " |> safe()", pad))
     return join(lines, "\n")
 end
 
 function render_dsl(g::Genome, name::Symbol)
+    SynthDSL.check_synth_name(name)
     fr  = _fmt_const(control(g, :freq))
     sus = _fmt_const(control(g, :sustain))
     # freq et sustain d'abord, puis tout autre contrôle du génome (un

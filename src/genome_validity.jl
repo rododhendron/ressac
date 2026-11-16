@@ -15,7 +15,12 @@ function validate(g::Genome)::Vector{String}
     for (id, n) in g.nodes
         spec = ugen_spec(n.ugen)
         if spec === nothing
-            push!(errs, "unknown ugen :$(n.ugen) at node $id")
+            # Un nœud de structure (tableau, méthode, opérateur) n'est pas un
+            # UGen : seules ses références comptent.
+            _is_structural_node(n.ugen) || push!(errs, "unknown ugen :$(n.ugen) at node $id")
+            for ref in _arg_noderef_ids(n)
+                haskey(g.nodes, ref) || push!(errs, "dangling NodeRef $ref at node $id")
+            end
             continue
         end
         if !(n.rate in spec.rates)
@@ -54,7 +59,15 @@ function repair!(g::Genome)
     #    a slot-appropriate constant.
     for (id, n) in g.nodes
         spec = ugen_spec(n.ugen)
-        spec === nothing && continue
+        if spec === nothing
+            # hors catalogue : ni arité ni rate à imposer, mais pas de
+            # référence dans le vide non plus
+            for i in eachindex(n.args)
+                a = n.args[i]
+                a isa NodeRef && !haskey(g.nodes, a.id) && (n.args[i] = ConstArg(0.0))
+            end
+            continue
+        end
         # pad / trim arity to the spec
         while length(n.args) < length(spec.slots)
             slot = spec.slots[length(n.args) + 1]
@@ -174,7 +187,7 @@ function _break_cycles!(g::Genome)
                 a isa NodeRef || continue
                 if get(state, a.id, 0) == 1
                     spec = ugen_spec(n.ugen)
-                    n.args[i] = ConstArg(spec.slots[i].default)
+                    n.args[i] = ConstArg(spec !== nothing && i <= length(spec.slots) ? spec.slots[i].default : 0.0)
                     cut = true
                     return
                 end
