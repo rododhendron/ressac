@@ -4,6 +4,13 @@
 # Companion file: discover.scd (the SC introspection script).
 # Generated content target: ~/.cache/ressac/plugins/sc-autodiscover/.
 
+# Tout vit dans le module `ScDiscoverer` : les `[julia]` de tous les plugins
+# sont inclus dans `Main`, un espace de noms plat où deux plugins qui
+# nomment une fonction pareil s'écraseraient. (Et recharger le plugin
+# remplace le module, au lieu de redéfinir ses méthodes une à une.)
+module ScDiscoverer
+
+using Ressac
 using SHA
 using TOML
 using Dates
@@ -15,10 +22,7 @@ Absolute path to the generated cache plugin directory. Override
 via the `RESSAC_CACHE_DIR` env var (e.g. for Docker / read-only
 Nix store scenarios). Defaults to `~/.cache/ressac`.
 """
-_sc_cache_dir() = joinpath(
-    get(ENV, "RESSAC_CACHE_DIR", joinpath(homedir(), ".cache", "ressac")),
-    "plugins", "sc-autodiscover",
-)
+_sc_cache_dir() = joinpath(Ressac._cache_dir(), "plugins", "sc-autodiscover")
 
 """
     _sc_script_sha256(scd_path) -> String
@@ -98,7 +102,7 @@ Returns `(version, ugen_count)` on success or `nothing` if the live
 scheduler isn't running, or if SC doesn't reply within `timeout`
 seconds.
 
-The listener is installed into `Ressac._OSC_AD_HOC_HANDLERS` (a
+The listener is installed with `Ressac.osc_reply_handler!` (a
 process-wide table consumed by `io_scope.jl`'s listener loop) and
 removed in the `finally`.
 """
@@ -106,7 +110,7 @@ function _sc_meta_roundtrip(; timeout::Real = 3.0)
     sched = Ressac._LIVE_SCHEDULER[]
     sched === nothing && return nothing
     ch = Channel{Tuple{String,Int}}(1)
-    Ressac._OSC_AD_HOC_HANDLERS["/ressac/sc-meta-reply"] = (args) -> begin
+    Ressac.osc_reply_handler!("/ressac/sc-meta-reply") do args
         length(args) >= 2 || return
         v = String(args[1])
         c = Int(args[2])
@@ -117,7 +121,7 @@ function _sc_meta_roundtrip(; timeout::Real = 3.0)
             Ressac.encode(Ressac.OSCMessage("/ressac/sc-meta", Any[])))
         _take_with_timeout(ch, timeout)
     finally
-        delete!(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-meta-reply")
+        Ressac.osc_reply_handler_remove!("/ressac/sc-meta-reply")
     end
 end
 
@@ -183,7 +187,7 @@ function _handle_sc_discover(plugin_dir, data, plugin_name;
     script = read(scd_path, String)
     # Install ack listener BEFORE sending eval, to avoid a race.
     ack_ch = Channel{Int}(1)
-    Ressac._OSC_AD_HOC_HANDLERS["/ressac/sc-discovery-done"] = (args) -> begin
+    Ressac.osc_reply_handler!("/ressac/sc-discovery-done") do args
         count = isempty(args) ? -1 : Int(args[1])
         try; put!(ack_ch, count); catch; end
     end
@@ -218,7 +222,7 @@ function _handle_sc_discover(plugin_dir, data, plugin_name;
             @warn "sc-autodiscover: could not determine SC state — cache_meta not written, next boot will re-discover"
         end
     finally
-        delete!(Ressac._OSC_AD_HOC_HANDLERS, "/ressac/sc-discovery-done")
+        Ressac.osc_reply_handler_remove!("/ressac/sc-discovery-done")
     end
     return nothing
 end
@@ -244,3 +248,5 @@ function _write_cache_meta(cache_dir::AbstractString, scd_path::AbstractString,
 end
 
 Ressac.register_section_handler!(:sc_discover, _handle_sc_discover)
+
+end # module ScDiscoverer

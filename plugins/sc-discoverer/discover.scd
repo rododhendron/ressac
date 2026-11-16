@@ -302,7 +302,7 @@ ugens.do { |class|
 };
 
 // Ressac's listener binds 127.0.0.1:57121
-// (see src/tui_scope.jl:_SCOPE_LISTEN_PORT). 57120 is SuperDirt's
+// (see src/io_scope.jl:_SCOPE_LISTEN_PORT). 57120 is SuperDirt's
 // own port (where Ressac SENDS but doesn't listen) — ack packets
 // shipped there get dropped silently.
 NetAddr("127.0.0.1", 57121).sendMsg("/ressac/sc-discovery-done", count);

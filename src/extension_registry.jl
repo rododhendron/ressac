@@ -30,16 +30,14 @@ const _DOC_ALIASES = Dict{String,String}()
 """
     register_doc!(entry::DocEntry) -> DocEntry
 
-Register `entry` keyed by its `name`. Last-wins on conflicts between
-plugins — a `@warn` is emitted naming both the new and old plugin so
-the user can chase down a surprise override.
+Register `entry` keyed by its `name`, under the one registration rule
+(`_register!`, plugin_registry.jl): the same plugin re-registering replaces
+its fiche silently; a different plugin claiming the name replaces it too —
+the last loaded wins — with a `@warn` naming both, so a surprise override
+can be chased down.
 """
 function register_doc!(e::DocEntry)
-    if haskey(_DOCS, e.name) && _DOCS[e.name].plugin != e.plugin
-        @warn "doc '$(e.name)' shadowed by plugin '$(e.plugin)' " *
-              "(previously from '$(_DOCS[e.name].plugin)')"
-    end
-    _DOCS[e.name] = e
+    _register!((old, new, owner) -> new, _DOCS, e, "doc"; update = false)
     # Register aliases: explicit ones from frontmatter + automatic
     # basename (last segment after final `.`) when the name is
     # qualified. Skip self-aliases.
@@ -99,19 +97,15 @@ const _SNIPPETS = Dict{String,SnippetEntry}()
 """
     register_snippet!(entry::SnippetEntry) -> SnippetEntry
 
-Register `entry` keyed by its `name`. Last-wins on conflicts between
-plugins, with a `@warn`.
+Register `entry` keyed by its `name`, under the one registration rule
+(`_register!`): same plugin replaces silently, another plugin replaces with a `@warn`.
 
 The resolved_content field may be `""` at registration time; it gets
 populated by `_resolve_snippet_includes!()` after all plugins have
 registered (called once by the plugin loader).
 """
 function register_snippet!(e::SnippetEntry)
-    if haskey(_SNIPPETS, e.name) && _SNIPPETS[e.name].plugin != e.plugin
-        @warn "snippet '$(e.name)' shadowed by plugin '$(e.plugin)' " *
-              "(previously from '$(_SNIPPETS[e.name].plugin)')"
-    end
-    _SNIPPETS[e.name] = e
+    _register!((old, new, owner) -> new, _SNIPPETS, e, "snippet"; update = false)
     return e
 end
 
@@ -435,21 +429,27 @@ function _handle_docs(plugin_dir, data, plugin_name)
             @warn "doc file '$path': read failed: $(sprint(showerror, err))"
             continue
         end
-        fm, body = _parse_frontmatter(src)
-        name = get(fm, "name", nothing)
-        if name === nothing || !(name isa AbstractString) || isempty(name)
-            @warn "doc file '$path' has no frontmatter 'name' field; skipping"
-            continue
+        # Une fiche mal formée (un champ du mauvais type…) ne doit coûter
+        # qu'elle-même : les suivantes sont lues quand même.
+        try
+            fm, body = _parse_frontmatter(src)
+            name = get(fm, "name", nothing)
+            if name === nothing || !(name isa AbstractString) || isempty(name)
+                @warn "doc file '$path' has no frontmatter 'name' field; skipping"
+                continue
+            end
+            short = String(get(fm, "short", ""))
+            tags = Symbol[Symbol(t) for t in get(fm, "tags", String[])]
+            kwargs = Symbol[Symbol(k) for k in get(fm, "kwargs", String[])]
+            examples = String[String(x) for x in get(fm, "examples", String[])]
+            aliases = String[String(a) for a in get(fm, "aliases", String[])]
+            register_doc!(DocEntry(
+                String(name), short, tags, kwargs, examples, aliases,
+                body, String(plugin_name), path,
+            ))
+        catch err
+            @warn "doc file '$path' ignorée : $(first(sprint(showerror, err), 160))"
         end
-        short = String(get(fm, "short", ""))
-        tags = Symbol[Symbol(t) for t in get(fm, "tags", String[])]
-        kwargs = Symbol[Symbol(k) for k in get(fm, "kwargs", String[])]
-        examples = String[String(x) for x in get(fm, "examples", String[])]
-        aliases = String[String(a) for a in get(fm, "aliases", String[])]
-        register_doc!(DocEntry(
-            String(name), short, tags, kwargs, examples, aliases,
-            body, String(plugin_name), path,
-        ))
     end
     return nothing
 end
@@ -474,9 +474,14 @@ function _handle_snippets(plugin_dir, data, plugin_name)
     for f in sort(readdir(snippets_dir; join=false))
         endswith(f, ".toml") || continue
         toml_path = abspath(joinpath(snippets_dir, f))
-        e = _load_snippet_toml(toml_path, plugin_name)
-        e === nothing && continue
-        register_snippet!(e)
+        # Un manifeste mal formé (un champ du mauvais type…) ne doit coûter
+        # que lui-même : les suivants sont lus quand même.
+        try
+            e = _load_snippet_toml(toml_path, plugin_name)
+            e === nothing || register_snippet!(e)
+        catch err
+            @warn "snippet manifest '$toml_path' ignoré : $(first(sprint(showerror, err), 160))"
+        end
     end
     return nothing
 end
@@ -533,7 +538,7 @@ function _handle_scales(plugin_dir, data, plugin_name)
         try
             cents = Float64.(collect(cents_raw))
             period = Float64(get(entry, "period_cents", 1200.0))
-            register_scale!(Scale(Symbol(name_raw), cents, period))
+            register_scale!(Scale(Symbol(name_raw), cents, period); plugin = String(plugin_name))
         catch err
             @warn "plugin '$plugin_name': scale '$name_raw' failed to register: $(sprint(showerror, err))"
         end

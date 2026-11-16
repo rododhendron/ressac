@@ -196,10 +196,7 @@ Unknown sections log a warning. Handler exceptions are caught and
 logged at `@error` level; the next section still runs.
 """
 function load_plugin(m::PluginManifest)
-    section_names = collect(keys(m.sections))
-    if "julia" in section_names
-        section_names = vcat("julia", filter(!=("julia"), section_names))
-    end
+    section_names = _ordered_sections(keys(m.sections))
     for sec_str in section_names
         sec = Symbol(sec_str)
         h = get_section_handler(sec)
@@ -220,6 +217,19 @@ function load_plugin(m::PluginManifest)
     return nothing
 end
 
+# L'ordre des sections d'un plugin. Il compte : `[julia]` peut enregistrer
+# des handlers ou définir ce que les autres utilisent ; `[synths]` (les
+# métadonnées) passe avant `[synthdefs]` (le son). Une section absente de la
+# liste — celle d'un handler de plugin — vient après, par ordre alphabétique.
+# (L'ordre était celui du hachage du Dict : le même à chaque fois par
+# chance, pas par contrat.)
+const _SECTION_ORDER = ["julia", "samples", "scales", "instruments", "synths", "synthdefs", "snippets", "docs"]
+
+function _ordered_sections(names)
+    rank(n) = something(findfirst(==(n), _SECTION_ORDER), length(_SECTION_ORDER) + 1)
+    return sort!(String[String(n) for n in names]; by = n -> (rank(n), n))
+end
+
 """
     default_plugin_path() -> Vector{String}
 
@@ -229,16 +239,22 @@ Plugin search path used by default at session start. Order:
 3. `~/.cache/ressac/plugins`              — auto-generated (e.g. sc-autodiscover)
 4. Entries from `\$RESSAC_PLUGIN_PATH` (`:`-separated).
 
-The cache path is third so user overrides (config) win over the
-auto-generated content via the registry's last-wins on conflict.
+Two different questions, two answers:
+
+- the same **plugin** found in several directories is loaded from the first
+  one that has it (`discover_plugins`): the project tree beats the user's
+  config, which beats the auto-generated cache;
+- the same **name** (a doc, a snippet, a sound…) declared by two different
+  plugins goes to the one loaded last, with a warning (`_register!`).
+  `core` is loaded first precisely so that anything can override it.
 
 Non-existent entries are kept in the list and silently skipped by
 `discover_plugins`.
 """
 function default_plugin_path()
-    path = String[joinpath(pwd(), "plugins")]
-    push!(path, joinpath(homedir(), ".config", "ressac", "plugins"))
-    push!(path, joinpath(homedir(), ".cache",  "ressac", "plugins"))
+    path = String[joinpath(_project_dir(), "plugins")]
+    push!(path, joinpath(_config_dir(), "plugins"))
+    push!(path, joinpath(_cache_dir(), "plugins"))
     extra = get(ENV, "RESSAC_PLUGIN_PATH", "")
     if !isempty(extra)
         for entry in split(extra, ':')
@@ -313,27 +329,87 @@ keyed by short name. Populated by the `[samples]` handler at plugin load.
 """
 const _SAMPLE_REGISTRY = Dict{Symbol,SampleEntry}()
 
-"""
-    register_sample!(entry::SampleEntry)
+# ── Verrou et règle d'enregistrement des registres ───────────────────
+#
+# Samples, instruments, synths et alias sont écrits par la tâche UI
+# (chargement des plugins, T, :w, :alias…) et lus par le thread du scheduler
+# à chaque événement (`event_to_osc` → `instrument_info`, `synth_info`,
+# `resolve_synth_name`). Un `Dict` qui se réorganise pendant une lecture peut
+# lever ou rendre n'importe quoi : toute écriture et toute lecture par les
+# fonctions ci-dessous se fait sous `_REGISTRY_LOCK`.
+#
+# Une seule règle pour tous les registres — samples, instruments, synths,
+# et aussi fiches, snippets, gammes (`_register!`) :
+#   • nom libre                         → l'entrée est posée ;
+#   • même plugin qui se ré-enregistre  → l'entrée est remplacée (rechargement) ;
+#   • un AUTRE plugin                   → le dernier chargé l'emporte, et on
+#     le dit (`shadowed by plugin …`). C'est ce qui permet à un plugin du
+#     joueur de remplacer une fiche, un snippet ou un son de `core` (chargé
+#     en premier, voir `_load_plugins`) — et c'est ce que SuperCollider fait
+#     de toute façon d'un SynthDef redéfini : le dernier `.add` joue.
+#   • `update = true` (un geste du joueur : T sur un @synth, :w, sculpt,
+#     import) → l'entrée est mise à jour en gardant son propriétaire ;
+#   • l'entrée vient d'un geste du joueur (`_LIVE_OWNER`) et un plugin la
+#     déclare ensuite → le plugin en devient propriétaire, les deux sont
+#     fusionnées (l'ordre de chargement ne change pas le résultat).
+const _REGISTRY_LOCK = ReentrantLock()
+# Propriétaire des entrées nées d'une évaluation en direct (`@synth` + T).
+const _LIVE_OWNER = "user-dsl"
 
-Register a sample bank. If `entry.name` is already registered, the new
-entry is skipped and a `[WARN]` is logged (first-wins, same convention
-as plugin shadowing).
-"""
-function register_sample!(entry::SampleEntry)
-    if haskey(_SAMPLE_REGISTRY, entry.name)
-        existing = _SAMPLE_REGISTRY[entry.name]
-        @warn "sample bank '$(entry.name)' shadowed by plugin '$(entry.plugin)' (already loaded from '$(existing.plugin)')"
-        return entry
+function _register!(merge_entries, registry::AbstractDict, entry, what::String; update::Bool)
+    shadowed_by = lock(_REGISTRY_LOCK) do
+        existing = get(registry, entry.name, nothing)
+        if existing === nothing || existing.plugin == entry.plugin
+            registry[entry.name] = entry
+            nothing
+        elseif update
+            registry[entry.name] = merge_entries(existing, entry, existing.plugin)
+            nothing
+        elseif existing.plugin == _LIVE_OWNER
+            registry[entry.name] = merge_entries(existing, entry, entry.plugin)
+            nothing
+        else
+            registry[entry.name] = entry          # le dernier chargé l'emporte
+            existing.plugin
+        end
     end
-    _SAMPLE_REGISTRY[entry.name] = entry
+    shadowed_by === nothing ||
+        @warn "$what '$(entry.name)' shadowed by plugin '$(entry.plugin)' (previously from '$(shadowed_by)')"
     return entry
 end
+
+_registry_get(registry::Dict{Symbol,E}, name::Symbol) where {E} =
+    lock(() -> get(registry, name, nothing), _REGISTRY_LOCK)
+
+"""
+    _reset_registries!()
+
+Vide samples, instruments, synths et alias — avant de recharger les plugins
+(`restart_live!`), pour repartir de ce que disent les manifestes aujourd'hui.
+"""
+function _reset_registries!()
+    lock(_REGISTRY_LOCK) do
+        empty!(_SAMPLE_REGISTRY); empty!(_INSTRUMENT_REGISTRY)
+        empty!(_SYNTH_REGISTRY);  empty!(_SYNTH_ALIASES)
+    end
+    return nothing
+end
+
+"""
+    register_sample!(entry::SampleEntry; update = false)
+
+Register a sample bank. See the registration rule above `_register!`:
+the same plugin (reload) or `update = true` (the player's own `:import`)
+replaces the entry silently; a different plugin claiming a taken name
+replaces it too — the last loaded wins — with a `[WARN]` naming both.
+"""
+register_sample!(entry::SampleEntry; update::Bool = false) =
+    _register!((old, new, owner) -> new, _SAMPLE_REGISTRY, entry, "sample bank"; update)
 
 """
     sample_info(name::Symbol) -> Union{SampleEntry, Nothing}
 """
-sample_info(name::Symbol) = get(_SAMPLE_REGISTRY, name, nothing)
+sample_info(name::Symbol) = _registry_get(_SAMPLE_REGISTRY, name)
 
 """
     list_samples(pattern::Regex = r"") -> Vector{SampleEntry}
@@ -409,39 +485,37 @@ const _SYNTH_REGISTRY      = Dict{Symbol,SynthEntry}()
 const _SYNTH_ALIASES       = Dict{Symbol,Symbol}()
 
 """
-    register_instrument!(entry::InstrumentEntry)
+    register_instrument!(entry::InstrumentEntry; update = false)
 
-First-wins registration. Shadow attempts log `[WARN] instrument 'X' …`
-and are skipped.
+Same registration rule as [`register_sample!`](@ref).
 """
-function register_instrument!(entry::InstrumentEntry)
-    if haskey(_INSTRUMENT_REGISTRY, entry.name)
-        existing = _INSTRUMENT_REGISTRY[entry.name]
-        @warn "instrument '$(entry.name)' shadowed by plugin '$(entry.plugin)' (already loaded from '$(existing.plugin)')"
-        return entry
-    end
-    _INSTRUMENT_REGISTRY[entry.name] = entry
-    return entry
+register_instrument!(entry::InstrumentEntry; update::Bool = false) =
+    _register!((old, new, owner) -> new, _INSTRUMENT_REGISTRY, entry, "instrument"; update)
+
+"""
+    register_synth!(entry::SynthEntry; update = false)
+
+Same registration rule as [`register_sample!`](@ref). With `update = true`
+the entry is **merged** into the existing one: the first owner and its
+metadata (description, tags from the manifest) stay, the newcomer fills in
+what was missing and brings its `params`. That is how a `@synth` evaluated with T, or saved with `:w`, brings its
+current `params` to a synth the manifest already declared — the scheduler
+reads them to route pitch (`_pitch_target`).
+"""
+register_synth!(entry::SynthEntry; update::Bool = false) =
+    _register!(_merge_synth_entries, _SYNTH_REGISTRY, entry, "synth"; update)
+
+function _merge_synth_entries(old::SynthEntry, new::SynthEntry, owner::String)
+    # Le propriétaire garde sa description et ses tags ; l'autre ne fait que
+    # compléter. Les `params`, eux, suivent toujours la définition la plus
+    # récente qui en donne.
+    meta = owner == old.plugin ? merge(new.metadata, old.metadata) : merge(old.metadata, new.metadata)
+    haskey(new.metadata, "params") && (meta["params"] = new.metadata["params"])
+    return SynthEntry(old.name, owner, meta)
 end
 
-"""
-    register_synth!(entry::SynthEntry)
-
-First-wins registration. Same shadow semantics as
-[`register_instrument!`](@ref).
-"""
-function register_synth!(entry::SynthEntry)
-    if haskey(_SYNTH_REGISTRY, entry.name)
-        existing = _SYNTH_REGISTRY[entry.name]
-        @warn "synth '$(entry.name)' shadowed by plugin '$(entry.plugin)' (already loaded from '$(existing.plugin)')"
-        return entry
-    end
-    _SYNTH_REGISTRY[entry.name] = entry
-    return entry
-end
-
-instrument_info(name::Symbol) = get(_INSTRUMENT_REGISTRY, name, nothing)
-synth_info(name::Symbol)      = get(_SYNTH_REGISTRY,      name, nothing)
+instrument_info(name::Symbol) = _registry_get(_INSTRUMENT_REGISTRY, name)
+synth_info(name::Symbol)      = _registry_get(_SYNTH_REGISTRY,      name)
 
 """
     register_synth_alias!(alias::Symbol, sc_name::Symbol) -> Bool
@@ -454,16 +528,14 @@ sc_name are identical (no aliasing needed).
 """
 function register_synth_alias!(alias::Symbol, sc_name::Symbol)
     alias === sc_name && return true   # no aliasing needed — identity
-    existing = get(_SYNTH_ALIASES, alias, nothing)
-    if existing === nothing
-        _SYNTH_ALIASES[alias] = sc_name
-        return true
-    elseif existing === sc_name
-        return true                     # idempotent re-registration
-    else
-        @error "alias '$alias' already points to '$existing'; refusing to rebind to '$sc_name'. Run `:alias-rm $alias` first."
-        return false
+    existing = lock(_REGISTRY_LOCK) do
+        cur = get(_SYNTH_ALIASES, alias, nothing)
+        cur === nothing && (_SYNTH_ALIASES[alias] = sc_name)
+        cur
     end
+    (existing === nothing || existing === sc_name) && return true
+    @error "alias '$alias' already points to '$existing'; refusing to rebind to '$sc_name'. Run `:alias-rm $alias` first."
+    return false
 end
 
 """
@@ -472,9 +544,11 @@ end
 Drop `alias` from the registry. Returns whether the alias existed.
 """
 function unregister_synth_alias!(alias::Symbol)
-    haskey(_SYNTH_ALIASES, alias) || return false
-    delete!(_SYNTH_ALIASES, alias)
-    return true
+    lock(_REGISTRY_LOCK) do
+        haskey(_SYNTH_ALIASES, alias) || return false
+        delete!(_SYNTH_ALIASES, alias)
+        return true
+    end
 end
 
 """
@@ -485,7 +559,7 @@ Resolve a user-typed name to the SC SynthDef name to ship. If
 returns `name` unchanged — so calls flow through unmodified for
 names that aren't aliased.
 """
-resolve_synth_name(name::Symbol) = get(_SYNTH_ALIASES, name, name)
+resolve_synth_name(name::Symbol) = lock(() -> get(_SYNTH_ALIASES, name, name), _REGISTRY_LOCK)
 
 """
     synth_alias_for(sc_name::Symbol) -> Union{Symbol, Nothing}
@@ -494,10 +568,12 @@ Reverse lookup: the (first) alias bound to `sc_name`, or `nothing`
 if no alias points to it. Used for display in `:lib`.
 """
 function synth_alias_for(sc_name::Symbol)
-    for (alias, target) in _SYNTH_ALIASES
-        target === sc_name && return alias
+    lock(_REGISTRY_LOCK) do
+        for (alias, target) in _SYNTH_ALIASES
+            target === sc_name && return alias
+        end
+        return nothing
     end
-    return nothing
 end
 
 """

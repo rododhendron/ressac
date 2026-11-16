@@ -260,15 +260,18 @@ end
     _looks_like_synth_source(path) -> Bool
 
 Quick header sniff to decide whether a file is plausibly a synth
-definition. `.scd` must contain `SynthDef(`; `.jl` must contain
-`@synth`. Cheaper than a full parse and good enough to skip random
+definition. `.scd` must have a `SynthDef(` outside a `//` comment; `.jl`
+must have a line starting with `@synth`. Cheaper than a full parse and good enough to skip random
 text / config files that happen to share an extension with synth
 sources. Read failure → false (we don't auto-load what we can't see).
 """
 function _looks_like_synth_source(path::AbstractString)
     ext = splitext(path)[2]
-    needle = ext == ".scd" ? "SynthDef(" :
-             ext == ".jl"  ? "@synth"    : return false
+    # Une vraie définition, pas le mot dans un commentaire : `@synth` en
+    # tête de ligne ; `SynthDef(` sur une ligne qui n'est pas commentée
+    # avant lui.
+    needle = ext == ".scd" ? r"^(?:(?!//).)*SynthDef\("m :
+             ext == ".jl"  ? r"^\s*@synth\b"m : return false
     src = try
         read(path, String)
     catch
