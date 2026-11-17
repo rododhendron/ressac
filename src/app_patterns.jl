@@ -235,47 +235,32 @@ end
 """
     _humanize_eval_error(e, src) -> String
 
-Map common Julia exceptions thrown during pattern eval into one-line
-hints that point a non-dev user toward a fix. Falls back to the raw
-`showerror` text when no recogniser matches.
-
-  • UndefVarError(:foo)   → "le nom `foo` n'existe pas — :browse / :doc"
-  • MethodError on |>      → "type mismatch in the pipe chain — check the |> args"
-  • Meta.parse ParseError → "syntax error at position N — check brackets / quotes"
-  • LoadError wrapper      → unwrap once and recurse
+Une exception d'évaluation dite en une phrase, pour qui joue et ne débogue
+pas : ce qui cloche et où chercher. Courte — elle s'écrit au bout de la
+ligne fautive. Ce qu'on ne reconnaît pas garde le texte de Julia, sur une
+ligne.
 """
 function _humanize_eval_error(e, src::AbstractString)
-    if e isa LoadError
-        return _humanize_eval_error(e.error, src)
-    end
+    e isa LoadError && return _humanize_eval_error(e.error, src)
     if e isa UndefVarError
-        nm = String(e.var)
-        return "unknown name `$nm` — :browse to see loaded sounds, or :doc $nm"
+        return "« $(e.var) » n'existe pas — :browse pour les sons, :doc pour les fonctions"
     end
     if e isa Base.Meta.ParseError
-        # Pull out the position if present in the message.
-        msg = sprint(showerror, e)
-        return "parse error — check matching brackets / quotes in this line · $(first(msg, 90))"
+        return "syntaxe : une parenthèse ou un guillemet n'est pas fermé · " *
+               first(replace(sprint(showerror, e), r"\s*\n\s*" => " "), 70)
     end
     if e isa MethodError
         fname = string(e.f)
-        # Symbol-into-pipe-callback is the most common mistake — give
-        # a targeted hint when the failed call ate a Symbol.
         if any(a -> a isa Symbol, e.args)
-            return "type mismatch on `$fname` — a Symbol slipped into a Pattern slot. " *
-                   "Wrap the name in `pure(:foo)` or use `p\"foo\"`."
+            return "$fname a reçu un nom nu là où il attend un pattern — écris p\"nom\" ou pure(:nom)"
         end
-        return "no method `$fname` for these arguments — check the |> chain types"
+        return "$fname ne s'applique pas à ces arguments — vérifie la chaîne de |>"
     end
-    if e isa ArgumentError
-        return "bad arg: $(e.msg)"
-    end
+    e isa ArgumentError && return "argument refusé : $(e.msg)"
     if e isa BoundsError
-        return "out-of-range index — pattern length doesn't match `n()` / `note()` / `scale()` source"
+        return "indice hors limites — la source de n() / note() / scale() est trop courte"
     end
-    # Fallback: trim the raw error to one readable line.
-    raw = sprint(showerror, e)
-    return first(replace(raw, r"\s*\n\s*" => " · "), 160)
+    return first(replace(sprint(showerror, e), r"\s*\n\s*" => " · "), 160)
 end
 
 """

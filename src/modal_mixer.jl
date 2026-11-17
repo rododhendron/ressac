@@ -67,7 +67,7 @@ décroissance depuis le dernier événement joué, pour que ça vive quand même
 function _slot_level(m::RessacApp, slot::Symbol)
     rms  = Float64(_orbit_rms(slot))
     rms > 0 && return (_amp_to_bar(rms), _amp_to_bar(Float64(_orbit_peak(slot))))
-    age = time() - get(m.scheduler.last_fired_at, slot, 0.0)
+    age = time() - get(fired_snapshot(m.scheduler), slot, 0.0)
     fb = age < 0.6 ? clamp(1.0 - age / 0.6, 0.0, 1.0) : 0.0
     return (fb, fb)
 end

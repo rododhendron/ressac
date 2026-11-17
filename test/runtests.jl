@@ -16,6 +16,7 @@ end
     _isolated_include("test_combinators.jl")
     _isolated_include("test_held.jl")
     _isolated_include("test_slot_state.jl")
+    _isolated_include("test_slot_marks.jl")
     _isolated_include("test_algebra.jl")
     _isolated_include("test_mininotation.jl")
     _isolated_include("test_osc.jl")

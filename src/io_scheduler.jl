@@ -641,6 +641,14 @@ function pattern_snapshot(s::Scheduler)
 end
 
 """
+    fired_snapshot(s) -> Dict{Symbol,Float64}
+
+L'instant du dernier coup envoyé par chaque slot, copié sous verrou. C'est
+ce que lit l'écran pour allumer une ligne quand elle joue.
+"""
+fired_snapshot(s::Scheduler) = lock(() -> copy(s.last_fired_at), s.lock)
+
+"""
     set_pattern!(s, slot, p)
 
 Install (or replace) the pattern at `slot`. Thread-safe.

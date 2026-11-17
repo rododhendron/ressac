@@ -101,21 +101,39 @@ Ctrl-w z  zoomer la pane
 
 ## L'éditeur montre ce qui joue
 
-Deux choses se passent dans la pane patterns pendant que ça tourne.
+Chaque ligne `@dN` dit ce qu'elle fait, sur la ligne elle-même.
 
-Le **jeton en cours** est surligné sur chaque ligne `@dN` de
-mini-notation, et le `@dN` d'une ligne active est en couleur : on voit
-d'un coup d'œil où en est le cycle et quelles lignes sonnent.
+**Le signe dans la marge.** Une note quand le slot joue ce qui est écrit —
+et sa valeur suit la vitesse du pattern : une ronde pour un coup par cycle,
+une noire pour quatre, une double croche pour seize. Un soupir pour un slot
+muet (ligne commentée, ou coupé au mixer). Un dièse quand le texte a changé
+depuis la dernière évaluation : ce que tu lis n'est plus ce que tu entends.
+Une croix quand l'évaluation a échoué. Un point d'orgue pour un drone. Rien
+du tout pour une ligne qui n'a pas été lancée.
 
-L'**aperçu en bout de ligne** montre ce que le slot joue vraiment, pas
-ce qui est écrit. C'est utile quand les notes viennent d'une fonction :
+**Le fond de la ligne** s'allume au coup et retombe. `:calme` le fige.
+
+**Le jeton en cours** est surligné dans la mini-notation.
+
+**La piste, au bout de la ligne**, montre un cycle de ce que le slot joue
+vraiment, pas ce qui est écrit — utile quand les notes viennent d'une
+fonction. Un bloc par coup ; quand le pattern a des hauteurs, la taille du
+bloc dit la hauteur (grave en bas). Une colonne plus claire traverse toutes
+les pistes : c'est l'instant présent.
 
 ```
-@d2 :pad |> n(fib(5))                     ♪ 1 1 2 3 5
-@d3 :pad |> n("0 2 4") |> scale(:minor)   ♪ 0 3 7
-@d1 p"bd(3,8)"                            ▏x·····x·····x···
+𝅘𝅥 @d1 p"bd bd bd bd"          █···········█···········█···········█···········
+𝅘𝅥𝅮 @d2 :pad |> n("0 3 7 12")   ▁···········▃···········▅···········█···········
+♯ @d3 p"hh*8" |> gain(0.6)    █·····█·····█·····█·····█·····█·····█·····█·····
 ```
 
-Les hauteurs sont en demi-tons depuis do 5. Sans hauteur, c'est la
-grille des attaques. L'aperçu se met à jour à chaque évaluation, et
-`:inline` le coupe.
+La piste se raccourcit puis disparaît quand la ligne est longue ; `:pistes`
+les cache toutes.
+
+**Une erreur** s'écrit au bout de la ligne fautive, avec ce qui continue :
+« l'ancien joue toujours » ou « rien ne jouait ». Elle disparaît dès que tu
+touches à la ligne.
+
+Les signes sont ceux du solfège si une police installée les a (Noto Music
+par exemple), sinon ceux d'un lecteur (`▶ ‖ ✎`). `ui.marks` dans
+`ressac.toml` force une famille : `solfege`, `transport` ou `formes`.

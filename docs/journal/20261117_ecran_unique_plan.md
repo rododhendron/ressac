@@ -64,18 +64,22 @@ Tests : `test_slot_state.jl` — un cas par état, plus les transitions
   par-dessus. `app_modes.jl`, `app_synth_workspace.jl` et les commandes
   `:play` `:design` `:explore` (et leurs `!`) sont supprimés ; les scopes de
   touches `:mode_*` deviennent des scopes de volet.
-- [ ] **E2.2 — La marge.** Signe de l'état (E1) et fond de ligne ⚑ E0.3.
+- [x] **E2.2 — La marge.** Signe de l'état (E1) et fond de ligne ⚑ E0.3.
   Famille de signes dans la config (`ui.marks`), repli automatique ⚑ E0.2.
   `:calme` fige tout.
-- [ ] **E2.3 — L'erreur sous la ligne.** Une ligne virtuelle, non éditable,
-  qui disparaît à la correction.
-- [ ] **E2.4 — La piste au bout de la ligne.** Un cycle, alignée sur la
+- [x] **E2.3 — L'erreur sur la ligne.** Au bout de la ligne fautive, à la
+  place de la piste (l'éditeur de Tachikoma ne sait pas insérer une ligne
+  qui n'est pas dans le texte). Le message entier ira dans la fiche (E2.5).
+- [x] **E2.4 — La piste au bout de la ligne.** Un cycle, alignée sur la
   rangée de la première ligne du bloc. Raccourcit puis se cache si la ligne
   est longue ; densité au-delà d'un coup par colonne ; bande pour un drone ;
   trait de début de boucle pour un slot hors grille. Reprend l'interrogation
   de `pane_notes.jl`.
 - [ ] **E2.5 — La fiche.** Suit le curseur (existant), plus « voisins » et
   « pas encore essayé » ⚑ E4.3.
+  Sur une ligne `@dN` : l'erreur entière s'il y en a une, et les notes
+  exactes que joue le slot (l'ancien aperçu `♪ 1 1 2 3 5`, que la piste ne
+  donne qu'en hauteurs relatives).
 - [ ] **E2.6 — Le wiki dans le volet.** `gw` l'ouvre, `q` le rend ;
   `Entrée` sur un exemple le pose dans un slot libre.
 - [ ] **E2.7 — Le chrome.** Status line avec `● SC` (le serveur répond-il),

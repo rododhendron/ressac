@@ -223,6 +223,7 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
             _PANE_FOCUS_COLOR[] = node.id == focused_id ? _mode_color(m) : nothing
             try
                 _render_pane_guarded!(m, pane, rect, buf)
+                pane isa EditorPane && _render_slot_marks!(m, pane, rect, buf)
             finally
                 _PANE_FOCUS_COLOR[] = nothing
             end
@@ -377,7 +378,6 @@ function _view!(m::RessacApp, f::TK.Frame)
         _render_eval_flash!(m, _focused_editor_rect(m), buf)
         _render_visual_selection!(m, _focused_editor_rect(m), buf)
         _render_playhead!(m, _focused_editor_rect(m), buf)
-        _render_inline_preview!(m, _focused_editor_rect(m), buf)
     end
     _load_ghost_usage!()
     if _focused_editor_rect(m) !== nothing

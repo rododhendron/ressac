@@ -77,14 +77,31 @@ function render!(p::EditorPane, area, buf)
     _render_pane_block_simple!(rect, title_str, buf)
     inner = _inner_rect_simple(rect)
     if length(p.tabs) > 1 && inner.height >= 2
-        tab_row = TK.Rect(inner.x, inner.y, inner.width, 1)
-        body    = TK.Rect(inner.x, inner.y + 1, inner.width, inner.height - 1)
-        _render_editor_tab_strip!(p, tab_row, buf)
-        TK.render(tab.code_editor, body, buf)
-    else
-        TK.render(tab.code_editor, inner, buf)
+        _render_editor_tab_strip!(p, TK.Rect(inner.x, inner.y, inner.width, 1), buf)
     end
+    TK.render(tab.code_editor, _editor_text_rect(p, rect), buf)
     return nothing
+end
+
+# Colonnes réservées à gauche du texte des patterns pour le signe de chaque
+# ligne @dN (slot_marks.jl) — la « colonne des signes » de vim.
+const _SIGN_COLS = 2
+
+"""
+    _editor_text_rect(p, rect) -> TK.Rect
+
+Où le texte de l'onglet courant se dessine dans la pane `rect` : sous la
+bande d'onglets s'il y en a une, à droite de la colonne des signes pour des
+patterns. Seule source de cette géométrie (rendu, souris, surimpressions).
+"""
+function _editor_text_rect(p::EditorPane, rect::TK.Rect)
+    inner = _inner_rect_simple(rect)
+    if length(p.tabs) > 1 && inner.height >= 2
+        inner = TK.Rect(inner.x, inner.y + 1, inner.width, inner.height - 1)
+    end
+    signs = (1 <= p.current_tab <= length(p.tabs) && p.tabs[p.current_tab].role === :patterns &&
+             inner.width > _SIGN_COLS + 8) ? _SIGN_COLS : 0
+    return TK.Rect(inner.x + signs, inner.y, inner.width - signs, inner.height)
 end
 
 function _render_editor_tab_strip!(p::EditorPane, area::TK.Rect, buf::TK.Buffer)

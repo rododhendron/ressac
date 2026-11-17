@@ -133,9 +133,10 @@ non-empty), and the focus toggle for keystroke routing.
     # of garbage we don't produce. Pruned each render to the visible
     # window so it stays bounded.
     playhead_cache::Dict{Int,Tuple{UInt64,Any}} = Dict{Int,Tuple{UInt64,Any}}()
-    # Aperçu en bout de ligne de ce que chaque slot joue vraiment.
-    inline_preview::Bool = true
-    inline_cache::Dict{Symbol,Tuple{Any,String}} = Dict{Symbol,Tuple{Any,String}}()
+    # La piste d'un cycle au bout de chaque ligne @dN (slot_marks.jl).
+    lanes::Bool = true
+    lane_cache::Dict{Symbol,Tuple{Any,Vector{Char}}} = Dict{Symbol,Tuple{Any,Vector{Char}}}()
+    calm::Bool = false           # `:calme` — rien ne s'allume au coup
     # L'état de chaque ligne @dN (app_slots.jl). `slot_evaluated` : le
     # texte de la dernière évaluation réussie de chaque slot — ce qui JOUE,
     # qui n'est pas forcément ce qu'on lit. `slot_errors` : la dernière
@@ -488,13 +489,7 @@ function _focused_editor_rect(m::RessacApp)
     rects = _workspace_rects(m, ws, m._last_ws_area)
     r_nt = get(rects, leaf.id, nothing)
     r_nt === nothing && return nothing
-    inner = _inner_rect_simple(_nt_to_rect(r_nt))
-    # Plusieurs onglets : la bande d'onglets prend la première ligne
-    # (voir render!(::EditorPane)), le texte commence en dessous.
-    if length(pane.tabs) > 1 && inner.height >= 2
-        return TK.Rect(inner.x, inner.y + 1, inner.width, inner.height - 1)
-    end
-    return inner
+    return _editor_text_rect(pane, _nt_to_rect(r_nt))
 end
 
 TK.should_quit(m::RessacApp) = m.quit

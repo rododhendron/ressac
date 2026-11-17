@@ -103,47 +103,7 @@ end
     end
 end
 
-@testset "aperçu en bout de ligne — ce que le slot joue vraiment" begin
-    app, tb, frame = _nv_app(; w = 110, h = 20)
-    old = Ressac._LIVE_SCHEDULER[]
-    Ressac._LIVE_SCHEDULER[] = app.scheduler
-    try
-        app.scheduler.t_start = time()
-        ed = Ressac._active_editor(app)
-        Tachikoma.set_text!(ed, "@d1 p\"bd(3,8)\"\n@d2 :pad |> n(fib(5))\n@d3 :pad |> n(\"0 2 4\") |> scale(:minor)\n# @d4 muet")
-        set_pattern!(app.scheduler, :d1, pat("bd(3,8)"))
-        set_pattern!(app.scheduler, :d2, :pad |> n(fib(5)))
-        set_pattern!(app.scheduler, :d3, :pad |> n("0 2 4") |> scale(:minor))
-        rows = split(_nv_screen(app, tb, frame, 20), "\n")
-        @test any(r -> occursin("x·····x·····x···", r), rows)      # le rythme
-        @test any(r -> occursin("♪ 1 1 2 3 5", r), rows)           # les notes d'une fonction
-        @test any(r -> occursin("♪ 0 3 7", r), rows)               # la gamme appliquée
-        muet = rows[findfirst(r -> occursin("@d4 muet", r), rows)]
-        @test !occursin("♪", muet) && !occursin("▏", muet)         # ligne commentée : rien
-        # :inline coupe et rallume
-        app.inline_preview = false
-        rows = split(_nv_screen(app, tb, frame, 20), "\n")
-        @test !any(r -> occursin("♪ 1 1 2 3 5", r), rows)
-        app.inline_preview = true
-        # un slot non évalué n'affiche rien
-        Tachikoma.set_text!(ed, "@d9 p\"cp*4\"")
-        rows = split(_nv_screen(app, tb, frame, 20), "\n")
-        @test !any(r -> occursin("▏x", r) && occursin("@d9", r), rows)
-    finally
-        Ressac._LIVE_SCHEDULER[] = old
-    end
-end
 
-@testset "_preview_of — hauteurs si présentes, grille sinon" begin
-    ev(a, b, v) = Ressac.Event{Any}(Rational{Int64}(a), Rational{Int64}(b), v)
-    notes = [ev(0, 1//2, Dict{Symbol,Any}(:note => 0)), ev(1//2, 1, Dict{Symbol,Any}(:note => 7))]
-    @test Ressac._preview_of(notes, 30) == "♪ 0 7"
-    drums = [ev(0, 1//4, :bd), ev(1//2, 3//4, :sn)]
-    @test Ressac._preview_of(drums, 30) == "▏x·······x·······"
-    @test Ressac._preview_of(drums, 12) == "▏x···x···"        # moins de place, moins de pas
-    @test Ressac._preview_of([], 30) == ""
-    @test length(Ressac._preview_of(notes, 4)) <= 4           # tronqué à la place dispo
-end
 
 @testset "bandeau des slots — hauteur dynamique, muet, clic, bascule" begin
     app, tb, frame = _nv_app(; w = 100, h = 22)

@@ -436,10 +436,13 @@ _register_literal!(m -> _open_palette!(m),           "palette", "p")
 _register_literal!(m -> _clash_report!(m),           "clash", "clashes", "collisions")
 _register_literal!(m -> _open_notes_pane!(m),        "notes", "roll", "piano-roll")
 _register_literal!(m -> _toggle_rack!(m),            "slots", "rack")
-_register_literal!(m -> (m.inline_preview = !m.inline_preview;
-        _push_app_log!(m, "[INFO] aperçu en bout de ligne " *
-                          (m.inline_preview ? "activé" : "coupé"))),
-    "inline", "preview")
+_register_literal!(m -> (m.lanes = !m.lanes;
+        _push_app_log!(m, "[INFO] pistes en bout de ligne " * (m.lanes ? "affichées" : "cachées"))),
+    "pistes", "lanes", "inline")
+_register_literal!(m -> (m.calm = !m.calm;
+        _push_app_log!(m, m.calm ? "[INFO] écran calme : plus rien ne s'allume au coup" :
+                                   "[INFO] les lignes s'allument de nouveau au coup")),
+    "calme", "calm")
 # Patterns rangés — verbes distincts de :save / :load, qui appartiennent
 # déjà aux sessions (un workspace entier, pas un bloc).
 _register_literal!(m -> _push_app_log!(m,
