@@ -137,6 +137,11 @@ non-empty), and the focus toggle for keystroke routing.
     lanes::Bool = true
     lane_cache::Dict{Symbol,Tuple{Any,Vector{Char}}} = Dict{Symbol,Tuple{Any,Vector{Char}}}()
     calm::Bool = false           # `:calme` — rien ne s'allume au coup
+    # L'écran unique (app_volet.jl) : le volet ouvert à droite des patterns,
+    # les volets déjà construits, et le nœud de l'arbre qui le montre.
+    volet::Symbol = :fiche
+    volets::Dict{Symbol,LayoutNode} = Dict{Symbol,LayoutNode}()
+    volet_shown::Union{Nothing,LayoutNode} = nothing
     # L'état de chaque ligne @dN (app_slots.jl). `slot_evaluated` : le
     # texte de la dernière évaluation réussie de chaque slot — ce qui JOUE,
     # qui n'est pas forcément ce qu'on lit. `slot_errors` : la dernière
@@ -357,13 +362,18 @@ function _active_editor(m::RessacApp)
     buf !== nothing && return buf.code_editor
     ws = current_workspace(m.workspaces)
     if ws !== nothing
-        for any_leaf in _all_leaves(ws.tree)
-            for tab in any_leaf.tabs
-                if tab isa EditorPane && !isempty(tab.tabs)
-                    return tab.tabs[tab.current_tab].code_editor
-                end
-            end
+        # Le clavier est sur une pane sans texte (studio, DOC, wiki…) : le
+        # texte visé est celui du contexte — le son quand on travaille un
+        # son, les patterns sinon.
+        want = _workspace_mode(m) === :design ? :synth : :patterns
+        fallback = nothing
+        for any_leaf in _all_leaves(ws.tree), tab in any_leaf.tabs
+            (tab isa EditorPane && 1 <= tab.current_tab <= length(tab.tabs)) || continue
+            b = tab.tabs[tab.current_tab]
+            b.role === want && return b.code_editor
+            fallback === nothing && (fallback = b.code_editor)
         end
+        fallback === nothing || return fallback
     end
     # No editor pane anywhere — patterns is a pane like any other and
     # may be closed. Callers that run every frame (view chrome) or on
@@ -493,170 +503,6 @@ function _focused_editor_rect(m::RessacApp)
 end
 
 TK.should_quit(m::RessacApp) = m.quit
-
-"""
-    _ensure_default_workspace!(m::RessacApp)
-
-Make sure the workspace manager has at least one workspace with a
-:editor pane. Idempotent — safe to call multiple times.
-
-Invoked at boot and on every workspace switch.
-"""
-# Les trois façons de travailler. Créés au premier rendu ; chacun se
-# remplit à la demande (première visite) : PLAY = patterns, DESIGN = une
-# pane synth « sketch », EXPLORE = l'explorateur GA.
-const _DEFAULT_WORKSPACES = ("PLAY", "DESIGN", "EXPLORE")
-
-function _ensure_default_workspace!(m::RessacApp)
-    if isempty(m.workspaces.workspaces)
-        for n in _DEFAULT_WORKSPACES
-            create_workspace!(m.workspaces, n)
-        end
-        m.workspaces.current_idx = 1
-    end
-    _ensure_named_workspaces!(m)
-    # Make sure the global log Ref points at the live app log so the
-    # LogPane and the chrome log row share storage.
-    _APP_LOG[] = m.logs
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return
-    _fill_workspace!(ws, m.workspaces)
-    return
-end
-
-# Un layout restauré (ancienne session) peut ne pas avoir les trois
-# workspaces : le premier sans nom devient PLAY, les manquants sont
-# créés vides (remplis à la première visite). Le courant ne change pas.
-function _ensure_named_workspaces!(m::RessacApp)
-    wm = m.workspaces
-    isempty(wm.workspaces) && return
-    isempty(wm.workspaces[1].name) && (wm.workspaces[1].name = "PLAY")
-    cur = wm.current_idx
-    for n in _DEFAULT_WORKSPACES
-        any(w -> w.name == n, wm.workspaces) || create_workspace!(wm, n)
-    end
-    wm.current_idx = clamp(cur, 1, length(wm.workspaces))
-    return
-end
-
-"""
-    _fill_workspace!(ws)
-
-Peuple un workspace dont la racine est un leaf vide, selon son nom :
-PLAY (ou sans nom) → éditeur patterns avec le buffer de démarrage ;
-DESIGN → pane synth « sketch » (starter DSL) ; EXPLORE → explorateur.
-No-op si le workspace a déjà du contenu (chemin :layout load).
-"""
-function _fill_workspace!(ws::Workspace, wm = nothing)
-    leaf = ws.tree
-    (leaf isa PaneLeaf && isempty(leaf.tabs)) || return
-    if ws.name == "DESIGN"
-        ep = _pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "sketch"))
-        eb = ep.tabs[1]
-        eb.synth_mode = :dsl
-        _load_text!(eb.code_editor, _STARTER_DSL("sketch"))
-        eb.code_editor.mode = :normal
-        push!(leaf.tabs, ep)
-        leaf.current_tab = 1
-        ws.focused_pane = leaf.id
-        _synth_workspace_panes!(ws, wm)
-        return
-    elseif ws.name == "EXPLORE"
-        push!(leaf.tabs, _pane_new(:explorer, Dict{String,Any}()))
-    else
-        ep = _pane_new(:editor, Dict{String,Any}())
-        _load_text!(ep.tabs[1].code_editor, _STARTER_BUFFER)
-        push!(leaf.tabs, ep)
-        leaf.current_tab = 1
-        ws.focused_pane = leaf.id
-        _play_side_panes!(ws, wm)
-        return
-    end
-    leaf.current_tab = 1
-    ws.focused_pane = leaf.id
-    return
-end
-
-"""
-    _play_side_panes!(ws, wm)
-
-La colonne de droite de PLAY : le wiki en haut, la doc vivante en bas.
-Les patterns gardent les deux tiers de la largeur. Sans gestionnaire
-(appel hors app) on ne fait rien : les identifiants de pane viennent de
-lui.
-"""
-function _play_side_panes!(ws::Workspace, wm)
-    wm === nothing && return
-    root = ws.tree
-    root isa PaneLeaf || return
-    wiki = PaneLeaf(wm.next_pane_id, PaneImpl[_pane_new(:wiki, Dict{String,Any}())], 1)
-    wm.next_pane_id += 1
-    doc = PaneLeaf(wm.next_pane_id, PaneImpl[_pane_new(:doc, Dict{String,Any}("follow" => true))], 1)
-    wm.next_pane_id += 1
-    side = Container(:v, LayoutNode[wiki, doc], [0.6, 0.4])
-    ws.tree = Container(:h, LayoutNode[root, side], [2 / 3, 1 / 3])
-    ws.focused_pane = root.id
-    return
-end
-
-"""
-    _switch_workspace_named!(m, name) -> Bool
-
-Bascule sur le workspace `name` (le crée s'il n'existe pas) et le
-remplit s'il est vide. `:play` / `:design` / `:explore`, et les ponts
-gs / U.
-"""
-function _switch_workspace_named!(m::RessacApp, name::AbstractString)
-    wm = m.workspaces
-    idx = findfirst(w -> w.name == name, wm.workspaces)
-    idx === nothing && (create_workspace!(wm, name); idx = wm.current_idx)
-    return _switch_workspace!(m, idx)
-end
-
-"""
-    _switch_workspace!(m, idx) -> Bool
-
-Passe au workspace `idx` — le seul chemin, que ce soit par son nom
-(`:design`, un pont depuis l'explorateur), par Ctrl-1..9 ou par un clic sur
-sa pastille : il est rempli à sa première visite, et DESIGN retrouve ce qui
-lui manque (voir `_ensure_synth_workspace!`). Faux si `idx` n'existe pas.
-"""
-function _switch_workspace!(m::RessacApp, idx::Int)
-    wm = m.workspaces
-    1 <= idx <= length(wm.workspaces) || return false
-    cmd_workspace_switch!(wm, idx)
-    ws = current_workspace(wm)
-    _fill_workspace!(ws, wm)
-    ws.name == "DESIGN" && _ensure_synth_workspace!(m)
-    return true
-end
-
-"""
-    _reset_workspace!(m, name)
-
-Refait le workspace `name` à neuf : l'arbre est vidé puis rempli comme
-au premier démarrage (PLAY : patterns + wiki + doc ; DESIGN : texte |
-studio / doc ; EXPLORE : l'explorateur). Les panes ouvertes sont perdues.
-"""
-function _reset_workspace!(m::RessacApp, name::AbstractString)
-    wm = m.workspaces
-    idx = findfirst(w -> w.name == name, wm.workspaces)
-    idx === nothing && create_workspace!(wm, name)
-    idx === nothing || cmd_workspace_switch!(wm, idx)
-    ws = current_workspace(wm)
-    ws === nothing && return false
-    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
-        try; on_close!(tab); catch; end
-    end
-    ws.tree = PaneLeaf(wm.next_pane_id, PaneImpl[], 0)
-    wm.next_pane_id += 1
-    ws.focused_pane = ws.tree.id
-    empty!(ws.floats)
-    m.zoom_leaf = 0
-    _fill_workspace!(ws, wm)
-    _push_app_log!(m, "[INFO] $(name) remis à neuf")
-    return true
-end
 
 """
     _place_pane!(m, kind, args) -> PaneImpl | Nothing

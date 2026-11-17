@@ -559,27 +559,13 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), _band_style())
     empty!(m._status_hits)
     m._status_y = area.y
-    # Workspaces, alignés à droite : le courant en pastille accent, les
-    # autres en texte atténué sur le bandeau. Cliquables.
     wsx = area.x + area.width
-    for (i, ws) in Iterators.reverse(collect(enumerate(m.workspaces.workspaces)))
-        is_cur = i == m.workspaces.current_idx
-        label = " " * (isempty(ws.name) ? "$i" : "$i $(ws.name)") * " "
-        wsx -= textwidth(label)
-        wsx <= area.x + 40 && break
-        TK.set_string!(buf, wsx, area.y, label,
-                       is_cur ? _pill_style(:accent) : _band_style(fg = TK.theme().text_dim))
-        let idx = i
-            push!(m._status_hits, (wsx, wsx + textwidth(label) - 1,
-                                   () -> (_switch_workspace!(m, idx); _ensure_default_workspace!(m))))
-        end
-    end
     # La pastille RESSAC ouvre l'aide.
     push!(m._status_hits, (area.x, area.x + 7, () -> _open_help!(m)))
     sep = " "
     sep_style = _band_style()
     x = area.x
-    xmax = wsx - 1                         # ne pas écraser les workspaces
+    xmax = wsx - 1
     for (i, sec) in enumerate(sections)
         if i > 1
             x + textwidth(sep) > xmax && break

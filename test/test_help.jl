@@ -147,10 +147,10 @@ end
     bar = _bottom_bar(app, tb, frame)
     @test occursin("T entendre", bar)
     @test !occursin("Tab patterns", bar)                     # DESIGN : pas de pane patterns
-    _hex(app, "design")
+    _hex(app, "son")
     bar = _bottom_bar(app, tb, frame)
     @test occursin("T entendre", bar)
-    _hex(app, "play")
+    _hex(app, "back")
     @test !occursin("e évaluer", bar)
     app2, tb2, frame2 = _help_app()
     _hex(app2, "vsplit explorer")
@@ -254,8 +254,7 @@ end
     @test i == 40 - 4                                     # boîte de 5 lignes (3 + bordures)
     @test occursin("? aide", rows[i - 1])                 # barre juste au-dessus
     @test !any(occursin("insert · visual", r) for r in rows)   # plus de mode strip
-    # workspaces à droite de la status line
-    @test occursin("1 PLAY", rows[1])
+    @test !occursin("PLAY", rows[1]) && !occursin("DESIGN", rows[1])   # un seul écran : plus de pastilles
     # :log replie / déplie
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
     @test findfirst(r -> startswith(r, "╭ JOURNAL"), rows) == 40 - 11
@@ -360,14 +359,9 @@ _click(app, x, y) = Tachikoma.update!(app, Tachikoma.MouseEvent(x, y, Tachikoma.
     @test app.modal === :none
 end
 
-@testset "boutons — pastilles de workspaces et RESSAC dans la status line" begin
+@testset "boutons — la pastille RESSAC de la status line ouvre l'aide" begin
     app, tb, frame = _help_app()
     rows = split(_screen(app, tb, frame), "\n")
-    _click(app, _col(rows[1], "2 DESIGN"), 1)
-    @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
-    @test Ressac._focused_role(app) === :synth               # rempli à la visite
-    _click(app, _col(rows[1], "1 PLAY"), 1)
-    @test Ressac.current_workspace(app.workspaces).name == "PLAY"
     _click(app, 3, 1)                                        # pastille RESSAC
     @test app.modal === :help
     _hkey(app, :escape)
@@ -389,8 +383,14 @@ end
     @test app.zoom_leaf == ws.focused_pane
     _click(app, x_last, 2); @test app.zoom_leaf == 0        # re-clic dézoome
     rows = split(_screen(app, tb, frame), "\n")
+    # ✕ sur la fiche (la dernière à droite) ne ferme rien : elle accompagne.
     xc = findlast("✕", rows[2]); x_close = length(rows[2][1:prevind(rows[2], xc.start)]) + 1
-    _click(app, x_close, 2)                                  # ferme la pane focalisée
+    _click(app, x_close, 2)
+    @test length(collect(Ressac._all_leaves(ws.tree))) == n0 + 1
+    @test Ressac._focused_role(app) === :patterns
+    # ✕ sur la pane scindée (la deuxième) la ferme.
+    xs = [length(rows[2][1:prevind(rows[2], r.start)]) + 1 for r in findall("✕", rows[2])]
+    _click(app, xs[2], 2)
     @test length(collect(Ressac._all_leaves(ws.tree))) == n0
 end
 

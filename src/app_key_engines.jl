@@ -57,10 +57,6 @@ function _pre_engine!(m::RessacApp, evt::TK.KeyEvent)
         _panic!(m)
         return true
     end
-    if evt.key === :ctrl && evt.char in '1':'9'
-        _switch_workspace!(m, Int(evt.char - '0'))
-        return true
-    end
     # Ctrl-f — et Ctrl-Maj-F, que certains terminaux envoient en majuscule.
     if evt.key === :ctrl && (evt.char == 'f' || evt.char == 'F')
         m.floats_hidden = !m.floats_hidden

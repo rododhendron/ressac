@@ -37,7 +37,8 @@ _tuto_playing(m) = length(m.scheduler.patterns)
 _tuto_muted(m) = length(_APP_MUTED_PATTERNS) + length(collect(eachmatch(r"(?m)^\s*#\s*@d\d+", _tuto_text(m))))
 # « Changer en jouant » : le texte a changé ET un slot a été réévalué
 # (un nouvel objet pattern) depuis l'entrée dans l'étape.
-_tuto_ws(m) = (ws = current_workspace(m.workspaces); ws === nothing ? "" : ws.name)
+# Où le joueur travaille : le contexte de la pane focalisée (app_modes.jl).
+_tuto_ws(m) = (mode = _workspace_mode(m); mode === :design ? "DESIGN" : mode === :explore ? "EXPLORE" : "PLAY")
 _tuto_design_parts(m) = _synth_workspace_parts(m)
 _tuto_synth_name(m) = (t = _current_synth_tab(m); t === nothing ? "" : t.name)
 function _tuto_studio_focused(m)
@@ -180,19 +181,20 @@ const _TUTO_STEPS = _TutoStep[
     _TutoStep("Concevoir un son",
         """
         Tu sais écrire, jouer, changer, couper, contrôler et arrêter.
-        Deuxième chapitre : **fabriquer un son**, dans le mode DESIGN.
+        Deuxième chapitre : **fabriquer un son**.
 
-        Tape `:design` (ou `Ctrl-2`). Le tutoriel te suit là-bas.
+        Tape `:son`. Le texte d'un son s'ouvre à droite ; les patterns
+        restent à gauche et continuent de jouer.
         """,
         (m, p) -> _tuto_ws(m) == "DESIGN"),
-    _TutoStep("Trois panes, un seul son",
+    _TutoStep("Le son, à côté des patterns",
         """
-        À gauche le **texte** du synth, en haut à droite le **STUDIO** (son
-        onde, ses knobs), en bas à droite la **DOC**. Les trois montrent le
-        même son.
+        À droite, le **texte** du synth. Dessous, deux onglets : la **DOC**
+        devant, le **STUDIO** (son onde, ses knobs) derrière. Tous montrent
+        le même son.
 
-        Appuie sur `T` : tu l'entends. Dans DESIGN, `T` marche depuis
-        n'importe laquelle des trois panes.
+        Appuie sur `T` : tu l'entends. `T` marche depuis le texte, la DOC
+        ou le studio.
         """,
         (m, p) -> m.last_t_fire > get(p.snapshot, :t_fire, 0.0),
         (m, p) -> (p.snapshot[:t_fire] = m.last_t_fire),
@@ -214,17 +216,17 @@ const _TUTO_STEPS = _TutoStep[
         (m, p) -> nothing, "DESIGN"),
     _TutoStep("Le studio écrit dans le texte",
         """
-        `Ctrl-w l` passe le focus au STUDIO. `j` / `k` choisissent un knob,
+        `:sculpt` amène le clavier au STUDIO. `j` / `k` choisissent un knob,
         `l` / `h` le tirent : le nombre change **dans le texte**, sur place.
 
-        Tire un knob, puis `T` pour écouter la différence. `Ctrl-w h`
+        Tire un knob, puis `T` pour écouter la différence. `Ctrl-w k`
         revient au texte, `u` y annule si besoin.
         """,
         (m, p) -> _tuto_studio_focused(m) && _tuto_text(m) != get(p.snapshot, :text, ""),
         (m, p) -> (p.snapshot[:text] = _tuto_text(m)), "DESIGN"),
     _TutoStep("La DOC raconte le son",
         """
-        La pane du bas a trois onglets. `K` la met sur la **fiche** du mot
+        La DOC a trois vues. `K` la met sur la **fiche** du mot
         sous le curseur, `X` sur l'**explication** du son (ce que fait chaque
         étape, ce qui ne s'entend pas), `Y` sur son **graphe** câblé.
 
@@ -234,8 +236,8 @@ const _TUTO_STEPS = _TutoStep[
         (m, p) -> nothing, "DESIGN"),
     _TutoStep("Tenir le son",
         """
-        `D` tient le son en **drone** : il ne s'arrête plus, et la pane
-        **MODULATION** s'ouvre avec ses arguments. `j` / `k` en choisissent
+        `D` tient le son en **drone** : il ne s'arrête plus, et la
+        **MODULATION** passe devant, sous le texte, avec ses arguments. `j` / `k` en choisissent
         un, `l` / `h` le modulent pendant que ça sonne.
 
         Appuie sur `D`, joue avec, puis `D` à nouveau pour relâcher.
@@ -245,8 +247,8 @@ const _TUTO_STEPS = _TutoStep[
     _TutoStep("Vers les patterns",
         """
         `U` sauve ce son sous son nom et pose une ligne `@dN p"sketch*4"`
-        dans PLAY, prête à jouer. C'est le pont entre les deux modes :
-        on fabrique dans DESIGN, on joue dans PLAY.
+        dans les patterns, à gauche, prête à jouer : on fabrique à droite,
+        on joue à gauche.
 
         Appuie sur `U`.
         """,
@@ -254,12 +256,12 @@ const _TUTO_STEPS = _TutoStep[
         (m, p) -> nothing, "DESIGN"),
     _TutoStep("Et ensuite",
         """
-        Tu sais jouer, et fabriquer un son. La suite se trouve dans la
-        pane **WIKI** à droite (`:wiki`) :
+        Tu sais jouer, et fabriquer un son. La suite se trouve dans le
+        **wiki**, qui s'ouvre à droite (`:wiki`, `:q` le referme) :
 
         - `02-patterns` : toute la mini-notation et les combinateurs
         - `03-synth-dsl` : le DSL en entier, l'élagage, les drones
-        - `16-explore` : l'explorateur génétique, `:explore`
+        - `16-explore` : l'explorateur génétique, `:explorer`
         - `05-cookbook` : des recettes par genre, `:starter house`
         - `:tap` : tape un rythme à l'Espace, Ressac écrit la ligne
 
@@ -294,30 +296,6 @@ function _find_tutorial_any(m)
     return nothing
 end
 
-# Toutes les panes tutoriel (PLAY et DESIGN) montrent la même étape.
-function _tuto_sync_all!(m, p::TutorialPane)
-    for ws in m.workspaces.workspaces, leaf in _all_leaves(ws.tree), tab in leaf.tabs
-        (tab isa TutorialPane && tab !== p) || continue
-        tab.step = p.step; tab.finished = p.finished
-        tab.snapshot = p.snapshot
-    end
-    return
-end
-
-# L'étape se joue dans un autre workspace : une pane tutoriel s'y ouvre
-# quand on y arrive (le focus reste où il est).
-function _tuto_follow!(m, p::TutorialPane)
-    ws = _TUTO_STEPS[clamp(p.step, 1, length(_TUTO_STEPS))].workspace
-    (isempty(ws) || _tuto_ws(m) != ws) && return
-    _find_pane(m, TutorialPane) === nothing || return
-    focused = _focused_pane_impl(m)
-    q = _place_pane!(m, :tutorial, Dict{String,Any}("step" => p.step))
-    q isa TutorialPane || return
-    q.snapshot = p.snapshot
-    focused === nothing || _focus_pane!(m, focused)
-    return
-end
-
 function _tutorial_tick!(m)
     p = _find_tutorial_any(m)
     (p === nothing || p.finished) && return
@@ -335,8 +313,6 @@ function _tutorial_tick!(m)
             _tuto_enter!(m, p)
         end
     end
-    _tuto_sync_all!(m, p)
-    _tuto_follow!(m, p)
     return
 end
 
@@ -344,7 +320,6 @@ function _tuto_goto!(m, p::TutorialPane, step::Int)
     p.step = clamp(step, 1, length(_TUTO_STEPS))
     p.finished = false
     _tuto_enter!(m, p)
-    _tuto_sync_all!(m, p)
     return
 end
 

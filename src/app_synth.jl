@@ -72,6 +72,7 @@ list.
 """
 function _open_synth_tab!(m::RessacApp, name::AbstractString)
     name = String(name)
+    _open_volet!(m, :son)
     ws = current_workspace(m.workspaces)
     # Already open → focus its leaf.
     if ws !== nothing
@@ -523,7 +524,7 @@ function _goto_synth_under_cursor!(m::RessacApp)
         _push_app_log!(m, "[WARN] gs — « $w » n'est pas un synth connu (fichier user-synths, librairie ou synth enregistré)")
         return
     end
-    _switch_workspace_named!(m, "DESIGN")
+    _open_volet!(m, :son)
     _open_synth_tab!(m, w)
     return
 end
@@ -574,7 +575,7 @@ Pont « utiliser ce son » : bascule dans PLAY, ajoute
 focalise la ligne. L'appelant a sauvé/enregistré le synth avant.
 """
 function _use_synth_in_pattern!(m::RessacApp, name::AbstractString)
-    _switch_workspace_named!(m, "PLAY")
+    _focus_patterns!(m)
     ed = _patterns_editor!(m)
     ed === nothing && (_push_app_log!(m, "[ERROR] U — pas d'éditeur patterns"); return)
     slot = _next_free_slot(ed)

@@ -374,7 +374,7 @@ function _guard_patterns_only!(m::RessacApp, action::AbstractString)
     # pane focalisée (voir `_patterns_editor`) : `e` depuis le wiki évalue
     # la ligne du curseur des patterns, comme la barre de touches l'annonce.
     _patterns_editor(m) === nothing || return true
-    _push_app_log!(m, "[WARN] $action : pas de patterns dans ce workspace — Ctrl-1 revient à PLAY")
+    _push_app_log!(m, "[WARN] $action : pas de texte de patterns à l'écran — :reset le remet")
     return false
 end
 

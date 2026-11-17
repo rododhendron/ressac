@@ -116,10 +116,11 @@ end
 
 # ── Workspace strip + status bar visibility ─────────────────────────
 
-@testset "la status line montre les workspaces (1 PLAY)" begin
+@testset "la status line ne montre plus de workspaces : un seul écran" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
-    @test _find_row(tb, "1 PLAY") == 1
+    @test _find_row(tb, "RESSAC") == 1
+    @test _find_row(tb, "1 PLAY") == 0
 end
 
 @testset "status bar shows 'NORMAL @ patterns' by default" begin

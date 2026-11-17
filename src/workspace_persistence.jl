@@ -31,18 +31,19 @@ end
 
 function _serialize_tree(node::LayoutNode)
     if node isa PaneLeaf
-        # Capture the kind of the current tab (or "editor" as a sane
-        # default for an empty leaf — created by create_workspace!
-        # before its first pane is installed).
+        # Toutes les panes de la feuille, dans l'ordre de leurs onglets (une
+        # feuille peut en porter plusieurs : la DOC et le studio d'un son).
+        # `kind` / `state` répètent l'onglet courant : c'est ce que lisaient
+        # les fichiers d'avant, qui n'en gardaient qu'un.
         kind = "editor"
         state = Dict{String,Any}()
-        if !isempty(node.tabs)
-            current = node.tabs[node.current_tab]
-            # Symbol → string conversion. Any plugin-registered kind
-            # is stringified via lowercase of its type name (minus
-            # the "Pane" suffix). Core kinds match by convention.
-            kind = _kind_for(current)
-            state = serialize(current)
+        panes = Dict{String,Any}[]
+        for p in node.tabs
+            push!(panes, Dict{String,Any}("kind" => _kind_for(p), "state" => serialize(p)))
+        end
+        if 1 <= node.current_tab <= length(node.tabs)
+            kind = panes[node.current_tab]["kind"]
+            state = panes[node.current_tab]["state"]
         end
         return Dict{String,Any}(
             "type" => "pane",
@@ -50,6 +51,7 @@ function _serialize_tree(node::LayoutNode)
             "kind" => kind,
             "current_tab" => node.current_tab,
             "state" => state,
+            "panes" => panes,
         )
     else
         return Dict{String,Any}(
@@ -145,19 +147,24 @@ end
 
 function _deserialize_tree(d::AbstractDict, wm::WorkspaceManager)
     if d["type"] == "pane"
-        kind = Symbol(get(d, "kind", "editor"))
-        raw_state = get(d, "state", Dict{String,Any}())
-        state_dict = raw_state isa AbstractDict ?
-            Dict{String,Any}(String(k) => v for (k, v) in raw_state) :
-            Dict{String,Any}()
+        as_state(raw) = raw isa AbstractDict ?
+            Dict{String,Any}(String(k) => v for (k, v) in raw) : Dict{String,Any}()
         leaf_id = Int(get(d, "id", wm.next_pane_id))
         wm.next_pane_id = max(wm.next_pane_id, leaf_id + 1)
-        # Un leaf sauvé VIDE (current_tab 0 : workspace jamais visité) reste
-        # vide — _fill_workspace! le peuplera selon le nom du workspace.
-        # Sinon exactement une pane, onglet courant 1 : jamais 0 avec une
-        # pane (c'était une pane noire + BoundsError au premier rendu).
-        Int(get(d, "current_tab", 1)) == 0 && return PaneLeaf(leaf_id, PaneImpl[], 0)
-        pane = _pane_new(kind, state_dict)
+        # Un leaf sauvé VIDE (current_tab 0) reste vide —
+        # `_ensure_default_workspace!` rebâtira l'écran. Sinon l'onglet
+        # courant est toujours valide : jamais 0 avec une pane (c'était une
+        # pane noire + BoundsError au premier rendu).
+        cur = Int(get(d, "current_tab", 1))
+        cur == 0 && return PaneLeaf(leaf_id, PaneImpl[], 0)
+        saved = get(d, "panes", nothing)
+        if saved isa AbstractVector && !isempty(saved)
+            panes = PaneImpl[_pane_new(Symbol(get(p, "kind", "editor")), as_state(get(p, "state", nothing)))
+                             for p in saved]
+            return PaneLeaf(leaf_id, panes, clamp(cur, 1, length(panes)))
+        end
+        # Un fichier d'avant : une seule pane par feuille.
+        pane = _pane_new(Symbol(get(d, "kind", "editor")), as_state(get(d, "state", nothing)))
         return PaneLeaf(leaf_id, PaneImpl[pane], 1)
     else
         direction = Symbol(d["direction"])

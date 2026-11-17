@@ -157,7 +157,7 @@ end
     @test any(l -> any(t -> t isa Ressac.DocPane, l.tabs), leaves)
 end
 
-@testset ":pclose removes a pane; :workspace new/close manages workspaces" begin
+@testset ":pclose removes a pane the player split" begin
     app, _ = _new_app()
     _exec_ex_command!(app, "vsplit log")
     ws = Ressac.current_workspace(app.workspaces)
@@ -165,25 +165,6 @@ end
     _exec_ex_command!(app, "pclose")
     @test length(collect(Ressac._all_leaves(ws.tree))) == 1
 
-    n_workspaces = length(app.workspaces.workspaces)
-    _exec_ex_command!(app, "workspace new sandbox")
-    @test length(app.workspaces.workspaces) == n_workspaces + 1
-    @test app.workspaces.workspaces[end].name == "sandbox"
-    _exec_ex_command!(app, "workspace close")
-    @test length(app.workspaces.workspaces) == n_workspaces
-end
-
-@testset ":workspace next/prev/<name> jumps workspaces" begin
-    app, _ = _new_app()
-    Ressac.create_workspace!(app.workspaces, "alpha")
-    Ressac.create_workspace!(app.workspaces, "beta")
-    @test app.workspaces.current_idx == 5           # PLAY/DESIGN/EXPLORE + alpha + beta
-    _exec_ex_command!(app, "workspace prev")
-    @test app.workspaces.current_idx == 4
-    _exec_ex_command!(app, "workspace next")
-    @test app.workspaces.current_idx == 5
-    _exec_ex_command!(app, "workspace alpha")
-    @test app.workspaces.workspaces[app.workspaces.current_idx].name == "alpha"
 end
 
 @testset ":float lifts pane out of tree; :tile drops it back" begin
@@ -198,18 +179,6 @@ end
     _exec_ex_command!(app, "tile")
     @test isempty(ws.floats)
     @test length(collect(Ressac._all_leaves(ws.tree))) == 2
-end
-
-@testset "Ctrl-N hops workspaces without entering pane mode" begin
-    app, _ = _new_app()
-    Ressac.create_workspace!(app.workspaces, "scratch")
-    Ressac.create_workspace!(app.workspaces, "perf")
-    @test app.workspaces.current_idx == 5           # 3 par défaut + 2
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '1'))
-    @test app.workspaces.current_idx == 1
-    @test Ressac._PANE_MODE.active == false
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '2'))
-    @test app.workspaces.current_idx == 2
 end
 
 # ── Mouse focus ─────────────────────────────────────────────────────
@@ -683,7 +652,7 @@ _synth_names(app) = [b.name for (_, b) in Ressac._all_synth_buffers(app)]
     app, _ = _new_app()
     @test isempty(_synth_names(app))
     _exec_ex_command!(app, "synth wob")                      # :synth emmène dans DESIGN : sketch + wob
-    @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+    @test app.volet === :son
     @test "wob" in _synth_names(app)
 end
 
@@ -702,8 +671,8 @@ end
     @test Ressac._focused_role(app) === :synth
     _exec_ex_command!(app, "close")     # close the current synth tab
     @test length(_synth_names(app)) == 2
-    _exec_ex_command!(app, "back")      # back to PLAY, DESIGN intact
-    @test Ressac.current_workspace(app.workspaces).name == "PLAY"
+    _exec_ex_command!(app, "back")      # le volet se ferme, les sons restent ouverts derrière
+    @test app.volet === :fiche && Ressac._focused_role(app) === :patterns
     @test isempty(_synth_names(app))
 end
 
@@ -811,7 +780,7 @@ end
         # un @synth dans la pane patterns de PLAY : :explain vit dans DESIGN, où la
         # DOC prend l'explication — le buffer de PLAY n'est pas un synth, donc
         # l'explication concerne le sketch de DESIGN
-        @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+        @test app.volet === :son
         parts = Ressac._synth_workspace_parts(app)
         @test parts !== nothing && parts[3].mode === :explain
     end
@@ -1373,35 +1342,19 @@ end
         Ressac.current_workspace(app.workspaces).tree))) == 1
 end
 
-@testset "app survives closing the patterns editor (zero editors)" begin
+@testset "fermer la pane des patterns est refusé : le texte reste à l'écran" begin
     app, frame = _new_app()
-    # Need a second pane so cmd_close! allows removing patterns.
+    text = _buffer_text(app)
     Ressac.cmd_vsplit!(app.workspaces, "scope", Dict{String,Any}("target" => "wave"))
-    Ressac.cmd_focus!(app.workspaces, :left)        # back onto patterns
-    Ressac.cmd_close!(app.workspaces)               # close the patterns pane
-    @test Ressac._active_editor(app) === nothing     # no editor anywhere
-
-    @testset "view() re-renders without crashing" begin
-        @test (Tachikoma.view(app, frame); true)
-    end
-
-    @testset "':' still opens the command line with no editor" begin
-        Tachikoma.update!(app, Tachikoma.KeyEvent(':'))
-        @test app.command_line.mode === :command
-        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
-    end
-
-    @testset "Ctrl-w still enters pane mode with no editor" begin
-        Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
-        @test Ressac._PANE_MODE.active == true
-        Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
-        @test Ressac._PANE_MODE.active == false
-    end
-
-    @testset "a plain key is eaten, no crash, no editor materializes" begin
-        @test (Tachikoma.update!(app, Tachikoma.KeyEvent('x')); true)
-        @test Ressac._active_editor(app) === nothing
-    end
+    Ressac._focus_patterns!(app)
+    @test !Ressac._close_focused_pane!(app)
+    Tachikoma.view(app, frame)
+    @test Ressac._patterns_editor(app) !== nothing && _buffer_text(app) == text
+    # Un arbre qui aurait perdu ses patterns (fichier de disposition abîmé) est rebâti.
+    ws = Ressac.current_workspace(app.workspaces)
+    ws.tree = Ressac.PaneLeaf(ws.focused_pane, Ressac.PaneImpl[Ressac._pane_new(:log, Dict{String,Any}())], 1)
+    Tachikoma.view(app, frame)
+    @test Ressac._patterns_editor(app) !== nothing
 end
 
 @testset "content commands target a pane (no ambient _active_editor)" begin
@@ -1459,31 +1412,7 @@ end
     end
 end
 
-@testset "focused-editor actions no-op cleanly with zero editors" begin
-    function _no_editor_app()
-        app, _ = _new_app()
-        Ressac.cmd_vsplit!(app.workspaces, "scope", Dict{String,Any}("target" => "wave"))
-        Ressac.cmd_focus!(app.workspaces, :left)
-        Ressac.cmd_close!(app.workspaces)            # drop the patterns pane
-        @test Ressac._active_editor(app) === nothing
-        return app
-    end
-
-    @testset "mute toggle is a no-op, no crash" begin
-        app = _no_editor_app()
-        @test (Ressac._toggle_mute_current_line!(app); true)
-    end
-
-    @testset "mixer nudge is a no-op, no crash" begin
-        app = _no_editor_app()
-        @test (Ressac._mixer_nudge_gain!(app, :d1, 0.1); true)
-    end
-
-    @testset "tap emit returns 0, no crash" begin
-        app = _no_editor_app()
-        @test Ressac._tap_emit_line!(app, ["bd", "~"], "") == 0
-    end
-
+@testset "sculpt et explorateur — points d'entrée" begin
     @testset "sculpt entry points" begin
         # test_pane_interface.jl vide _PANE_KINDS ; on (ré)enregistre les
         # kinds dont on a besoin ici (ré-enregistrés plus loin par leurs tests).
@@ -1559,7 +1488,7 @@ end
                 Ressac._open_sculpt_pane!(app, Ressac.serialize_genome(g), "mybass")
                 Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
                 @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing # export drainé
-                @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+                    @test app.volet === :son
                 @test Ressac._focused_role(app) === :synth
             finally
                 Ressac._WAVE_RENDER[] = old

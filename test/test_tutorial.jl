@@ -70,12 +70,12 @@ _tscreen(app, tb, frame) = (Tachikoma.view(app, frame); join((Tachikoma.row_text
         dir = mktempdir(); mkpath(joinpath(dir, "plugins", "user-synths")); oldwd = pwd(); cd(dir)
         empty!(Ressac._DRONES)
         try
-            _tex(app, "design"); _tscreen(app, tb, frame)
-            @test Ressac.current_workspace(app.workspaces).name == "DESIGN"
+            _tex(app, "son"); _tscreen(app, tb, frame)
+            @test app.volet === :son
             q = Ressac._find_pane(app, Ressac.TutorialPane)
-            @test q !== nothing && q !== p && q.step == 14                   # une pane tutoriel s'est ouverte ici
+            @test q === p && q.step == 14                                    # la même pane : elle est restée à côté des patterns
             @test Ressac._focused_role(app) === :synth                       # le focus est resté au texte
-            @test occursin("Trois panes", _tscreen(app, tb, frame))
+            @test occursin("Le son,", _tscreen(app, tb, frame))
             _tk(app, 'T'); _tscreen(app, tb, frame); @test q.step == 15
             (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
             ed = ep.tabs[ep.current_tab].code_editor
@@ -89,7 +89,7 @@ _tscreen(app, tb, frame) = (Tachikoma.view(app, frame); join((Tachikoma.row_text
             _tk(app, 'D'); _tscreen(app, tb, frame); @test Ressac.drone_running(:sketch) && q.step == 18
             _tk(app, 'D'); _tscreen(app, tb, frame); @test q.step == 19
             _tk(app, 'U'); _tscreen(app, tb, frame)
-            @test Ressac.current_workspace(app.workspaces).name == "PLAY" && p.step == 20   # la pane de PLAY est à jour
+            @test Ressac._focused_role(app) === :patterns && p.step == 20   # le clavier est revenu aux patterns
             @test occursin("Et ensuite", _tscreen(app, tb, frame)) && !p.finished
         finally
             cd(oldwd); Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds; empty!(Ressac._DRONES)

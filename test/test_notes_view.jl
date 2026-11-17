@@ -175,23 +175,20 @@ end
     end
 end
 
-@testset "disposition PLAY — patterns 2/3, wiki en haut, doc vivante en bas" begin
+@testset "écran de départ — les patterns aux deux tiers, la fiche qui suit à droite" begin
     app, tb, frame = _nv_app(; w = 130, h = 30)
     ws = Ressac.current_workspace(app.workspaces)
-    # l'arbre : patterns | (wiki / doc)
+    # l'arbre : patterns | fiche
     @test ws.tree isa Ressac.Container && ws.tree.direction === :h
-    @test ws.tree.ratios ≈ [2/3, 1/3]
+    @test ws.tree.ratios ≈ [0.66, 0.34]
     left, right = ws.tree.children
     @test left isa Ressac.PaneLeaf && left.tabs[1] isa Ressac.EditorPane
-    @test right isa Ressac.Container && right.direction === :v
-    @test right.ratios ≈ [0.6, 0.4]
-    @test right.children[1].tabs[1] isa Ressac.WikiPane
-    docp = right.children[2].tabs[1]
+    docp = right.tabs[1]
     @test docp isa Ressac.DocPane && docp.follow
     # le focus reste sur les patterns
     @test ws.focused_pane == left.id
     scr = _nv_screen(app, tb, frame, 30)
-    @test occursin("PATTERNS", scr) && occursin("WIKI", scr) && occursin("DOC ✦", scr)
+    @test occursin("PATTERNS", scr) && !occursin("WIKI", scr) && occursin("DOC ✦", scr)
 
     old = Ressac._LIVE_SCHEDULER[]
     Ressac._LIVE_SCHEDULER[] = app.scheduler

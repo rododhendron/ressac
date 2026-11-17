@@ -52,10 +52,16 @@ function _pane_count(m::RessacApp)
 end
 
 function _close_pane_or_quit!(m::RessacApp)
-    if _pane_count(m) > 1
-        cmd_close!(m.workspaces)
-        m.zoom_leaf = 0
-        _push_app_log!(m, "[INFO] pane fermée — :q sur la dernière pane quitte (:qa quitte tout de suite)")
+    ws = current_workspace(m.workspaces)
+    pl = ws === nothing ? nothing : _patterns_leaf(ws)
+    on_patterns = pl !== nothing && ws.focused_pane == pl.id
+    if m.volet !== :fiche && (on_patterns || _focus_in_volet(m))
+        # Un volet est ouvert : :q le ferme, la fiche revient, les patterns
+        # reprennent le clavier.
+        _close_volet!(m)
+        _push_app_log!(m, "[INFO] volet fermé — :q de nouveau pour quitter (:qa quitte tout de suite)")
+    elseif !on_patterns
+        _close_focused_pane!(m)                   # la fiche rend le clavier ; une pane scindée se ferme
     else
         _quit!(m)
     end
@@ -120,7 +126,7 @@ _register_regex!(r"^xfade\s+(\d+)$", (m, mt) -> _set_transition!(m, :xfade, max(
 # ── Synth tabs ───────────────────────────────────────────────────────
 _register_literal!(m -> _open_sandbox_synth!(m),     "synth", "scratch", "sandbox")
 # `:back` : retour à PLAY (DESIGN reste tel quel, ses onglets aussi).
-_register_literal!(m -> _switch_workspace_named!(m, "PLAY"), "back")
+_register_literal!(m -> _close_volet!(m), "back", "fiche")
 _register_literal!(m -> _close_active_synth_tab!(m), "close")
 _register_literal!(m -> _list_synth_tabs!(m),        "tabs")
 _register_literal!(m -> _cycle_synth_tab!(m; dir=+1),  "tabnext", "tabn")
@@ -150,14 +156,6 @@ _register_regex!(r"^workspace\s+new(?:\s+(\S+))?$",
         nm = mt.captures[1] === nothing ? "" : String(mt.captures[1])
         cmd_workspace!(m.workspaces, :new; name = nm)
     end)
-_register_literal!(m -> cmd_workspace!(m.workspaces, :close),
-                   "workspace close")
-_register_literal!(m -> cmd_workspace!(m.workspaces, :next),
-                   "workspace next", "wsnext")
-_register_literal!(m -> cmd_workspace!(m.workspaces, :prev),
-                   "workspace prev", "wsprev")
-_register_regex!(r"^workspace\s+(\S+)$",
-    (m, mt) -> cmd_workspace_named!(m.workspaces, mt.captures[1]))
 
 # Shape `^vsplit\s*(\S*)$` — leading literal + \s matches the third
 # extraction shape so the verb surfaces in Tab completion. Empty
@@ -179,7 +177,7 @@ function _split_command!(m::RessacApp, verb::AbstractString, split!, kind_arg::A
     split!(m.workspaces, kind, Dict{String,Any}())
     return
 end
-_register_literal!(m -> cmd_close!(m.workspaces),
+_register_literal!(m -> _close_focused_pane!(m),
                    "pclose", "paneclose")
 _register_literal!(m -> cmd_float!(m.workspaces),  "float")
 _register_literal!(m -> cmd_tile!(m.workspaces),   "tile")
@@ -546,15 +544,11 @@ _register_literal!(m -> (m.paused = true;
     "pause", "freeze")
 _register_literal!(m -> _copy_logs_to_clipboard!(m), "copylogs", "yanklogs")
 _register_literal!(m -> _cycle_log_tail!(m), "log")
-# Les trois workspaces de travail (Ctrl-1/2/3 aussi).
-_register_literal!(m -> _switch_workspace_named!(m, "PLAY"),    "play")
-_register_literal!(m -> _switch_workspace_named!(m, "DESIGN"),  "design")
-_register_literal!(m -> _switch_workspace_named!(m, "EXPLORE"), "explore")
-# `:play!` / `:design!` / `:explore!` : le workspace à neuf, panes bien placées.
-_register_literal!(m -> _reset_workspace!(m, "PLAY"),    "play!")
-_register_literal!(m -> _reset_workspace!(m, "DESIGN"),  "design!")
-_register_literal!(m -> _reset_workspace!(m, "EXPLORE"), "explore!")
-_register_literal!(m -> (ws = current_workspace(m.workspaces); ws === nothing || _reset_workspace!(m, ws.name)), "reset")
+# Les volets (app_volet.jl). `:wiki` et `:synth` ont leurs commandes plus
+# haut ; `:back` / `:fiche` rendent la colonne de droite à la fiche.
+_register_literal!(m -> _open_volet!(m, :son),      "son")
+_register_literal!(m -> _open_volet!(m, :explorer), "explorer", "explore")
+_register_literal!(m -> _reset_screen!(m), "reset")
 _register_literal!(m -> _toggle_zoom!(m), "zoom")
 _register_regex!(r"^log\s+(\d+)$", (m, mt) -> _cycle_log_tail!(m, parse(Int, mt.captures[1])))
 

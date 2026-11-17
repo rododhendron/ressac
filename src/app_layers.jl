@@ -49,7 +49,7 @@ function _active_layers(m::RessacApp)
         push!(L, Layer(:none, m; engine = _command_line_engine!, exclusive = true))
         return L
     end
-    # Partout, avant tout : panic, Ctrl-1..9, Ctrl-F.
+    # Partout, avant tout : panic, Ctrl-F.
     push!(L, Layer(:none, m; engine = _pre_engine!))
     # États exclusifs de l'app — pause, piano, tap. Ils ne dépendent pas de
     # la pane focalisée : lancés depuis le wiki ou le journal, ils prennent
@@ -135,7 +135,8 @@ end
 function _validate_transients!(m::RessacApp)
     (m.visual_active || m.placeholder_active) || return
     ed = _active_editor(m)
-    if ed === nothing || ed !== m.transient_ed
+    # Dans l'explorateur il n'y a pas de texte en jeu : rien ne survit.
+    if ed === nothing || ed !== m.transient_ed || _workspace_mode(m) === :explore
         m.visual_active = false; m.placeholder_active = false
         return
     end

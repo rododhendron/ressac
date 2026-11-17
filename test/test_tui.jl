@@ -17,13 +17,13 @@ end
 
 # Sub-project 9 — workspace bootstrap. Reuses the same MockOSCClient
 # convention as test_scheduler.jl / test_sc_autodiscover.jl.
-@testset "_ensure_default_workspace! crée PLAY/DESIGN/EXPLORE et remplit PLAY d'un éditeur" begin
+@testset "_ensure_default_workspace! bâtit un seul écran, avec le texte des patterns" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
     _only_patterns!(app)
-    @test length(app.workspaces.workspaces) == 3
+    @test length(app.workspaces.workspaces) == 1
     @test app.workspaces.current_idx == 1
     ws = Ressac.current_workspace(app.workspaces)
     @test ws !== nothing
@@ -34,7 +34,7 @@ end
     # Idempotent — calling again doesn't create another workspace.
     Ressac._ensure_default_workspace!(app)
     _only_patterns!(app)
-    @test length(app.workspaces.workspaces) == 3
+    @test length(app.workspaces.workspaces) == 1
 end
 
 # Helper: read one row of a Tachikoma Buffer as a String. Tachikoma
@@ -49,21 +49,6 @@ function _row_to_string(buf::Tachikoma.Buffer, y::Int)
         end
     end
     return String(cells)
-end
-
-@testset "status line : workspaces à droite, le courant entre crochets" begin
-    mock = MockOSCClient()
-    sched = Scheduler(mock; cps=0.5)
-    app = Ressac.RessacApp(; scheduler=sched)
-    Ressac.create_workspace!(app.workspaces, "live")
-    Ressac.create_workspace!(app.workspaces, "synth")
-    app.workspaces.current_idx = 1
-    tb = Tachikoma.TestBackend(120, 5)
-    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
-    row = _row_to_string(tb.buf, 1)
-    @test occursin(" 1 live ", row)
-    @test occursin(" 2 synth ", row)
-    @test findfirst("RESSAC", row).start < findfirst("1 live", row).start
 end
 
 @testset "TK.view dispatches through WorkspaceManager (smoke)" begin
@@ -90,21 +75,13 @@ end
     @test Ressac._focused_editor_rect(app) !== nothing
 end
 
-@testset "Ctrl-N jumps workspaces and Ctrl-Shift-F toggles floats" begin
+@testset "Ctrl-Shift-F toggles floats" begin
     mock = MockOSCClient()
     sched = Scheduler(mock; cps=0.5)
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
     _only_patterns!(app)
-    Ressac.create_workspace!(app.workspaces, "live")
-    Ressac.create_workspace!(app.workspaces, "synth")
     Ressac._PANE_MODE.active = false
-    @test app.workspaces.current_idx == 5          # 3 par défaut + 2
-    # Ctrl-1 → workspace 1
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '1'))
-    @test app.workspaces.current_idx == 1
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '3'))
-    @test app.workspaces.current_idx == 3
     # Ctrl-Shift-F (sent as :ctrl 'F') toggles floats_hidden
     @test app.floats_hidden == false
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'F'))

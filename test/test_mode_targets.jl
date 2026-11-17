@@ -1,5 +1,6 @@
 include(joinpath(@__DIR__, "helpers.jl"))
-# La cible d'un geste dépend du mode, pas de la pane focalisée — roadmap U6, U7.
+# La cible d'un geste : les patterns pour e / E / m d'où qu'on soit ; ce qui a
+# le clavier pour :w — roadmap U6, U7, puis l'écran unique (E2.1).
 
 # Une app en PLAY avec ses patterns et, à côté, une pane journal focalisée.
 function _mt_app(text)
@@ -37,20 +38,20 @@ end
         end
     end
 
-    @testset "U6 — sans patterns dans le workspace : un message, pas une évaluation" begin
+    @testset "les patterns ne se ferment pas : c'est l'instrument" begin
         app, frame = _new_app()
-        ws = Ressac.current_workspace(app.workspaces)
-        ws.tree = Ressac.PaneLeaf(ws.focused_pane, Ressac.PaneImpl[Ressac._pane_new(:log, Dict{String,Any}())], 1)
-        @test Ressac._patterns_editor(app) === nothing
-        for act! in (Ressac._eval_current_line!, a -> Ressac._eval_pattern_blocks!(a, :all), Ressac._toggle_mute_current_line!)
-            n = length(app.logs)
-            act!(app)
-            @test any(l -> occursin("pas de patterns dans ce workspace", l), app.logs[(n + 1):end])
+        text = Tachikoma.text(Ressac._patterns_editor(app))
+        for close! in (a -> _exec_ex_command!(a, "pclose"),
+                       a -> (Tachikoma.update!(a, Tachikoma.KeyEvent(:ctrl, 'w')); _key!(a, 'c'); _key!(a, :escape)))
+            close!(app)
+            Tachikoma.view(app, frame)
+            ed = Ressac._patterns_editor(app)
+            @test ed !== nothing && Tachikoma.text(ed) == text
         end
-        @test any(l -> occursin("pas de patterns à sauver", l), _cmd_logs(app, "w"))
+        @test !app.quit
     end
 
-    @testset "U6 — DESIGN : :w sauve le synth, d'où que vienne le focus" begin
+    @testset ":w sauve ce qui a le clavier — le son dans le volet, la session à gauche" begin
         oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
         Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
         try
@@ -63,10 +64,10 @@ end
             synth_path = joinpath(pwd(), "plugins", "user-synths", "wmode.jl")
             session_path = joinpath(pwd(), "sessions", "_last.txt")
             rm(session_path; force = true)
-            # Le focus passe sur chaque pane du workspace DESIGN (texte, studio, doc).
+            # Sur chaque pane du volet (texte, DOC, studio), :w sauve le son.
             ws = Ressac.current_workspace(app.workspaces)
-            for leaf in Ressac._all_leaves(ws.tree)
-                ws.focused_pane = leaf.id
+            for leaf in Ressac._all_leaves(app.volet_shown), i in eachindex(leaf.tabs)
+                ws.focused_pane = leaf.id; leaf.current_tab = i
                 Tachikoma.view(app, frame)                    # le studio suit le texte
                 rm(synth_path; force = true)
                 @test Ressac._workspace_mode(app) === :design
@@ -75,6 +76,11 @@ end
                 @test isfile(synth_path) && occursin("low_pass(700", read(synth_path, String))
                 @test !isfile(session_path)                               # pas une « session »
             end
+            # Le clavier aux patterns : :w ne touche plus au son.
+            Ressac._focus_patterns!(app)
+            rm(synth_path; force = true)
+            _exec_ex_command!(app, "w")
+            @test !isfile(synth_path)
         finally
             Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
         end

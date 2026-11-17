@@ -199,7 +199,7 @@ end
     @test !(:patterns in d) && !(:explorer in d) && !(:tap in d)
     @test findfirst(==(:sculpt), d) < findfirst(==(:leader_synth), d) < findfirst(==(:modal_lib), d)   # panes, puis transitoires, puis modales
     md = Ressac.keys_wiki_markdown()
-    @test occursin("## PLAY\n", md) && occursin("## DESIGN\n", md) && occursin("## EXPLORE\n", md) && occursin("## Partout\n", md)
-    @test findfirst("### DESIGN — quelle que soit la pane", md)[1] < findfirst("### Sculpt", md)[1]
+    @test occursin("## PATTERNS\n", md) && occursin("## SON\n", md) && occursin("## EXPLORATEUR\n", md) && occursin("## Partout\n", md)
+    @test findfirst("### SON — depuis le texte, la DOC ou le studio", md)[1] < findfirst("### Sculpt", md)[1]
     @test findfirst("## Partout", md)[1] < findfirst("### Éditeur (patterns et synth)", md)[1]
 end

@@ -230,11 +230,11 @@ _ee_keys!(app, ks::AbstractString) = foreach(c -> _key!(app, c), ks)
         Ressac.cmd_split!(app.workspaces, "editor", Dict{String,Any}())
         Tachikoma.view(app, frame)
         @test !app.visual_active                                # un autre texte a le focus
-        # …ni à un changement de workspace, pour les trous.
+        # …ni à un changement de volet, pour les trous.
         app, frame = _ee_app("@d1 \"bd\"")
         Ressac._expand_snippet!(app, Ressac._active_editor(app), " |> gain(\$1)")
         @test app.placeholder_active
-        Ressac._switch_workspace_named!(app, "EXPLORE")
+        Ressac._open_volet!(app, :explorer)
         Tachikoma.view(app, frame)
         @test !app.placeholder_active
     end

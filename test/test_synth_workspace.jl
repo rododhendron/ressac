@@ -42,7 +42,7 @@ const _SW_SRC = "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 
     @test Ressac._fmt_literal(64.0) == "64" && Ressac._fmt_literal(63.5) == "63.5"
 end
 
-@testset "workspace synth — DESIGN ouvre texte | studio / doc, un synth = un onglet" begin
+@testset "volet du son — le texte, et dessous la DOC et le studio en onglets ; un synth = un onglet" begin
     oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     mktempdir() do dir
@@ -50,7 +50,7 @@ end
         cd(dir) do
             try
                 app, tb, frame = _sw_app()
-                _swex(app, "design")
+                _swex(app, "son")
                 leaves = _swleaves(app)
                 @test length(leaves) == 3
                 parts = Ressac._synth_workspace_parts(app)
@@ -60,8 +60,12 @@ end
                 @test Ressac._focused_role(app) === :synth
                 scr = _swscreen(app, tb, frame)
                 @test occursin("SYNTH · sketch", scr)
-                @test occursin("STUDIO ┄ sketch ┄ synchronisé", scr)
+                @test occursin("PATTERNS", scr)                             # les patterns restent à gauche
                 @test occursin("DOC ✦ ◂ [doc] · explication · graphe ▸", scr)
+                # le studio est l'onglet derrière la DOC
+                Ressac._focus_pane!(app, studio)
+                @test occursin("STUDIO ┄ sketch ┄ synchronisé", _swscreen(app, tb, frame))
+                Ressac._focus_pane!(app, ep)
                 @test studio.genome !== nothing && !isempty(studio.knobs)    # le starter est analysable
                 @test studio.synced_name == "sketch"
 
@@ -99,7 +103,7 @@ end
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _sw_app()
-        _swex(app, "design")
+        _swex(app, "son")
         (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
         tab = ep.tabs[1]; ed = tab.code_editor
         Tachikoma.set_text!(ed, _SW_SRC); ed.mode = :normal
@@ -164,6 +168,7 @@ end
 
         # la doc vivante suit le curseur du texte, dans l'onglet doc
         sdoc.mode = :doc
+        Ressac._focus_pane!(app, sdoc)                        # la DOC repasse devant le studio
         Ressac._focus_pane!(app, ep); ed.mode = :normal
         Tachikoma.set_text!(ed, _SW_SRC)
         ed.cursor_row = 1; ed.cursor_col = length("@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rl")
@@ -174,20 +179,20 @@ end
     end
 end
 
-@testset "workspace synth — persistance de la forme" begin
+@testset "volet du son — sauvé avec la disposition" begin
     oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _sw_app()
-        _swex(app, "design")
+        _swex(app, "son")
         _swscreen(app, tb, frame)
         path = joinpath(mktempdir(), "layout.toml")
         Ressac.save_layout(app.workspaces, path)
         wm = Ressac.WorkspaceManager()
         Ressac.load_layout!(wm, path)
-        design = wm.workspaces[findfirst(w -> w.name == "DESIGN", wm.workspaces)]
+        design = only(wm.workspaces)
         kinds = sort([Ressac._kind_for(t) for leaf in Ressac._all_leaves(design.tree) for t in leaf.tabs])
-        @test kinds == ["editor", "synthdoc", "waveform"]
+        @test kinds == ["editor", "editor", "synthdoc", "waveform"]       # patterns, texte du son, DOC, studio
         studio = [t for leaf in Ressac._all_leaves(design.tree) for t in leaf.tabs if t isa Ressac.WaveformPane][1]
         @test studio.linked
     finally
@@ -237,7 +242,7 @@ end
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _sw_app()
-        _swex(app, "design")
+        _swex(app, "son")
         (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
         ed = ep.tabs[1].code_editor
         Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)\n"); ed.mode = :normal

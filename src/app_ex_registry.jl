@@ -118,7 +118,7 @@ function _command_completion_candidates(m::RessacApp, query::AbstractString)
     q = String(query)
     sp = findfirst(' ', q)
     if sp === nothing
-        return first(_fuzzy_rank(q, _ex_verbs_for_mode(m)), 200)
+        return first(_fuzzy_rank(q, _all_ex_verbs()), 200)
     end
     verb = q[1:sp-1]
     rest = q[sp+1:end]
@@ -152,8 +152,8 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
 end
 
 function _dispatch_ex_command!(m::RessacApp, s::String)
-    # 0. Une commande d'un autre mode y emmène d'abord.
-    _mode_bridge!(m, s)
+    # 0. Une commande qui parle d'un son l'ouvre d'abord à droite.
+    _open_son_for_command!(m, s)
     # 1. Literal exact-match (O(1))
     h = get(_LITERAL_DISPATCH, s, nothing)
     h !== nothing && (h(m); return)

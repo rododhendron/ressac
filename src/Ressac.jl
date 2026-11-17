@@ -127,6 +127,7 @@ include("editor_snippets.jl")    # Space-leader : templates + placeholders
 include("editor_autocomplete.jl")# Tab : identifiants, ghost, commandes ex
 include("editor_vim_ops.jl")     # opérations texte pures (mots, lignes)
 include("app_tap_piano.jl")      # tap / piano / bpm
+include("app_volet.jl")          # l'écran unique : patterns à gauche, volet à droite
 include("app_slots.jl")          # l'état des lignes lu sur l'app (scheduler, erreurs, densité)
 include("slot_marks.jl")         # marge en signes, ligne éclairée, piste d'un cycle au bout de la ligne
 include("app_patterns.jl")       # mute/solo, preview, eval @dN + cascade

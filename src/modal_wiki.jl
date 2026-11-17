@@ -9,6 +9,7 @@ Ouvre (ou focalise) la pane wiki du workspace courant, à côté des
 patterns, et va à `page` (numéro ou morceau de titre) si donnée.
 """
 function _open_wiki!(m::RessacApp; page::AbstractString = "")
+    _open_volet!(m, :wiki)
     pane = _find_pane(m, WikiPane)
     created = pane === nothing
     if created

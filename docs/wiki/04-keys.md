@@ -6,9 +6,9 @@ Notation : `Space d` = Space puis d · `Ctrl-w s` = Ctrl-w puis s · `g t` = g p
 
 Une touche descend les couches actives — transitoire (saisie, leader, mode pane…), modale, pane focalisée, **mode** (PLAY · DESIGN · EXPLORE), partout — jusqu'à la première qui la connaît. Les gestes d'un mode valent quelle que soit la pane.
 
-## PLAY
+## PATTERNS
 
-### PLAY — quelle que soit la pane
+### PATTERNS — d'où qu'on soit (fiche, wiki, journal)
 
 **Évaluer**
 
@@ -111,7 +111,9 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `g s` | ouvrir le synth sous le curseur (DESIGN) |
+| `g s` | ouvrir le son sous le curseur, à droite |
+| `g w` | ouvrir le wiki, à droite |
+| `g x` | ouvrir l'explorateur de sons |
 
 ### Space + …
 
@@ -366,9 +368,9 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 |---|---|
 | `?` | aide |
 
-## DESIGN
+## SON
 
-### DESIGN — quelle que soit la pane
+### SON — depuis le texte, la DOC ou le studio
 
 **Jouer / écouter**
 
@@ -387,7 +389,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `U` | utiliser dans un pattern (sauve + @dN dans PLAY) |
+| `U` | utiliser dans un pattern (sauve + @dN à gauche) |
 
 **Structure**
 
@@ -720,9 +722,9 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 |---|---|
 | `?` | aide |
 
-## EXPLORE
+## EXPLORATEUR
 
-### EXPLORE — quelle que soit la pane
+### EXPLORATEUR
 
 **Jouer / écouter**
 
@@ -951,9 +953,8 @@ Lecture d'une carte :
 | Touche | Action |
 |---|---|
 | `Ctrl-w` | mode pane |
-| `Ctrl-1 / Ctrl-2 / Ctrl-3 / Ctrl-4 / Ctrl-5 / Ctrl-6 / Ctrl-7 / Ctrl-8 / Ctrl-9` | workspace 1…9 |
 | `Ctrl-f` | montrer/cacher les floats |
-| `Ctrl-1 / :play · Ctrl-2 / :design · Ctrl-3 / :explore` | workspaces PLAY (patterns) · DESIGN (synth) · EXPLORE (GA) |
+| `:son · :wiki · :explorer · :back` | le volet à droite des patterns : un son, le wiki, l'explorateur — :back (ou :q) le referme |
 
 ### Journal
 

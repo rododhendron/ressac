@@ -135,12 +135,14 @@ function _hover_mouse!(m::RessacApp, evt::TK.MouseEvent)
                 end
                 return true
             end
+            # Sur le terme lui-même, la bulle tient — verrouillée ou non, et où
+            # qu'elle ait trouvé la place de s'ouvrir.
+            term = _hover_term_at(m, x, y)
+            term == h.boxes[1].term && return true
             if h.locked
                 _hover_close!(m)          # sortie de la souris : tout se ferme
                 return true
             end
-            term = _hover_term_at(m, x, y)
-            term == h.boxes[1].term && return true
             term === nothing ? _hover_close!(m) : _hover_open!(m, term, x, y)
             return true
         end

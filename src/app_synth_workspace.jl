@@ -8,26 +8,6 @@
 # ajoute un onglet au texte, les deux autres panes suivent.
 
 """
-    _synth_workspace_panes!(ws, wm)
-
-Pose le studio et la doc à droite de la pane texte (racine = un leaf).
-"""
-function _synth_workspace_panes!(ws::Workspace, wm)
-    wm === nothing && return
-    root = ws.tree
-    root isa PaneLeaf || return
-    studio = PaneLeaf(wm.next_pane_id,
-                      PaneImpl[_pane_new(:waveform, Dict{String,Any}("label" => "sketch", "sculpt" => true, "linked" => true))], 1)
-    wm.next_pane_id += 1
-    doc = PaneLeaf(wm.next_pane_id, PaneImpl[_pane_new(:synthdoc, Dict{String,Any}())], 1)
-    wm.next_pane_id += 1
-    side = Container(:v, LayoutNode[studio, doc], [0.55, 0.45])
-    ws.tree = Container(:h, LayoutNode[root, side], [0.5, 0.5])
-    ws.focused_pane = root.id
-    return
-end
-
-"""
     _synth_workspace_parts(m) -> (editor, studio, doc) | nothing
 
 Les trois panes du workspace synth courant : l'éditeur qui porte les
@@ -179,60 +159,6 @@ function _patch_literal(text::AbstractString, old::Float64, new::Float64)
     return text[1:prevind(text, mt.offset)] * _fmt_literal(new) * text[stop:end]
 end
 
-"""
-    _ensure_synth_workspace!(m) -> Bool
-
-Le workspace courant a ce qu'il faut pour concevoir un son : un texte de
-synth, son studio lié, la DOC. Ce qui manque (une disposition d'avant, une
-pane fermée) est **reposé autour de l'arbre existant** — le studio à
-droite du texte, la doc sous le studio. Rien d'autre n'est touché : les
-panes ouvertes à côté, leurs textes et leurs proportions restent. Vrai si
-quelque chose a été ajouté.
-"""
-function _ensure_synth_workspace!(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return false
-    wm = m.workspaces
-    find_leaf(pred) = begin
-        for leaf in _all_leaves(ws.tree), tab in leaf.tabs
-            pred(tab) && return leaf
-        end
-        nothing
-    end
-    new_leaf(pane) = (l = PaneLeaf(wm.next_pane_id, PaneImpl[pane], 1); wm.next_pane_id += 1; l)
-    added = String[]
-
-    leaf_ed = find_leaf(t -> t isa EditorPane && any(b -> b.role === :synth, t.tabs))
-    if leaf_ed === nothing
-        ep = _pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "sketch"))
-        eb = ep.tabs[1]; eb.synth_mode = :dsl
-        _load_text!(eb.code_editor, _STARTER_DSL("sketch")); eb.code_editor.mode = :normal
-        if ws.tree isa PaneLeaf && isempty(ws.tree.tabs)
-            push!(ws.tree.tabs, ep); ws.tree.current_tab = 1          # un workspace encore vide
-            leaf_ed = ws.tree
-        else
-            leaf_ed = new_leaf(ep)
-            ws.tree = _split_root(ws.tree, _first_leaf_id(ws.tree), :h, leaf_ed)
-        end
-        push!(added, "texte")
-    end
-    leaf_studio = find_leaf(t -> t isa WaveformPane && t.linked)
-    if leaf_studio === nothing
-        leaf_studio = new_leaf(_pane_new(:waveform, Dict{String,Any}("label" => "sketch", "sculpt" => true, "linked" => true)))
-        ws.tree = _split_root(ws.tree, leaf_ed.id, :h, leaf_studio)
-        push!(added, "studio")
-    end
-    if find_leaf(t -> t isa SynthDocPane) === nothing
-        ws.tree = _split_root(ws.tree, leaf_studio.id, :v, new_leaf(_pane_new(:synthdoc, Dict{String,Any}())))
-        push!(added, "doc")
-    end
-    isempty(added) && return false
-    ws.focused_pane = leaf_ed.id
-    m.zoom_leaf = 0
-    _push_app_log!(m, "[INFO] DESIGN : $(join(added, ", ")) reposé$(length(added) > 1 ? "s" : "") à côté de ce qui était ouvert")
-    return true
-end
-
 # La pane texte du workspace synth, pour y ajouter un onglet.
 function _synth_workspace_editor(m::RessacApp)
     parts = _synth_workspace_parts(m)
@@ -266,7 +192,7 @@ pane texte du workspace synth (le studio et la doc suivent), ou une pane
 """
 function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::AbstractString;
                                      focus_studio::Bool = false)
-    _switch_workspace_named!(m, "DESIGN")
+    _open_volet!(m, :son)
     wsed = _synth_workspace_editor(m)
     if wsed !== nothing
         i = findfirst(b -> b.role === :synth && b.name == name, wsed.tabs)
@@ -327,7 +253,7 @@ end
 function _design_doc_mode!(m::RessacApp, mode::Symbol)
     parts = _synth_workspace_parts(m)
     if parts === nothing || parts[3] === nothing
-        _push_app_log!(m, "[INFO] pas de pane DOC dans ce workspace — :design la remet")
+        _push_app_log!(m, "[INFO] pas de DOC à l'écran — :son la remet")
         return
     end
     _synth_workspace_sync!(m)

@@ -31,7 +31,7 @@ function _mfscreen(app, tb, frame)
     Tachikoma.reset!(tb.buf); Tachikoma.view(app, frame)
     join((Tachikoma.row_text(tb, y) for y in 1:44), "\n")
 end
-_mfws(app) = Ressac.current_workspace(app.workspaces).name
+_mfws(app) = Dict(:play => "PLAY", :design => "DESIGN", :explore => "EXPLORE")[Ressac._workspace_mode(app)]
 const _MF_STUB = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100)
 
 @testset "chargement — un .jl avec |> en tête de ligne se charge comme un plugin" begin
@@ -48,81 +48,61 @@ const _MF_STUB = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100)
     end
 end
 
-@testset "modes — palette, complétion, aide et pont des commandes" begin
+@testset "contexte — les touches suivent la pane, les commandes valent partout" begin
     app, tb, frame = _mf_app()
     @test Ressac._workspace_mode(app) === :play
-    verbs = Ressac._ex_verbs_for_mode(app)
-    @test "tap" in verbs && "mixer" in verbs && "play" in verbs
-    @test !("sculpt" in verbs) && !("synth" in verbs) && !("todsl" in verbs)
-    # le pont : :synth depuis PLAY ouvre DESIGN
+    # Toute commande est proposée d'où qu'on soit : plus de tri par mode.
+    verbs = Ressac._command_completion_candidates(app, "")
+    @test "tap" in verbs && "mixer" in verbs && "sculpt" in verbs && "synth" in verbs && "todsl" in verbs
+    @test !("play" in verbs) && !("design" in verbs)               # les trois écrans n'existent plus
+    # :synth ouvre le son dans le volet ; les patterns restent à côté.
     _mfex(app, "synth zorg")
-    @test _mfws(app) == "DESIGN" && Ressac._workspace_mode(app) === :design
-    @test any(l -> occursin(":synth vit dans DESIGN", l), app.logs)
+    @test app.volet === :son && Ressac._workspace_mode(app) === :design
     @test Ressac._focused_role(app) === :synth
-    verbs = Ressac._ex_verbs_for_mode(app)
-    @test "sculpt" in verbs && "todsl" in verbs && !("tap" in verbs)
-    # l'aide complète ne montre que les sections du mode
+    @test Ressac._patterns_editor(app) !== nothing
+    # l'aide complète montre les sections du contexte
     _mfkey(app, '?'); _mfkey(app, :tab)
     scopes = Ressac._help_scopes(app)
     @test :synth in scopes && :leader_synth in scopes && :sculpt in scopes
     @test !(:patterns in scopes) && !(:tap in scopes) && !(:explorer in scopes)
-    @test any(e -> occursin("tout DESIGN", e[3]), Ressac._help_entries(app))
+    @test any(e -> occursin("tout SON", e[3]), Ressac._help_entries(app))
     _mfkey(app, :escape)
-    _mfex(app, "play")
+    _mfex(app, "back")
     _mfkey(app, '?'); _mfkey(app, :tab)
     scopes = Ressac._help_scopes(app)
     @test :patterns in scopes && :leader in scopes && !(:synth in scopes)
     _mfkey(app, :escape)
-    # un mode sur deux : pas de pont (:sculpt existe aussi dans EXPLORE… non, :drone dans PLAY)
-    @test !Ressac._mode_bridge!(app, "wiki")
 end
 
-@testset "workspaces — :design! / :reset à neuf, DESIGN remis en forme" begin
+@testset "écran — :reset le refait à neuf en gardant les patterns ; un vieux layout est repris" begin
     oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
     Ressac._WAVE_RENDER[] = _MF_STUB; Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _mf_app()
-        _mfex(app, "design")
-        @test Ressac._synth_workspace_parts(app) !== nothing
-        # on ferme le studio et la doc : :design remet la forme en gardant le texte
-        ws = Ressac.current_workspace(app.workspaces)
-        (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
+        _mfex(app, "son")
+        @test Ressac._synth_workspace_parts(app) !== nothing             # texte, studio, DOC
+        (ep, _, _) = Ressac._synth_workspace_parts(app)
         Tachikoma.set_text!(ep.tabs[1].code_editor, "@synth :sketch (freq=110) saw(:freq)\n")
-        Ressac._focus_pane!(app, studio); Ressac.cmd_close!(app.workspaces)
-        Ressac._focus_pane!(app, sdoc); Ressac.cmd_close!(app.workspaces)
-        @test Ressac._synth_workspace_parts(app) === nothing
-        # …et une pane ouverte à côté, avec un texte à ne pas perdre
-        _mfex(app, "vsplit editor")
-        Ressac._edit_text!(Ressac._active_editor(app), "brouillon à garder")
-        n_before = length(Ressac._all_leaves(ws.tree))
-        _mfex(app, "play"); _mfex(app, "design")
-        parts = Ressac._synth_workspace_parts(app)
-        @test parts !== nothing && parts[3] !== nothing                     # studio et doc reposés
-        @test occursin("freq=110", Tachikoma.text(parts[1].tabs[1].code_editor))
-        @test any(l -> occursin("DESIGN : studio, doc reposés", l), app.logs)
-        # rien n'a été jeté : la pane d'à côté et son texte sont toujours là
-        leaves = Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)
-        @test length(leaves) == n_before + 2
-        @test any(l -> any(t -> t isa Ressac.EditorPane && any(b -> Tachikoma.text(b.code_editor) == "brouillon à garder", t.tabs), l.tabs), leaves)
-        # Ctrl-2 passe par le même chemin que :design
-        (_, studio2, _) = Ressac._synth_workspace_parts(app)
-        Ressac._focus_pane!(app, studio2); Ressac.cmd_close!(app.workspaces)
-        _mfex(app, "play")
-        Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '2'))
-        @test Ressac.current_workspace(app.workspaces).name == "DESIGN" && Ressac._synth_workspace_parts(app) !== nothing
-        # :design! repart de zéro (le texte est perdu, le sketch revient)
-        _mfex(app, "design!")
-        @test length(Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)) == 3
-        @test occursin("@synth :sketch (freq=220", Tachikoma.text(Ressac._synth_workspace_parts(app)[1].tabs[1].code_editor))
-        # :reset dans PLAY : patterns + wiki + doc
-        _mfex(app, "play")
+        # Une pane scindée à côté par le joueur survit aux changements de volet.
+        _mfex(app, "back")
         _mfex(app, "vsplit log")
-        @test length(Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)) == 4
+        n_before = length(Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree))
+        _mfex(app, "wiki"); _mfex(app, "back")
+        leaves = Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)
+        @test length(leaves) == n_before
+        @test any(l -> any(t -> t isa Ressac.LogPane, l.tabs), leaves)
+        # Le son rouvert a gardé son texte.
+        _mfex(app, "son")
+        @test occursin("freq=110", Tachikoma.text(Ressac._synth_workspace_parts(app)[1].tabs[1].code_editor))
+        # :reset — l'écran à neuf autour du texte des patterns.
+        Ressac._edit_text!(Ressac._patterns_editor(app), "@d1 p\"à garder\"")
         _mfex(app, "reset")
         leaves = Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)
-        @test length(leaves) == 3
-        @test any(t -> t isa Ressac.WikiPane, [t for l in leaves for t in l.tabs])
-        # un ancien layout DESIGN (une seule pane) : chargé, visité, il prend la forme
+        @test length(leaves) == 2 && app.volet === :fiche
+        @test Tachikoma.text(Ressac._patterns_editor(app)) == "@d1 p\"à garder\""
+        _mfex(app, "son")                                                # le son, lui, repart du sketch
+        @test occursin("@synth :sketch (freq=220", Tachikoma.text(Ressac._synth_workspace_parts(app)[1].tabs[1].code_editor))
+        # un ancien layout à deux workspaces : chargé, il donne l'écran unique avec ses textes
         path = joinpath(mktempdir(), "layout.toml")
         write(path, """
         current_idx = 1
@@ -161,7 +141,7 @@ end
         tb2 = Tachikoma.TestBackend(160, 44)
         fr2 = Tachikoma.Frame(tb2.buf, Tachikoma.Rect(1, 1, 160, 44), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
         Tachikoma.view(app2, fr2)
-        _mfex(app2, "design")
+        _mfex(app2, "son")
         parts = Ressac._synth_workspace_parts(app2)
         @test parts !== nothing && parts[1].tabs[1].name == "old"
     finally
@@ -174,7 +154,7 @@ end
     Ressac._WAVE_RENDER[] = _MF_STUB; Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _mf_app()
-        _mfex(app, "design")
+        _mfex(app, "son")
         (_, studio, _) = Ressac._synth_workspace_parts(app)
         Ressac._focus_pane!(app, studio)                       # pas un éditeur, trois panes
         app.esc_quit_at = 0.0
@@ -192,7 +172,7 @@ end
     Ressac._WAVE_RENDER[] = _MF_STUB; Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _mf_app()
-        _mfex(app, "design"); _mfex(app, "synth deux")
+        _mfex(app, "son"); _mfex(app, "synth deux")
         (ep, _, _) = Ressac._synth_workspace_parts(app)
         @test length(ep.tabs) == 2
         ed = ep.tabs[ep.current_tab].code_editor
@@ -217,7 +197,7 @@ end
     Ressac._WAVE_RENDER[] = _MF_STUB; Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _mf_app()
-        _mfex(app, "design")
+        _mfex(app, "son")
         (ep, _, _) = Ressac._synth_workspace_parts(app)
         ed = ep.tabs[1].code_editor
         Tachikoma.set_text!(ed, "@synth :sketch (freq=220) saw(:freq)\n"); ed.mode = :normal
@@ -263,7 +243,7 @@ end
     Ressac._WAVE_RENDER[] = _MF_STUB; Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _mf_app()
-        _mfex(app, "design")
+        _mfex(app, "son")
         (ep, studio, _) = Ressac._synth_workspace_parts(app)
         tab = ep.tabs[1]
         tab.name = "rezzbass"; tab.synth_mode = :sc
@@ -289,7 +269,7 @@ end
     try
         app, tb, frame = _mf_app()
         Ressac._LIVE_SCHEDULER[] = app.scheduler
-        _mfex(app, "design")
+        _mfex(app, "son")
         (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
         ed = ep.tabs[1].code_editor
         Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)\n"); ed.mode = :normal
@@ -324,8 +304,8 @@ end
         bar = Ressac.hint_text(Ressac._keybar_layers(app)[1])
         @test startswith(bar, "T entendre · D drone")
         @test occursin("j défiler", bar)
-        # PLAY : e évalue, m mute, depuis le wiki
-        _mfex(app, "play")
+        # les patterns : e évalue, m mute, depuis le wiki ouvert à côté
+        _mfex(app, "wiki")
         wiki = Ressac._find_pane(app, Ressac.WikiPane)
         Ressac._focus_pane!(app, wiki)
         ped = Ressac._active_editor(app)

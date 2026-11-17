@@ -37,35 +37,38 @@ _prpane(app) = (Ressac._PANE_MODE.active = false; Tachikoma.update!(app, Tachiko
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _pr_app()
-        _prex(app, "design")
+        _prex(app, "son")
         _prscreen(app, tb, frame)
         ws = Ressac.current_workspace(app.workspaces)
         root = ws.tree
         @test root isa Ressac.Container && root.direction === :h && root.ratios == [0.5, 0.5]
         side = root.children[2]
         @test side isa Ressac.Container && side.direction === :v
-        # le texte est focalisé : > l'élargit, < le rétrécit
+        @test side.ratios ≈ [0.58, 0.42]
+        # le texte du son est focalisé (colonne de droite) : > l'élargit, < le rétrécit
         _prpane(app); _prkey(app, '>')
-        @test root.ratios ≈ [0.55, 0.45]
+        @test root.ratios ≈ [0.45, 0.55]
         @test Ressac._PANE_MODE.active                       # le mode pane reste actif
         _prkey(app, '<'); _prkey(app, '<')
-        @test root.ratios ≈ [0.45, 0.55]
-        # la hauteur ne concerne pas le texte (pas d'ancêtre vertical) : rien ne bouge
+        @test root.ratios ≈ [0.55, 0.45]
+        # + le grandit en hauteur, aux dépens de la feuille du dessous
         _prkey(app, '+')
-        @test root.ratios ≈ [0.45, 0.55] && side.ratios ≈ [0.55, 0.45]
+        @test root.ratios ≈ [0.55, 0.45] && side.ratios ≈ [0.63, 0.37]
+        _prkey(app, '-')
+        @test side.ratios ≈ [0.58, 0.42]
         _prkey(app, :escape)
-        # le studio (en haut à droite) : + le grandit, - le réduit ; > joue sur la colonne de droite
+        # le studio (sous le texte) : + le grandit, - le réduit ; > joue sur la colonne
         (_, studio, _) = Ressac._synth_workspace_parts(app)
         Ressac._focus_pane!(app, studio)
         _prpane(app); _prkey(app, '+')
-        @test side.ratios ≈ [0.6, 0.4]
+        @test side.ratios ≈ [0.53, 0.47]
         _prkey(app, '-'); _prkey(app, '-')
-        @test side.ratios ≈ [0.5, 0.5]
+        @test side.ratios ≈ [0.63, 0.37]
         _prkey(app, '>')
-        @test root.ratios ≈ [0.4, 0.6]
+        @test root.ratios ≈ [0.5, 0.5]
         # bornes : jamais moins de 10 %
         for _ in 1:30; _prkey(app, '+'); end
-        @test side.ratios ≈ [0.9, 0.1]
+        @test side.ratios ≈ [0.1, 0.9]
         # = égalise tous les containers au-dessus
         _prkey(app, '=')
         @test root.ratios ≈ [0.5, 0.5] && side.ratios ≈ [0.5, 0.5]
@@ -81,8 +84,7 @@ _prpane(app) = (Ressac._PANE_MODE.active = false; Tachikoma.update!(app, Tachiko
         Ressac.save_layout(app.workspaces, path)
         wm = Ressac.WorkspaceManager()
         Ressac.load_layout!(wm, path)
-        d = wm.workspaces[findfirst(w -> w.name == "DESIGN", wm.workspaces)]
-        @test d.tree.children[2].ratios ≈ [0.55, 0.45]
+        @test wm.workspaces[1].tree.children[2].ratios ≈ [0.45, 0.55]
     finally
         Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
     end
@@ -93,7 +95,7 @@ end
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _pr_app()
-        _prex(app, "design")
+        _prex(app, "son")
         _prscreen(app, tb, frame)
         ws = Ressac.current_workspace(app.workspaces)
         root = ws.tree

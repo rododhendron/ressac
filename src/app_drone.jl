@@ -91,6 +91,18 @@ end
 function _drone_pane!(m::RessacApp)
     p = _find_pane(m, DronePane)
     p !== nothing && return p
+    # Dans le volet du son, elle se range en onglet sous le texte, à côté de
+    # la DOC et du studio, et passe devant ; le clavier ne bouge pas.
+    son = get(m.volets, :son, nothing)
+    if son !== nothing && m.volet === :son
+        for leaf in _all_leaves(son)
+            any(t -> t isa SynthDocPane, leaf.tabs) || continue
+            p = _pane_new(:drone, Dict{String,Any}())
+            push!(leaf.tabs, p)
+            leaf.current_tab = length(leaf.tabs)
+            return p
+        end
+    end
     ed_pane = _focused_pane_impl(m)
     p = _place_pane!(m, :drone, Dict{String,Any}())
     p isa DronePane || return nothing

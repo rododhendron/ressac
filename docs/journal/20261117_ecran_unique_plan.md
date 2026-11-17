@@ -58,7 +58,7 @@ Tests : `test_slot_state.jl` — un cas par état, plus les transitions
 
 ## Étape 2 — L'écran unique
 
-- [ ] **E2.1 — Un seul workspace.** PLAY / DESIGN / EXPLORE disparaissent
+- [x] **E2.1 — Un seul workspace.** PLAY / DESIGN / EXPLORE disparaissent
   comme écrans. Restent : la pane patterns à gauche, une colonne à droite
   qui est un **volet** (fiche par défaut ; wiki ; son), et l'explorateur
   par-dessus. `app_modes.jl`, `app_synth_workspace.jl` et les commandes

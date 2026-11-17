@@ -35,7 +35,7 @@ function _drain_explorer_sculpt!(m::RessacApp)
     name = replace(strip(replace(label, r"\s*#\s*" => "_")), r"[^\w]" => "_")
     g = deserialize_genome(gser)
     _open_synth_text_in_design!(m, name, _explorer_export_text(g, name); focus_studio = true)
-    _push_app_log!(m, "[INFO] $(label) dans DESIGN — le studio suit le texte, :w sauve, U l'utilise dans un pattern")
+    _push_app_log!(m, "[INFO] $(label) ouvert à droite — le studio suit le texte, :w sauve, U l'utilise dans un pattern")
     return true
 end
 
@@ -59,9 +59,23 @@ function _sculpt_command!(m::RessacApp, name::AbstractString)
     nm = strip(String(name))
     parts = _synth_workspace_parts(m)
     if parts !== nothing
-        # Workspace synth : le studio suit déjà le texte — on l'y amène.
-        isempty(nm) || _open_synth_tab!(m, nm)
+        # Le son est ouvert à droite : le studio suit déjà le texte — on l'y
+        # amène. Un nom inconnu ou un texte qu'on ne sait pas lire est dit,
+        # plutôt que d'ouvrir un studio vide.
+        if !isempty(nm)
+            if !_is_known_synth(nm)
+                _push_app_log!(m, "[ERROR] :sculpt — " * _sculpt_refusal(nm, ""))
+                return
+            end
+            _open_synth_tab!(m, nm)
+        end
         _synth_workspace_sync!(m)
+        if parts[2].genome === nothing
+            tab = _synth_workspace_tab(parts[1])
+            txt = tab === nothing ? "" : TK.text(tab.code_editor)
+            _push_app_log!(m, "[ERROR] :sculpt — " * _sculpt_refusal(tab === nothing ? nm : tab.name, txt))
+            return
+        end
         _focus_pane!(m, parts[2])
         _push_app_log!(m, "[INFO] studio : h/l tirent un knob et le texte suit · Ctrl-w h revient au texte")
         return

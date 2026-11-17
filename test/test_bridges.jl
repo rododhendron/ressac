@@ -20,7 +20,8 @@ end
 _bkey(app, c::Char) = Tachikoma.update!(app, Tachikoma.KeyEvent(c))
 _bkey(app, s::Symbol) = Tachikoma.update!(app, Tachikoma.KeyEvent(s))
 _bex(app, cmd) = (_bkey(app, ':'); foreach(c -> _bkey(app, c), cmd); _bkey(app, :enter))
-_bws(app) = Ressac.current_workspace(app.workspaces).name
+# Où le joueur travaille : le contexte de la pane focalisée.
+_bws(app) = Dict(:play => "PLAY", :design => "DESIGN", :explore => "EXPLORE")[Ressac._workspace_mode(app)]
 function _bscreen(app, tb, frame)
     Tachikoma.reset!(tb.buf); Tachikoma.view(app, frame)
     join((Tachikoma.row_text(tb, y) for y in 1:40), "\n")
@@ -39,25 +40,35 @@ function _in_sandbox(f)
     end
 end
 
-@testset "workspaces — PLAY / DESIGN / EXPLORE au démarrage, remplis à la demande" begin
+@testset "écran unique — les patterns à gauche, un volet à droite, l'explorateur par-dessus" begin
     app, tb, frame = _br_app()
-    names = [w.name for w in app.workspaces.workspaces]
-    @test names == ["PLAY", "DESIGN", "EXPLORE"]
-    @test _bws(app) == "PLAY"
+    @test length(app.workspaces.workspaces) == 1             # un seul écran
+    @test _bws(app) == "PLAY" && app.volet === :fiche
     @test Ressac._focused_role(app) === :patterns
     scr = _bscreen(app, tb, frame)
-    @test occursin("1 PLAY", scr) && occursin("2 DESIGN", scr) && occursin("3 EXPLORE", scr)
-    _bex(app, "design")
-    @test _bws(app) == "DESIGN"
+    @test occursin("PATTERNS", scr) && !occursin("DESIGN", scr) && !occursin("EXPLORE", scr)
+    patterns = Tachikoma.text(Ressac._patterns_editor(app))
+    _bex(app, "son")
+    @test _bws(app) == "DESIGN" && app.volet === :son
     @test Ressac._focused_role(app) === :synth               # sketch synth pré-rempli
     @test occursin("@synth :sketch", Tachikoma.text(Ressac._active_editor(app)))
+    @test occursin("PATTERNS", _bscreen(app, tb, frame))     # les patterns restent à l'écran
     _bex(app, "explore")
     @test _bws(app) == "EXPLORE"
     @test Ressac._focused_pane_impl(app) isa Ressac.SynthExplorerPane
     @test occursin("EXPLORER", _bscreen(app, tb, frame))
-    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, '1'))
-    @test _bws(app) == "PLAY"
-    _bex(app, "play"); @test _bws(app) == "PLAY"
+    _bex(app, "back")
+    @test _bws(app) == "PLAY" && app.volet === :fiche && app.zoom_leaf == 0
+    @test Tachikoma.text(Ressac._patterns_editor(app)) == patterns
+    # Un volet déjà ouvert est gardé : le son retrouve son texte.
+    _bex(app, "son")
+    Tachikoma.set_text!(Ressac._active_editor(app), "@synth :sketch (freq=220) saw(:freq)")
+    _bex(app, "wiki"); @test app.volet === :wiki
+    _bex(app, "son")
+    @test occursin("saw(:freq)", Tachikoma.text(Ressac._active_editor(app)))
+    # :q ferme le volet, puis seulement quitte.
+    _bex(app, "q"); @test app.volet === :fiche && !app.quit
+    @test Ressac._focused_role(app) === :patterns
 end
 
 @testset ":synth <nom> ouvre la recette de librairie (copie éditable), pas un starter vide" begin
@@ -88,7 +99,7 @@ end
         @test Ressac._current_synth_tab(app).name == "kick"
         @test occursin("env_perc", Tachikoma.text(Ressac._active_editor(app)))
         # retour, mot inconnu
-        _bex(app, "play")
+        _bex(app, "back")
         ed = Ressac._active_editor(app)
         ed.cursor_row = 2; ed.cursor_col = 8                  # sur « zorglub »
         n0 = length(app.logs)
@@ -113,7 +124,7 @@ end
         @test haskey(Ressac._SYNTH_REGISTRY, :kick)             # enregistré → jouable
         @test occursin("ajouté", app.logs[end])
         # depuis DESIGN aussi (l'onglet courant : kick)
-        _bex(app, "design")
+        _bex(app, "son")
         _bkey(app, 'U')
         @test _bws(app) == "PLAY"
         @test occursin("@d5 p\"kick*4\"", Tachikoma.text(Ressac._active_editor(app)))
@@ -129,7 +140,7 @@ end
         @test _bws(app) == "DESIGN"
         Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')); _bkey(app, 'c'); _bkey(app, :escape)
         Ressac._PANE_MODE.active = false
-        @test Ressac._focused_sculpt_pane(app) === nothing         # Ctrl-w c ferme la pane
+        @test Ressac._focused_sculpt_pane(app) === nothing && app.volet === :fiche   # Ctrl-w c ferme le volet
         write(joinpath(pwd(), "plugins", "user-synths", "raw.jl"),
               "@synth :raw (freq=220, sustain=0.5) SynthDSL.Sig(\"{ SinOsc.ar(freq) }.value\")\n")
         _bex(app, "sculpt raw")
@@ -137,7 +148,7 @@ end
         @test occursin("SC brut", app.logs[end])
         _bex(app, "sculpt nexistepas")
         @test occursin("introuvable", app.logs[end])
-        # U depuis un studio seul (le workspace a perdu sa forme) : sauve + @dN dans PLAY
+        # U depuis le studio : sauve + @dN dans les patterns
         _bex(app, "synth zorglub")                               # l'onglet zorglub redevient courant
         @test Ressac._focused_role(app) === :synth
         _bex(app, "sculpt")
@@ -208,7 +219,8 @@ end
             scr = _bscreen(app, tb, frame)
             @test occursin("STUDIO ┄ candidat_1", scr)
             @test occursin("▸ global", scr) || occursin("▸ ", scr)   # knobs groupés
-            @test occursin("SYNTHÈSE", scr) || occursin("EN SORTIE", scr) || occursin("À LA BASE", scr)
+            # l'explication est sur l'onglet DOC, derrière le studio qui a le clavier
+            @test !occursin("EN SORTIE", scr) || occursin("STUDIO", scr)
             # les touches vont bien au studio
             f0 = sp.focus
             _bkey(app, 'j')
@@ -237,27 +249,24 @@ end
 end
 
 # ── Régressions : layout restauré, onglet courant 0, défilement maintenu ──
-@testset "layout — un workspace vide sauvé/restauré reste vide, jamais de pane sans onglet courant" begin
-    app, tb, frame = _br_app()                        # PLAY rempli, DESIGN/EXPLORE vides
+@testset "layout — l'écran sauvé avec un son ouvert se restaure, et le volet s'échange encore" begin
+    app, tb, frame = _br_app()
+    _bex(app, "son")
     path = joinpath(mktempdir(), "layout.toml")
-    Ressac.save_layout(app.workspaces, path)          # DESIGN/EXPLORE : current_tab 0
-    wm = Ressac.WorkspaceManager()
-    Ressac.load_layout!(wm, path)
-    for ws in wm.workspaces
-        for leaf in Ressac._all_leaves(ws.tree)
-            @test isempty(leaf.tabs) || 1 <= leaf.current_tab <= length(leaf.tabs)
-        end
-    end
-    design = wm.workspaces[findfirst(w -> w.name == "DESIGN", wm.workspaces)]
-    @test design.tree isa Ressac.PaneLeaf && isempty(design.tree.tabs)
-    # l'app relancée sur ce layout : DESIGN se remplit à la visite, aucun crash au rendu
+    Ressac.save_layout(app.workspaces, path)
     app2 = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))
     Ressac.load_layout!(app2.workspaces, path)
     tb2 = Tachikoma.TestBackend(120, 40)
     frame2 = Tachikoma.Frame(tb2.buf, Tachikoma.Rect(1, 1, 120, 40), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
     Tachikoma.view(app2, frame2)
+    for leaf in Ressac._all_leaves(Ressac.current_workspace(app2.workspaces).tree)
+        @test 1 <= leaf.current_tab <= length(leaf.tabs)
+    end
+    @test app2.volet === :son                                # reconnu à ce qu'il contient
     Ressac._active_editor(app2).mode = :normal
-    _bex(app2, "design")
+    _bex(app2, "back")
+    @test app2.volet === :fiche && Ressac._focused_role(app2) === :patterns
+    _bex(app2, "son")
     @test Ressac._focused_role(app2) === :synth
     @test (Tachikoma.view(app2, frame2); true)
     # un clic dans la pane, puis rendu : pas de BoundsError
@@ -265,13 +274,22 @@ end
     @test (Tachikoma.view(app2, frame2); true)
 end
 
-@testset "layout — un ancien layout sans noms reçoit PLAY/DESIGN/EXPLORE" begin
+@testset "layout — une disposition d'avant (trois workspaces) est reprise pour ce qu'elle contient" begin
     wm = Ressac.WorkspaceManager()
-    Ressac.create_workspace!(wm, "")
+    for (name, role, text) in (("PLAY", "patterns", "@d1 p\"bd sn\""), ("DESIGN", "synth", "@synth :vieux (freq=110) saw(:freq)"))
+        Ressac.create_workspace!(wm, name)
+        ep = Ressac._pane_new(:editor, Dict{String,Any}("buffer_role" => role, "name" => role == "synth" ? "vieux" : "main"))
+        Tachikoma.set_text!(ep.tabs[1].code_editor, text)
+        leaf = wm.workspaces[end].tree
+        push!(leaf.tabs, ep); leaf.current_tab = 1
+    end
+    Ressac.create_workspace!(wm, "EXPLORE")
     app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5), workspaces = wm)
     Ressac._ensure_default_workspace!(app)
-    @test [w.name for w in app.workspaces.workspaces] == ["PLAY", "DESIGN", "EXPLORE"]
-    @test app.workspaces.current_idx == 1
+    @test length(app.workspaces.workspaces) == 1
+    @test Tachikoma.text(Ressac._patterns_editor(app)) == "@d1 p\"bd sn\""
+    Ressac._open_volet!(app, :son)
+    @test occursin(":vieux", Tachikoma.text(Ressac._active_editor(app)))
 end
 
 @testset "garde — une pane sans onglet courant valide ne fait pas planter le rendu" begin

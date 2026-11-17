@@ -40,12 +40,9 @@ bind!(:global, "/", "chercher dans le texte (n / N : occurrence suivante / préc
 bind!(:global, "Ctrl-p", "palette : commandes, sons, fonctions, patterns"; short = "palette",
       group = :help, when = m -> m.modal === :none, action = _open_palette!)
 bind!(:global, "Ctrl-w", "mode pane"; group = :layout, hint = false)
-bind!(:global, ["Ctrl-1", "Ctrl-2", "Ctrl-3", "Ctrl-4", "Ctrl-5",
-                "Ctrl-6", "Ctrl-7", "Ctrl-8", "Ctrl-9"],
-      "workspace 1…9"; group = :layout, hint = false)
 bind!(:global, "Ctrl-f", "montrer/cacher les floats"; group = :layout, hint = false)
-bind!(:global, "Ctrl-1 / :play · Ctrl-2 / :design · Ctrl-3 / :explore",
-      "workspaces PLAY (patterns) · DESIGN (synth) · EXPLORE (GA)"; group = :layout, hint = false)
+bind!(:global, ":son · :wiki · :explorer · :back",
+      "le volet à droite des patterns : un son, le wiki, l'explorateur — :back (ou :q) le referme"; group = :layout, hint = false)
 # Zoom du scope :wave / vitesse du scope réservoir. Après le nudge des
 # nombres de :editor (même touches, garde « nombre sous le curseur »).
 bind!(:global, "+", "scope : zoom Y +"; group = :view, hint = false, when = _km_wave,
@@ -130,7 +127,7 @@ bind!(:editor, "u", "annuler"; group = :edit, hint = false)
 # ── Les modes : ce qui concerne le son ou la session, quelle que soit ──
 # la pane focalisée. Règle : une touche de mode n'est jamais aussi une
 # touche d'une pane de ce mode (test_keymap.jl le vérifie).
-scope!(:mode_play, "PLAY — quelle que soit la pane"; layer = :mode, modes = (:play,))
+scope!(:mode_play, "PATTERNS — d'où qu'on soit (fiche, wiki, journal)"; layer = :mode, modes = (:play,))
 bind!(:mode_play, "e", "évaluer la ligne"; short = "évaluer", group = :eval, when = _km_normal,
       action = _eval_current_line!)
 bind!(:mode_play, "E", "tout évaluer"; group = :eval, when = _km_normal,
@@ -142,7 +139,7 @@ bind!(:mode_play, "K", "la fiche du mot sous le curseur (DOC)"; short = "fiche",
 bind!(:mode_play, "Space", "snippet…"; group = :edit, when = _km_normal,
       action = m -> (m.pending_leader = true))
 
-scope!(:mode_design, "DESIGN — quelle que soit la pane"; layer = :mode, modes = (:design,))
+scope!(:mode_design, "SON — depuis le texte, la DOC ou le studio"; layer = :mode, modes = (:design,))
 bind!(:mode_design, ["T", "t"], "entendre le son (maintenir = rafale)"; short = "entendre", group = :audio,
       repeat = true, when = _km_normal,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
@@ -150,7 +147,7 @@ bind!(:mode_design, "D", "drone : tenir le son / le relâcher"; short = "drone",
       when = _km_normal, action = _drone_toggle!)
 bind!(:mode_design, "Space", "maillon DSL…"; group = :edit, when = _km_normal,
       action = m -> (m.pending_leader = true))
-bind!(:mode_design, "U", "utiliser dans un pattern (sauve + @dN dans PLAY)"; short = "→ pattern",
+bind!(:mode_design, "U", "utiliser dans un pattern (sauve + @dN à gauche)"; short = "→ pattern",
       group = :file, when = _km_normal, action = _design_use_in_pattern!)
 bind!(:mode_design, "P", "élagage : mesurer l'impact de chaque nœud"; short = "élagage", group = :structure,
       when = _km_normal, action = _design_measure_impacts!)
@@ -161,7 +158,7 @@ bind!(:mode_design, "X", "l'explication du son (DOC)"; short = "explication", gr
 bind!(:mode_design, "Y", "le graphe du son (DOC)"; short = "graphe", group = :help,
       when = _km_normal, action = m -> _design_doc_mode!(m, :graph))
 
-scope!(:mode_explore, "EXPLORE — quelle que soit la pane"; layer = :mode, modes = (:explore,))
+scope!(:mode_explore, "EXPLORATEUR"; layer = :mode, modes = (:explore,))
 bind!(:mode_explore, ["T", "t"], "entendre le candidat"; short = "entendre", group = :audio,
       when = _km_normal, action = _explore_play!)
 bind!(:mode_explore, "D", "drone du candidat on/off"; short = "drone", group = :audio,
@@ -179,8 +176,12 @@ bind!(:patterns, "H", "pattern : décaler le token ←"; group = :edit, hint = f
       action = m -> _pat_shift!(m, _km_ed(m), -1))
 bind!(:patterns, "X", "pattern : silence le token (~)"; group = :edit, hint = false, when = _km_in_pattern,
       action = m -> _pat_silence!(m, _km_ed(m)))
-bind!(:patterns, "g s", "ouvrir le synth sous le curseur (DESIGN)"; group = :nav, hint = false,
+bind!(:patterns, "g s", "ouvrir le son sous le curseur, à droite"; short = "son", group = :nav,
       when = _km_patterns, action = _goto_synth_under_cursor!)
+bind!(:patterns, "g w", "ouvrir le wiki, à droite"; short = "wiki", group = :nav,
+      when = _km_patterns, action = m -> _open_wiki!(m))
+bind!(:patterns, "g x", "ouvrir l'explorateur de sons"; group = :nav, hint = false,
+      when = _km_patterns, action = m -> _open_volet!(m, :explorer))
 
 # ── :synth ─────────────────────────────────────────────────────────
 scope!(:synth, "Pane synth (texte)"; layer = :pane, modes = (:design,))
@@ -256,7 +257,7 @@ bind!(:pane_mode, "Ctrl-w v", "split vertical"; group = :layout,
 bind!(:pane_mode, ["Ctrl-w h", "Ctrl-w j", "Ctrl-w k", "Ctrl-w l", "Ctrl-w ←", "Ctrl-w ↓", "Ctrl-w ↑", "Ctrl-w →"],
       "focus ← ↓ ↑ → (ou flèches)"; short = "focus", group = :nav, repeat = true,
       action = (m, evt) -> cmd_focus!(m.workspaces, _PANE_MODE_FOCUS[keyname(evt)]))
-bind!(:pane_mode, "Ctrl-w c", "fermer la pane"; group = :layout, action = m -> cmd_close!(m.workspaces))
+bind!(:pane_mode, "Ctrl-w c", "fermer la pane"; group = :layout, action = m -> _close_focused_pane!(m))
 bind!(:pane_mode, "Ctrl-w z", "zoom / dézoom (la pane seule à l'écran)"; group = :layout, action = _toggle_zoom!)
 bind!(:pane_mode, ["Ctrl-w <", "Ctrl-w >"], "moins / plus large (5 %) — ou glisser une bordure à la souris"; short = "largeur",
       group = :layout, repeat = true,

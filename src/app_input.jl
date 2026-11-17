@@ -295,7 +295,7 @@ function _pane_button_action!(m::RessacApp, act::Symbol)
     elseif act === :zoom
         _toggle_zoom!(m)
     elseif act === :close
-        cmd_close!(m.workspaces)
+        _close_focused_pane!(m)
     end
     return
 end
