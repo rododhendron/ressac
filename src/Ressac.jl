@@ -114,6 +114,7 @@ include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication �
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
+include("slot_state.jl")         # blocs @dN du texte + état de chaque ligne (pur)
 include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
 include("app_jobs.jl")           # travail lent hors de la tâche UI (_background!, _drain_jobs!)
 include("app_hover.jl")          # bulle de glossaire au survol (avant les étapes clavier)
@@ -126,6 +127,7 @@ include("editor_snippets.jl")    # Space-leader : templates + placeholders
 include("editor_autocomplete.jl")# Tab : identifiants, ghost, commandes ex
 include("editor_vim_ops.jl")     # opérations texte pures (mots, lignes)
 include("app_tap_piano.jl")      # tap / piano / bpm
+include("app_slots.jl")          # l'état des lignes lu sur l'app (scheduler, erreurs, densité)
 include("app_patterns.jl")       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester

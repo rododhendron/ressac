@@ -589,8 +589,9 @@ function _evict_faulty_slot!(s::Scheduler, slot::Symbol, pattern::Pattern, err)
     end
     evicted || return nothing
     _drone_slot_release!(slot)
-    _notify!("[ERROR] @$(slot) coupé — son pattern a levé : " *
-             first(sprint(showerror, err), 200) * " (réévalue-le pour le relancer)")
+    why = first(sprint(showerror, err), 200)
+    _notify!("[ERROR] @$(slot) coupé — son pattern a levé : " * why * " (réévalue-le pour le relancer)")
+    _notify_fault!(slot, why)
     return nothing
 end
 

@@ -37,3 +37,24 @@ function _drain_notices!()
         return out
     end
 end
+
+# Un pattern qui lève en jouant est retiré par le scheduler (son thread). Le
+# journal reçoit une ligne ; l'écran, lui, veut savoir QUEL slot et pourquoi,
+# pour l'écrire sous la ligne fautive. Même file, même règle : on dépose
+# ici, la vue vide.
+const _FAULT_QUEUE = Tuple{Symbol,String}[]
+
+function _notify_fault!(slot::Symbol, message::AbstractString)
+    lock(_NOTICE_LOCK) do
+        length(_FAULT_QUEUE) < _NOTICE_MAX && push!(_FAULT_QUEUE, (slot, String(message)))
+    end
+    return nothing
+end
+
+function _drain_faults!()
+    lock(_NOTICE_LOCK) do
+        out = copy(_FAULT_QUEUE)
+        empty!(_FAULT_QUEUE)
+        return out
+    end
+end

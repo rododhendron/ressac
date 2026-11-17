@@ -136,6 +136,15 @@ non-empty), and the focus toggle for keystroke routing.
     # Aperçu en bout de ligne de ce que chaque slot joue vraiment.
     inline_preview::Bool = true
     inline_cache::Dict{Symbol,Tuple{Any,String}} = Dict{Symbol,Tuple{Any,String}}()
+    # L'état de chaque ligne @dN (app_slots.jl). `slot_evaluated` : le
+    # texte de la dernière évaluation réussie de chaque slot — ce qui JOUE,
+    # qui n'est pas forcément ce qu'on lit. `slot_errors` : la dernière
+    # erreur, gardée tant que le bloc est le texte fautif.
+    slot_evaluated::Dict{Symbol,String}  = Dict{Symbol,String}()
+    slot_errors::Dict{Symbol,SlotError}  = Dict{Symbol,SlotError}()
+    slot_offgrid::Set{Symbol}            = Set{Symbol}()
+    slot_scan::Tuple{UInt64,Vector{SlotBlock}} = (UInt64(0), SlotBlock[])
+    slot_density::Dict{Symbol,Tuple{Int,UInt64,Int}} = Dict{Symbol,Tuple{Int,UInt64,Int}}()
     # Bandeau des slots chargés, au-dessus des panes.
     rack_visible::Bool = true
     rack_cache::Dict{Symbol,Tuple{Any,Tuple{String,String}}} = Dict{Symbol,Tuple{Any,Tuple{String,String}}}()

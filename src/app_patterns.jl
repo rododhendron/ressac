@@ -291,38 +291,10 @@ function _eval_pattern_blocks!(m::RessacApp, target)
     _guard_patterns_only!(m, "E (tout évaluer)") || return
     txt = TK.text(_patterns_editor(m))
     lines = collect(split(txt, '\n'; keepempty=true))
-    blocks = Dict{Symbol,String}()
-    prelude = String[]                  # tout ce qui n'est pas un slot, dans l'ordre
-    i = 1
-    head_rx = r"^\s*(#+\s*)?@d(\d+)\b"
-    while i <= length(lines)
-        line = lines[i]
-        mt = match(head_rx, line)
-        if mt === nothing
-            # Une ligne hors slot : définition de variable, cps!, fonction…
-            # Elle est évaluée avant les slots, pour qu'un `@d1 basse` voie
-            # la `basse = p"…"` écrite plus haut.
-            if isempty(strip(line)) || startswith(lstrip(line), "#")
-                i += 1
-                continue
-            end
-            (a, b) = _logical_block_range(lines, i)
-            b = max(b, i)
-            push!(prelude, _join_logical_block(lines[a:b]))
-            i = b + 1
-            continue
-        end
-        # Le bloc entier, comme `e` le délimite : les lignes `|>` qui
-        # suivent, mais aussi une parenthèse ou un crochet resté ouvert
-        # (`@d1 stack([p"bd",` / `p"hh"])`). `E` et `e` lisent le même bloc.
-        (_, b) = _logical_block_range(lines, i)
-        b = max(b, i)
-        if mt.captures[1] === nothing
-            slot = Symbol("d", mt.captures[2])
-            blocks[slot] = _join_logical_block(lines[i:b])
-        end
-        i = b + 1
-    end
+    (scanned, prelude) = _scan_slot_blocks(lines)
+    live = _live_blocks(scanned)
+    blocks = Dict{Symbol,String}(slot => b.src for (slot, b) in live)
+    head_rx = _SLOT_HEAD_RX
     targets = target === :all ?
         sort!(collect(keys(blocks)); by=s -> parse(Int, String(s)[2:end])) :
         target
@@ -343,19 +315,11 @@ function _eval_pattern_blocks!(m::RessacApp, target)
     for slot in targets
         src = get(blocks, slot, nothing)
         src === nothing && continue
-        try
-            ex = Meta.parse(src)
-            Core.eval(Main, ex)
+        if _eval_slot_block!(m, slot, src)
             ok += 1
             push!(ok_slots, slot)
-        catch e
+        else
             err += 1
-            # Try to render a human-readable hint based on common
-            # Julia error classes. The raw stacktrace stays available
-            # in :keydebug logs if the user needs it; the modal log
-            # should be actionable, not technical.
-            hint = _humanize_eval_error(e, src)
-            _push_app_log!(m, "[ERROR] éval $slot : $hint")
         end
     end
     # Record the rows we just successfully evaluated so the view can
@@ -415,128 +379,6 @@ function _warn_unknown_sounds!(m::RessacApp, srcs::AbstractVector{<:AbstractStri
         " — :browse ou Espace b pour la liste, :samples pour les banques")
 end
 
-"""
-    _join_logical_block(rows) -> String
-
-Recolle les lignes d'un bloc en une expression Julia. Une ligne de
-continuation qui commence par `|>` est accrochée à la précédente par
-une espace : Julia lit `@d1 p"bd"` puis `|> gain(1)` comme deux
-expressions et échoue, alors que `@d1 p"bd" |> gain(1)` est ce que l'on
-veut. Les autres lignes (corps de fonction, tableau multi-ligne)
-gardent leur saut de ligne.
-"""
-function _join_logical_block(rows)
-    isempty(rows) && return ""
-    out = IOBuffer()
-    for (i, line) in enumerate(rows)
-        if i == 1
-            print(out, line)
-        elseif startswith(lstrip(String(line)), "|>")
-            print(out, " ", strip(String(line)))
-        else
-            print(out, "\n", line)
-        end
-    end
-    return String(take!(out))
-end
-
-"""
-    _delim_depth(s) -> Int
-
-Net depth of unclosed `(`, `[`, `{` minus matching closers in `s`,
-skipping string literals and `#` comments. Used by
-`_logical_block_range` to detect multi-line expressions even when a
-mid-block line on its own would parse as `:error` (which is what
-happens for the tail of a multi-line array literal, e.g.
-`     collect(37:48), collect(49:60)],`).
-"""
-function _delim_depth(s::AbstractString)
-    depth = 0
-    in_str = false
-    str_char = ' '
-    in_cmt = false
-    i = firstindex(s)
-    n = lastindex(s)
-    while i <= n
-        c = s[i]
-        if in_cmt
-            c == '\n' && (in_cmt = false)
-        elseif in_str
-            if c == '\\' && i < n
-                i = nextind(s, i)  # skip escaped char
-            elseif c == str_char
-                in_str = false
-            end
-        else
-            if c == '#'
-                in_cmt = true
-            elseif c == '"'
-                in_str = true; str_char = '"'
-            elseif c == '(' || c == '[' || c == '{'
-                depth += 1
-            elseif c == ')' || c == ']' || c == '}'
-                depth -= 1
-            end
-        end
-        i = nextind(s, i)
-    end
-    depth
-end
-
-"""
-    _logical_block_range(lines, row) -> (start_row, end_row)
-
-Find the range of lines that form a single logical Julia expression
-containing `row`. Walks UP through `|>` continuations and any lines
-that leave an open bracket / paren / brace; walks DOWN until those
-brackets all close AND the gathered text parses (or we hit EOF).
-Comment prefixes (`# ` / `#`) are stripped first so muted blocks have
-the same range as their active twin.
-"""
-function _logical_block_range(lines::AbstractVector, row::Int)
-    1 <= row <= length(lines) || return (row, row)
-    _strip_cmt(s) = replace(String(s), r"^\s*#+\s*" => "")
-
-    # depths[i] = net delim depth at the START of line i (1-based).
-    # Walking up while depths[i] > 0 means "still inside an unclosed
-    # bracket from a previous line" — i.e. line i is a continuation.
-    stripped = _strip_cmt.(lines)
-    depths = zeros(Int, length(lines) + 1)
-    for i in 1:length(lines)
-        depths[i + 1] = depths[i] + _delim_depth(stripped[i])
-    end
-
-    start_row = row
-    while start_row > 1
-        cur = stripped[start_row]
-        if startswith(lstrip(cur), "|>") || depths[start_row] > 0
-            start_row -= 1
-        else
-            break
-        end
-    end
-
-    end_row = row
-    # First close every still-open bracket from start_row's perspective.
-    while end_row < length(lines) && depths[end_row + 1] > depths[start_row]
-        end_row += 1
-    end
-    # Then keep extending while the joined block is still parse-incomplete
-    # or the next line continues with `|>`.
-    while end_row < length(lines)
-        block = join(stripped[start_row:end_row], "\n")
-        parsed = Meta.parse(block; raise = false)
-        is_inc = parsed isa Expr && parsed.head === :incomplete
-        next_cont = startswith(lstrip(stripped[end_row + 1]), "|>")
-        if is_inc || next_cont
-            end_row += 1
-        else
-            break
-        end
-    end
-    return (start_row, end_row)
-end
-
 # Return true when the focused workspace pane is an EditorPane with
 # role `:patterns` — Julia eval is safe. Return false + log a hint
 # when called from any other context (synth pane, doc/log/scope
@@ -561,9 +403,11 @@ function _eval_current_line!(m::RessacApp)
     isempty(strip(lines[row])) && return
     (start_row, end_row) = _logical_block_range(lines, row)
     block = _join_logical_block(lines[start_row:end_row])
+    slot = _slot_of_src(block)
     try
         ex = Meta.parse(block)
         result = Core.eval(Main, ex)
+        slot === nothing || _slot_evaluated!(m, slot, block)
         rstr = sprint(io -> show(IOContext(io, :limit=>true, :displaysize=>(1, 60)), result))
         _push_app_log!(m, "[INFO] éval ⇒ $rstr")
         _warn_unknown_sounds!(m, [block])
@@ -582,6 +426,7 @@ function _eval_current_line!(m::RessacApp)
             end
         end
     catch err
+        slot === nothing || _slot_failed!(m, slot, block, _humanize_eval_error(err, block))
         _push_app_log!(m, "[ERROR] $(sprint(showerror, err))")
     end
 end
@@ -634,44 +479,14 @@ end
 function _cascade_dN_reeval!(m::RessacApp, lines::Vector,
                               rebound::Set{Symbol},
                               skip_first::Int, skip_last::Int)
-    n = length(lines)
-    i = 1
     n_cascade = 0
-    while i <= n
-        line = lines[i]
-        if !occursin(r"^\s*@d\d+\b", line)
-            i += 1
-            continue
-        end
-        # Found a @dN line — extend down while incomplete.
-        end_row = i
-        block = String(line)
-        while end_row < n
-            parsed = Meta.parse(block; raise = false)
-            if parsed isa Expr && parsed.head === :incomplete
-                end_row += 1
-                block = _join_logical_block(lines[i:end_row])
-            else
-                break
-            end
-        end
-        # Skip the just-evaled block to avoid double-firing.
-        if !(end_row < skip_first || i > skip_last)
-            i = end_row + 1
-            continue
-        end
-        # Parse + check for any reference to a rebound name.
-        try
-            ex = Meta.parse(block)
-            if _refs_any(ex, rebound)
-                Core.eval(Main, ex)
-                n_cascade += 1
-            end
-        catch err
-            _push_app_log!(m,
-                "[WARN] cascade ligne $i : $(sprint(showerror, err))")
-        end
-        i = end_row + 1
+    for (slot, b) in _live_blocks(_scan_slot_blocks(lines)[1])
+        # Le bloc qu'on vient d'évaluer ne rejoue pas une seconde fois.
+        (b.last_row < skip_first || b.row > skip_last) || continue
+        ex = Meta.parse(b.src; raise = false)
+        (ex isa Expr && ex.head in (:error, :incomplete)) && continue
+        _refs_any(ex, rebound) || continue
+        _eval_slot_block!(m, slot, b.src) && (n_cascade += 1)
     end
     n_cascade > 0 &&
         _push_app_log!(m, "[INFO] cascade : $n_cascade slot$(n_cascade == 1 ? "" : "s") ré-évalué$(n_cascade == 1 ? "" : "s")")

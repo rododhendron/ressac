@@ -152,6 +152,20 @@ function _new_app()
     return app, frame
 end
 
+# Une app dont le scheduler est la session live : `@dN` évalué depuis le
+# buffer y pose vraiment son pattern. La session est rendue à la sortie.
+function _with_live_app(f)
+    app, frame = _new_app()
+    prev = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    try
+        f(app, frame)
+    finally
+        Ressac._LIVE_SCHEDULER[] = prev
+        Ressac.drone_stop_all!()
+    end
+end
+
 # Type a String of plain characters as KeyEvents. Caller is
 # responsible for the editor being in insert mode first.
 function _type!(app::Ressac.RessacApp, s::AbstractString)

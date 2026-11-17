@@ -106,7 +106,7 @@ justesse du moteur, puis le reste.
 Décidée le 2026-11-17. Détail des tâches, tests et risques : `docs/journal/20261117_ecran_unique_plan.md`. Réflexion et maquettes dans le même dossier.
 
 - [ ] E0 — Mesures : temps pour refaire un son, signes de solfège dans kitty, ligne éclairée dans Tachikoma, égalité des 18 `.scd` convertis.
-- [ ] E1 — L'état de chaque ligne (`SlotState`) : joue, muet, modifié, en erreur, tenu, hors grille.
+- [x] E1 — L'état de chaque ligne (`SlotState`) : joue, muet, modifié, en erreur, tenu, hors grille.
 - [ ] E2 — L'écran unique : marge, erreur sous la ligne, piste au bout de la ligne, volet à droite (fiche / wiki / son). Fin des workspaces PLAY / DESIGN / EXPLORE.
 - [ ] E3 — Sessions avec les verbes de vim (`:w` `:e` `:enew`), réserve unique.
 - [ ] E4 — Un seul langage : zéro `.scd`, nombres à trois décimales, usage compté, pipes en tête, `gcc`.

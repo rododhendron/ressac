@@ -31,11 +31,11 @@ mesures et une note de résultats (`20261117_mesures.md`).
 - [ ] **E0.2 — Les signes dans kitty.** `𝅝 𝅗𝅥 𝅘𝅥 𝅘𝅥𝅮 𝅘𝅥𝅯 𝅘𝅥𝅰 𝄻 𝄼 𝄽 𝄾 𝄿 ♯ 𝄐 𝆔` : largeur d'une
   cellule, lisibles à la taille du texte. À regarder par Rodolphe.
   *Sinon* : famille « transport » par défaut, solfège en option.
-- [ ] **E0.3 — La ligne éclairée dans Tachikoma.** Peut-on donner un fond à
+- [x] **E0.3 — La ligne éclairée dans Tachikoma.** Peut-on donner un fond à
   une ligne de `CodeEditor` par-dessus la coloration, et le faire varier à
   chaque image sans tout redessiner ? Coût par image avec 12 slots.
   *Sinon* : seul le signe change d'éclat.
-- [ ] **E0.4 — Égalité des 18 `.scd` convertis.** `just test-user-synths`
+- [x] **E0.4 — Égalité des 18 `.scd` convertis.** `just test-user-synths`
   après conversion : le SC rendu est-il le même ?
 
 ## Étape 1 — L'état de chaque ligne
@@ -43,14 +43,14 @@ mesures et une note de résultats (`20261117_mesures.md`).
 Le socle : savoir, pour chaque ligne `@dN`, ce qu'elle fait. Aucun
 changement d'écran encore, donc sans risque.
 
-- [ ] **E1.1 — `SlotState`** par slot : joue, muet, modifié, en erreur,
+- [x] **E1.1 — `SlotState`** par slot : joue, muet, modifié, en erreur,
   tenu, hors grille, au casque. Calculé à partir du scheduler et du texte.
-- [ ] **E1.2 — « Modifié ».** Le texte évalué de chaque bloc est gardé ;
+- [x] **E1.2 — « Modifié ».** Le texte évalué de chaque bloc est gardé ;
   « modifié » = le bloc courant en diffère (`_logical_block_range`).
-- [ ] **E1.3 — L'erreur sait où elle est.** Une évaluation qui échoue, ou
+- [x] **E1.3 — L'erreur sait où elle est.** Une évaluation qui échoue, ou
   un slot retiré par `_evict_faulty_slot!`, garde : la ligne, la cause en
   une phrase, et si un ancien pattern continue de jouer.
-- [ ] **E1.4 — Densité.** Le nombre de coups du cycle courant par slot (mis
+- [x] **E1.4 — Densité.** Le nombre de coups du cycle courant par slot (mis
   en cache par cycle), d'où la valeur de note.
 
 Tests : `test_slot_state.jl` — un cas par état, plus les transitions
