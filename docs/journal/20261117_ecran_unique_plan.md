@@ -88,6 +88,34 @@ Tests : `test_slot_state.jl` — un cas par état, plus les transitions
 - [ ] **E2.8 — Grand écran.** Au-delà d'une largeur seuil, le son s'ouvre
   entre les patterns et la fiche au lieu de la remplacer.
 
+### E2.1 — conception retenue (2026-11-18)
+
+On garde le gestionnaire de workspaces et son arbre de panes (scissions,
+redimensionnement, zoom) ; on n'en garde qu'**un** workspace.
+
+- Racine : `Container(:h)[patterns, volet]`. Le volet est un sous-arbre
+  qu'on échange ; les sous-arbres déjà ouverts sont gardés (`m.volets`),
+  donc passer au wiki ne perd pas les sons ouverts.
+- Sortes de volet : `:fiche` (DocPane qui suit, par défaut), `:wiki`,
+  `:son` (`Container(:v)[texte du synth ; feuille à onglets DOC + STUDIO]` —
+  le studio reste, en onglet, tant que E5 ne l'a pas remplacé : il porte le
+  génome que lisent l'explication et le graphe), `:explorer` (une feuille,
+  zoomée d'office).
+- `_open_volet!(m, sorte)` / `_close_volet!(m)` (retour à `:fiche`, focus
+  aux patterns) dans `app_volet.jl`. Les appels à
+  `_switch_workspace_named!(m, "DESIGN" | "PLAY" | "EXPLORE")` deviennent
+  ces deux fonctions.
+- Le « mode » (`:play` / `:design` / `:explore`) reste comme contexte de
+  touches, mais se lit sur la pane focalisée, plus sur un nom de workspace.
+  Les tables de commandes par mode et `_mode_bridge!` disparaissent : toute
+  commande vaut partout.
+- Grand écran (≥ 200 colonnes) : `:son` s'insère entre patterns et fiche.
+- Commandes : `:play` `:design` `:explore` et leurs `!` supprimées ;
+  `:synth nom`, `:wiki`, `:explorer`, `:back` (ferme le volet), `:reset`
+  (refait l'écran). `:q` dans un volet le ferme.
+- Disposition sauvée d'avant (trois workspaces) : on en récupère le texte
+  des patterns et les sons ouverts, pas la forme.
+
 Supprimés : `pane_drone.jl` (la pane MODULATION), la bande des workspaces,
 le buffer d'accueil commenté. Le tutoriel et les pages 01 et 06 du wiki sont
 réécrits ici.
