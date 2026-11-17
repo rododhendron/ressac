@@ -101,6 +101,19 @@ justesse du moteur, puis le reste.
 - [x] D5 — Anciens noms de fichiers dans CONTRIBUTING, `ressac.toml`, commentaires et en-têtes de tests.
 - [x] D6 — CHANGELOG rattrapé depuis le 2026-05-25.
 
+## Phase 7 — L'écran unique (refonte de l'expérience)
+
+Décidée le 2026-11-17. Détail des tâches, tests et risques : `docs/journal/20261117_ecran_unique_plan.md`. Réflexion et maquettes dans le même dossier.
+
+- [ ] E0 — Mesures : temps pour refaire un son, signes de solfège dans kitty, ligne éclairée dans Tachikoma, égalité des 18 `.scd` convertis.
+- [ ] E1 — L'état de chaque ligne (`SlotState`) : joue, muet, modifié, en erreur, tenu, hors grille.
+- [ ] E2 — L'écran unique : marge, erreur sous la ligne, piste au bout de la ligne, volet à droite (fiche / wiki / son). Fin des workspaces PLAY / DESIGN / EXPLORE.
+- [ ] E3 — Sessions avec les verbes de vim (`:w` `:e` `:enew`), réserve unique.
+- [ ] E4 — Un seul langage : zéro `.scd`, nombres à trois décimales, usage compté, pipes en tête, `gcc`.
+- [ ] E5 — L'atelier : réglette, objet texte `m`, complétion qui s'entend, `&`, explorateur sur un slot. Fin du studio et de sculpt.
+- [ ] E6 — Hors grille : `Entrée` = maintenant, `frappes`, la boucle.
+- [ ] E7 — Le casque en delta, découverte des sorties PipeWire.
+
 ## Fonctionnalités (ancien `TODO.txt` et wiki)
 
 - [ ] F1 — Snippets : éditeur de snippets et alias de snippets (les raccourcis `:sg0.9` / `:sng…` existent déjà) ; table du leader sortie du code (`editor_snippets.jl:64`).
