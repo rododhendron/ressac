@@ -218,6 +218,13 @@ end
     explore_trial::Union{Nothing,Pattern} = nothing
     explore_heard::Tuple{Int,Int} = (0, -1)
     loop::Union{Nothing,LoopRec} = nothing
+    # Les sorties audio (modal_outputs.jl) : la liste de `:sorties`, le
+    # dernier graphe PipeWire lu, ce qui cloche, et si le réglage a été
+    # rebranché depuis que SuperCollider répond.
+    outs::Picker = _picker()
+    audio_graph::Union{Nothing,AudioGraph} = nothing
+    audio_note::String = ""
+    audio_applied::Bool = false
     last_find::Union{Nothing,Tuple{Char,Char}} = nothing
     logs::Vector{String}         = String[]
     quit::Bool                   = false

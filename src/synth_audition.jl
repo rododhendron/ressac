@@ -70,7 +70,7 @@ function enqueue_generation!(st::AuditionState, osc, genomes::Vector{Genome})
     return st
 end
 
-# Joue un candidat DÉJÀ DÉFINI (par enqueue) via /ressac/play : voix
+# Joue un candidat DÉJÀ DÉFINI (par enqueue) via /ressac/preview : voix
 # fraîche, auto-libérée par son enveloppe (doneAction). On NE passe plus
 # par /ressac/evalAndPlay — qui redéfinit + force-free le synth précédent
 # et provoquait des « /n_free Node not found » quand celui-ci s'était
@@ -80,7 +80,9 @@ function audition_play!(st::AuditionState, osc, slot::Int,
     1 <= slot <= length(st.slot_names) || return st
     name = st.slot_names[slot]
     # OSC ne supporte pas Float64 → Float32 pour les args numériques.
-    _send(osc, "/ressac/play",
+    # `/ressac/preview` : comme `/ressac/play`, mais vers la sortie des
+    # écoutes (le casque seul quand `:casque` est mis).
+    _send(osc, "/ressac/preview",
           Any[String(name), "freq", Float32(freq), "sustain", Float32(sustain)])
     return st
 end

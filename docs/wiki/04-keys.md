@@ -1174,6 +1174,35 @@ Lecture d'une carte :
 |---|---|
 | `?` | aide |
 
+### Sorties audio (:sorties)
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Enter` | sortie principale |
+| `c` | casque (de nouveau : plus de casque) |
+| `p` | ce que j'essaie : dans le casque seulement / partout |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `r` | relire les sorties (un casque qu'on vient d'allumer) |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `Esc / q` | fermer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
+
 ### Palette (Ctrl-p)
 
 **Éditer**

@@ -19,6 +19,9 @@
 s.options.memSize    = 2**18;
 s.options.numBuffers = 1024 * 64;
 s.options.maxNodes   = 1024 * 32;
+// Quatre sorties : 1-2 la sortie principale, 3-4 le casque (`:sorties` dans
+// Ressac les branche avec pw-link). RESSAC_OUT_CHANNELS=2 revient à deux.
+s.options.numOutputBusChannels = ("RESSAC_OUT_CHANNELS".getenv ? "4").asInteger.max(2);
 
 s.waitForBoot({
     var samplesPath = "DIRT_SAMPLES_PATH".getenv;
@@ -182,12 +185,39 @@ s.waitForBoot({
     // SuperDirt's /dirt/play overrides freq/gain/sustain with computed
     // values from n + cycle duration; we want the user's `freq = 220`
     // etc. to be what they hear when iterating with `T` / `:test`.
+    // ── Le casque ───────────────────────────────────────────────────
+    // Les sorties 3-4 sont le casque. Il entend la sortie principale (un
+    // synth en queue de l'arbre recopie 1-2 vers 3-4), plus les écoutes
+    // quand Ressac les y envoie seules (`~ressacPreviewOut` = 2) : on
+    // essaie un son au casque sans que la sortie principale change.
+    //   /ressac/casque <0|1>       le casque reçoit-il la sortie principale
+    //   /ressac/previewOut <bus>   où vont T, l'atelier, les candidats
+    // L'enregistrement ne prend que la sortie principale.
+    s.recChannels = 2;
+    ~ressacPreviewOut = 0;
+    ~ressacCasqueOn = false;
+    ~ressacCasque = nil;
+    SynthDef(\ressac_casque, { Out.ar(2, In.ar(0, 2)) }).add;
+    ~ressacCasqueSync = {
+        if(~ressacCasque.notNil) { ~ressacCasque.free; ~ressacCasque = nil };
+        if(~ressacCasqueOn and: { s.options.numOutputBusChannels >= 4 }) {
+            ~ressacCasque = Synth.tail(RootNode(s), \ressac_casque);
+        };
+    };
+    OSCdef(\ressacCasque, { |msg|
+        ~ressacCasqueOn = msg[1].asInteger > 0;
+        ~ressacCasqueSync.value;
+    }, '/ressac/casque');
+    OSCdef(\ressacPreviewOut, { |msg|
+        ~ressacPreviewOut = msg[1].asInteger.clip(0, (s.options.numOutputBusChannels - 2).max(0));
+    }, '/ressac/previewOut');
+
     ~ressacTestSynth = nil;
     OSCdef(\ressacTestSynth, { |msg|
         var name = msg[1].asString.asSymbol;
         ("[ressac] testSynth " ++ name).postln;
         if(~ressacTestSynth.notNil) { ~ressacTestSynth.free };
-        ~ressacTestSynth = Synth(name, [\out, 0]);
+        ~ressacTestSynth = Synth(name, [\out, ~ressacPreviewOut]);
     }, '/ressac/testSynth');
 
     // One-shot eval + RAW play, bypassing SuperDirt. Bound to :test-raw.
@@ -223,7 +253,7 @@ s.waitForBoot({
             };
             if(ok) {
                 if(~ressacTestSynth.notNil) { ~ressacTestSynth.free };
-                ~ressacTestSynth = Synth(name, [\out, 0] ++ extra.asArray);
+                ~ressacTestSynth = Synth(name, [\out, ~ressacPreviewOut] ++ extra.asArray);
             };
         }.play(AppClock);
     }, '/ressac/evalAndPlay');
@@ -332,6 +362,20 @@ s.waitForBoot({
         Synth(name, args.asArray ++ [\out, 0]);
     }, '/ressac/play');
 
+    // La même chose pour une ÉCOUTE (un candidat de l'explorateur) : elle
+    // va où vont les écoutes — le casque seul quand Ressac l'a demandé.
+    OSCdef(\ressacPreview, { |msg|
+        var name = msg[1].asString.asSymbol;
+        var args = List.new;
+        var i = 2;
+        while ({ i < msg.size }) {
+            args.add(msg[i].asString.asSymbol);
+            args.add(msg[i+1]);
+            i = i + 2;
+        };
+        Synth(name, args.asArray ++ [\out, ~ressacPreviewOut]);
+    }, '/ressac/preview');
+
     // Recorder — driven by `:rec start [name]` / `:rec stop` in Ressac.
     // s.record uses the current default output bus, so SuperDirt's mix
     // (the same thing that hits the speakers) is what lands in the
@@ -372,6 +416,8 @@ s.waitForBoot({
         "[ressac] panic — freeing all nodes".postln;
         s.freeAll;
         ~ressacTestSynth = nil;
+        ~ressacCasque = nil;              // parti avec le reste : on le remet
+        ~ressacCasqueSync.value;
         ~ressacDrones = IdentityDictionary.new;
         if(~ressacTrackSynth.notNil) { ~ressacTrackSynth.clear };
     }, '/ressac/panic');

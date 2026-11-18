@@ -112,7 +112,7 @@ Décidée le 2026-11-17. Détail des tâches, tests et risques : `docs/journal/2
 - [x] E4 — Un seul langage : zéro `.scd`, nombres à trois décimales, usage compté, pipes en tête, `gcc`.
 - [x] E5 — L'atelier : réglette, objet texte `m`, complétion qui s'entend, `&`, explorateur sur un slot. Fin du studio et de sculpt.
 - [x] E6 — Hors grille : `Entrée` = maintenant, `frappes`, la boucle.
-- [ ] E7 — Le casque en delta, découverte des sorties PipeWire.
+- [x] E7 — Le casque en delta, découverte des sorties PipeWire. *(Codé et testé sans matériel ; reste à l'entendre avec SuperCollider lancé.)*
 
 ## Fonctionnalités (ancien `TODO.txt` et wiki)
 

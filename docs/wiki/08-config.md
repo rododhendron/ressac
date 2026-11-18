@@ -71,6 +71,41 @@ Active par défaut au démarrage de SC :
 
 Bascule avec `:safety on|off`.
 
+## Sorties audio et casque
+
+`:sorties` liste les sorties que PipeWire connaît — enceintes, casque
+filaire, casque Bluetooth — et branche SuperCollider dessus.
+
+| Touche | Ce qu'elle fait |
+|---|---|
+| `Entrée` | la ligne devient la **sortie principale** (◉) |
+| `c` | la ligne devient le **casque** (◎) ; `c` de nouveau : plus de casque |
+| `p` | ce que j'essaie : dans le casque seulement / partout (aussi `:casque`) |
+| `r` | relire les sorties (un casque qu'on vient d'allumer) |
+
+SuperCollider sort quatre canaux : 1-2 vont à la sortie principale, 3-4 au
+casque. **Le casque entend la sortie principale**, toujours. Avec `p`
+(ou `:casque`), ce qu'on *essaie* — `T`, les propositions de l'atelier
+(`o`, `cim`), l'écoute d'un candidat de l'explorateur, d'un son de la
+réserve — ne sort **que dans le casque** : on cherche au casque pendant que
+la sortie continue de jouer ce qui était gardé. Garder (`Entrée` dans
+l'atelier, `:w`, évaluer une ligne) fait passer le son sur la sortie. La
+barre d'état rappelle `casque`, ou `casque · essais`.
+
+Ce qui joue pour de bon (les patterns, un drone, une boucle qu'on frappe)
+va toujours à la sortie principale. `:rec` n'enregistre qu'elle.
+
+Le réglage est gardé (`audio.toml`, avec les préférences) et rebranché
+quand SuperCollider se met à répondre. Un casque **Bluetooth** a du
+retard (souvent 0,1 à 0,2 s) : bon pour chercher un timbre, pas pour caler
+un rythme à l'oreille. Si une sortie a disparu, `:sorties` le dit ; `r`
+relit.
+
+Il faut que SuperCollider ait été lancé avec ses quatre sorties — c'est le
+cas de `scripts/superdirt-startup.scd` (`RESSAC_OUT_CHANNELS=2` revient à
+deux). Sans PipeWire (`pw-dump`, `pw-link`), `:sorties` le dit et ne fait
+rien.
+
 ## Journal
 
 `:log` bascule la hauteur du journal en bas de l'écran : 3 lignes (par

@@ -240,13 +240,21 @@ une horloge injectée, instants rendus à l'identique.
 
 ## Étape 7 — Le casque
 
-- [ ] **E7.1 — Découvrir les sorties.** PipeWire (`pw-dump`), une modale de
+- [x] **E7.1 — Découvrir les sorties.** PipeWire (`pw-dump`), une modale de
   réglage, rafraîchissement.
-- [ ] **E7.2 — Le routage.** Sortie principale et casque ; le casque reçoit
+- [x] **E7.2 — Le routage.** Sortie principale et casque ; le casque reçoit
   la sortie principale.
-- [ ] **E7.3 — Le delta.** Le son en atelier joue deux fois : l'ancien vers
+- [x] **E7.3 — Le delta.** Le son en atelier joue deux fois : l'ancien vers
   la sortie, le nouveau vers le casque. `Entrée` bascule.
-- [ ] **E7.4 — L'enregistrement** ne prend que la sortie principale.
+- [x] **E7.4 — L'enregistrement** ne prend que la sortie principale.
+
+*(Codé le 2026-11-18, **pas encore entendu** : SuperCollider ne tournait pas.
+Vérifié sans lui : la lecture de `pw-dump` (sur une capture, et sur le graphe
+réel de la machine), le plan de liens, la modale, et la syntaxe du script de
+démarrage. À vérifier à l'oreille : le nom du client JACK (« SuperCollider »,
+ports `out_N`), le synth de recopie 1-2 → 3-4 en queue d'arbre, `s.recChannels`.
+E7.3 est plus simple que prévu : pas de double lecture ; ce qu'on essaie va
+au casque seul, la sortie garde ce qui joue — c'est le delta.)*
 
 Demande SuperCollider et du matériel : tests hors suite par défaut.
 

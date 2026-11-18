@@ -343,6 +343,7 @@ function _view!(m::RessacApp, f::TK.Frame)
     m.modal === :patterns || _patterns_preview_stop!(m)
     _redefine_tick!(m)                # un son dont on a tiré un nombre
     _explore_slot_tick!(m)            # l'explorateur ouvert sur un slot : le candidat joue dans le pattern
+    _audio_tick!(m)                   # SuperCollider vient de répondre : rebrancher les sorties choisies
     _update_live_doc!(m)
     _synth_workspace_sync!(m)         # la DOC d'un son relit son texte
     _tutorial_tick!(m)                # le tutoriel avance quand l'étape est faite (après la synchro : il lit le texte)
@@ -424,6 +425,8 @@ function _view!(m::RessacApp, f::TK.Frame)
             _render_browser_modal!(m, marea, buf)
         elseif m.modal === :synth_library
             _render_synth_library_modal!(m, marea, buf)
+        elseif m.modal === :outputs
+            _render_outputs_modal!(m, marea, buf)
         elseif m.modal === :sccode
             _render_sccode_modal!(m, marea, buf)
         elseif m.modal === :snippets
@@ -498,6 +501,9 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     sc = _sc_state()
     sc === :alive  && push!(sections, [("● SC", TK.tstyle(:success, bold = true))])
     sc === :silent && push!(sections, [("○ SC ne répond pas — `just audio`", TK.tstyle(:error, bold = true))])
+    aud = _AUDIO_SETTINGS[]
+    (aud !== nothing && !isempty(aud.casque)) &&
+        push!(sections, [(aud.preview ? "casque · essais" : "casque", TK.tstyle(aud.preview ? :accent : :text_dim))])
     push!(sections, tempo_section)
 
     # Mode (pastille de sa couleur) + surface focalisée.

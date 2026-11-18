@@ -98,6 +98,7 @@ include("io_scope.jl")           # écoute OSC 57121 : scope, mètres, réponses
                                  # external OSC triggers
 
 # ─── Content / configuration / theming ────────────────────────────
+include("audio_outputs.jl")      # les sorties vues par PipeWire : graphe, plan de routage (pur)
 include("session_config.jl")     # RessacConfig, _load_ressac_config!
 include("session_keyboard.jl")   # disposition du clavier (table Maj azerty/qwerty, détection)
 include("session_themes.jl")     # _apply_theme!, palette switching
@@ -153,6 +154,7 @@ include("app_modal.jl")          # infra modaux + guide/tutorial/explain
 include("modal_browser.jl")      # :browse
 include("modal_reserve.jl")      # la réserve : sons · motifs · sessions · recettes, en onglets
 include("modal_mixer.jl")        # :mixer
+include("modal_outputs.jl")      # :sorties — sortie principale, casque, écoutes au casque
 include("modal_synth_library.jl")# :lib
 include("modal_wiki.jl")         # :wiki
 include("modal_snippets.jl")     # :snip

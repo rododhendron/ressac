@@ -1,0 +1,336 @@
+[
+ {
+  "id": 65,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "props": {
+    "media.class": "Audio/Sink",
+    "node.name": "alsa_output.usb-Generic_USB_Audio-00.HiFi__Speaker__sink",
+    "node.description": "USB Audio Speakers",
+    "device.api": "alsa"
+   }
+  }
+ },
+ {
+  "id": 73,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 65,
+    "port.name": "playback_FR",
+    "port.id": 1
+   }
+  }
+ },
+ {
+  "id": 72,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 65,
+    "port.name": "playback_FL",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 74,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 65,
+    "port.name": "monitor_FL",
+    "port.id": 0,
+    "port.monitor": true
+   }
+  }
+ },
+ {
+  "id": 75,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 65,
+    "port.name": "monitor_FR",
+    "port.id": 1,
+    "port.monitor": true
+   }
+  }
+ },
+ {
+  "id": 66,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "props": {
+    "media.class": "Audio/Sink",
+    "node.name": "alsa_output.usb-Generic_USB_Audio-00.HiFi__Headphones__sink",
+    "node.description": "USB Audio Front Headphones",
+    "device.api": "alsa"
+   }
+  }
+ },
+ {
+  "id": 76,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 66,
+    "port.name": "playback_FL",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 77,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 66,
+    "port.name": "playback_FR",
+    "port.id": 1
+   }
+  }
+ },
+ {
+  "id": 509,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "props": {
+    "media.class": "Audio/Sink",
+    "node.name": "bluez_output.AA_BB_CC_DD_EE_FF.1",
+    "node.description": "Casque Bluetooth",
+    "device.api": "bluez5"
+   }
+  }
+ },
+ {
+  "id": 217,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 509,
+    "port.name": "playback_FL",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 395,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 509,
+    "port.name": "playback_FR",
+    "port.id": 1
+   }
+  }
+ },
+ {
+  "id": 40,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "props": {
+    "media.class": "Audio/Sink",
+    "node.name": "alsa_output.mono-fallback",
+    "node.description": "Enceinte mono",
+    "device.api": "alsa"
+   }
+  }
+ },
+ {
+  "id": 41,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 40,
+    "port.name": "playback_MONO",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 67,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "props": {
+    "media.class": "Audio/Source",
+    "node.name": "alsa_input.usb-Generic_USB_Audio-00.HiFi__Mic1__source",
+    "node.description": "USB Audio Rear Input",
+    "device.api": "alsa"
+   }
+  }
+ },
+ {
+  "id": 78,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 67,
+    "port.name": "capture_FL",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 198,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "props": {
+    "media.class": "Stream/Output/Audio",
+    "node.name": "LibreWolf"
+   }
+  }
+ },
+ {
+  "id": 250,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 198,
+    "port.name": "output_FL",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 456,
+  "type": "PipeWire:Interface:Link",
+  "info": {
+   "output-node-id": 198,
+   "output-port-id": 250,
+   "input-node-id": 509,
+   "input-port-id": 217
+  }
+ },
+ {
+  "id": 300,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "props": {
+    "media.class": "Stream/Output/Audio",
+    "node.name": "SuperCollider"
+   }
+  }
+ },
+ {
+  "id": 301,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 300,
+    "port.name": "out_1",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 302,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 300,
+    "port.name": "out_2",
+    "port.id": 1
+   }
+  }
+ },
+ {
+  "id": 303,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 300,
+    "port.name": "out_3",
+    "port.id": 2
+   }
+  }
+ },
+ {
+  "id": 304,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "output",
+   "props": {
+    "node.id": 300,
+    "port.name": "out_4",
+    "port.id": 3
+   }
+  }
+ },
+ {
+  "id": 310,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 300,
+    "port.name": "in_1",
+    "port.id": 0
+   }
+  }
+ },
+ {
+  "id": 311,
+  "type": "PipeWire:Interface:Port",
+  "info": {
+   "direction": "input",
+   "props": {
+    "node.id": 300,
+    "port.name": "in_2",
+    "port.id": 1
+   }
+  }
+ },
+ {
+  "id": 500,
+  "type": "PipeWire:Interface:Link",
+  "info": {
+   "output-node-id": 300,
+   "output-port-id": 301,
+   "input-node-id": 65,
+   "input-port-id": 72
+  }
+ },
+ {
+  "id": 501,
+  "type": "PipeWire:Interface:Link",
+  "info": {
+   "output-node-id": 300,
+   "output-port-id": 302,
+   "input-node-id": 65,
+   "input-port-id": 73
+  }
+ },
+ {
+  "id": 30,
+  "type": "PipeWire:Interface:Metadata",
+  "metadata": [
+   {
+    "key": "default.audio.sink",
+    "value": {
+     "name": "bluez_output.AA_BB_CC_DD_EE_FF.1"
+    }
+   },
+   {
+    "key": "default.configured.audio.sink",
+    "value": {
+     "name": "alsa_output.usb-Generic_USB_Audio-00.HiFi__Speaker__sink"
+    }
+   }
+  ]
+ }
+]

@@ -471,6 +471,8 @@ _register_regex!(r"^(?:sccode-tag|sctag)\s+(\S+)$",
 
 # ── Recording / export ──────────────────────────────────────────────
 _register_literal!(m -> _toggle_recording!(m),       "rec", "record")
+_register_literal!(m -> _open_outputs!(m),           "sorties", "outputs", "audio")
+_register_literal!(m -> _casque_toggle!(m),          "casque")
 _register_literal!(m -> _export_current_synth!(m),   "export", "export-synth")
 _register_regex!(r"^export(?:-synth)?\s+(\S+)$",
     (m, mt) -> begin
