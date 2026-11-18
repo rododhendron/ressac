@@ -70,7 +70,7 @@ function _extract_regex_verbs(rx::Regex)
         return [String(m.captures[1]), String(m.captures[1] * m.captures[2])]
     end
     # Shape C: ^literal-word followed by \s or $ — plain verb.
-    m = match(r"^([A-Za-z0-9_\-]+)(?:\\s|\$)", s)
+    m = match(r"^([A-Za-z0-9_\-!]+)(?:\\s|\$)", s)
     m !== nothing && return [String(m.captures[1])]
     return String[]
 end

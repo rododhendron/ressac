@@ -964,18 +964,6 @@ end
 
 # ── Session save / load ────────────────────────────────────────────
 
-@testset ":save-session writes a snapshot of the patterns buffer" begin
-    app, _ = _new_app()
-    sentinel = "// integration-marker-$(rand(UInt32))"
-    Ressac.TK.set_text!(Ressac._active_editor(app), sentinel)
-    name = "ui-it-session-$(rand(UInt32))"
-    _exec_ex_command!(app, "save-session $name")
-    # _save_session_app! writes ./sessions/<name>.txt relative to pwd.
-    path = joinpath(pwd(), "sessions", "$name.txt")
-    @test isfile(path)
-    rm(path; force = true)
-end
-
 # ── Mouse wheel ────────────────────────────────────────────────────
 
 @testset "wheel up on log area scrolls the chrome log offset" begin

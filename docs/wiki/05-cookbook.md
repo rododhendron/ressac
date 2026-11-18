@@ -263,14 +263,44 @@ Dans `:mixer` :
 La barre d'activité montre les derniers tirs (décroît sur 0,6 s — pas un
 vrai RMS mais assez pour voir ce qui joue).
 
-## Sauver / charger une session
+## Sessions
+
+Une session est le texte des patterns, rangé sous un nom dans `sessions/`.
+Les verbes sont ceux de vim.
 
 ```
-:save idee          → sessions/idee.txt
-:load idee          → recharge le buffer (E pour évaluer)
-:sessions           → liste les sessions
-:load <Tab>         → complète les noms de sessions
+:w idee             → range la session sous ce nom
+:w                  → la sauve sous son nom
+:e idee             → en ouvre une autre (:e <Tab> complète les noms)
+:e #                → revient à la précédente
+:enew               → une session vierge
+:sessions           → la liste, dans la réserve
 ```
+
+Ouvrir une session ne coupe rien : ce qui jouait continue jusqu'au premier
+`E`. La status line donne le nom de la session, suivi de `+` quand son texte
+n'est pas sauvé ; `:e` et `:enew` refusent alors de le jeter, `:e!` et
+`:enew!` passent outre. Au lancement, Ressac rouvre le texte de la veille,
+en silence.
+
+Du côté d'un son (son texte, sa DOC, son studio), `:w` sauve le son.
+
+## La réserve
+
+Tout ce qu'on a rangé tient dans une bibliothèque à quatre onglets, `Tab`
+passe de l'un à l'autre :
+
+| Onglet | Ce qu'il range | On y arrive par |
+|---|---|---|
+| sons | les synths, intégrés et sauvés | `Espace L`, `:lib` |
+| motifs | des lignes `@dN` entières — pattern, son, effets | `Espace P`, `:réserve` |
+| sessions | les textes de patterns | `:sessions` |
+| recettes | des snippets par genre et par rôle | `Espace I`, `:snip` |
+
+`Espace k` sur une ligne `@dN` la range dans les motifs (il ne reste qu'à la
+nommer). Dans les motifs, `Espace` fait **écouter** celui du curseur
+par-dessus ce qui joue, `Entrée` le pose sur son slot, `1`-`9` sur le slot
+de ton choix.
 
 ## Ajouter un sample
 

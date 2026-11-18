@@ -133,16 +133,16 @@ se coupe d'une touche si elle gêne.
 
 ## Étape 3 — Sessions et réserve
 
-- [ ] **E3.1 — Les verbes de vim.** `:w` sauve ce qui a le focus (la
+- [x] **E3.1 — Les verbes de vim.** `:w` sauve ce qui a le focus (la
   session à gauche, le son dans le volet) ; `:w nom`, `:e nom` (complétion),
   `:enew`, `:e #`. Ce qui joue continue jusqu'au premier `E`.
-- [ ] **E3.2 — Au démarrage** : le dernier texte, en silence. Le buffer
+- [x] **E3.2 — Au démarrage** : le dernier texte, en silence. Le buffer
   d'accueil seulement au tout premier lancement.
-- [ ] **E3.3 — La réserve.** Une seule bibliothèque à onglets : sons,
+- [x] **E3.3 — La réserve.** Une seule bibliothèque à onglets : sons,
   motifs, sessions, recettes. `Espace` écoute, `Entrée` pose. Remplace
   `:lib`, `:patlib`, `:sessions`, `:snip`, `:starter` (qui restent comme
   alias vers leur onglet).
-- [ ] **E3.4 — Ranger une ligne.** `Espace k` sur un `@dN` : le motif
+- [x] **E3.4 — Ranger une ligne.** `Espace k` sur un `@dN` : le motif
   entier, son et effets compris.
 
 Tests : aller-retour sauver / ouvrir / vierge ; poser un motif dans un slot

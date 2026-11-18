@@ -478,8 +478,8 @@ const _EX_COMMAND_ARG_KIND = Dict{String,Symbol}(
     "unmute"         => :slots,
     "solo"           => :slots,
     "scope"          => :scopes,
-    "load"           => :sessions,
-    "load-session"   => :sessions,
+    "e"              => :sessions,
+    "e!"             => :sessions,
 )
 
 const _EX_COMMAND_ARG_LITERALS = Dict{String,Vector{String}}(
@@ -503,9 +503,7 @@ function _ex_arg_candidates(verb::AbstractString)
     elseif kind === :slots
         return [string('d', i) for i in 1:16]   # :mute d3 etc.
     elseif kind === :sessions
-        dir = joinpath(_project_dir(), "sessions")
-        isdir(dir) || return String[]
-        return [splitext(f)[1] for f in readdir(dir) if endswith(f, ".txt")]
+        return list_sessions()
     elseif kind === :all
         out = String[]
         append!(out, String.(keys(_SYNTH_REGISTRY)))

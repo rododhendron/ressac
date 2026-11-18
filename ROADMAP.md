@@ -108,7 +108,7 @@ Décidée le 2026-11-17. Détail des tâches, tests et risques : `docs/journal/2
 - [ ] E0 — Mesures : temps pour refaire un son, signes de solfège dans kitty, ligne éclairée dans Tachikoma, égalité des 18 `.scd` convertis.
 - [x] E1 — L'état de chaque ligne (`SlotState`) : joue, muet, modifié, en erreur, tenu, hors grille.
 - [x] E2 — L'écran unique : marge, erreur sous la ligne, piste au bout de la ligne, volet à droite (fiche / wiki / son). Fin des workspaces PLAY / DESIGN / EXPLORE. *(Restent deux détails : poser un exemple du wiki dans un slot, et « voisins / pas encore essayé » dans la fiche, qui attend E4.)*
-- [ ] E3 — Sessions avec les verbes de vim (`:w` `:e` `:enew`), réserve unique.
+- [x] E3 — Sessions avec les verbes de vim (`:w` `:e` `:enew`), réserve unique.
 - [ ] E4 — Un seul langage : zéro `.scd`, nombres à trois décimales, usage compté, pipes en tête, `gcc`.
 - [ ] E5 — L'atelier : réglette, objet texte `m`, complétion qui s'entend, `&`, explorateur sur un slot. Fin du studio et de sculpt.
 - [ ] E6 — Hors grille : `Entrée` = maintenant, `frappes`, la boucle.

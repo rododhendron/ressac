@@ -114,15 +114,15 @@ insertion, après un Espace-leader, dans un modal…).
 - `:tap` — tape un rythme avec Espace ; Ressac détecte la période, règle
   le cps et écrit la ligne `@dN "…"`
 - `:browse` — tous les samples / instruments / synths, avec recherche
-- `:lib` — la librairie de synths : écoute + copie éditable (intégrés ou
-  sauvés par toi). Inclut le kit 909.
-- `:snip` — snippets selon le contexte (rythme / mélodie / fx / fiches).
-  Tab change de catégorie.
+- `:réserve` — tout ce qu'on a rangé, en quatre onglets (`Tab`) : les sons
+  (`:lib`), les motifs, les sessions (`:sessions`), les recettes (`:snip`).
+  `Espace k` y range la ligne `@dN` du curseur.
 - `:starter <genre>` — un starter pack : house, trap, lofi, dubstep,
   jungle, idm, hardcore, amapiano, witchhouse, ambient
 - `:import chemin/vers/sample.wav` — ajoute ton audio au registre
 - `:mixer` — vu-mètres par slot, mute / solo / gain
-- `:save nom` / `:load nom` — instantanés de session dans `sessions/`
+- `:w nom` / `:e nom` / `:enew` — ranger la session, en ouvrir une autre,
+  repartir d'une vierge (voir `05-cookbook`)
 - `:log` — déplie / replie le journal (1, 3, 10 lignes, replié)
 - `:wiki` — cette documentation
 

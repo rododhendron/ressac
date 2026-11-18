@@ -116,6 +116,7 @@ function live(; host::AbstractString = "127.0.0.1",
         @warn "Failed to load layout" exception=err
     end
     _ensure_default_workspace!(app)
+    _session_state_restore!(app)
     _request_alternate_keys()
     cfg.hover && _request_mouse_motion()
     try
@@ -125,6 +126,7 @@ function live(; host::AbstractString = "127.0.0.1",
         # Persist the workspace layout so the next launch restores the
         # panes the user had open (explorer, splits, …). Best-effort:
         # a failure here must not block a clean shutdown.
+        _session_state_save!(app)
         try
             save_layout(app.workspaces, _default_layout_path())
         catch err

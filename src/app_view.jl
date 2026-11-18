@@ -336,6 +336,10 @@ function _view!(m::RessacApp, f::TK.Frame)
             end
         end
     end
+    # Un onglet de la réserve se souvient d'être le dernier ouvert ; un motif
+    # en écoute s'arrête dès qu'on quitte les motifs.
+    _reserve_index(m.modal) === nothing || (m.reserve_tab = m.modal)
+    m.modal === :patterns || _patterns_preview_stop!(m)
     _update_live_doc!(m)
     _synth_workspace_sync!(m)         # texte ⟷ studio ⟷ doc du workspace synth
     _tutorial_tick!(m)                # le tutoriel avance quand l'étape est faite (après la synchro : il lit le texte)
@@ -425,6 +429,8 @@ function _view!(m::RessacApp, f::TK.Frame)
             _render_mixer_modal!(m, marea, buf)
         elseif m.modal === :patterns
             _render_patterns_modal!(m, marea, buf)
+        elseif m.modal === :sessions
+            _render_sessions_modal!(m, marea, buf)
         elseif m.modal === :evolve
             _render_evolve_modal!(m, marea, buf)
         elseif m.modal === :palette
@@ -492,6 +498,9 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # Mode (pastille de sa couleur) + surface focalisée.
     push!(sections, [(" " * _MODE_LABELS_FR[_current_mode_symbol(m)] * " ", _pill_style(_mode_color(m)))])
     push!(sections, [(_surface_label(m), TK.Style(fg = TK.theme().text_bright, bg = TK.theme().border, bold = true))])
+
+    # La session ouverte ; `+` quand son texte n'est pas sauvé.
+    push!(sections, [(_session_label(m), TK.tstyle(_session_dirty(m) ? :warning : :text_dim))])
 
     # Synth section (only if a synth pane is open)
     syn = _all_synth_buffers(m)

@@ -200,8 +200,8 @@ const _LEADER_FR = Dict{Char,String}(
     'm' => "mask", 'D' => "chaîne delay", 'c' => "cat", 'S' => "stack", 'v' => "rev",
     'E' => "euclidien", 'R' => "euclidien tourné", 'J' => "jersey (bd(3,8))",
     'a' => "chaîne d'effets (gain, lpf, room)",
-    'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ librairie synths",
-    'I' => "▸ snippets", 'P' => "▸ patterns rangés", 'V' => "▸ variations du bloc", 'w' => "▸ wiki", '?' => "▸ aide",
+    'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ sons rangés (réserve)",
+    'I' => "▸ recettes (réserve)", 'P' => "▸ motifs rangés (réserve)", 'k' => "ranger la ligne @dN dans la réserve", 'V' => "▸ variations du bloc", 'w' => "▸ wiki", '?' => "▸ aide",
 )
 for (c, _) in _LEADER_LABELS
     label = get(_LEADER_FR, c, String([c]))

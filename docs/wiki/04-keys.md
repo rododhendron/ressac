@@ -146,12 +146,13 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | Touche | Action |
 |---|---|
 | `Space b` | ▸ sons (samples, instruments, synths) |
-| `Space L` | ▸ librairie synths |
-| `Space I` | ▸ snippets |
-| `Space P` | ▸ patterns rangés |
+| `Space L` | ▸ sons rangés (réserve) |
+| `Space I` | ▸ recettes (réserve) |
+| `Space P` | ▸ motifs rangés (réserve) |
 | `Space V` | ▸ variations du bloc |
 | `Space w` | ▸ wiki |
 | `Space ?` | ▸ aide |
+| `Space k` | ranger la ligne @dN dans la réserve |
 
 ### Snippet avec des trous (après Space + lettre)
 
@@ -280,7 +281,9 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `Tab / l / →` | catégorie suivante |
+| `Tab` | onglet suivant de la réserve |
+| `S-Tab` | onglet précédent |
+| `l / →` | catégorie suivante |
 | `h / ←` | catégorie précédente |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
@@ -307,10 +310,18 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | charger sur le slot N |
 | `x` | supprimer |
 
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Space` | écouter par-dessus ce qui joue |
+
 **Naviguer**
 
 | Touche | Action |
 |---|---|
+| `Tab` | onglet suivant de la réserve |
+| `S-Tab` | onglet précédent |
 | `/` | chercher |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
@@ -663,6 +674,8 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | Touche | Action |
 |---|---|
 | `/` | chercher |
+| `Tab` | onglet suivant de la réserve |
+| `S-Tab` | onglet précédent |
 | `j / ↓` | suivant |
 | `k / ↑` | précédent |
 | `PgDn / Ctrl-d` | page suivante |
@@ -1152,6 +1165,43 @@ Lecture d'une carte :
 |---|---|
 | `Tab` | toutes les sections ⟷ contexte |
 | `? / Esc / q` | fermer l'aide |
+
+### Sessions
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `Enter` | ouvrir |
+| `!` | ouvrir en laissant ce qui n'est pas sauvé |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `/` | chercher |
+| `j / ↓` | suivant |
+| `k / ↑` | précédent |
+| `PgDn / Ctrl-d` | page suivante |
+| `PgUp / Ctrl-u` | page précédente |
+| `g` | premier |
+| `G` | dernier |
+| `Tab` | onglet suivant de la réserve |
+| `S-Tab` | onglet précédent |
+| `j / k / ↓ / ↑` | naviguer |
+| `Esc / q` | fermer |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `x` | supprimer |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `?` | aide |
 
 ### Palette (Ctrl-p)
 

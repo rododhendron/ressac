@@ -213,11 +213,12 @@ end
 function _render_synth_library_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     n = length(_synthlib_entries(m))
     inner = _render_modal_block!(buf, area;
-        title = "LIBRAIRIE DE SYNTHS",
+        title = "RÉSERVE",
         title_right = "$n synths · " * _modal_hint_text(m, :modal_lib),
         w_max = 100,
-        h_target = max(10, min(area.height - 4, n + 5)))
+        h_target = max(10, min(area.height - 4, n + 6)))
     inner.width < 20 && return
+    inner = _reserve_frame!(m, buf, inner)
     _synthlib_sync!(m, inner.width - 3)
     _picker_render!(m.synthlib, inner, buf; right_text = "$(m.synthlib.list.selected)/$n",
                     hint = "/ pour chercher · Espace écoute · Entrée ouvre")
@@ -228,6 +229,7 @@ end
 scope!(:modal_lib, "Librairie de synths"; layer = :modal, modes = (:design,))
 bind!(:modal_lib, "Space", "écouter"; group = :audio, action = _preview_synth_from_library!)
 bind!(:modal_lib, "/", "chercher"; short = "chercher", group = :nav, action = m -> _picker_search!(m.synthlib, true))
+_bind_reserve_tabs!(:modal_lib)
 mixin_list_nav!(:modal_lib, (m, key) -> _picker_nav!(m.synthlib, key); before = _synthlib_sync!)
 bind!(:modal_lib, "Enter", "ouvrir dans une pane synth"; short = "ouvrir", group = :file,
       action = _instantiate_synth_from_library!)

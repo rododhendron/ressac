@@ -55,30 +55,13 @@ ce qui est dessous, comme les live docs de Pluto. Une fonction donne sa
 description et ses exemples ; un son donne ce qu'il est, ses variantes ou
 ses paramètres, une ligne d'usage, et sa source si c'est un synth.
 
+Sur une ligne `@dN`, la fiche commence par ce que fait le slot : son état
+(joue, modifié, muet, à l'arrêt), ses coups par cycle, les notes exactes
+qu'il joue ce cycle, et l'erreur en entier s'il y en a une.
+
 Un nom de son passe avant une fiche de fonction : dans un buffer de
 patterns, `bd` est un son. `f` fige la pane, `f` de nouveau la remet à
 suivre. `K` et `:doc <nom>` visent la même pane.
-
-## Le bandeau des slots
-
-Au-dessus des panes, une ligne par slot chargé : son nom dans sa
-couleur, son motif sur le cycle courant avec le pas en train de sonner
-surligné, et le nom des sons qu'il joue.
-
-```
-d1  ▸ │x·····x·····x···│ bd
-d2  ▸ │x····x····x·····│ pad
-d3  ⏸ │x·x·x·x·x·x·x·x·│ hh
-d5  ▸ │x·······x·······│ cp
-```
-
-La hauteur suit le nombre de slots : rien de chargé, rien affiché, et
-les panes reprennent toute la place. Un slot coupé reste visible avec
-`⏸` — il fait partie du morceau même quand il ne sonne pas. Au-delà de
-huit slots, la dernière ligne compte le reste.
-
-Un clic sur une ligne coupe ou remet le slot. `:slots` affiche ou
-masque le bandeau.
 
 ## Voir les notes défiler
 

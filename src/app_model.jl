@@ -142,6 +142,16 @@ non-empty), and the focus toggle for keystroke routing.
     volet::Symbol = :fiche
     volets::Dict{Symbol,LayoutNode} = Dict{Symbol,LayoutNode}()
     volet_shown::Union{Nothing,LayoutNode} = nothing
+    # La session ouverte (app_sessions.jl) : son nom (vide = sans nom), la
+    # précédente (`:e #`), et l'empreinte du texte à sa dernière sauvegarde.
+    session_name::String  = ""
+    session_prev::String  = ""
+    session_saved::UInt64 = UInt64(0)
+    # La réserve (modal_reserve.jl) : l'onglet des sessions, le dernier
+    # onglet ouvert, et le motif en cours d'écoute.
+    sess::Picker          = _picker()
+    reserve_tab::Symbol   = :patterns
+    pat_preview::Bool     = false
     # L'état de chaque ligne @dN (app_slots.jl). `slot_evaluated` : le
     # texte de la dernière évaluation réussie de chaque slot — ce qui JOUE,
     # qui n'est pas forcément ce qu'on lit. `slot_errors` : la dernière

@@ -82,6 +82,7 @@ function _esc_quit_step!(m::RessacApp)
 end
 
 function _quit!(m::RessacApp)
+    _session_state_save!(m)
     try
         save_layout(m.workspaces, _default_layout_path())
     catch err
@@ -135,20 +136,18 @@ _register_regex!(r"^synth\s+(\w+)$",
     (m, mt) -> _open_synth_tab!(m, mt.captures[1]))
 
 # ── Save / sessions — context-sensitive on focus ─────────────────────
-_register_literal!(m -> _save_or_session(m),     "w", "save-synth")
-_register_regex!(r"^w\s+(\S+)$",
-    (m, mt) -> _save_or_session_named(m, mt))
-_register_regex!(r"^save-session\s+(\S+)$",
-    (m, mt) -> _save_session_app!(m, mt.captures[1]))
-_register_regex!(r"^load-session\s+(\S+)$",
-    (m, mt) -> _load_session_app!(m, mt.captures[1]))
-# Short aliases — :save <name> / :load <name> / :sessions list.
-_register_regex!(r"^save\s+(\S+)$",
-    (m, mt) -> _save_session_app!(m, mt.captures[1]))
-_register_regex!(r"^load\s+(\S+)$",
-    (m, mt) -> _load_session_app!(m, mt.captures[1]))
-_register_literal!(m -> _list_sessions_app!(m),
-                   "sessions", "ls-sessions")
+# `:w` sauve ce qui a le clavier : le son dans le volet, la session à gauche.
+_register_literal!(m -> _write_focused!(m, ""),     "w", "save-synth")
+_register_regex!(r"^w\s+(\S+)$", (m, mt) -> _write_focused!(m, mt.captures[1]))
+# Les sessions, avec les verbes de vim (app_sessions.jl).
+_register_literal!(m -> _session_reload!(m),               "e")
+_register_literal!(m -> _session_reload!(m; force = true), "e!")
+_register_regex!(r"^e\s+(\S+)$",  (m, mt) -> _session_open!(m, mt.captures[1]))
+_register_regex!(r"^e!\s+(\S+)$", (m, mt) -> _session_open!(m, mt.captures[1]; force = true))
+_register_literal!(m -> _session_new!(m),               "enew")
+_register_literal!(m -> _session_new!(m; force = true), "enew!")
+_register_literal!(m -> _open_sessions_modal!(m), "sessions", "ls")
+_register_literal!(m -> _open_reserve!(m), "réserve", "reserve")
 
 # ── Workspaces et panes ──────────────────
 _register_regex!(r"^workspace\s+new(?:\s+(\S+))?$",
@@ -740,31 +739,21 @@ _register_special!(
 # _save_sculpt! (sauve le génome sculpté en .jl re-jouable/re-sculptable)
 # → src/app_sculpt.jl.
 
-# Ce que `:w` sauve dépend du MODE, pas de la pane qui a le focus : dans
-# DESIGN, c'est le synth — même depuis la DOC, le studio ou la MODULATION
-# (avant, `:w` y écrivait le texte du synth comme une « session »).
+# Ce que `:w` sauve suit le clavier : du côté d'un son (son texte, sa DOC,
+# son studio, sa MODULATION) c'est le synth ; du côté des patterns, la session.
 _saves_synth(m::RessacApp) = _workspace_mode(m) === :design && _current_synth_tab(m) !== nothing
 
 # Le studio focalisé avec un son à sauver (sans génome — un texte qu'il n'a
 # pas su relire — c'est le texte du synth qui se sauve).
 _saves_sculpt(m::RessacApp) = (p = _focused_sculpt_pane(m); p !== nothing && p.genome !== nothing)
 
-function _save_or_session(m::RessacApp)
+function _write_focused!(m::RessacApp, name::AbstractString)
     if _saves_sculpt(m)
-        _save_sculpt!(m, "")
+        _save_sculpt!(m, name)
     elseif _saves_synth(m)
-        _save_current_synth!(m)
+        isempty(name) ? _save_current_synth!(m) : _save_current_synth!(m; new_name = name)
     else
-        _save_session_app!(m, "_last")
-    end
-end
-function _save_or_session_named(m::RessacApp, mt::RegexMatch)
-    if _saves_sculpt(m)
-        _save_sculpt!(m, mt.captures[1])
-    elseif _saves_synth(m)
-        _save_current_synth!(m; new_name = mt.captures[1])
-    else
-        _save_session_app!(m, mt.captures[1])
+        _session_write!(m, name)
     end
 end
 function _theme_switch(m::RessacApp, mt::RegexMatch)
@@ -1003,54 +992,4 @@ end
 # Live mute / solo on the scheduler (no buffer mutation)
 # ---------------------------------------------------------------------
 
-function _save_session_app!(m::RessacApp, name::AbstractString)
-    dir = joinpath(_project_dir(), "sessions")
-    isdir(dir) || mkpath(dir)
-    path = joinpath(dir, String(name) * ".txt")
-    # Une session, c'est le texte des patterns — pas celui de l'éditeur qui
-    # se trouve avoir le focus.
-    ed = _patterns_editor(m)
-    if ed === nothing
-        _push_app_log!(m, "[ERROR] :save — pas de patterns à sauver dans ce workspace"); return
-    end
-    try
-        write(path, TK.text(ed))
-        _push_app_log!(m, "[INFO] session sauvée → $path")
-    catch err
-        _push_app_log!(m, "[ERROR] :save : $(sprint(showerror, err))")
-    end
-end
-
-function _load_session_app!(m::RessacApp, name::AbstractString)
-    path = joinpath(_project_dir(), "sessions", String(name) * ".txt")
-    if !isfile(path)
-        _push_app_log!(m, "[ERROR] :load — aucun fichier : $path — :sessions pour la liste")
-        return
-    end
-    try
-        ed = _open_or_reuse_editable_pane!(m; name = String(name))
-        ed === nothing && return
-        _edit_text!(ed, read(path, String))
-        ed.cursor_row = 1; ed.cursor_col = 0
-        _push_app_log!(m, "[INFO] session « $name » chargée — E évalue tous les blocs")
-    catch err
-        _push_app_log!(m, "[ERROR] :load : $(sprint(showerror, err))")
-    end
-end
-
-function _list_sessions_app!(m::RessacApp)
-    dir = joinpath(_project_dir(), "sessions")
-    if !isdir(dir)
-        _push_app_log!(m, "[INFO] pas encore de répertoire sessions — :save <nom> le crée")
-        return
-    end
-    files = sort!([f for f in readdir(dir) if endswith(f, ".txt")])
-    if isempty(files)
-        _push_app_log!(m, "[INFO] (aucune session sauvée)")
-        return
-    end
-    _show_listing!(m, "SESSIONS",
-                   vcat("`:load <nom>` recharge une session", "",
-                        _columnise(sort!([splitext(f)[1] for f in files]))))
-end
 

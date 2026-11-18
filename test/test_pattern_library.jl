@@ -111,7 +111,7 @@ end
                 _plkey(app, ' '); _plkey(app, 'P')
                 @test app.modal === :patterns
                 scr = _plscreen(app, tb, frame)
-                @test occursin("PATTERNS RANGÉS", scr) && occursin("jersey", scr) && occursin("hats", scr)
+                @test occursin("RÉSERVE", scr) && occursin("motifs", scr) && occursin("jersey", scr) && occursin("hats", scr)
                 @test occursin("bd(3,8)", scr)                  # aperçu du code sélectionné
                 @test length(Ressac._pattern_entries(app)) == 2
                 _plkey(app, '/'); _plkey(app, 'h'); _plkey(app, 'a')

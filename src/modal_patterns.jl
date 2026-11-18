@@ -55,17 +55,18 @@ end
 function _render_patterns_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     n = length(_pattern_entries(m))
     inner = _render_modal_block!(buf, area;
-        title = "PATTERNS RANGÉS",
+        title = "RÉSERVE",
         title_right = _modal_hint_text(m, :modal_patterns),
         w_max = 110,
-        h_target = max(14, min(area.height - 4, n + 8)))
+        h_target = max(14, min(area.height - 4, n + 9)))
     inner.width < 24 && return
+    inner = _reserve_frame!(m, buf, inner)
     list_w = max(18, min(30, inner.width ÷ 3))
     entries = _patterns_sync!(m, list_w - 3)
     sel = m.pats.list.selected
     count_txt = "$(n) rangé$(n == 1 ? "" : "s")" * (n == 0 ? "" : "  ·  $sel/$n")
     _picker_render_input!(m.pats, TK.Rect(inner.x, inner.y, inner.width, 1), buf;
-                          right_text = count_txt, hint = "/ pour chercher · Entrée charge · 1-9 charge sur le slot")
+                          right_text = count_txt, hint = "/ pour chercher · Espace écoute · Entrée pose · 1-9 pose sur le slot")
     if n == 0
         TK.set_string!(buf, inner.x, inner.y + 2,
                        first("Rien de rangé. « :keep <nom> » range le bloc @dN sous le curseur.", inner.width),
@@ -146,8 +147,9 @@ function _load_pattern_cmd!(m::RessacApp, name::AbstractString, slot::Union{Noth
         _push_app_log!(m, "[WARN] :recall — pas de pattern « $name » (Espace P pour la liste)")
         return false
     end
-    ed = _active_editor(m)
+    ed = _patterns_editor(m)
     ed === nothing && return false
+    _focus_patterns!(m)
     target = slot === nothing ? something(pattern_slot(e.code), _next_free_slot(ed)) : slot
     code = retarget_pattern(e.code, target)
     lines = collect(String, split(TK.text(ed), '\n'; keepempty = true))
@@ -196,9 +198,24 @@ bind!(:modal_patterns, "Enter", "charger"; short = "charger", group = :edit,
 bind!(:modal_patterns, ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "charger sur le slot N";
       short = "slot N", group = :edit,
       action = (m, evt) -> _patterns_load_selected!(m, Int(evt.char - '0')))
+bind!(:modal_patterns, "Space", "écouter par-dessus ce qui joue"; short = "écouter", group = :audio,
+      action = m -> _patterns_preview_toggle!(m))
+_bind_reserve_tabs!(:modal_patterns)
 bind!(:modal_patterns, "/", "chercher"; short = "chercher", group = :nav,
       action = m -> _picker_search!(m.pats, true))
 mixin_list_nav!(:modal_patterns, (m, key) -> _picker_nav!(m.pats, key); before = _patterns_sync!)
 bind!(:modal_patterns, "x", "supprimer"; group = :edit,
       action = m -> _patterns_delete_selected!(m))
 _bind_modal_common!(:modal_patterns)
+
+# `Espace k` : la barre de commande s'ouvre sur `:keep `, il ne reste qu'à
+# nommer le motif.
+function _keep_prompt!(m::RessacApp)
+    if _block_under_cursor(m) === nothing
+        _push_app_log!(m, "[WARN] pose le curseur sur un bloc @dN à ranger")
+        return
+    end
+    enter!(m.command_line, :command)
+    _replace_buffer!(m.command_line, "keep ")
+    return
+end

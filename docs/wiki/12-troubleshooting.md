@@ -73,7 +73,7 @@ journal donne l'essentiel.
 
 2. **Le buffer de patterns est énorme.** Au-delà de ~500 lignes,
    l'éditeur peut hoqueter. Découpe en sessions plus petites avec
-   `:save` / `:load`.
+   `:w nom` / `:e nom`.
 
 3. **Un pattern est très lent à interroger.** Des chaînes profondes
    `every(N, every(M, every(...) ...))` coûtent O(profondeur) par cycle.

@@ -181,11 +181,12 @@ function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     ctx_label = ctx === :synth_dsl ? "synth DSL (.jl)" :
                 ctx === :synth_sc  ? "synth SC (.scd)" : "patterns"
     inner = _render_modal_block!(buf, area;
-        title = "SNIPPETS · $ctx_label",
+        title = "RÉSERVE · $ctx_label",
         title_right = _modal_hint_text(m, :modal_snippets),
         w_max = 110,
         h_target = max(14, area.height - 4))
     inner.width < 20 && return
+    inner = _reserve_frame!(m, buf, inner)
     # ── Row 1: category tab strip ─────────────────────────────────
     cats = _snip_categories(m)
     _render_tabs!(buf, TK.Rect(inner.x, inner.y, inner.width, 1), String[cat == "" ? "all" : cat for cat in cats],
@@ -219,7 +220,8 @@ end
 scope!(:modal_snippets, "Snippets"; layer = :modal, modes = (:play,))
 bind!(:modal_snippets, "Enter", "insérer"; group = :edit, action = _insert_snippet!)
 bind!(:modal_snippets, "Space", "aperçu"; group = :view, action = _preview_snippet!)
-bind!(:modal_snippets, ["Tab", "l", "→"], "catégorie suivante"; group = :nav,
+_bind_reserve_tabs!(:modal_snippets)
+bind!(:modal_snippets, ["l", "→"], "catégorie suivante"; group = :nav,
       action = m -> _snip_cycle_category!(m, +1))
 bind!(:modal_snippets, ["h", "←"], "catégorie précédente"; group = :nav, hint = false,
       action = m -> _snip_cycle_category!(m, -1))

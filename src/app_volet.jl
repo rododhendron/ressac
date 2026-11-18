@@ -172,6 +172,7 @@ function _build_screen!(m::RessacApp; patterns::AbstractString = _STARTER_BUFFER
     m.volet_shown = nothing
     m.zoom_leaf = 0
     _open_volet!(m, :fiche; focus = false)
+    _session_mark_saved!(m)          # un écran neuf n'a rien à sauver
     return ws
 end
 

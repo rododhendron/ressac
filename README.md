@@ -124,7 +124,7 @@ T                        # fires the synth — hold to repeat-fire
 | `:starter <genre>` | Drop a genre pack into the buffer                             |
 | `:mixer`           | Per-slot meter, mute, solo, gain edit (+/- nudges)            |
 | `:import <wav>`    | Add your own audio to the registry                            |
-| `:save` / `:load`  | Snapshot the buffer to `sessions/`                            |
+| `:w` / `:e` / `:enew` | Save the session, open another, start a blank one          |
 | `:wiki`            | Built-in 12-page documentation browser                        |
 | `:guide` or `?`    | Keybinding cheat sheet                                        |
 
