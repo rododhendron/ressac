@@ -104,7 +104,7 @@ end
     Ressac.render!(p, rect, tb.buf)
     lines = p.pane.content
     @test length(lines) > 6                          # le paragraphe a été replié
-    @test p.rendered == (1, 47)                       # largeur intérieure moins la barre
+    @test p.rendered == (1, 47, 0)                       # largeur intérieure moins la barre
     @test all(l -> textwidth(_txt(l)) <= 47, lines)
     # aucune ligne ne déborde de la pane
     @test all(y -> textwidth(rstrip(Tachikoma.row_text(tb, y))) <= 50, 1:8)
@@ -121,7 +121,7 @@ end
     # changer de page remonte en haut et re-rend
     p.pages = [page, Ressac._WikiPage("u.md", "Deux", ["court"])]
     _k('n'); Ressac.render!(p, rect, tb.buf)
-    @test p.idx == 2 && p.pane.offset == 0 && p.rendered == (2, 47)
+    @test p.idx == 2 && p.pane.offset == 0 && p.rendered == (2, 47, 0)
     @test Tachikoma.find_text(tb, "court") !== nothing
     @test Ressac.serialize(p)["scroll"] == 0
 end

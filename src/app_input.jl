@@ -179,6 +179,7 @@ function _drain_requests!(m::RessacApp)
     _drain_explorer_export!(m)
     _drain_explorer_waveform!(m)
     _drain_explorer_sculpt!(m)
+    _drain_wiki_pose!(m)
     return
 end
 

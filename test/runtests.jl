@@ -25,6 +25,7 @@ end
     _isolated_include("test_explore_slot.jl")
     _isolated_include("test_offgrid.jl")
     _isolated_include("test_audio_outputs.jl")
+    _isolated_include("test_wiki_examples.jl")
     _isolated_include("test_algebra.jl")
     _isolated_include("test_mininotation.jl")
     _isolated_include("test_osc.jl")

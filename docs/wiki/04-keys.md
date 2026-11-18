@@ -43,6 +43,30 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 |---|---|
 | `r` | étiquettes : cents ⟷ ratios |
 
+### Wiki (pane)
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `j / ↓` | défiler |
+| `k / ↑` | remonter |
+| `d / PgDn / Ctrl-d` | descendre d'un écran |
+| `u / PgUp / Ctrl-u` | remonter d'un écran |
+| `g` | haut |
+| `G` | bas |
+| `n / ] / →` | page du wiki suivante |
+| `p / [ / ←` | page du wiki précédente |
+| `Tab` | exemple suivant de la page |
+| `S-Tab` | exemple précédent |
+| `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | poser l'exemple désigné dans les patterns, sur un slot libre |
+
 ### Visualiseur de notes
 
 **Naviguer**
@@ -965,22 +989,6 @@ Lecture d'une carte :
 | `g` | haut |
 | `G` | bas |
 | `f` | suivre le curseur ou figer |
-
-### Wiki (pane)
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / ↓` | défiler |
-| `k / ↑` | remonter |
-| `d / PgDn / Ctrl-d` | descendre d'un écran |
-| `u / PgUp / Ctrl-u` | remonter d'un écran |
-| `g` | haut |
-| `G` | bas |
-| `n / ] / →` | page du wiki suivante |
-| `p / [ / ←` | page du wiki précédente |
-| `1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9` | aller à la page N |
 
 ### Tutoriel
 

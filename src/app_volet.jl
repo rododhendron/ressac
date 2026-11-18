@@ -47,6 +47,30 @@ end
 
 _volet_node(m::RessacApp, kind::Symbol) = get!(() -> _build_volet(m, kind), m.volets, kind)
 
+"""
+    _drain_wiki_pose!(m) -> Bool
+
+Un exemple du wiki (`Entrée` dessus) est posé au bout des patterns, sur le
+premier slot libre. Il n'est pas lancé : `e` le fait, d'où qu'on soit.
+"""
+function _drain_wiki_pose!(m::RessacApp)
+    ex = _WIKI_POSE_REQUEST[]
+    ex === nothing && return false
+    _WIKI_POSE_REQUEST[] = nothing
+    ed = _patterns_editor(m)
+    ed === nothing && return true
+    slot = "d$(_next_free_slot(ed))"
+    text = replace(ex, r"^(\s*)@d\d+" => SubstitutionString("\\1@" * slot); count = 1)
+    lines = [String(l) for l in ed.lines]
+    while !isempty(lines) && isempty(strip(lines[end])); pop!(lines); end
+    isempty(lines) || push!(lines, "")
+    row = length(lines) + 1
+    append!(lines, split(text, '\n'))
+    _edit_text!(ed, join(lines, '\n'); row = row, col = 0)
+    _push_app_log!(m, "[INFO] exemple posé sur $slot, au bout des patterns — e le lance (u dans les patterns l'enlève)")
+    return true
+end
+
 # La feuille qui porte le texte des patterns.
 function _patterns_leaf(ws::Workspace)
     for leaf in _all_leaves(ws.tree), tab in leaf.tabs

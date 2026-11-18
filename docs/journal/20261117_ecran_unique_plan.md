@@ -83,7 +83,7 @@ Tests : `test_slot_state.jl` — un cas par état, plus les transitions
   exactes que joue le slot (l'ancien aperçu `♪ 1 1 2 3 5`, que la piste ne
   donne qu'en hauteurs relatives).
 - [x] **E2.6 — Le wiki dans le volet.** `gw` l'ouvre, `:q` le rend.
-- [ ] **E2.6b — Poser un exemple du wiki** dans un slot libre : demande un
+- [x] **E2.6b — Poser un exemple du wiki** dans un slot libre : demande un
   curseur d'exemple dans la pane (`Tab` au suivant, `Entrée` le pose).
 - [x] **E2.7 — Le chrome.** Status line avec `● SC` (le serveur répond-il),
   le nom de la session et `+` si non sauvée. Journal sur une ligne,

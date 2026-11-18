@@ -15,7 +15,7 @@ Un seul écran. **Les patterns sont à gauche et y restent** ; à droite, un
 | Volet | Pour l'ouvrir | Ce qu'il montre |
 |---|---|---|
 | la fiche | par défaut, `:back` | la doc de ce qui est sous le curseur, et ce que fait la ligne `@dN` où il se trouve |
-| le wiki | `gw`, `:wiki` | cette documentation, à côté du travail |
+| le wiki | `gw`, `:wiki` | cette documentation, à côté du travail ; `Tab` désigne un exemple `@dN` de la page, `Entrée` le pose dans tes patterns |
 | un son | `gs` sur son nom, `:synth nom`, `:son` | le texte du synth — c'est là qu'on le travaille ; dessous, sa DOC |
 | l'explorateur | `gx`, `:explorer` | l'explorateur génétique de sons, par-dessus |
 
