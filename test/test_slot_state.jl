@@ -150,3 +150,31 @@ _state(app, slot) = Ressac._slot_line(app, slot).state
         end
     end
 end
+
+@testset "la fiche dit ce que fait la ligne du curseur" begin
+    _with_live_app() do app, frame
+        _set_buffer!(app, "cps!(0.5)\n@d1 :pad |> n(\"0 3 7 12\")\n@d2 p\"bd bd\"")
+        _key!(app, 'E')
+        ed = Ressac._patterns_editor(app)
+        ed.cursor_row = 1
+        @test isempty(Ressac._cursor_slot_summary(app))                    # hors d'un bloc @dN
+        ed.cursor_row = 2
+        s = Ressac._cursor_slot_summary(app)
+        @test s[1][1] == "d1 — joue · 4 coups par cycle"
+        @test ("notes : 0 3 7 12", :text_dim) in s                         # les notes exactes, que la piste ne dit pas
+        ed.cursor_row = 3
+        @test !any(t -> startswith(t[1], "notes"), Ressac._cursor_slot_summary(app))   # pas de hauteurs : rien
+        # Une erreur : la cause en entier, et ce qui continue.
+        _set_buffer!(app, "cps!(0.5)\n@d1 :pad |> n(\"0 3 7 12\")\n@d2 p\"bd bd\" |> nexiste_pas(1)", row = 3)
+        _key!(app, 'e')
+        s = Ressac._cursor_slot_summary(app)
+        @test s[1] == ("d2 — en erreur", :error)
+        @test occursin("nexiste_pas", s[2][1]) && s[3][1] == "l'ancien pattern joue toujours"
+        # …et elle est à l'écran, dans la colonne de droite.
+        Ressac._open_volet!(app, :fiche; focus = false)
+        Tachikoma.reset!(frame.buffer); Tachikoma.view(app, frame)
+        buf = frame.buffer
+        screen = join((join(buf.content[Tachikoma.buf_index(buf, x, y)].char for x in 1:buf.area.width) for y in 1:buf.area.height), "\n")
+        @test occursin("d2 — en erreur", screen)
+    end
+end

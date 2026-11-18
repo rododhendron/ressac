@@ -85,8 +85,8 @@ let (app, tb, frame) = newapp()
     key(app, '?');          snap(app, tb, frame, "31_help_from_log")
 end
 let (app, tb, frame) = newapp()
-    ex(app, "design");  snap(app, tb, frame, "40_design_workspace")
+    ex(app, "son");     snap(app, tb, frame, "40_son_volet")
     key(app, 'U');      snap(app, tb, frame, "41_use_in_pattern")
-    ex(app, "explore"); snap(app, tb, frame, "42_explore_workspace")
+    ex(app, "explore"); snap(app, tb, frame, "42_explorer")
 end
 println("→ $OUT")

@@ -1,7 +1,7 @@
-# EXPLORE : trouver un son sans savoir l'écrire
+# L'explorateur : trouver un son sans savoir l'écrire
 
-Le troisième workspace (`Ctrl-3` ou `:explore`) sert à **chercher un
-son** plutôt qu'à l'écrire. Deux outils s'y enchaînent : l'**explorateur**,
+L'explorateur (`gx` ou `:explorer`) s'ouvre par-dessus l'écran et sert à
+**chercher un son** plutôt qu'à l'écrire. Deux outils s'y enchaînent : l'**explorateur**,
 qui fait évoluer une population de synths par sélection, et le studio
 **sculpt**, qui prend un son et le pétrit sur son onde. Ce qu'on trouve
 finit dans un pattern (`U`), dans l'éditeur (`e`) ou dans la librairie
@@ -72,7 +72,7 @@ hauteur). Quand un rôle est actif :
 | Touche | Ce qu'elle fait |
 |---|---|
 | `M` | ouvre le candidat dans le studio **sculpt** |
-| `e` | exporte son DSL dans l'éditeur (pane synth, workspace DESIGN) |
+| `e` | exporte son DSL dans le volet du son, à droite des patterns |
 | `w` | le sauve comme synth dans `plugins/user-synths/` |
 | `s` | le sauve comme **graine** dans `plugins/synth-seeds/`, pour repartir de lui |
 | `y` | copie le DSL |
@@ -122,14 +122,14 @@ retire d'un coup tous ceux dont l'impact mesuré est sous 0,02
 (`:prune 0.05` pour un seuil plus large).
 
 Et pour finir : `e` exporte dans l'éditeur, `U` **utilise** le son dans
-un pattern (sauve, puis pose `@dN p"nom*4"` dans PLAY), `s` revient à la
+un pattern (sauve, puis pose `@dN p"nom*4"` dans les patterns), `s` revient à la
 vue d'onde, `<` / `>` défilent l'explication.
 
 ## Un parcours typique
 
-1. `Ctrl-3`, `Space` sur quelques candidats, `f` sur ce qui plaît, `n`.
+1. `gx`, `Space` sur quelques candidats, `f` sur ce qui plaît, `n`.
 2. `u` jusqu'à `basse`, `H` : la génération se remplit de basses.
 3. `M` sur la meilleure : tirer `freq`, `rq`, l'enveloppe ; `n` pour
    glisser une saturation ; écouter à chaque coup.
-4. `U` : le son est sauvé et joue déjà sur un slot dans PLAY. `gs`
+4. `U` : le son est sauvé et joue déjà sur un slot. `gs`
    depuis ce pattern ramène à son synth quand il faut le retoucher.

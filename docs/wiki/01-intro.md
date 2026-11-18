@@ -7,22 +7,31 @@ du son à travers SuperDirt.
 
 
 
-## L'écran de jeu
+## L'écran
 
-PLAY s'ouvre sur trois panes :
+Un seul écran. **Les patterns sont à gauche et y restent** ; à droite, un
+**volet** qu'on échange sans rien perdre de ce qui y était ouvert :
 
-- **les patterns à gauche**, sur les deux tiers de la largeur ;
-- **le wiki en haut à droite**, sur les trois cinquièmes de la hauteur ;
-- **la doc vivante en bas à droite**, qui suit le curseur.
+| Volet | Pour l'ouvrir | Ce qu'il montre |
+|---|---|---|
+| la fiche | par défaut, `:back` | la doc de ce qui est sous le curseur, et ce que fait la ligne `@dN` où il se trouve |
+| le wiki | `gw`, `:wiki` | cette documentation, à côté du travail |
+| un son | `gs` sur son nom, `:synth nom`, `:son` | le texte du synth ; dessous, sa DOC et son studio en onglets |
+| l'explorateur | `gx`, `:explorer` | l'explorateur génétique de sons, par-dessus |
 
-La doc vivante montre ce qui est sous le curseur, sans rien demander. Sur
-une fonction, sa description et ses exemples. Sur un son, ce qu'il est,
-ses variantes ou ses paramètres, une ligne d'usage prête à copier, et sa
-source quand c'est un synth. Quand le curseur n'est sur rien de connu, la
-dernière fiche reste plutôt que de clignoter.
+`:q` ferme le volet et rend le clavier aux patterns ; `:q` de nouveau
+quitte. Les patterns continuent de jouer quel que soit le volet. Sur un
+grand écran (200 colonnes et plus), le son s'ouvre entre les patterns et
+la fiche au lieu de la remplacer.
 
-`f` dans la pane doc la fige ou la remet à suivre. `Ctrl-w z` zoome
-n'importe quelle pane, `:q` en ferme une.
+Chaque ligne `@dN` dit ce qu'elle fait, sur la ligne elle-même : un signe
+dans la marge, un fond qui s'allume au coup, et au bout de la ligne une
+piste d'un cycle. Voir `07-scope`.
+
+En haut, la **status line** : le tempo, les quatre temps du cycle, et
+`● SC` quand SuperCollider répond. En bas, la **barre de touches** de
+l'endroit où tu es, puis la dernière ligne du **journal** (`:log` le
+déplie).
 
 ## Tout retrouver : Ctrl-p
 
@@ -45,58 +54,39 @@ C'est le raccourci à retenir quand on ne sait plus où est quelque chose.
 1. Lance SuperCollider avec le script de démarrage de Ressac
    (`just audio` ou équivalent — voir le README du projet).
 2. Lance la TUI : `julia --project=. scripts/live.jl`
-3. **Première fois ?** Tape `:tutorial` : une pane s'ouvre à côté des
-   patterns et avance toute seule au fil de ce que tu fais.
-   Sinon :
-   - `i` passe en insertion, tape une ligne
-   - `Esc` puis `e` évalue la ligne courante, OU `E` évalue tout
-   - `m` mute le slot sous le curseur, `,` arrête tout en douceur, `!` coupe tout
+3. Le texte de départ contient `cps!(0.5)` et un pattern kick / clap /
+   charley : `E` et tu entends quelque chose.
+   - `i` passe en insertion, tape une ligne, `Esc` en sort
+   - `e` évalue la ligne courante, `E` tous les blocs `@dN`
+   - `m` coupe le slot sous le curseur, `,` arrête tout en douceur, `!` coupe tout
+4. **Première fois ?** `:tutorial` ouvre une pane à côté des patterns, qui
+   avance toute seule au fil de ce que tu fais.
 
-Le buffer de démarrage contient déjà `cps!(0.5)` + un pattern kick/clap/
-charley : `Esc` puis `E` et tu entends quelque chose.
-
-## Trois workspaces, trois façons de travailler
-
-- **PLAY** (`Ctrl-1` / `:play`) — la pane **patterns** : du code Julia avec
-  des slots `@dN`. Chaque slot envoie des événements à SuperDirt ; `e` évalue
-  la ligne, `E` tous les blocs `@dN`. La tête de lecture surligne le token
-  qui joue dans chaque `"…"`.
-
-- **DESIGN** (`Ctrl-2` / `:design`) — le workspace **synth**, toujours de
-  la même forme : le **texte** à gauche (DSL Julia `.jl` ou SuperCollider
-  brut `.scd`), le **STUDIO** en haut à droite (l'onde et les knobs du
-  son, reconstruits depuis le texte ; tirer un knob réécrit le nombre dans
-  le texte), la **DOC** en bas à droite (`←` `→` : la fiche du mot sous le
-  curseur, l'explication du synth, ou son **graphe**). Chaque synth ouvert est un onglet
-  du texte, `g t` passe au suivant. Les panes se redimensionnent en
-  glissant une bordure à la souris, ou en mode pane (`Ctrl-w` puis `<` `>`
-  `+` `-`, `=` égalise, `r` tourne la coupe) ; les proportions sont sauvées. `T` joue le synth (maintenir =
-  rafale), `D` le tient en drone, `:w` sauve, `U` l'utilise dans un
-  pattern.
-
-- **EXPLORE** (`Ctrl-3` / `:explore`) — l'**explorateur** génétique de
-  synths et le studio **sculpt** (les paramètres d'un son manipulés
-  directement sur son onde).
+## Le clavier suit ce que tu travailles
 
 Le clavier est en couches : une touche descend les couches actives —
-transitoire (saisie, leader, mode pane…), modale, pane focalisée, **mode**,
-partout — jusqu'à la première qui la connaît. Les gestes d'un mode valent
-quelle que soit la pane : dans DESIGN, `T` entend le son, `D` tient le
-drone, `Espace` ouvre les maillons DSL, `U` l'envoie dans un pattern, `P`
-mesure l'élagage, `K` `X` `Y` mettent la DOC sur la fiche, l'explication,
-le graphe — depuis le texte, le studio ou la DOC. Dans PLAY, `e` `E` `m`
-`K` `Espace` de même depuis le wiki ou le journal ; dans EXPLORE, `T` et
-`D` sur le candidat. `?` puis `Tab` liste toutes les touches du mode
-courant, la palette (`Ctrl-p`) et la complétion de `:` ne proposent que
-ses commandes. Une commande d'un autre mode y emmène
-d'abord (`:synth wob` depuis PLAY ouvre DESIGN). `:play!`, `:design!`,
-`:explore!` remettent un workspace à neuf, panes bien placées ; `:reset`
-fait pareil pour le workspace courant. `:design` remet la forme texte |
-studio / doc si une pane manque.
+transitoire (saisie, leader, mode pane…), modale, pane focalisée,
+**contexte**, partout — jusqu'à la première qui la connaît.
 
-Les ponts : depuis un pattern, `gs` ouvre le synth sous le curseur dans
-DESIGN ; depuis un synth ou un sculpt, `U` pose `@dN p"nom*4"` dans PLAY ;
-depuis l'explorateur, `M` et `e` amènent un candidat dans DESIGN.
+Le contexte est ce que porte la pane qui a le clavier :
+
+- **les patterns** (le texte, la fiche, le wiki, le journal) : `e` évalue
+  la ligne, `E` tous les blocs, `m` coupe, `K` montre la fiche, `Espace`
+  ouvre les snippets — d'où qu'on soit de ce côté-là ;
+- **un son** (son texte, sa DOC, son studio) : `T` l'entend, `D` le tient
+  en drone, `Espace` ouvre les maillons du DSL, `U` l'envoie dans un
+  pattern, `P` mesure l'élagage, `K` `X` `Y` mettent la DOC sur la fiche,
+  l'explication, le graphe ;
+- **l'explorateur** : `T` et `D` sur le candidat.
+
+Les commandes, elles, valent partout ; celles qui parlent d'un son
+(`:sculpt`, `:explain`, `:todsl`…) l'ouvrent d'abord à droite. `?` puis
+`Tab` liste toutes les touches du contexte. `:reset` refait l'écran à neuf
+en gardant le texte des patterns.
+
+Les ponts : depuis un pattern, `gs` ouvre le son sous le curseur ; depuis
+un son, `U` pose `@dN p"nom*4"` dans les patterns ; depuis l'explorateur,
+`M` et `e` amènent un candidat dans le volet du son.
 
 ## Se repérer
 
@@ -116,8 +106,7 @@ depuis l'explorateur, `M` et `e` amènent un candidat dans DESIGN.
 
 La **barre de touches** en bas de l'écran montre toujours les touches
 utiles à l'endroit où tu es (elle change avec la pane focalisée, en
-insertion, après un Espace-leader, dans un modal…). La **status line**
-en haut montre le mode, la surface focalisée et les workspaces.
+insertion, après un Espace-leader, dans un modal…).
 
 ## Commandes à connaître
 
@@ -134,7 +123,7 @@ en haut montre le mode, la surface focalisée et les workspaces.
 - `:import chemin/vers/sample.wav` — ajoute ton audio au registre
 - `:mixer` — vu-mètres par slot, mute / solo / gain
 - `:save nom` / `:load nom` — instantanés de session dans `sessions/`
-- `:log` — replie / déplie le journal (3, 10, 0 lignes)
+- `:log` — déplie / replie le journal (1, 3, 10 lignes, replié)
 - `:wiki` — cette documentation
 
 ## Pour aller plus loin
@@ -151,5 +140,5 @@ en haut montre le mode, la surface focalisée et les workspaces.
 - `14-chaos-reservoir` — générateurs chaotiques et patterns par réservoir
 - `15-maths` — les mathématiques de la musique : temps, hauteurs,
   rythmes euclidiens, hasard tenu, chaos, et des pistes à essayer
-- `16-explore` — EXPLORE : l'explorateur génétique de synths, les rôles
+- `16-explore` — l'explorateur génétique de synths, les rôles
   d'usage, et le studio sculpt

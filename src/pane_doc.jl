@@ -5,11 +5,14 @@ mutable struct DocPane <: PaneImpl
     name::String              # the DocEntry name (registry key)
     pane::TK.ScrollPane       # la fiche rendue, son défilement, sa barre
     follow::Bool              # suit le mot sous le curseur (doc vivante)
-    rendered::Tuple{String,Int}   # (nom, largeur) du contenu posé dans `pane`
+    rendered::Tuple{String,Int,UInt64}   # (nom, largeur, en-tête) du contenu posé dans `pane`
+    # Ce que la ligne @dN du curseur est en train de faire (app_slots.jl :
+    # `_slot_summary`) — au-dessus de la fiche. Vide hors d'une ligne @dN.
+    header::Vector{Tuple{String,Symbol}}
 end
 
 DocPane(name::AbstractString, offset::Int = 0, follow::Bool = false) =
-    DocPane(String(name), _scrollpane(; offset), follow, ("\0", 0))
+    DocPane(String(name), _scrollpane(; offset), follow, ("\0", 0, UInt64(0)), Tuple{String,Symbol}[])
 
 function _doc_pane_ctor(args::AbstractDict)
     return DocPane(String(get(args, "ref", "")), Int(get(args, "scroll", 0)), get(args, "follow", false) == true)
@@ -18,10 +21,17 @@ end
 # Pose dans le ScrollPane la fiche courante rendue à `width` colonnes,
 # une fois par (nom, largeur) ; changer de fiche remonte en haut.
 function _doc_sync!(p::DocPane, width::Int)
-    p.rendered == (p.name, width) && return
+    key = (p.name, width, hash(p.header))
+    p.rendered == key && return
     p.rendered[1] == p.name || (p.pane.offset = 0)
-    TK.set_content!(p.pane, _doc_pane_lines(p.name, width))
-    p.rendered = (p.name, width)
+    lines = _MdLine[]
+    for (text, sty) in p.header, l in _wrap_text(text, width)
+        push!(lines, _md_plain(l, TK.tstyle(sty, bold = sty !== :text_dim)))
+    end
+    isempty(lines) || push!(lines, TK.Span[])
+    append!(lines, _doc_pane_lines(p.name, width))
+    TK.set_content!(p.pane, lines)
+    p.rendered = key
     return
 end
 

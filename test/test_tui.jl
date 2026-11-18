@@ -271,6 +271,8 @@ end
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._ensure_default_workspace!(app)
     _only_patterns!(app)
+    @test Ressac._global_log_tail_height(app) == 1      # une ligne, sans cadre
+    Ressac._cycle_log_tail!(app)
     @test Ressac._global_log_tail_height(app) == 5      # 3 lignes + 2 bordures
     Ressac._cycle_log_tail!(app)
     @test Ressac._global_log_tail_height(app) == 12     # 10 lignes

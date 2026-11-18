@@ -190,14 +190,8 @@ end
 @testset "footer hint row contains 'NORMAL' or mode legend" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
-    # Footer (hint widget) is one row above the log tail.
-    log_top_y = 0
-    for y in 1:_VIS_H
-        occursin("JOURNAL", Tachikoma.row_text(tb, y)) && (log_top_y = y; break)
-    end
-    @test log_top_y > 0
-    footer_y = log_top_y - 1
-    @test footer_y > 0
+    # La barre de touches est juste au-dessus du journal, qui tient sur la dernière ligne.
+    footer_y = _VIS_H - 1
     row = Tachikoma.row_text(tb, footer_y)
     @test !isempty(strip(row))   # the footer has SOME hint visible
 end
@@ -306,7 +300,7 @@ end
 @testset "global log tail collapses when a LogPane is in the tree" begin
     app, tb, frame = _vis_app()
     Tachikoma.view(app, frame)
-    @test _find_row(tb, "JOURNAL") > 0
+    @test Ressac._global_log_tail_height(app) == 1
     Ressac.cmd_vsplit!(app.workspaces, "log", Dict{String,Any}())
     Tachikoma.view(app, frame)
     # Default chrome height is 10 when no LogPane is in the tree; the

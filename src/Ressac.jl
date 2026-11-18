@@ -152,7 +152,6 @@ include("pattern_evolve.jl")     # variations de patterns (mutation, croisement)
 include("modal_evolve.jl")       # modal « variations »
 include("modal_palette.jl")      # palette universelle (Ctrl-p)
 include("modal_sccode.jl")       # :sccode
-include("rack_view.jl")          # bandeau des slots chargés
 include("app_view.jl")           # TK.view : chrome + arbre + modal
 include("app_sculpt.jl")         # :sculpt → pane waveform zoomée, :w, drains M / U
 include("app_keymap.jl")         # bindings :global/:editor/:patterns/:synth/:leader (après toutes les actions)
@@ -305,7 +304,7 @@ try
     ctrl!('w'); key!('v'); key!('h'); key!('>'); key!('='); key!('c'); key!(:escape)
     _PANE_MODE.active = false
     # DESIGN : texte | studio / doc, onglets, studio lié, DOC, drone, modulation
-    ex!("design"); paint!()
+    ex!("son"); paint!()
     ex!("synth _pc_sketch"); paint!()
     key!('G'); key!('o'); foreach(key!, "# note"); key!(:escape); paint!()
     key!('T'); key!('D'); paint!(); key!('D')
@@ -320,11 +319,11 @@ try
     ex!("explore"); paint!()
     for k in ('j', 'k', 'l', 'h'); key!(k); end
     paint!()
-    ex!("play"); paint!()
+    ex!("back"); paint!()
     # le bilan du boot, l'aide contextuelle de chaque mode
-    ex!("design"); key!('?'); paint!(); key!(:escape)
+    ex!("son"); key!('?'); paint!(); key!(:escape)
     ex!("explore"); key!('?'); paint!(); key!(:escape)
-    ex!("play")
+    ex!("back")
     _WAVE_RENDER[] = old_render; _WAVE_SYNC[] = old_sync
     drone_stop_all!(); empty!(_DRONES)
 catch

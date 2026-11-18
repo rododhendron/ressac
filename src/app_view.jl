@@ -1,7 +1,6 @@
 # src/app_view.jl
-# Rendu : TK.view (layout chrome + arbre de panes + modal), status bar,
-# strips de workspace/mode, livedoc, footer, journal (log tail) et
-# _push_app_log!.
+# Rendu : TK.view (chrome + arbre de panes + modal), status line, barre de
+# touches, journal (une ligne par défaut) et _push_app_log!.
 
 """
     _creation_hint(m) -> Union{Nothing,String}
@@ -155,6 +154,12 @@ can call it as a chrome row independently of the
 workspace area. Behavior-preserving extraction — no visible change.
 """
 function _render_global_log_tail!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
+    if area.height == 1 && !_completion_picker_active(m)
+        # Une seule ligne : la dernière chose dite, sans cadre.
+        m._last_log_rect = area
+        _render_logs(m, area, buf)
+        return
+    end
     if _completion_picker_active(m)
         title       = "COMPLÉTIONS"
         title_right = "$(m.completion_idx)/$(length(m.completion_candidates)) · Tab suivant · autre touche annule"
@@ -274,13 +279,14 @@ function _global_log_tail_height(m::RessacApp)
             t isa LogPane && return 0
         end
     end
+    m.log_tail_rows == 1 && return 1    # une ligne : la dernière, sans cadre
     return m.log_tail_rows + 2          # + les deux bordures
 end
 
-# `:log` : bascule le journal du bas 3 → 10 → 0 → 3 lignes ; `:log N` fixe.
+# `:log` : le journal du bas, 1 ligne → 3 → 10 → replié → 1 ; `:log N` fixe.
 function _cycle_log_tail!(m::RessacApp, n::Union{Nothing,Int} = nothing)
     m.log_tail_rows = n !== nothing ? clamp(n, 0, 30) :
-                      m.log_tail_rows == 3 ? 10 : m.log_tail_rows == 10 ? 0 : 3
+                      m.log_tail_rows == 1 ? 3 : m.log_tail_rows == 3 ? 10 : m.log_tail_rows == 10 ? 0 : 1
     _scroll_end!(m.log_view)
     _push_app_log!(m, m.log_tail_rows == 0 ? "[INFO] journal replié (:log pour le rouvrir · :copylogs copie tout)" :
                                              "[INFO] journal : $(m.log_tail_rows) lignes")
@@ -343,22 +349,16 @@ function _view!(m::RessacApp, f::TK.Frame)
     status_y  = area.y
     keybar_y  = area.y + area.height - 1 - log_h
     log_y     = keybar_y + 1
-    rack_y    = status_y + 1
-    rack_h    = _rack_height(m, max(0, keybar_y - rack_y))
-    ws_y      = rack_y + rack_h
+    ws_y      = status_y + 1
     ws_height = max(0, keybar_y - ws_y)
-
-    if rack_h > 0
-        _render_rack!(m, TK.Rect(area.x, rack_y, area.width, rack_h), buf)
-    else
-        empty!(m._rack_hits)
-    end
+    _sc_ping!(m.scheduler.osc)
     # Workspace area — dispatched through _compute_rects. Cached on
     # the model so the mouse handler can hit-test workspace leaves
     # without re-deriving chrome heights.
     if ws_height > 0
         ws_nt = (x = area.x, y = ws_y, w = area.width, h = ws_height)
         m._last_ws_area = ws_nt
+        _volet_follow_width!(m)       # le son gagne sa colonne sur un grand écran
         ws = current_workspace(m.workspaces)
         if ws !== nothing
             # Un changement de focus dézoome (comme tmux).
@@ -460,17 +460,9 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
                 ((time() - sched.t_start) * sched.cps) % 1.0 : 0.0
     cycle_phase = isnan(raw_phase) ? 0.0 : clamp(raw_phase, 0.0, 0.999)
 
-    # Smooth gradient cycle bar — sub-cell precision via BARS_H glyphs.
-    # Full cells use █, the partial cell uses a fractional bar glyph,
-    # remaining cells use ░ (very dim). Reads as a clean sweep instead
-    # of a chunky "filled/empty" toggle.
-    bar_w = 12
-    pos = cycle_phase * bar_w
-    full = floor(Int, pos)
-    frac = pos - full
-    partial = frac == 0 ? "" : string(TK.BARS_H[clamp(ceil(Int, frac * 8), 1, 8)])
-    rest = bar_w - full - (isempty(partial) ? 0 : 1)
-    cycle_bar = "█" ^ full * partial * "░" ^ max(0, rest)
+    # Les quatre temps du cycle : pleins jusqu'au temps en cours.
+    beat = sched.t_start > 0 ? floor(Int, cycle_phase * 4) + 1 : 0
+    cycle_bar = "▮" ^ beat * "▯" ^ (4 - beat)
 
     # Sections — each is a tuple of (text, style). They get joined with
     # ` │ ` separators rendered in :text_dim so the eye groups them.
@@ -487,11 +479,14 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         (" · ", TK.tstyle(:text_dim)),
         ("$(bpm) bpm", TK.tstyle(:text_dim)),
         ("  ", TK.tstyle(:text)),
-        ("◐ ", TK.tstyle(:text_dim)),
         (cycle_bar, TK.tstyle(:accent)),
         ("  ", TK.tstyle(:text)),
-        ("✧ $(sched.events_shipped[])", TK.tstyle(:title)),
+        ("cycle $(sched.t_start > 0 ? _cycle_index(sched) : 0)", TK.tstyle(:text_dim)),
     ]
+    # SuperCollider répond-il ? (Rien tant qu'on ne peut pas le savoir.)
+    sc = _sc_state()
+    sc === :alive  && push!(sections, [("● SC", TK.tstyle(:success, bold = true))])
+    sc === :silent && push!(sections, [("○ SC ne répond pas — `just audio`", TK.tstyle(:error, bold = true))])
     push!(sections, tempo_section)
 
     # Mode (pastille de sa couleur) + surface focalisée.

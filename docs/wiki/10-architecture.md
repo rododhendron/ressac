@@ -84,14 +84,18 @@ src/
 
   ── L'application (chaque fichier prend un m::RessacApp) ──
   app_model.jl             ★ RessacApp + accesseurs (_active_editor,
-                             _focused_pane_impl…), workspaces par défaut
+                             _focused_pane_impl…)
+  app_volet.jl             ★ l'écran unique : les patterns à gauche, le volet
+                             qu'on échange à droite (fiche, wiki, son, explorateur)
+  slot_state.jl / app_slots.jl  les blocs @dN du texte et l'état de chaque ligne
+  slot_marks.jl              signes de marge, ligne éclairée, piste d'un cycle
   app_layers.jl            ★ la pile des couches de touches et le résolveur
   app_key_engines.jl         TK.update! clavier : les moteurs (frappe, vim, leader…)
   app_input.jl               TK.update! souris, routage vers la pane, drains
   app_ex_registry.jl         commandes ex : tables, enregistrement, dispatch, historique
   app_commands.jl            les commandes ex et leurs handlers
   app_livedoc.jl             :doc, K, la pane DOC qui suit le curseur
-  app_modes.jl               PLAY / DESIGN / EXPLORE : commandes par mode
+  app_modes.jl               le contexte de touches, lu sur la pane focalisée
   app_editor.jl              motions vim, nudge des nombres, raccourcis
   app_patterns.jl            mute/solo, preview, eval @dN + cascade
   app_scope.jl               :scope + rendu des 12 vues
@@ -283,15 +287,15 @@ paquet OSC en attendant une réponse doit l'appeler d'abord.
 `TK.view(m::RessacApp, f::TK.Frame)` (app_view.jl) tourne au fps
 configuré (120 par défaut). Il :
 
-1. découpe l'écran : status / workspace / strip / mode / livedoc /
-   commande / footer / log ;
+1. découpe l'écran : status line / arbre de panes / barre de touches (ou
+   de commande) / journal ;
 2. rend l'arbre de panes du workspace courant (`_render_tree!`, chaque
    `PaneImpl.render!` dans son rect, bordure accentuée sur le focus),
    puis les floats ;
-3. peint les overlays de la pane patterns : flash d'eval, sélection
-   visuelle, playhead, ghost ;
-4. rend le chrome : status bar, strip de workspaces, strip de mode,
-   livedoc, barre de commande (si active), footer, journal ;
+3. peint par-dessus la pane des patterns : les marques de chaque ligne
+   @dN (signe, fond, piste — slot_marks.jl), le flash d'éval, la sélection
+   visuelle, le jeton en cours, la complétion fantôme ;
+4. rend le chrome : status line, barre de touches ou de commande, journal ;
 5. rend le modal par-dessus tout, en laissant la dernière ligne à la
    barre de commande persistante.
 
@@ -304,7 +308,7 @@ cellules sans rien savoir de l'état de l'éditeur.
 
 1. barre de commande active → elle prend tout ;
 2. `!` → panic, depuis n'importe où (sauf saisie de texte) ;
-3. `Ctrl-1..9` workspaces, `Ctrl-w` mode pane (persistant) ;
+3. `Ctrl-w` mode pane (persistant) ;
 4. modal ouvert → `_handle_modal_key!` ;
 5. pane focalisée non-patterns → `PaneImpl.handle_key!` ;
 6. flux patterns : leader Space, `?`, `e`/`E`, `m`, `K`, nudge, puis

@@ -985,6 +985,7 @@ end
     for i in 1:30
         Ressac._push_app_log!(app, "[INFO] entry #$i")
     end
+    app.log_tail_rows = 10       # le journal déplié : de quoi faire défiler
     Tachikoma.view(app, frame)   # populate m.layout_logs
     @test app.log_view.following
     if app._last_log_rect !== nothing

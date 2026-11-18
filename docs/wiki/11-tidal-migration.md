@@ -114,8 +114,8 @@ pas aléatoires à chaque rendu.
 ### La conception de sons vit dans la même TUI
 
 Dans Tidal on écrit les SynthDefs en sclang (un autre éditeur). Dans
-Ressac, le workspace DESIGN (`Ctrl-2`) tient la pane synth — `:synth wob`
-l'ouvre. SuperCollider brut OU le DSL Julia embarqué
+Ressac, le son s'ouvre à droite des patterns — `:synth wob`, ou `gs` sur
+son nom. SuperCollider brut OU le DSL Julia embarqué
 (`@synth :wob saw(:freq) |> rlpf(800, 0.3)`). `T` joue, `:w` sauve, `U`
 pose le synth dans un pattern, `gs` remonte d'un pattern au synth.
 

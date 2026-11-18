@@ -140,3 +140,72 @@ function _slot_of_src(src::AbstractString)
     mt = match(r"^\s*@d(\d+)\b", src)
     return mt === nothing ? nothing : Symbol("d", mt.captures[1])
 end
+
+# ── Ce que la fiche dit de la ligne du curseur ───────────────────────
+
+const _STATE_PHRASES = Dict(
+    :playing  => "joue",
+    :modified => "modifié — ce que tu lis n'est pas encore ce que tu entends · e l'évalue",
+    :muted    => "muet · m le rend",
+    :idle     => "à l'arrêt · e le lance",
+    :error    => "en erreur",
+)
+
+"""
+    _slot_summary(m, line) -> Vector{Tuple{String,Symbol}}
+
+Ce que fait un slot, en clair : son état, sa cadence, les notes exactes
+qu'il joue ce cycle (la piste n'en montre que les hauteurs relatives), et
+l'erreur en entier s'il y en a une. Chaque ligne avec sa couleur de thème.
+"""
+function _slot_summary(m::RessacApp, l::SlotLine)
+    out = Tuple{String,Symbol}[]
+    state = get(_STATE_PHRASES, l.state, String(l.state))
+    l.state === :playing && l.held && (state = "tenu (drone)")
+    l.state === :playing && l.offgrid && (state *= " · hors de la grille")
+    cadence = (l.state === :playing || l.state === :modified) && l.onsets > 0 && !l.held ?
+        " · $(l.onsets) coup$(l.onsets == 1 ? "" : "s") par cycle" : ""
+    push!(out, ("$(l.slot) — $state$cadence", l.state === :error ? :error : :title))
+    if l.error !== nothing
+        push!(out, (l.error.message, :error))
+        push!(out, (l.error.kept ? "l'ancien pattern joue toujours" : "rien ne jouait sur ce slot", :text_dim))
+    end
+    notes = (l.state === :playing || l.state === :modified) ? _slot_notes_text(m, l.slot) : ""
+    isempty(notes) || push!(out, ("notes : " * notes, :text_dim))
+    return out
+end
+
+# Les hauteurs que le slot joue ce cycle, en demi-tons depuis do 5 ; vide
+# quand le pattern n'a pas de hauteurs.
+function _slot_notes_text(m::RessacApp, slot::Symbol; max_notes::Int = 16)
+    pat = pattern_get(m.scheduler, slot)
+    pat === nothing && return ""
+    cyc = _cycle_index(m.scheduler)
+    evs = try
+        Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+    catch
+        return ""
+    end
+    notes = String[]
+    for ev in sort(collect(evs); by = e -> e.start)
+        r = _note_row(ev.value)
+        r === nothing && continue
+        push!(notes, string(round(Int, r - 60)))
+        length(notes) > max_notes && break
+    end
+    isempty(notes) && return ""
+    return length(notes) > max_notes ? join(notes[1:max_notes], " ") * " …" : join(notes, " ")
+end
+
+# Le résumé du slot dont le bloc contient le curseur des patterns ; vide
+# quand le clavier n'est pas du côté des patterns, ou hors d'un bloc @dN.
+function _cursor_slot_summary(m::RessacApp)
+    _workspace_mode(m) === :play || return Tuple{String,Symbol}[]
+    ed = _patterns_editor(m)
+    ed === nothing && return Tuple{String,Symbol}[]
+    row = ed.cursor_row
+    for l in _slot_lines(m)
+        l.row <= row <= l.last_row && return _slot_summary(m, l)
+    end
+    return Tuple{String,Symbol}[]
+end

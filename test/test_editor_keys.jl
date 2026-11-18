@@ -56,7 +56,7 @@ end
     _ek_fresh!(app, ed, "a!cd!e")
     _ekkey(app, 'f'); _ekkey(app, '!')
     @test ed.cursor_col == 1
-    @test !occursin("PANIC", app.logs[end])          # le panic ne vole pas le `!`
+    @test !any(l -> occursin("PANIC", l), app.logs)          # le panic ne vole pas le `!`
     _ekkey(app, ';'); @test ed.cursor_col == 4       # occurrence suivante
     _ekkey(app, ','); @test ed.cursor_col == 1       # et retour
     _ek_fresh!(app, ed, "abcd"; col = 3)

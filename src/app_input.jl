@@ -45,7 +45,7 @@ function _mouse_update!(m::RessacApp, evt::TK.MouseEvent)
     # (the explorer rates candidates on scroll); fall back to the general
     # wheel handler (log / editor scroll) when no pane consumes it.
     if evt.button === TK.mouse_scroll_up || evt.button === TK.mouse_scroll_down
-        _rack_wheel!(m, evt) || _workspace_scroll_to_pane!(m, evt) || _mouse_wheel!(m, evt)
+        _workspace_scroll_to_pane!(m, evt) || _mouse_wheel!(m, evt)
         return
     end
     # Une bordure en cours de glissement prend tout jusqu'au relâchement.
@@ -303,7 +303,6 @@ end
 # Clic sur la barre de touches / la status line : exécute le bouton
 # sous le curseur. Les zones sont remplies par le rendu.
 function _chrome_click!(m::RessacApp, x::Int, y::Int)
-    _rack_click!(m, y) && return true
     hits = y == m._keybar_y ? m._keybar_hits :
            y == m._status_y ? m._status_hits : nothing
     hits === nothing && return false

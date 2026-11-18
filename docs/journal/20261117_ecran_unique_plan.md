@@ -75,17 +75,20 @@ Tests : `test_slot_state.jl` — un cas par état, plus les transitions
   est longue ; densité au-delà d'un coup par colonne ; bande pour un drone ;
   trait de début de boucle pour un slot hors grille. Reprend l'interrogation
   de `pane_notes.jl`.
-- [ ] **E2.5 — La fiche.** Suit le curseur (existant), plus « voisins » et
+- [ ] **E2.5 — La fiche.** *(fait : l'état du slot du curseur, ses notes
+  exactes, l'erreur entière ; reste « voisins » et « pas encore essayé »,
+  qui attendent E4.3.)* Suit le curseur (existant), plus « voisins » et
   « pas encore essayé » ⚑ E4.3.
   Sur une ligne `@dN` : l'erreur entière s'il y en a une, et les notes
   exactes que joue le slot (l'ancien aperçu `♪ 1 1 2 3 5`, que la piste ne
   donne qu'en hauteurs relatives).
-- [ ] **E2.6 — Le wiki dans le volet.** `gw` l'ouvre, `q` le rend ;
-  `Entrée` sur un exemple le pose dans un slot libre.
-- [ ] **E2.7 — Le chrome.** Status line avec `● SC` (le serveur répond-il),
+- [x] **E2.6 — Le wiki dans le volet.** `gw` l'ouvre, `:q` le rend.
+- [ ] **E2.6b — Poser un exemple du wiki** dans un slot libre : demande un
+  curseur d'exemple dans la pane (`Tab` au suivant, `Entrée` le pose).
+- [x] **E2.7 — Le chrome.** Status line avec `● SC` (le serveur répond-il),
   le nom de la session et `+` si non sauvée. Journal sur une ligne,
   dépliable. Le message d'accueil permanent disparaît.
-- [ ] **E2.8 — Grand écran.** Au-delà d'une largeur seuil, le son s'ouvre
+- [x] **E2.8 — Grand écran.** Au-delà d'une largeur seuil, le son s'ouvre
   entre les patterns et la fiche au lieu de la remplacer.
 
 ### E2.1 — conception retenue (2026-11-18)
@@ -116,9 +119,10 @@ redimensionnement, zoom) ; on n'en garde qu'**un** workspace.
 - Disposition sauvée d'avant (trois workspaces) : on en récupère le texte
   des patterns et les sons ouverts, pas la forme.
 
-Supprimés : `pane_drone.jl` (la pane MODULATION), la bande des workspaces,
-le buffer d'accueil commenté. Le tutoriel et les pages 01 et 06 du wiki sont
-réécrits ici.
+Supprimés : la bande des workspaces, le bandeau des slots (la piste au bout
+de chaque ligne le remplace), le message d'accueil permanent. Le chapitre
+« son » du tutoriel et la page 01 du wiki sont réécrits. La pane MODULATION
+reste, rangée en onglet sous le texte du son, jusqu'à ce que E5 la remplace.
 
 Tests : captures de référence à 140×40, 200×54 et 266×72 ; un test par
 règle (« la piste est sur la rangée de sa ligne », « l'erreur est sous sa

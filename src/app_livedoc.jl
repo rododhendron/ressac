@@ -94,14 +94,18 @@ function _update_live_doc!(m::RessacApp)
     ws = current_workspace(m.workspaces)
     ws === nothing && return
     target = ""
+    header = Tuple{String,Symbol}[]
     found = false
     for leaf in _all_leaves(ws.tree), tab0 in leaf.tabs
         tab = tab0 isa SynthDocPane ? tab0.doc : tab0
         tab isa DocPane && tab.follow || continue
         if !found
             target = _doc_target_under_cursor(m)
+            header = _cursor_slot_summary(m)
             found = true
         end
+        # La fiche d'une doc de synth ne parle pas des slots.
+        tab0 isa SynthDocPane || (tab.header = header)
         (isempty(target) || tab.name == target) && continue
         tab.name = target
     end

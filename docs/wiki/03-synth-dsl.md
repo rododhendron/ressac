@@ -74,7 +74,7 @@ drone mais ne libère plus le nœud : c'est la porte qui s'en charge. Un son
 percussif s'éteint donc de lui-même — c'est sa nature — tandis qu'un
 `env_adsr(...; gate = :gate)` tient et se relâche proprement.
 
-Côté PLAY, `drone()` marque un slot : le premier événement crée le nœud,
+Dans un pattern, `drone()` marque un slot : le premier événement crée le nœud,
 les suivants le **modulent** au lieu de déclencher une voix. Le pattern est
 alors une automation du son vivant, et le slot apparaît dans la pane
 MODULATION où on peut aussi le régler à la main.
@@ -347,8 +347,8 @@ synth (une copie éditable de la recette — modifie et `T` pour entendre).
 
 ## Depuis un SynthDef SuperCollider
 
-Un synth écrit à la main en SuperCollider (`.scd`) s'ouvre dans DESIGN
-comme un autre ; `:todsl` le réécrit en DSL : les arguments deviennent
+Un synth écrit à la main en SuperCollider (`.scd`) s'ouvre à droite des
+patterns comme un autre ; `:todsl` le réécrit en DSL : les arguments deviennent
 les paramètres du `@synth`, chaque `var` est remplacée par son
 expression, le signal envoyé à `Out.ar` devient la chaîne de pipes. Le
 studio suit aussitôt, `T` teste, `:w` sauve en `.jl`, `u` annule.
@@ -359,10 +359,11 @@ de chaîne : `s` saw, `o` sin_osc, `l` rlpf, `e` env_perc, `t` tanh_drive,
 
 ## Sculpter un son
 
-Dans le workspace DESIGN, le **STUDIO** (en haut à droite) suit le texte :
-dès que le `@synth` change et que tu n'es plus en insertion, il reconstruit
-le graphe du son, son onde et ses knobs, et la DOC (en bas à droite) reçoit
-l'explication. `Ctrl-w l` amène le focus dans le studio, `:sculpt` aussi.
+Sous le texte d'un son, deux onglets : la **DOC** devant, le **STUDIO**
+derrière. Le studio suit le texte : dès que le `@synth` change et que tu
+n'es plus en insertion, il reconstruit le graphe du son, son onde et ses
+knobs, et la DOC reçoit l'explication. `:sculpt` amène le clavier dans le
+studio, `Ctrl-w k` le rend au texte.
 
 Dans l'autre sens, ce que tu fais dans le studio revient dans le texte :
 
@@ -384,10 +385,10 @@ nœud à l'autre et le studio suit, `Enter` ramène le focus sur son knob,
 s'entend pas.
 
 `:w` sauve, `U` l'utilise dans un pattern, `P` mesure l'impact de chaque
-nœud. `M` sur un candidat de l'explorateur l'amène dans DESIGN : son
-texte en onglet, le studio focalisé, l'explication dans la DOC. Hors de
-DESIGN, `:sculpt <nom>` ouvre un studio seul, avec son explication à côté
-des knobs. Voir `?` dans le studio.
+nœud. `M` sur un candidat de l'explorateur l'amène dans le volet du son :
+son texte en onglet, le studio devant. `:sculpt <nom>` ouvre ce son et son
+studio ; il refuse, en disant pourquoi, un nom inconnu ou un texte qu'il ne
+sait pas relire. Voir `?` dans le studio.
 
 ## Inspecter sans jouer
 

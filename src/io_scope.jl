@@ -179,6 +179,39 @@ _osc_reply_handler(addr::AbstractString) =
 const _SCOPE_LISTENER_TASK = Ref{Union{Task,Nothing}}(nothing)
 const _SCOPE_LISTENER_SOCKET = Ref{Union{UDPSocket,Nothing}}(nothing)
 const _SCOPE_LISTENER_RUNNING = Threads.Atomic{Bool}(false)
+
+# SuperCollider répond-il ? L'instant du dernier paquet reçu de lui, tenu par
+# la boucle d'écoute. L'app lui envoie un `/ressac/ping` toutes les deux
+# secondes (`_sc_ping!`), auquel il répond `/ressac/pong` : sans réponse
+# depuis `_SC_SILENT_AFTER`, la status line le dit.
+const _SC_LAST_SEEN = Threads.Atomic{Float64}(0.0)
+const _SC_SILENT_AFTER = 5.0
+const _SC_PING_EVERY = 2.0
+const _SC_LAST_PING = Ref(0.0)
+
+"""
+    _sc_state(now = time()) -> :alive | :silent | :unknown
+
+`:unknown` tant que l'écoute n'est pas ouverte (pas de session, tests) :
+on n'affirme rien qu'on ne peut pas savoir.
+"""
+function _sc_state(now::Float64 = time())
+    _SCOPE_LISTENER_RUNNING[] || return :unknown
+    return now - _SC_LAST_SEEN[] <= _SC_SILENT_AFTER ? :alive : :silent
+end
+
+# Un ping, au plus toutes les `_SC_PING_EVERY` secondes, quand l'écoute est
+# ouverte. Appelé par la vue.
+function _sc_ping!(osc, now::Float64 = time())
+    _SCOPE_LISTENER_RUNNING[] || return false
+    now - _SC_LAST_PING[] >= _SC_PING_EVERY || return false
+    _SC_LAST_PING[] = now
+    try
+        send_osc(osc, encode(OSCMessage("/ressac/ping", Any[])))
+    catch
+    end
+    return true
+end
 # Model-agnostic scope state — populated by the listener, read by
 # the RessacApp at render time.
 const _APP_SCOPE_DATA  = Ref{Vector{Float32}}(Float32[])
@@ -254,6 +287,7 @@ function _app_scope_listener_loop()
     while _SCOPE_LISTENER_RUNNING[]
         try
             data = recv(sock)
+            _SC_LAST_SEEN[] = time()                 # SuperCollider vient de parler
             msg = try
                 decode_message(data)
             catch

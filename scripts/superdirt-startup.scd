@@ -170,6 +170,13 @@ s.waitForBoot({
                                  UGen.allSubclasses.size);
     }, '/ressac/sc-meta');
 
+    // « Tu es là ? » — Ressac demande toutes les deux secondes, pour dire
+    // dans sa status line si SuperCollider répond. Silencieux : rien dans
+    // la fenêtre de post.
+    OSCdef(\ressacPing, { |msg, time, addr|
+        ~ressacScopeAddr.sendMsg("/ressac/pong");
+    }, '/ressac/ping');
+
     // Bypass SuperDirt for live SynthDef previewing — fires a Synth
     // directly so the SynthDef's parameter DEFAULTS take effect.
     // SuperDirt's /dirt/play overrides freq/gain/sustain with computed

@@ -132,8 +132,8 @@ end
 function _bottom_bar(app, tb, frame)
     scr = _screen(app, tb, frame)
     rows = split(scr, "\n")
-    # la barre est la ligne juste au-dessus de la boîte JOURNAL
-    i = findfirst(r -> startswith(r, "╭ JOURNAL"), rows)
+    # la barre est la ligne juste au-dessus du journal (la dernière ligne)
+    i = length(rows)
     i === nothing ? "" : rows[i - 1]
 end
 
@@ -249,18 +249,23 @@ end
     scr = _screen(app, tb, frame)
     rows = split(scr, "\n")
     @test occursin("RESSAC", rows[1]) && occursin("NORMAL", rows[1]) && occursin("PATTERNS", rows[1])
-    @test startswith(rows[40], "╰")                       # dernière ligne = bas du journal
-    i = findfirst(r -> startswith(r, "╭ JOURNAL"), rows)
-    @test i == 40 - 4                                     # boîte de 5 lignes (3 + bordures)
-    @test occursin("? aide", rows[i - 1])                 # barre juste au-dessus
+    # Le journal tient sur la dernière ligne, sans cadre ; la barre de touches est juste au-dessus.
+    @test !any(r -> startswith(r, "╭ JOURNAL"), rows)
+    @test occursin("? aide", rows[39])
     @test !any(occursin("insert · visual", r) for r in rows)   # plus de mode strip
     @test !occursin("PLAY", rows[1]) && !occursin("DESIGN", rows[1])   # un seul écran : plus de pastilles
-    # :log replie / déplie
+    # :log déplie (3 lignes, 10 lignes), replie, puis revient à une ligne
+    _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
+    i = findfirst(r -> startswith(r, "╭ JOURNAL"), rows)
+    @test i == 40 - 4 && startswith(rows[40], "╰")        # boîte de 5 lignes (3 + bordures)
+    @test occursin("? aide", rows[i - 1])
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
     @test findfirst(r -> startswith(r, "╭ JOURNAL"), rows) == 40 - 11
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
     @test findfirst(r -> startswith(r, "╭ JOURNAL"), rows) === nothing
     @test occursin("? aide", rows[40])                    # la barre est alors tout en bas
+    _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
+    @test app.log_tail_rows == 1 && occursin("? aide", rows[39])
     _hex(app, "log 3")
     @test app.log_tail_rows == 3
 end
@@ -269,16 +274,13 @@ end
     app, tb, frame = _help_app()
     _hex(app, "lib")
     rows = split(_screen(app, tb, frame), "\n")
-    i = findfirst(r -> startswith(r, "╭ JOURNAL"), rows)
-    @test i == 36
-    @test occursin("? aide", rows[35]) && occursin(": commande", rows[35])
-    @test startswith(rows[40], "╰")
+    @test occursin("? aide", rows[39]) && occursin(": commande", rows[39])   # la barre, au-dessus du journal
     @test !any(occursin(": commande─", r) for r in rows)       # plus d'artefact sur la bordure
     @test occursin("LIBRAIRIE", rows[1])                        # surface = modal
     # la barre de commande prend la place de la barre de touches
     _hkey(app, ':')
     rows = split(_screen(app, tb, frame), "\n")
-    @test occursin(":", rows[35]) && !occursin("? aide", rows[35])
+    @test occursin(":", rows[39]) && !occursin("? aide", rows[39])
     _hkey(app, :escape)
 end
 
@@ -288,7 +290,7 @@ end
     Tachikoma.set_text!(ed, "SinOsc.ar(440)")
     ed.cursor_row = 1; ed.cursor_col = 2                       # sur « SinOsc »
     rows = split(_screen(app, tb, frame), "\n")
-    i = findfirst(r -> startswith(r, "╭ JOURNAL"), rows)
+    i = length(rows)
     @test occursin("✎ SinOsc", rows[i - 1])
     @test occursin("? aide", rows[i - 1])
 end
@@ -308,7 +310,7 @@ _col(row, needle) = length(row[1:prevind(row, findfirst(needle, row).start)]) + 
     @test _cell(tb, 60, 1).style.bg == th.border            # bandeau du haut
     @test _cell(tb, 2, 1).style.bg == th.accent             # pastille RESSAC
     rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
-    ky = findfirst(r -> startswith(r, "╭ JOURNAL"), rows) - 1
+    ky = length(rows) - 1
     @test _cell(tb, 40, ky).style.bg == th.border           # bandeau du bas
     x_aide = _col(rows[ky], "? aide")
     @test _cell(tb, x_aide, ky).style.bg == th.accent       # pastille ? aide
@@ -344,7 +346,7 @@ _click(app, x, y) = Tachikoma.update!(app, Tachikoma.MouseEvent(x, y, Tachikoma.
 @testset "boutons — la barre de touches est cliquable (touche = action), ? aide aussi" begin
     app, tb, frame = _help_app()
     rows = split(_screen(app, tb, frame), "\n")
-    ky = findfirst(r -> startswith(r, "╭ JOURNAL"), rows) - 1
+    ky = length(rows) - 1
     _click(app, _col(rows[ky], "Space snippet"), ky)
     @test app.pending_leader                                # « Space snippet… » = Space
     _hkey(app, :escape)

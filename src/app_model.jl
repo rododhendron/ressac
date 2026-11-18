@@ -25,8 +25,8 @@ user — they cover the four keys needed to actually play this back
 `:tutorial` for the interactive guide.
 """
 const _STARTER_BUFFER = """
-# Bienvenue dans Ressac — Esc puis E pour jouer ces patterns.
-# m sur une ligne @dN = mute · ? = aide · :tutorial = visite guidée · :q = quitter.
+# Ressac — E joue ces lignes · m coupe celle du curseur · , arrête tout
+# ? aide · :tutorial visite guidée · :q quitter
 
 cps!(0.5)
 @d1 p"bd bd bd bd"
@@ -151,11 +151,6 @@ non-empty), and the focus toggle for keystroke routing.
     slot_offgrid::Set{Symbol}            = Set{Symbol}()
     slot_scan::Tuple{UInt64,Vector{SlotBlock}} = (UInt64(0), SlotBlock[])
     slot_density::Dict{Symbol,Tuple{Int,UInt64,Int}} = Dict{Symbol,Tuple{Int,UInt64,Int}}()
-    # Bandeau des slots chargés, au-dessus des panes.
-    rack_visible::Bool = true
-    rack_cache::Dict{Symbol,Tuple{Any,Tuple{String,String}}} = Dict{Symbol,Tuple{Any,Tuple{String,String}}}()
-    _rack_hits::Vector{Tuple{Int,Symbol}} = Tuple{Int,Symbol}[]
-    _rack_y0::Int = 0
     # sccode browser state (only meaningful when modal === :sccode).
     # `entries` is the list fetched from sccode.org; `page` is the page
     # number we're on; cursor is the highlighted row (1-based).
@@ -187,7 +182,7 @@ non-empty), and the focus toggle for keystroke routing.
     # et le dernier couple (motion, caractère) pour `;` et `,`.
     pending_find::Union{Nothing,Char} = nothing
     last_find::Union{Nothing,Tuple{Char,Char}} = nothing
-    logs::Vector{String}         = ["[INFO] Ressac — ? aide · e évalue · :synth <nom> pour concevoir un son · :q quitte"]
+    logs::Vector{String}         = String[]
     quit::Bool                   = false
     tick::Int                    = 0
     # Manual zoom for the wave scope. Two independent axes — Y for
@@ -270,7 +265,7 @@ non-empty), and the focus toggle for keystroke routing.
     modal_view::TK.ScrollPane            = _scrollpane()
     # Journal en bas de l'écran : nombre de lignes (0 = replié). `:log`
     # bascule 3 → 10 → 0. Une pane :log dans l'arbre le replie aussi.
-    log_tail_rows::Int                   = 3
+    log_tail_rows::Int                   = 1
     # Tap-to-record rhythm. `:tap [sample] [steps]` enters this mode;
     # Space records a hit at the current time, Enter commits the
     # quantized pattern into the buffer, Esc cancels. Any other key is

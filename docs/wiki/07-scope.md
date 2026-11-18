@@ -50,7 +50,7 @@ Ajouter un scope = un `SynthDef` SC, un relais `OSCFunc`, un rendu Julia.
 
 ## La doc vivante
 
-La pane en bas à droite de PLAY suit le curseur : elle montre la fiche de
+La fiche, à droite des patterns, suit le curseur : elle montre la fiche de
 ce qui est dessous, comme les live docs de Pluto. Une fonction donne sa
 description et ses exemples ; un son donne ce qu'il est, ses variantes ou
 ses paramètres, une ligne d'usage, et sa source si c'est un synth.

@@ -411,8 +411,9 @@ function _eval_current_line!(m::RessacApp)
             end
         end
     catch err
-        slot === nothing || _slot_failed!(m, slot, block, _humanize_eval_error(err, block))
-        _push_app_log!(m, "[ERROR] $(sprint(showerror, err))")
+        hint = _humanize_eval_error(err, block)
+        slot === nothing || _slot_failed!(m, slot, block, hint)
+        _push_app_log!(m, "[ERROR] éval$(slot === nothing ? "" : " $slot") : $hint")
     end
 end
 
