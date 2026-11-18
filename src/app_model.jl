@@ -42,6 +42,16 @@ CodeEditor, an optional stack of synth tabs (side panel when
 non-empty), and the focus toggle for keystroke routing.
 """
 
+# Une boucle en cours d'enregistrement (app_offgrid.jl).
+mutable struct LoopRec
+    slot::Symbol
+    expr::String                 # ce que la ligne joue, sans son `|> frappes(…)`
+    rows::Tuple{Int,Int}         # le bloc de la ligne ; (0, r) : une ligne neuve sous r
+    values::Vector{Any}          # ce que chaque frappe fait entendre, tour à tour
+    t_open::Float64
+    hits::Vector{Float64}
+end
+
 @kwdef mutable struct RessacApp <: TK.Model
     scheduler::Scheduler
     # No m.editor / m.synth_tabs / m.focus fields — both the patterns
@@ -207,6 +217,7 @@ non-empty), and the focus toggle for keystroke routing.
     explore_slot::Union{Nothing,Tuple{Symbol,Pattern}} = nothing
     explore_trial::Union{Nothing,Pattern} = nothing
     explore_heard::Tuple{Int,Int} = (0, -1)
+    loop::Union{Nothing,LoopRec} = nothing
     last_find::Union{Nothing,Tuple{Char,Char}} = nothing
     logs::Vector{String}         = String[]
     quit::Bool                   = false

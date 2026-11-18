@@ -237,6 +237,37 @@ joué : période détectée, cps ajusté, écrit + évalué en une touche.
 Pour un rythme unique sans détection : `:tap-strict`.
 Pour le tempo seul : `:bpm` (4 taps = 1 mesure).
 
+## Hors de la grille
+
+`e` pose une ligne sur la grille : elle joue calée sur les barres, avec
+tout le reste. Deux gestes en sortent.
+
+**`Entrée` : maintenant.** Sur une ligne `@dN`, `Entrée` l'évalue et son
+cycle 0 commence **à la frappe**, pas à la barre. Le motif est le même,
+décalé contre les autres slots — pour lancer une voix au moment où on le
+sent. La ligne est marquée « hors de la grille » (la fiche le dit) ; `e`
+la recale, `E` recale tout.
+
+**`Espace o` : la boucle.** Sur une ligne `@dN` (ou sur le nom d'un son),
+`Espace o` ouvre une boucle. `Espace` frappe — on l'entend tout de suite —
+et `o` (ou `Entrée`) la ferme ; `Échap` annule. Sa longueur est le temps
+qu'on l'a tenue ouverte : aucune quantification, ni des frappes ni de la
+durée. Ce qu'on a joué est écrit au bout de la ligne :
+
+```julia
+@d3 :bd |> frappes(0.25, 0.5, 1.1; cycles = 1.5)
+```
+
+et rejoue aussitôt, calé sur l'instant d'ouverture. C'est du texte comme
+le reste : on retouche un instant à la main (`+` / `-` dessus), on ajoute
+`|> gain(0.8)`, `gcc` la coupe. Rouvrir une boucle sur la même ligne
+remplace l'ancienne. Si la ligne joue plusieurs sons par cycle
+(`p"bd sn"`), les frappes les prennent tour à tour.
+
+Une boucle de 1,5 cycle tourne contre un beat de 1 cycle : c'est voulu.
+Pour un rythme recalé sur la grille, voir « Taper un rythme avec les
+mains » ci-dessus.
+
 ## Jouer une mélodie au clavier
 
 ```

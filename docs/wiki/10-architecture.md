@@ -93,6 +93,7 @@ src/
   atelier.jl / editor_links.jl  travailler un son dans son texte : maillons (objet
                              texte m), propositions qui s'entendent, préfixe &
   app_explore_slot.jl        gx : les candidats de l'explorateur joués dans un slot
+  app_offgrid.jl             Entrée = maintenant (phase d'un slot), la boucle libre
   app_layers.jl            ★ la pile des couches de touches et le résolveur
   app_key_engines.jl         TK.update! clavier : les moteurs (frappe, vim, leader…)
   app_input.jl               TK.update! souris, routage vers la pane, drains

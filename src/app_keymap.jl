@@ -169,6 +169,8 @@ bind!(:mode_explore, "D", "drone du candidat on/off"; short = "drone", group = :
 
 # ── :patterns ──────────────────────────────────────────────────────
 scope!(:patterns, "Pane patterns"; layer = :pane, modes = (:play,))
+bind!(:patterns, "Enter", "évaluer la ligne maintenant : elle part de la frappe, hors de la grille"; short = "maintenant",
+      group = :eval, when = _km_patterns, action = _eval_current_line_now!)
 bind!(:patterns, ">", "pattern : zoom ×2"; group = :edit, hint = false, when = _km_in_pattern,
       action = m -> _pat_zoom!(m, _km_ed(m), +1))
 bind!(:patterns, "<", "pattern : zoom ÷2"; group = :edit, hint = false, when = _km_in_pattern,
@@ -218,7 +220,7 @@ const _LEADER_FR = Dict{Char,String}(
     'E' => "euclidien", 'R' => "euclidien tourné", 'J' => "jersey (bd(3,8))",
     'a' => "chaîne d'effets (gain, lpf, room)",
     'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ sons rangés (réserve)",
-    'I' => "▸ recettes (réserve)", 'P' => "▸ motifs rangés (réserve)", 'k' => "ranger la ligne @dN dans la réserve", 'V' => "▸ variations du bloc", 'w' => "▸ wiki", '?' => "▸ aide",
+    'I' => "▸ recettes (réserve)", 'P' => "▸ motifs rangés (réserve)", 'k' => "ranger la ligne @dN dans la réserve", 'o' => "boucle : frapper un motif, de la longueur qu'on veut", 'V' => "▸ variations du bloc", 'w' => "▸ wiki", '?' => "▸ aide",
 )
 for (c, _) in _LEADER_LABELS
     label = get(_LEADER_FR, c, String([c]))

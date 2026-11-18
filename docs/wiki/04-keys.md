@@ -97,6 +97,12 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 |---|---|
 | `g K` | écouter le mot sous le curseur |
 
+**Évaluer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | évaluer la ligne maintenant : elle part de la frappe, hors de la grille |
+
 **Éditer**
 
 | Touche | Action |
@@ -114,6 +120,16 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `g s` | ouvrir le son sous le curseur, à droite |
 | `g w` | ouvrir le wiki, à droite |
 | `g x` | ouvrir l'explorateur de sons |
+
+### Boucle (Espace o)
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `Space` | frapper |
+| `o / Enter` | fermer la boucle : elle est écrite et rejoue |
+| `Esc` | annuler |
 
 ### Space + …
 
@@ -153,6 +169,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `Space w` | ▸ wiki |
 | `Space ?` | ▸ aide |
 | `Space k` | ranger la ligne @dN dans la réserve |
+| `Space o` | boucle : frapper un motif, de la longueur qu'on veut |
 
 ### Snippet avec des trous (après Space + lettre)
 

@@ -664,6 +664,34 @@ function set_pattern!(s::Scheduler, slot::Symbol, p::Pattern)
 end
 
 """
+    play_now!(s, slot, p, from_cycles)
+
+Pose `p` sur `slot` tout de suite, et envoie ce qu'il joue entre
+`from_cycles` (maintenant) et le curseur du scheduler — la fenêtre que la
+boucle a déjà dépassée. Sans ça, une note posée à l'instant de la frappe
+tomberait dans le passé du scheduler et ne sonnerait jamais.
+"""
+function play_now!(s::Scheduler, slot::Symbol, p::Pattern, from_cycles::Real)
+    local cursor, t_start, cps
+    lock(s.lock) do
+        s.patterns[slot] = p
+        delete!(s.pending, slot)
+        cursor = s.last_end_cycles; t_start = s.t_start; cps = s.cps
+    end
+    _drone_slot_release!(slot)
+    # Jamais plus loin en arrière que ce que la boucle elle-même rattrape :
+    # un instant périmé ne fait pas rejouer des cycles entiers d'un coup.
+    from = max(Float64(from_cycles), cursor - (_CATCHUP_MAX + s.lookahead) * cps)
+    from < cursor || return nothing
+    fired = Pair{Symbol,Float64}[]
+    _ship_slot!(s, slot, p, from, cursor, t_start, cps, fired)
+    isempty(fired) || lock(s.lock) do
+        for (sl, t) in fired; s.last_fired_at[sl] = t; end
+    end
+    return nothing
+end
+
+"""
     hush!(s)
 
 Remove every active pattern. The currently-queued lookahead window will

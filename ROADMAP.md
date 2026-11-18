@@ -111,7 +111,7 @@ Décidée le 2026-11-17. Détail des tâches, tests et risques : `docs/journal/2
 - [x] E3 — Sessions avec les verbes de vim (`:w` `:e` `:enew`), réserve unique.
 - [x] E4 — Un seul langage : zéro `.scd`, nombres à trois décimales, usage compté, pipes en tête, `gcc`.
 - [x] E5 — L'atelier : réglette, objet texte `m`, complétion qui s'entend, `&`, explorateur sur un slot. Fin du studio et de sculpt.
-- [ ] E6 — Hors grille : `Entrée` = maintenant, `frappes`, la boucle.
+- [x] E6 — Hors grille : `Entrée` = maintenant, `frappes`, la boucle.
 - [ ] E7 — Le casque en delta, découverte des sorties PipeWire.
 
 ## Fonctionnalités (ancien `TODO.txt` et wiki)

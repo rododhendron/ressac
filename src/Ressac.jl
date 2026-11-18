@@ -137,6 +137,7 @@ include("app_patterns.jl")
 include("synth_format.jl")       # mise en forme d'un texte de son : pipes en tête, nombres courts
 include("editor_comment.jl")     # gcc / gc + mouvement, :format
 include("editor_links.jl")       # le maillon, objet texte : dam · yam · cim
+include("app_offgrid.jl")        # Entrée = maintenant, la boucle libre (Espace o)
 include("app_explore_slot.jl")   # gx : les candidats de l'explorateur joués dans le pattern d'un slot
 include("atelier.jl")            # o / O / cim qui s'entendent, et & (bouger, argument, solo, bifurquer)       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
@@ -176,7 +177,7 @@ export sometimes, sometimesBy, often, rarely
 export palindrome, iter, iterBack, chunk
 # `run` collides with Base.run (shell-spawn); export as `runp` instead.
 # Users can still use `Ressac.run(8)` directly in scripts.
-export lastOf, firstOf, early, late, ply, runp, choose, seq, structPat
+export lastOf, firstOf, early, late, frappes, ply, runp, choose, seq, structPat
 # `chop` collides with Base.chop (string trim); export as `chopp`.
 # `Ressac.chop` still works for copy-pasted Tidal code.
 export striate, chopp, nrun

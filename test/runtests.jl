@@ -23,6 +23,7 @@ end
     _isolated_include("test_usage.jl")
     _isolated_include("test_atelier.jl")
     _isolated_include("test_explore_slot.jl")
+    _isolated_include("test_offgrid.jl")
     _isolated_include("test_algebra.jl")
     _isolated_include("test_mininotation.jl")
     _isolated_include("test_osc.jl")

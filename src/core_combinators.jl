@@ -615,6 +615,47 @@ late(t::Real, p) = early(-_to_rat(t), _as_pattern(p))
 late(t::Real)    = p -> late(t, _as_pattern(p))
 
 """
+    frappes(instants...; cycles = 1) -> Pattern
+    frappes(p, instants...; cycles = 1)
+
+Un pattern d'instants exacts : `p` est frappé à chaque instant (en cycles
+depuis le début de la boucle), et le tout se répète tous les `cycles`
+cycles — une longueur libre, pas forcément entière. Chaque frappe dure
+jusqu'à la suivante. Les frappes prennent tour à tour les valeurs que `p`
+joue sur un cycle : `p"bd sn" |> frappes(0, 0.4, 1.1; cycles = 1.5)` fait
+bd, sn, bd. C'est ce qu'écrit la boucle (`Espace o`).
+"""
+function frappes(p::Pattern{T}, instants::Real...; cycles::Real = 1) where {T}
+    len = _to_rat(round(Float64(cycles); digits = 6))
+    len > 0 || throw(ArgumentError("frappes : cycles doit être > 0"))
+    ts = sort!(unique!(Rational{Int64}[mod(_to_rat(round(Float64(t); digits = 6)), len) for t in instants]))
+    isempty(ts) && return Pattern{T}((s::Rational, e::Rational) -> Event{T}[])
+    n = length(ts)
+    function query(s::Rational, e::Rational)
+        out = Event{T}[]
+        for k in floor(Int, s / len):floor(Int, e / len)
+            base = k * len
+            base >= e && break
+            vals = nothing
+            for (i, t) in enumerate(ts)
+                start = base + t
+                s <= start < e || continue
+                if vals === nothing
+                    evs = sort!(collect(p(Rational{Int64}(k), Rational{Int64}(k + 1))); by = ev -> ev.start)
+                    vals = T[ev.value for ev in evs]
+                end
+                isempty(vals) && break
+                stop = base + (i < n ? ts[i + 1] : len + ts[1])
+                push!(out, Event{T}(start, stop, vals[mod1(i, length(vals))]))
+            end
+        end
+        return out
+    end
+    return Pattern{T}(query)
+end
+frappes(instants::Real...; cycles::Real = 1) = p -> frappes(_as_pattern(p), instants...; cycles = cycles)
+
+"""
     ply(n, p) -> Pattern{T}
 
 Repeat each event `n` times within its own slot (Tidal's `ply`).

@@ -378,7 +378,7 @@ function _guard_patterns_only!(m::RessacApp, action::AbstractString)
     return false
 end
 
-function _eval_current_line!(m::RessacApp)
+function _eval_current_line!(m::RessacApp; phase = nothing)
     _guard_patterns_only!(m, "e (évaluer la ligne)") || return
     ce = _patterns_editor(m)
     txt = TK.text(ce)
@@ -391,10 +391,11 @@ function _eval_current_line!(m::RessacApp)
     slot = _slot_of_src(block)
     try
         ex = Meta.parse(block)
-        result = Core.eval(Main, ex)
-        slot === nothing || _slot_evaluated!(m, slot, block)
+        result = _with_slot_phase(() -> Core.eval(Main, ex), slot === nothing ? nothing : phase)
+        slot === nothing || _slot_evaluated!(m, slot, block; offgrid = phase !== nothing)
         rstr = sprint(io -> show(IOContext(io, :limit=>true, :displaysize=>(1, 60)), result))
-        _push_app_log!(m, "[INFO] éval ⇒ $rstr")
+        _push_app_log!(m, (slot !== nothing && phase !== nothing) ?
+            "[INFO] $slot lancé maintenant, hors de la grille — e le recale" : "[INFO] éval ⇒ $rstr")
         _warn_unknown_sounds!(m, [block])
         # Cascade: if this eval rebound any top-level names, sweep the
         # buffer for `@dN` blocks that reference them and re-eval, so the

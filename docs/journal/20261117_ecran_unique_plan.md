@@ -222,13 +222,18 @@ un bruit.
 
 ## Étape 6 — Hors grille
 
-- [ ] **E6.1 — `Entrée` : maintenant.** Le cycle 0 du slot commence à la
+- [x] **E6.1 — `Entrée` : maintenant.** Le cycle 0 du slot commence à la
   frappe. État « hors grille » ; `e` recale.
-- [ ] **E6.2 — `frappes(instants...; cycles)`.** Un pattern d'instants
+- [x] **E6.2 — `frappes(instants...; cycles)`.** Un pattern d'instants
   exacts, avec sa fiche.
-- [ ] **E6.3 — La boucle.** `Espace o` ouvre, on joue, `Espace o` ferme :
+- [x] **E6.3 — La boucle.** `Espace o` ouvre, on joue, `Espace o` ferme :
   la ligne `frappes(…)` est écrite et rejoue, calée sur l'instant
   d'ouverture. Longueur libre.
+
+*(Fait le 2026-11-18. La boucle se ferme avec `o` ou `Entrée`, pas `Espace o` :
+`Espace` est la frappe. Ce qui tombe entre la frappe et le curseur du
+scheduler est envoyé tout de suite — `play_now!` — sinon la première note
+serait perdue.)*
 
 Tests : phase d'un slot lancé à un instant donné ; boucle enregistrée avec
 une horloge injectée, instants rendus à l'identique.

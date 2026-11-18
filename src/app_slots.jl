@@ -91,8 +91,9 @@ end
 # ── Ce que l'évaluation consigne ─────────────────────────────────────
 
 # Le bloc a été évalué : c'est lui qui joue désormais.
-function _slot_evaluated!(m::RessacApp, slot::Symbol, src::AbstractString)
+function _slot_evaluated!(m::RessacApp, slot::Symbol, src::AbstractString; offgrid::Bool = false)
     m.slot_evaluated[slot] = String(src)
+    offgrid ? push!(m.slot_offgrid, slot) : delete!(m.slot_offgrid, slot)
     delete!(m.slot_errors, slot)
     _note_played!(src)
     return nothing
@@ -123,10 +124,11 @@ end
 c'est ce texte qui joue ; raté, l'erreur est gardée pour être écrite sous
 la ligne — et ce qui jouait avant continue.
 """
-function _eval_slot_block!(m::RessacApp, slot::Symbol, src::AbstractString)
+function _eval_slot_block!(m::RessacApp, slot::Symbol, src::AbstractString; phase = nothing)
     try
-        Core.eval(Main, Meta.parse(src))
-        _slot_evaluated!(m, slot, src)
+        ex = Meta.parse(src)
+        _with_slot_phase(() -> Core.eval(Main, ex), phase)
+        _slot_evaluated!(m, slot, src; offgrid = phase !== nothing)
         return true
     catch e
         hint = _humanize_eval_error(e, src)

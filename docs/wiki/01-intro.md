@@ -71,7 +71,7 @@ transitoire (saisie, leader, mode pane…), modale, pane focalisée,
 Le contexte est ce que porte la pane qui a le clavier :
 
 - **les patterns** (le texte, la fiche, le wiki, le journal) : `e` évalue
-  la ligne, `E` tous les blocs, `m` coupe, `K` montre la fiche, `Espace`
+  la ligne (`Entrée` : tout de suite, hors de la grille), `E` tous les blocs, `m` coupe, `K` montre la fiche, `Espace`
   ouvre les snippets — d'où qu'on soit de ce côté-là ;
 - **un son** (son texte, sa DOC) : `T` l'entend, `D` le tient
   en drone, `Espace` ouvre les maillons du DSL, `U` l'envoie dans un

@@ -4,6 +4,20 @@
 # before `Core.eval(Main, …)` and restores it in a `finally`.
 
 const _EVAL_MODE = Ref{Tuple{Symbol,Int}}((:immediate, 0))
+# La phase imposée à la prochaine pose d'un slot (`nothing` : sur la grille) :
+# (où commence son cycle 0, à partir d'où il doit sonner). Les deux sont pris
+# à l'instant du geste — pas à celui où l'évaluation aboutit, quelques
+# millisecondes plus tard, qui laisserait tomber la première note.
+const _SLOT_PHASE = Ref{Union{Nothing,Tuple{Rational{Int64},Float64}}}(nothing)
+function _with_slot_phase(f, phase)
+    old = _SLOT_PHASE[]
+    _SLOT_PHASE[] = phase
+    try
+        return f()
+    finally
+        _SLOT_PHASE[] = old
+    end
+end
 
 # `t_start` et `cps` changent ensemble (`set_cps!`) : lus sous le verrou.
 _current_cycle(s::Scheduler) = lock(() -> (time() - s.t_start) * s.cps, s.lock)
@@ -55,6 +69,15 @@ Install `p` at `slot` either immediately or at +N cycles, depending on
 """
 function _route_to_slot!(slot::Symbol, p::Pattern)
     sched = _check_live()
+    # Hors de la grille (Entrée, la boucle) : le cycle 0 du pattern commence
+    # à `phase`, et ce qui tombe avant le curseur du scheduler part tout de
+    # suite — on n'attend ni la barre ni la prochaine fenêtre.
+    off = _SLOT_PHASE[]
+    if off !== nothing
+        (phase, from) = off
+        play_now!(sched, slot, late(phase, p), from)
+        return nothing
+    end
     mode, n = _EVAL_MODE[]
     if mode === :immediate
         set_pattern!(sched, slot, p)

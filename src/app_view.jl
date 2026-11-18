@@ -527,6 +527,10 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
             ("● REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0'))",
              TK.tstyle(:error, bold = true)))
     end
+    if m.loop !== nothing
+        n = length(m.loop.hits)
+        push!(state_parts, ("● BOUCLE $(m.loop.slot) · $n frappe$(n == 1 ? "" : "s") · o ferme", TK.tstyle(:warning, bold = true)))
+    end
     if m.tap_recording
         label = m.tap_mode === :tempo ? "● TAP-TEMPO" :
                 m.tap_mode === :loop  ? "● TAP-LOOP" :

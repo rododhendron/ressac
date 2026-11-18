@@ -57,6 +57,7 @@ function _active_layers(m::RessacApp)
     m.paused        && (push!(L, Layer(:none,  m; engine = _paused_engine!, exclusive = true)); return L)
     m.piano_active  && (push!(L, Layer(:piano, m; exclusive = true)); return L)
     m.tap_recording && (push!(L, Layer(:tap,   m; exclusive = true)); return L)
+    m.loop !== nothing && (push!(L, Layer(:loop, m; exclusive = true)); return L)
     if _PANE_MODE.active
         push!(L, Layer(:pane_mode, m; exclusive = true, prefix = "Ctrl-w"))
         return L
