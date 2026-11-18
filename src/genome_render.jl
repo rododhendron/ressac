@@ -71,6 +71,7 @@ function _emit_special(g::Genome, n::UGenNode)
         return "($(A(1))).$(SynthDSL._UGEN_METHOD_FORMS[u])$rest"
     end
     haskey(SynthDSL._UGEN_ENV_FORMS, u) && return "Env.$(SynthDSL._UGEN_ENV_FORMS[u])($(all_args()))"
+    u === :Env && return "Env($(all_args()))"   # un constructeur, pas un UGen
     (u === :Silent && isempty(n.args)) && return "Silent.ar"   # ce que l'export en fait
     # Les nœuds de structure (voir genome.jl).
     u === :Chan && return "[$(all_args())]"

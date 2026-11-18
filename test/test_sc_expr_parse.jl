@@ -137,3 +137,14 @@ end
     @test occursin("n1 = pulse(:freq, 0.3) |> moog_ff(1200.0, 2.0)", dsl)        # x est lu deux fois : variable
     @test occursin("comb_c(0.25, 2.0", dsl)
 end
+
+@testset "Env(…) nu est un constructeur — jamais `Env.ar`" begin
+    # Le SC que produit le fichier converti (`ugen(:Env, …)`) et celui que
+    # rend le génome : tous deux `Env(…)`, que sclang comprend.
+    s = Ressac.SynthDSL.ugen(:EnvGen, Ressac.SynthDSL.ugen(:Env, Ressac.SynthDSL.chan(:a, :freq), Ressac.SynthDSL.chan(:drop), Ressac.SynthDSL.Sig("\\exp")); rate = :kr)
+    @test occursin("EnvGen.kr(Env([", s.code) && !occursin("Env.ar", s.code)
+    g = Ressac.genome_from_sc("SinOsc.ar(EnvGen.kr(Env([start_freq, freq, freq], [drop, sustain - drop], \\exp)))",
+                              (:freq, :sustain, :drop, :start_freq))
+    sc = Ressac._emit_node(g, g.output_id)
+    @test occursin("Env([", sc) && !occursin("Env.ar", sc)
+end

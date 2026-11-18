@@ -160,6 +160,8 @@ function ugen(name::Symbol, args...; rate::Symbol = :ar)
         return Sig(string("(", sc_arg(args[1]), ").", _UGEN_METHOD_FORMS[name], rest))
     end
     haskey(_UGEN_ENV_FORMS, name) && return Sig(string("Env.", _UGEN_ENV_FORMS[name], "(", join(sc_arg.(args), ", "), ")"))
+    # `Env(niveaux, temps, courbe)` est un constructeur, pas un UGen : pas de `.ar`.
+    name === :Env && return Sig(string("Env(", join(sc_arg.(args), ", "), ")"))
     name === :Div && length(args) == 2 && return Sig(string("(", sc_arg(args[1]), " / ", sc_arg(args[2]), ")"))
     # Les formes de structure du génome (voir genome.jl) : un tableau, une
     # référence, une méthode ou une méthode de classe sans wrapper, un
