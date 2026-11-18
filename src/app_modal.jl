@@ -8,6 +8,7 @@ _modal_picker(m::RessacApp) =
     m.modal === :palette       ? m.palette :
     m.modal === :patterns      ? m.pats :
     m.modal === :sessions      ? m.sess :
+    m.modal === :atelier       ? m.at_pk :
     m.modal === :synth_library ? m.synthlib :
     m.modal === :snippets      ? m.snips :
     m.modal === :sccode        ? m.sccode : nothing
@@ -242,6 +243,9 @@ function _handle_modal_key!(m::RessacApp, evt::TK.KeyEvent)
     elseif m.modal === :sessions
         _handle_sessions_key!(m, evt)
         return
+    elseif m.modal === :atelier
+        _handle_atelier_key!(m, evt)
+        return
     elseif m.modal === :evolve
         _handle_evolve_key!(m, evt)
         return
@@ -258,7 +262,7 @@ end
 const _MODAL_SCOPES = Dict{Symbol,Symbol}(
     :listing => :modal_text,
     :browse => :modal_browse, :synth_library => :modal_lib, :sccode => :modal_sccode,
-    :snippets => :modal_snippets, :mixer => :modal_mixer, :patterns => :modal_patterns, :sessions => :modal_sessions, :evolve => :modal_evolve, :palette => :modal_palette,
+    :snippets => :modal_snippets, :mixer => :modal_mixer, :patterns => :modal_patterns, :sessions => :modal_sessions, :atelier => :modal_atelier, :evolve => :modal_evolve, :palette => :modal_palette,
     :help => :modal_help,
 )
 """

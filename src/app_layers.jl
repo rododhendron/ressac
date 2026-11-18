@@ -104,6 +104,15 @@ function _active_layers(m::RessacApp)
             push!(L, Layer(:none, m; engine = _pending_gc_engine!, exclusive = true))
             return L
         end
+        if m.pending_obj !== nothing
+            push!(L, Layer(:none, m; engine = _pending_obj_engine!, exclusive = true))
+            return L
+        end
+        if m.pending_atelier
+            push!(L, Layer(:atelier, m; engine = _atelier_prefix_engine!, exclusive = true,
+                           engine_first = true, prefix = "&"))
+            return L
+        end
         # Un opérateur en attente (`d`, `c`, `y`) : la touche suivante est son
         # mouvement, pas un geste de mode — `de` supprime jusqu'à la fin du
         # mot, il n'évalue pas la ligne.

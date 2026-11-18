@@ -270,3 +270,90 @@ function _render_lane!(buf::TK.Buffer, x0::Int, y::Int, w::Int, l::SlotLine, cel
     _tint_cell!(buf, x0 + head, y, TK.color_lerp(_rgb(th.bg), _rgb(th.accent), 0.45))
     return
 end
+
+# ── La réglette ──────────────────────────────────────────────────────
+# Le curseur est sur un nombre : c'est un knob (`+ - * /`, la molette). Au
+# bout de sa ligne, la réglette dit lequel — son nom, ses bornes, où il en
+# est. Un affichage, rien de plus : il n'y a pas de pane de knobs.
+
+# Les bornes des contrôles de pattern les plus courants : (bas, haut).
+const _PATTERN_KNOB_RANGES = Dict{String,Tuple{Float64,Float64}}(
+    "gain" => (0.0, 1.5), "pan" => (0.0, 1.0), "lpf" => (20.0, 20000.0), "cutoff" => (20.0, 20000.0),
+    "hpf" => (20.0, 20000.0), "hcutoff" => (20.0, 20000.0), "resonance" => (0.0, 1.0),
+    "room" => (0.0, 1.0), "size" => (0.0, 1.0), "delay" => (0.0, 1.0), "delaytime" => (0.0, 2.0),
+    "delayfeedback" => (0.0, 1.0), "shape" => (0.0, 1.0), "crush" => (1.0, 16.0), "coarse" => (1.0, 64.0),
+    "speed" => (-4.0, 4.0), "legato" => (0.0, 4.0), "sustain" => (0.0, 8.0), "attack" => (0.0, 2.0),
+    "release" => (0.0, 8.0), "fast" => (0.0, 16.0), "slow" => (0.0, 16.0), "degradeBy" => (0.0, 1.0),
+    "n" => (-24.0, 24.0), "note" => (-24.0, 24.0), "octave" => (1.0, 8.0), "squiz" => (1.0, 8.0),
+)
+
+"""
+    _knob_at(m, ed) -> (nom, bas, haut, valeur) | nothing
+
+Le knob sous le curseur de `ed` : un nombre dont on connaît la place — un
+réglage d'UGen dans un son (catalogue), un contrôle dans un pattern.
+"""
+function _knob_at(m::RessacApp, ed::TK.CodeEditor)
+    hit = _number_at(ed, ed.cursor_row, ed.cursor_col)
+    hit === nothing && return nothing
+    v = tryparse(Float64, hit[3])
+    v === nothing && return nothing
+    chars = ed.lines[ed.cursor_row]
+    sl = _slot_at(chars, hit[1] + 1)
+    sl !== nothing && sl.lo < sl.hi && return (String(sl.name), Float64(sl.lo), Float64(sl.hi), v)
+    fn = _enclosing_call(chars, hit[1])
+    r = get(_PATTERN_KNOB_RANGES, fn, nothing)
+    r === nothing && return nothing
+    return (fn, r[1], r[2], v)
+end
+
+const _KNOB_WIDTH = 12
+
+# Où est `v` entre `lo` et `hi`, de 0 à 1 — en log quand la plage est une
+# plage de fréquences (plus de deux décades, bas positif).
+function _knob_position(v::Float64, lo::Float64, hi::Float64)
+    if lo > 0 && hi / lo >= 100 && v > 0
+        return clamp(log(v / lo) / log(hi / lo), 0.0, 1.0)
+    end
+    return clamp((v - lo) / (hi - lo), 0.0, 1.0)
+end
+
+"""
+    _knob_text(nom, bas, haut, valeur) -> String
+
+« rq  0.05 ━━●━━━━━━━━━ 1 »
+"""
+function _knob_text(name::AbstractString, lo::Float64, hi::Float64, v::Float64)
+    k = clamp(round(Int, _knob_position(v, lo, hi) * (_KNOB_WIDTH - 1)), 0, _KNOB_WIDTH - 1)
+    bar = repeat('━', k) * "●" * repeat('━', _KNOB_WIDTH - 1 - k)
+    return "$name  $(_atelier_num(lo)) $bar $(_atelier_num(hi))"
+end
+
+"""
+    _render_knob!(m, pane, rect, buf)
+
+Dessine la réglette au bout de la ligne du curseur, dans la pane qui a le
+clavier, en mode normal. Elle prend la place de la piste sur cette ligne.
+"""
+function _render_knob!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf::TK.Buffer)
+    1 <= pane.current_tab <= length(pane.tabs) || return
+    ed = pane.tabs[pane.current_tab].code_editor
+    (ed.focused && ed.mode === :normal && m.modal === :none) || return
+    knob = _knob_at(m, ed)
+    knob === nothing && return
+    body = _editor_text_rect(pane, rect)
+    y = body.y + (ed.cursor_row - 1 - ed.scroll_offset)
+    body.y <= y < body.y + body.height || return
+    text = _knob_text(knob...)
+    gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0
+    text_end = body.x + gw + length(ed.lines[ed.cursor_row]) - ed.h_scroll
+    right = body.x + body.width - 1
+    w = textwidth(text)
+    x = right - w + 1
+    x >= text_end + 2 || return                       # pas la place : la ligne passe avant
+    for xx in (x - 1):right                           # efface la piste dessous
+        TK.set_char!(buf, xx, y, ' ', TK.Style())
+    end
+    TK.set_string!(buf, x, y, text, TK.tstyle(:accent, bold = true))
+    return
+end

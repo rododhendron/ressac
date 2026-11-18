@@ -307,17 +307,30 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
         _drone_launch!(m, tab)
         return
     end
-    src = TK.text(tab.code_editor)
-    extra = _audition_args(m, tab, src)
+    _audition_synth_text!(m, tab, TK.text(tab.code_editor))
+    return
+end
+
+"""
+    _audition_synth_text!(m, tab, src; what = "T — test de") -> Bool
+
+Fait entendre le texte `src` comme le son de l'onglet `tab` : c'est `T`, et
+c'est aussi l'essai d'un maillon dans l'atelier (le texte essayé n'est pas
+encore dans le buffer). Vrai si le son est parti.
+
+Le nom du @synth est celui de l'onglet ; le texte s'évalue dans SynthDSL
+(saw, sin_osc, rlpf… y sont des UGens, pas les signaux de patterns du même
+nom), en entier. Le @synth compile en SC et envoie lui-même à
+/ressac/evalAndPlay.
+"""
+function _audition_synth_text!(m::RessacApp, tab::EditorBuffer, src::AbstractString;
+                               what::AbstractString = "T — test de")
+    _LIVE_SCHEDULER[] === nothing && return false
     if _is_raw_synthdef(src)
         _push_app_log!(m, "[INFO] ce texte est du SuperCollider — :todsl le convertit en DSL, puis T le joue")
-        return
+        return false
     end
-    # Le nom du @synth est celui de l'onglet ; le texte s'évalue dans
-    # SynthDSL (saw, sin_osc, rlpf… y sont des UGens, pas les signaux de
-    # patterns du même nom), en entier : un commentaire final ou une
-    # variable d'aide ne font pas échouer le test. Le @synth compile en SC
-    # et envoie lui-même à /ressac/evalAndPlay.
+    extra = _audition_args(m, tab, src)
     src = _align_dsl_synth_name(src, tab.name)
     try
         _AUDITION_ARGS[] = extra
@@ -327,9 +340,11 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
             _AUDITION_ARGS[] = Any[]
         end
         _note_played!(src)
-        _push_app_log!(m, "[INFO] T — test de $(tab.name)$(_audition_note_suffix(m, extra))")
+        _push_app_log!(m, "[INFO] $what $(tab.name)$(_audition_note_suffix(m, extra))")
+        return true
     catch err
-        _push_app_log!(m, "[ERROR] éval DSL : $(sprint(showerror, err))")
+        _push_app_log!(m, "[ERROR] éval DSL : $(first(replace(sprint(showerror, err), r"\s*\n\s*" => " · "), 200))")
+        return false
     end
 end
 

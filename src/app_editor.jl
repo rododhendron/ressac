@@ -56,8 +56,9 @@ hover.
 function _try_nudge_at!(m::RessacApp, ed::TK.CodeEditor, row::Int, col::Int, step::Int)
     found = _number_at(ed, row, col)
     found === nothing && return false
+    playing = _slot_playing_at(m, ed, row)
     new_str = _replace_number!(ed, row, found, step)
-    _push_app_log!(m, "[INFO] nudge $(found[3]) → $new_str  @ row $row")
+    _after_nudge!(m, ed, row, playing)
     return true
 end
 
@@ -466,8 +467,9 @@ function _nudge_number_under_cursor!(m::RessacApp, ed::TK.CodeEditor, step::Int)
     txt = found[3]
     # Le curseur garde sa place par rapport au début du nombre.
     new_str = _nudged_number(txt, step)
+    playing = _slot_playing_at(m, ed, row)
     _replace_number!(ed, row, found, step; col = max(0, col + (length(new_str) - length(txt))))
-    _push_app_log!(m, "[INFO] nudge $txt → $new_str")
+    _after_nudge!(m, ed, row, playing)
 end
 
 """

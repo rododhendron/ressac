@@ -188,6 +188,18 @@ bind!(:patterns, "g x", "ouvrir l'explorateur de sons"; group = :nav, hint = fal
 
 # ── :synth ─────────────────────────────────────────────────────────
 scope!(:synth, "Pane synth (texte)"; layer = :pane, modes = (:design,))
+# L'atelier (atelier.jl) : sur un maillon, `o` / `O` proposent ce qui peut
+# suivre ou précéder — et le font entendre. Ailleurs, ce sont ceux de vim.
+_km_on_link(m::RessacApp) = _focused_role(m) === :synth && _km_normal_ed(m) &&
+    (l = _link_at(_km_ed(m)); l !== nothing && l.linewise && _in_synth_chain(_km_ed(m)))
+bind!(:synth, "o", "atelier : un maillon après (il s'entend avant d'être gardé)"; short = "maillon après",
+      group = :structure, when = _km_on_link, action = m -> _atelier_open!(m, :after))
+bind!(:synth, "O", "atelier : un maillon avant"; group = :structure, hint = false,
+      when = m -> _km_on_link(m) && _link_at(_km_ed(m)).piped, action = m -> _atelier_open!(m, :before))
+bind!(:synth, "&", "atelier : faire bouger un nombre, en faire un argument, écouter jusqu'ici, bifurquer…";
+      short = "atelier…", group = :structure, when = _km_normal_ed, action = m -> (m.pending_atelier = true))
+bind!(:synth, ["d a m", "y a m", "c i m"], "maillon : retirer · copier · remplacer (objet texte m)";
+      group = :structure, hint = false)
 bind!(:synth, "g t", "synth suivant"; group = :nav, hint = false,
       when = m -> _km_synth(m) && length(_all_synth_buffers(m)) > 1,
       action = m -> _cycle_synth_tab!(m; dir = +1))

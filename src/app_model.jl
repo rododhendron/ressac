@@ -194,6 +194,14 @@ non-empty), and the focus toggle for keystroke routing.
     # `gc` attend son mouvement (editor_comment.jl) : "" après `gc`, "a" / "i"
     # quand un objet texte suit.
     pending_gc::Union{Nothing,String} = nothing
+    # Un opérateur puis `a` / `i` : l'objet texte suit (editor_links.jl).
+    pending_obj::Union{Nothing,Tuple{Char,Char}} = nothing
+    # L'atelier (atelier.jl) : `&` attend sa touche ; l'essai en cours et sa liste.
+    pending_atelier::Bool = false
+    atelier::Union{Nothing,AtelierState} = nothing
+    at_pk::Picker = _picker()
+    # Un son à redéfinir quand la main s'arrête de tirer un nombre : (onglet, échéance).
+    redefine::Union{Nothing,Tuple{EditorBuffer,Float64}} = nothing
     last_find::Union{Nothing,Tuple{Char,Char}} = nothing
     logs::Vector{String}         = String[]
     quit::Bool                   = false

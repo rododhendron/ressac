@@ -188,6 +188,12 @@ function _editor_normal_engine!(m::RessacApp, evt::TK.KeyEvent)
     # Tachikoma ne connaît que les formes doublées (cc/dd/yy), celles-ci
     # sont à nous. Chacune garde `scroll_offset` pour que la vue ne saute
     # pas quand le texte change.
+    # Opérateur + `a` / `i` : un objet texte suit (`dam`, `yim`, `cim`).
+    if is_press && ed.pending_key in ('c', 'd', 'y') && evt.char in ('a', 'i')
+        m.pending_obj = (ed.pending_key, evt.char)
+        ed.pending_key = nothing
+        return true
+    end
     if is_press && ed.pending_key in ('c', 'd', 'y') && evt.char in ('w', 'b', 'W', 'B', 'e', 'E', '$', '0')
         op = ed.pending_key
         ed.pending_key = nothing

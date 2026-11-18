@@ -114,6 +114,7 @@ include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication �
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
+include("atelier_types.jl")      # LinkSpan, AtelierItem, AtelierState
 include("slot_state.jl")         # blocs @dN du texte + état de chaque ligne (pur)
 include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
 include("app_jobs.jl")           # travail lent hors de la tâche UI (_background!, _drain_jobs!)
@@ -134,7 +135,9 @@ include("app_slots.jl")          # l'état des lignes lu sur l'app (scheduler, e
 include("slot_marks.jl")         # marge en signes, ligne éclairée, piste d'un cycle au bout de la ligne
 include("app_patterns.jl")
 include("synth_format.jl")       # mise en forme d'un texte de son : pipes en tête, nombres courts
-include("editor_comment.jl")     # gcc / gc + mouvement, :format       # mute/solo, preview, eval @dN + cascade
+include("editor_comment.jl")     # gcc / gc + mouvement, :format
+include("editor_links.jl")       # le maillon, objet texte : dam · yam · cim
+include("atelier.jl")            # o / O / cim qui s'entendent, et & (bouger, argument, solo, bifurquer)       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
 include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION

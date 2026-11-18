@@ -571,12 +571,57 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 ### Pane synth (texte)
 
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `o` | atelier : un maillon après (il s'entend avant d'être gardé) |
+| `O` | atelier : un maillon avant |
+| `&` | atelier : faire bouger un nombre, en faire un argument, écouter jusqu'ici, bifurquer… |
+| `d a m / y a m / c i m` | maillon : retirer · copier · remplacer (objet texte m) |
+
 **Naviguer**
 
 | Touche | Action |
 |---|---|
 | `g t` | synth suivant |
 | `g T` | synth précédent |
+
+### & + … (atelier, dans un son)
+
+**Structure**
+
+| Touche | Action |
+|---|---|
+| `& o` | un maillon après celui du curseur |
+| `& O` | un maillon avant |
+| `& r` | remplacer le maillon (cim) |
+| `& d` | retirer le maillon (dam) |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `& m` | faire bouger le nombre sous le curseur (un LFO, sur une ligne nommée) |
+| `& k` | faire du nombre un argument du son |
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `& s` | écouter le son jusqu'à ce maillon |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `& b` | bifurquer : une copie du son, à part |
+
+**Aide**
+
+| Touche | Action |
+|---|---|
+| `& ?` | à quoi sert ce maillon |
 
 ### Space + … (synth)
 
@@ -622,6 +667,27 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `Esc` | sortir des trous |
 | `i` | remplir le trou (insertion) |
 | `u` | annuler le snippet |
+
+### Atelier (o · O · cim dans un son)
+
+**Jouer / écouter**
+
+| Touche | Action |
+|---|---|
+| `↓ / ↑` | essayer la proposition suivante / précédente — elle s'entend |
+| `Space` | réécouter (quand la recherche est vide) |
+
+**Éditer**
+
+| Touche | Action |
+|---|---|
+| `Enter` | garder |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `Esc` | fermer : rien n'a changé |
 
 ### Sons (samples, instruments, synths)
 

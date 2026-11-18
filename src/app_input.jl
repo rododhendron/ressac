@@ -82,7 +82,7 @@ const _LITERAL_PENDING = ('r',)
 # L'éditeur (ou Ressac, pour f/t) attend un caractère littéral : aucune
 # action globale ne doit l'intercepter.
 _awaiting_literal(m::RessacApp) =
-    m.pending_find !== nothing || m.pending_gc !== nothing ||
+    m.pending_find !== nothing || m.pending_gc !== nothing || m.pending_obj !== nothing || m.pending_atelier ||
     ((ed = _active_editor(m)) !== nothing && ed.mode === :normal &&
      ed.pending_key in _LITERAL_PENDING)
 

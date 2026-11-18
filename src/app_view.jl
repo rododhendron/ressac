@@ -229,6 +229,7 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
             try
                 _render_pane_guarded!(m, pane, rect, buf)
                 pane isa EditorPane && _render_slot_marks!(m, pane, rect, buf)
+                pane isa EditorPane && _render_knob!(m, pane, rect, buf)
             finally
                 _PANE_FOCUS_COLOR[] = nothing
             end
@@ -340,6 +341,7 @@ function _view!(m::RessacApp, f::TK.Frame)
     # en écoute s'arrête dès qu'on quitte les motifs.
     _reserve_index(m.modal) === nothing || (m.reserve_tab = m.modal)
     m.modal === :patterns || _patterns_preview_stop!(m)
+    _redefine_tick!(m)                # un son dont on a tiré un nombre
     _update_live_doc!(m)
     _synth_workspace_sync!(m)         # texte ⟷ studio ⟷ doc du workspace synth
     _tutorial_tick!(m)                # le tutoriel avance quand l'étape est faite (après la synchro : il lit le texte)
@@ -431,6 +433,8 @@ function _view!(m::RessacApp, f::TK.Frame)
             _render_patterns_modal!(m, marea, buf)
         elseif m.modal === :sessions
             _render_sessions_modal!(m, marea, buf)
+        elseif m.modal === :atelier
+            _render_atelier_modal!(m, marea, buf)
         elseif m.modal === :evolve
             _render_evolve_modal!(m, marea, buf)
         elseif m.modal === :palette
@@ -856,8 +860,8 @@ function _whichkey_state(m::RessacApp)
     m.modal !== :none && return (:none, "", (), false)
     layers, prefix = _visible_layers(m)
     isempty(prefix) && return (:none, "", (), false)
-    kind = prefix == "Space" ? :leader : prefix == "Ctrl-w" ? :pane_mode : :g
-    return (kind, prefix, layers, prefix == "Space")
+    kind = prefix == "Space" ? :leader : prefix == "Ctrl-w" ? :pane_mode : prefix == "&" ? :atelier : :g
+    return (kind, prefix, layers, prefix == "Space" || prefix == "&")
 end
 
 """
