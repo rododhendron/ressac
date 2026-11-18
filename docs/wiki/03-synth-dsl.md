@@ -350,8 +350,8 @@ synth (une copie éditable de la recette — modifie et `T` pour entendre).
 Un synth écrit à la main en SuperCollider (`.scd`) s'ouvre à droite des
 patterns comme un autre ; `:todsl` le réécrit en DSL : les arguments deviennent
 les paramètres du `@synth`, chaque `var` est remplacée par son
-expression, le signal envoyé à `Out.ar` devient la chaîne de pipes. Le
-studio suit aussitôt, `T` teste, `:w` sauve en `.jl`, `u` annule.
+expression, le signal envoyé à `Out.ar` devient la chaîne de pipes.
+`T` teste, `:w` sauve en `.jl`, `u` annule.
 
 Dans un synth, `Espace` puis une lettre insère un maillon du DSL en bout
 de chaîne : `s` saw, `o` sin_osc, `l` rlpf, `e` env_perc, `t` tanh_drive,
@@ -383,38 +383,63 @@ converti (`:w` le range en `.jl`) ; s'il ne se convertit pas en entier,
 Ressac le dit et ne l'ouvre pas à moitié. Du SuperCollider collé dans un
 son : `:todsl`.
 
-## Sculpter un son
+## L'atelier : travailler un son dans son texte
 
-Sous le texte d'un son, deux onglets : la **DOC** devant, le **STUDIO**
-derrière. Le studio suit le texte : dès que le `@synth` change et que tu
-n'es plus en insertion, il reconstruit le graphe du son, son onde et ses
-knobs, et la DOC reçoit l'explication. `:sculpt` amène le clavier dans le
-studio, `Ctrl-w k` le rend au texte.
+Le texte d'un son **est** son graphe : il n'y a pas d'autre endroit où le
+régler. On y travaille avec les gestes de vim, plus quelques-uns.
 
-Dans l'autre sens, ce que tu fais dans le studio revient dans le texte :
+**Un nombre.** Le curseur dessus : `+` / `-` le bougent d'un pas, `*` / `/`
+de dix, la molette aussi. Une réglette s'affiche le temps du geste, avec
+les bornes utiles du réglage. Le son est redéfini aussitôt (et un drone
+tenu repart avec la nouvelle valeur) : on entend ce qu'on tire.
 
-- **un nombre** tiré (`h`/`l`, `=`) est remplacé **sur place** quand il se
-  retrouve tel quel, et une seule fois, dans le texte — `freq=220` devient
-  `freq=226.443`, rien d'autre ne bouge ;
-- **un changement de structure** (`o` change l'UGen, `n` insère un filtre,
-  `d` supprime un nœud, `x` duplique, `m` greffe un LFO) ou un nombre
-  introuvable (une valeur calculée) réécrit le bloc `@synth` en **forme
-  canonique**, une ligne par nœud. Le log le dit, `u` dans le texte annule.
+**Un maillon** est une étape de la chaîne — une ligne, quand le son est
+écrit un maillon par ligne. C'est un objet texte, `m`, comme `w` est un mot :
 
-L'onglet **graphe** de la DOC (`→` deux fois, ou `G` depuis le studio)
-dessine le son tel qu'il est câblé : la chaîne principale de la matière
-vers la sortie, en boîtes reliées par des flèches, une couleur par rôle,
-et sous chaque boîte ce qui la module avec le nom du slot sur l'arête. Le
-nœud focalisé dans le studio est en trait épais ; `h`/`l` passent d'un
-nœud à l'autre et le studio suit, `Enter` ramène le focus sur son knob,
-`d` retire le nœud, `[` `]` défilent un grand graphe, ✂ marque ce qui ne
-s'entend pas.
+| Geste | Ce qu'il fait |
+|---|---|
+| `o` / `O` | propose un maillon **après** / **avant** celui du curseur |
+| `cim` | **remplace** le maillon (ses cousins en tête de liste) |
+| `dam` | le **retire** : le signal passe tout droit |
+| `yam` puis `p` | le copie, et le pose ailleurs — même dans un autre son |
+| `gcc` | le court-circuite sans l'effacer |
 
-`:w` sauve, `U` l'utilise dans un pattern, `P` mesure l'impact de chaque
-nœud. `M` sur un candidat de l'explorateur l'amène dans le volet du son :
-son texte en onglet, le studio devant. `:sculpt <nom>` ouvre ce son et son
-studio ; il refuse, en disant pourquoi, un nom inconnu ou un texte qu'il ne
-sait pas relire. Voir `?` dans le studio.
+`o`, `O` et `cim` ouvrent une liste de ce qui a un sens à cet endroit
+(filtres, effets, enveloppes, sources…). `↓` / `↑` passent d'une
+proposition à l'autre et **chacune s'entend** dans le son, avant d'être
+écrite ; taper filtre la liste. `Entrée` garde (un seul `u` annule),
+`Échap` ne change rien.
+
+**`&`** ouvre le reste de l'atelier :
+
+| Touche | Ce qu'elle fait |
+|---|---|
+| `& m` | fait **bouger** le nombre sous le curseur : un LFO, sur une ligne nommée |
+| `& k` | fait du nombre un **argument** du son, réglable depuis un pattern |
+| `& s` | fait entendre le son **jusqu'à ce maillon** |
+| `& b` | **bifurque** : une copie du son, à part, pour essayer sans risque |
+| `& o` `& O` `& r` `& d` | les mêmes que `o` `O` `cim` `dam` |
+| `& ?` | la fiche du maillon |
+
+## La DOC d'un son
+
+Sous le texte, la **DOC** relit le son dès qu'il change (hors frappe) et
+le montre de trois façons — `←` `→` dans la DOC, ou depuis le texte :
+
+- `K` la **fiche** du mot sous le curseur ;
+- `X` l'**explication** : la chaîne de la sortie vers la matière, le rôle
+  de chaque étape, et ce qui ne s'y entend pas ;
+- `Y` le **graphe** : le son tel qu'il est câblé, en boîtes reliées par des
+  flèches, une couleur par rôle, et sous chaque boîte ce qui la module.
+  `h` / `l` passent d'un nœud à l'autre, `[` `]` défilent un grand graphe,
+  ✂ marque ce qui ne s'entend pas.
+
+`P` mesure ce que chaque étape change au son (rendu hors-ligne, quelques
+secondes) ; l'explication le range du plus faible au plus fort.
+
+`:w` sauve, `U` envoie le son dans un pattern. `M` sur un candidat de
+l'explorateur l'amène ici : son texte en onglet, la DOC sur son
+explication.
 
 ## Inspecter sans jouer
 
@@ -435,6 +460,6 @@ répond — ceux dont l'impact mesuré est sous 0,02 (`:prune 0.05` pour
 élargir) : le son est rendu hors-ligne sans chaque nœud et comparé au
 complet. Le bloc `@synth` est réécrit sous sa forme canonique
 (`n1 = …`), le reste du fichier reste intact ; `T` pour écouter, `:w`
-pour sauver. Le studio sculpt (`:sculpt`) montre la même chose nœud
-par nœud, avec `P` pour mesurer et `d` pour retirer à la main.
+pour sauver. `P` mesure sans rien retirer : l'explication liste alors
+l'impact de chaque étape, et `dam` sur une ligne retire ce maillon-là.
 

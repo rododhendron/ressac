@@ -5,7 +5,7 @@
 # replié, une source à 0 Hz…). Et une MESURE : chaque nœud retiré à son
 # tour, tous les variants rendus hors-ligne en un seul lot, et la
 # distance de leurs descripteurs à ceux du son complet — l'impact.
-# Le studio sculpt les montre (✂) et `:prune` retire ce qui ne pèse rien.
+# La DOC d'un son les montre (✂) et `:prune` retire ce qui ne pèse rien.
 
 const _SATURATIONS = (:Tanh, :Clip2, :Fold2, :Round, :Softclip, :Clip, :Fold, :Wrap, :Cubed)
 const _OSCILLATORS = (:Saw, :SinOsc, :Pulse, :LFTri, :LFSaw, :VarSaw, :Blip, :Impulse, :SyncSaw)
@@ -115,7 +115,7 @@ end
 
 La section « ÉLAGAGE » d'une explication : les indices statiques, puis
 les impacts mesurés (les plus faibles d'abord) s'il y en a, ou l'état
-de la mesure. Partagée par le studio sculpt et `:explain`.
+de la mesure. Partagée par la DOC d'un son et `:explain`.
 """
 function prune_report_lines(g::Genome; impacts = nothing, measuring::Bool = false, note::AbstractString = "")
     out = String["", "ÉLAGAGE (ce qui ne s'entend pas)"]
@@ -130,14 +130,14 @@ function prune_report_lines(g::Genome; impacts = nothing, measuring::Bool = fals
             mark = imp < 0.02 ? "✂" : imp < 0.08 ? "·" : " "
             push!(out, "  $mark #$id $(g.nodes[id].ugen) — impact $(round(imp; digits = 3))")
         end
-        push!(out, "  ✂ = inaudible (< 0.02) · d retire un nœud · :prune retire tous les ✂")
+        push!(out, "  ✂ = inaudible (< 0.02) · dam retire un maillon · :prune retire tous les ✂")
     elseif measuring
         push!(out, "  mesure en cours (rendu hors-ligne de chaque nœud retiré)…")
     elseif !isempty(note)
         push!(out, "  élagage mesuré indisponible : $note")
     else
         isempty(hints) && push!(out, "  rien de suspect dans la structure")
-        push!(out, "  P (studio) ou :prune (éditeur) mesure l'impact de chaque nœud")
+        push!(out, "  P mesure ce que chaque étape change ; :prune retire ce qui ne s'entend pas")
     end
     return out
 end

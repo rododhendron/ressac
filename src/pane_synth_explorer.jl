@@ -73,7 +73,7 @@ end
 function _explorer_sculpt_focus!(p)
     g = p.pop.candidates[p.focus].genome
     _EXPLORER_SCULPT_REQUEST[] = (serialize_genome(g), "candidat #$(p.focus)")
-    _explorer_log!("[INFO] sculpt du candidat #$(p.focus)…")
+    _explorer_log!("[INFO] candidat #$(p.focus) ouvert à droite…")
     return true
 end
 
@@ -304,7 +304,11 @@ function render!(p::SynthExplorerPane, area, buf)
     engauge = "én $(round(en; digits = 1))$arrow$(round(Int, tgt))$(_chaos_on(p.pop) ? "∿" : "")"
     rname = get(p.pop.state, :role, nothing)
     rolebadge = rname === nothing ? "fam(u)" : "$rname(u)"
-    header = "EXPLORER · gén $(p.pop.generation) · $modebadge · $rolebadge · $engauge · div $(rpad(bar, 5, '░'))$guide"
+    # Ouvert sur un slot, le titre dit pour quoi on cherche ; le détail des
+    # réglages (stratégie, rôle, énergie) est dans le panneau `g`.
+    header = isempty(_EXPLORER_SLOT_LABEL[]) ?
+        "EXPLORER · gén $(p.pop.generation) · $modebadge · $rolebadge · $engauge · div $(rpad(bar, 5, '░'))$guide" :
+        "EXPLORER · $(_EXPLORER_SLOT_LABEL[]) · génération $(p.pop.generation) · Entrée adopte"
     _render_pane_block_simple!(rect, header, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 12 || inner.height < 6) && return
@@ -1037,7 +1041,7 @@ bind!(:explorer, "u", "rôle d'usage suivant"; short = "rôle", group = :select,
 bind!(:explorer, "H", "récolte NRT (top-k du rôle)"; short = "récolte", group = :select, action = _explorer_harvest!)
 bind!(:explorer, "B", "tune (réglage fin) ⟷ brew (rebrassage)"; short = "tune/brew", group = :structure,
       action = p -> (p.mode = p.mode === :tune ? :brew : :tune))
-bind!(:explorer, "M", "sculpter le candidat"; short = "sculpter", group = :file, action = _explorer_sculpt_focus!)
+bind!(:explorer, "M", "ouvrir le candidat à droite, avec son explication"; short = "ouvrir", group = :file, action = _explorer_sculpt_focus!)
 bind!(:explorer, "e", "exporter dans l'éditeur…"; short = "éditeur…", group = :file,
       action = p -> (p.naming = :export; p.name_buf = ""))
 bind!(:explorer, "w", "sauver comme synth…"; short = "synth…", group = :file,

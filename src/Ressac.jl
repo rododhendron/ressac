@@ -82,8 +82,8 @@ include("pane_scope.jl")
 include("pane_tuning.jl")
 include("synth_audition.jl")     # GA explorer — audition harness (OSC)
 include("pane_synth_explorer.jl")# GA explorer — :explorer PaneImpl
-include("wave_sculpt.jl")        # :waveform sculpt — knobs + soft quartiers (pure)
-include("pane_waveform.jl")      # :waveform — zoomable sound-wave viewer + sculpt
+include("genome_edit.jl")        # retirer un nœud (court-circuit), greffer un modulateur
+include("pane_waveform.jl")      # :waveform — l'onde complète d'un son, zoomable
 include("workspace_commands.jl")
 include("workspace_resize.jl")   # proportions des panes : clavier (mode pane) et souris
 include("workspace_keymap.jl")
@@ -137,11 +137,12 @@ include("app_patterns.jl")
 include("synth_format.jl")       # mise en forme d'un texte de son : pipes en tête, nombres courts
 include("editor_comment.jl")     # gcc / gc + mouvement, :format
 include("editor_links.jl")       # le maillon, objet texte : dam · yam · cim
+include("app_explore_slot.jl")   # gx : les candidats de l'explorateur joués dans le pattern d'un slot
 include("atelier.jl")            # o / O / cim qui s'entendent, et & (bouger, argument, solo, bifurquer)       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
 include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION
-include("app_synth_workspace.jl")# workspace synth : texte ⟷ studio ⟷ doc
+include("app_son.jl")            # le volet d'un son : texte ⟷ DOC, élagage, :todsl
 include("app_transport.jl")      # rec / export / panic / hush
 include("app_ex_registry.jl")    # commandes ex : tables, enregistrement, dispatch, historique
 include("app_commands.jl")       # les commandes ex et leurs handlers
@@ -161,7 +162,6 @@ include("modal_evolve.jl")       # modal « variations »
 include("modal_palette.jl")      # palette universelle (Ctrl-p)
 include("modal_sccode.jl")       # :sccode
 include("app_view.jl")           # TK.view : chrome + arbre + modal
-include("app_sculpt.jl")         # :sculpt → pane waveform zoomée, :w, drains M / U
 include("app_keymap.jl")         # bindings :global/:editor/:patterns/:synth/:leader (après toutes les actions)
 
 # ─── Plugin section handlers (last — uses SynthDSL.@synth via
@@ -269,8 +269,7 @@ send_osc(::_PrecompileSink, ::Vector{UInt8}) = nothing
 
 La TUI entière, telle qu'un joueur la traverse dans ses premières
 minutes : PLAY (frappe, évaluation, souris, molette, aide, palette, mode
-pane), DESIGN (onglets, studio lié, DOC à trois onglets, drone,
-modulation), EXPLORE, redimensionnement, survol du glossaire. Tout ce
+pane), le son (onglets, DOC à trois vues, drone, modulation), EXPLORE, redimensionnement, survol du glossaire. Tout ce
 qui passe ici ne gèle plus au premier geste. Aucun sous-processus : NRT
 coupé, rendu d'onde factice. Appelé par la précompilation du paquet et
 par scripts/precompile_workload.jl (sysimage).
@@ -311,19 +310,19 @@ try
     # mode pane : scinder, naviguer, redimensionner, fermer
     ctrl!('w'); key!('v'); key!('h'); key!('>'); key!('='); key!('c'); key!(:escape)
     _PANE_MODE.active = false
-    # DESIGN : texte | studio / doc, onglets, studio lié, DOC, drone, modulation
+    # Le son : texte / DOC, onglets, drone, modulation, atelier
     ex!("son"); paint!()
     ex!("synth _pc_sketch"); paint!()
     key!('G'); key!('o'); foreach(key!, "# note"); key!(:escape); paint!()
     key!('T'); key!('D'); paint!(); key!('D')
     key!(' '); key!('l'); key!(:escape); key!(:escape)
     ex!("explain"); paint!(); key!(:right); paint!(); key!('l'); key!(:left); key!(:left)
-    ex!("sculpt"); paint!(); key!('j'); key!('l'); key!('h'); paint!(); key!('G'); paint!()
-    key!('='); key!('1'); key!(:escape)
+    key!('X'); paint!(); key!('Y'); paint!(); key!('P'); paint!(); key!('K')
+    key!('g'); key!('g'); key!('j'); key!('o'); paint!(); key!('j'); key!(:escape); paint!()
     ex!("todsl")
     ctrl!('w'); key!('h'); key!(:escape); _PANE_MODE.active = false
     key!('g'); key!('t'); paint!()
-    # EXPLORE : l'explorateur et son studio
+    # L'explorateur
     ex!("explore"); paint!()
     for k in ('j', 'k', 'l', 'h'); key!(k); end
     paint!()
@@ -738,16 +737,6 @@ end
         cluster_representatives(pop, poolc, 9)
         tag_example!(pop, 1, true)
         harvest_topk!(pop, rngpc; pool_size = 12, k = 9, analyze = fakeanalyze)
-
-        # Sculpt de l'onde : warm le chemin pur knobs/quartiers.
-        scg = Genome()
-        scs = add_node!(scg, :Saw, :ar, Arg[ControlRef(:freq)])
-        scf = add_node!(scg, :RLPF, :ar, Arg[NodeRef(scs), ConstArg(800.0), ConstArg(0.3)])
-        scg.output_id = scf
-        sck = enumerate_knobs(scg)
-        scd = knob_graph_distances(scg, sck)
-        soft_quartiers(mixed_distances(scd, KnobSignatures(), sck))
-        descriptors_from_samples(Float32[sin(2π * 110 * i / 44100) for i in 0:1000], 44100)
 
         # Pane :explorer standalone — render! + tout le routeur de touches.
         ep = _pane_new(:explorer, Dict{String,Any}("seed" => "pluck", "rng" => 3))

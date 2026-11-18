@@ -565,10 +565,9 @@ _register_regex!(r"^starter\s+([\w.-]+)$",
 function _explain_command!(m::RessacApp, name::AbstractString)
     nm = strip(String(name))
     parts = _synth_workspace_parts(m)
-    if isempty(nm) && parts !== nothing && parts[3] !== nothing
-        _synth_workspace_sync!(m)
-        parts[3].mode = :explain
-        _focus_pane!(m, parts[3])
+    if isempty(nm) && parts !== nothing && parts[2] !== nothing
+        _design_doc_mode!(m, :explain)
+        _focus_pane!(m, parts[2])
         return
     end
     lines = if isempty(nm)
@@ -586,11 +585,11 @@ function _explain_command!(m::RessacApp, name::AbstractString)
     return
 end
 _register_literal!(m -> _explain_command!(m, ""), "explain")
+_register_literal!(m -> _prune_command!(m, ""), "prune")
+_register_regex!(r"^prune\s+([0-9.]+)$", (m, mt) -> _prune_command!(m, mt.captures[1]))
 _register_literal!(m -> _todsl_command!(m), "todsl", "to-dsl", "sc2dsl")
 _register_regex!(r"^explain\s+([\w.-]+)$",
     (m, mt) -> _explain_command!(m, mt.captures[1]))
-
-# :sculpt [nom] → src/app_sculpt.jl (avec _open_sculpt_pane! / _save_sculpt!).
 
 # ── Découverte des UGens SC ────────────────────────
 _register_literal!(m -> _sc_rediscover_command!(m), "sc-rediscover")
@@ -737,21 +736,13 @@ _register_special!(
 
 # Small named helpers — kept out of the inline lambdas above so they
 # stay readable + greppable. Each takes (m, mt::RegexMatch).
-# _save_sculpt! (sauve le génome sculpté en .jl re-jouable/re-sculptable)
-# → src/app_sculpt.jl.
 
 # Ce que `:w` sauve suit le clavier : du côté d'un son (son texte, sa DOC,
-# son studio, sa MODULATION) c'est le synth ; du côté des patterns, la session.
+# sa MODULATION) c'est le synth ; du côté des patterns, la session.
 _saves_synth(m::RessacApp) = _workspace_mode(m) === :design && _current_synth_tab(m) !== nothing
 
-# Le studio focalisé avec un son à sauver (sans génome — un texte qu'il n'a
-# pas su relire — c'est le texte du synth qui se sauve).
-_saves_sculpt(m::RessacApp) = (p = _focused_sculpt_pane(m); p !== nothing && p.genome !== nothing)
-
 function _write_focused!(m::RessacApp, name::AbstractString)
-    if _saves_sculpt(m)
-        _save_sculpt!(m, name)
-    elseif _saves_synth(m)
+    if _saves_synth(m)
         isempty(name) ? _save_current_synth!(m) : _save_current_synth!(m; new_name = name)
     else
         _session_write!(m, name)

@@ -173,15 +173,12 @@ function _route_key_to_focused_pane!(m::RessacApp, evt::TK.KeyEvent)
 end
 
 # Les requêtes qu'une pane ou un geste de mode postent à l'app (export,
-# onde, sculpt, U depuis un studio seul, réévaluation d'un drone, onglet
-# de la DOC) : drainées après CHAQUE touche résolue, quelle que soit la
+# onde, candidat à ouvrir) : drainées après CHAQUE touche résolue, quelle que soit la
 # couche qui l'a consommée. No-op si rien n'est posté.
 function _drain_requests!(m::RessacApp)
     _drain_explorer_export!(m)
     _drain_explorer_waveform!(m)
     _drain_explorer_sculpt!(m)
-    _drain_sculpt_use!(m)
-    _drain_synthdoc_request!(m)
     return
 end
 
@@ -219,8 +216,6 @@ function _drain_explorer_waveform!(m::RessacApp)
     return true
 end
 
-# Sculpt (ouverture d'une pane sculpt, drain explorer `M`, :sculpt/:w)
-# → src/app_sculpt.jl.
 
 """
     _workspace_scroll_to_pane!(m, evt) -> Bool

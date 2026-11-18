@@ -1,6 +1,6 @@
 include(joinpath(@__DIR__, "helpers.jl"))
 # L'élagage : indices statiques, impact mesuré (analyse simulée), prune!,
-# et le studio sculpt (P, ✂, :prune).
+# et la DOC d'un son (P, ✂) ; :prune dans le texte.
 using Test
 using Ressac
 using Tachikoma
@@ -66,40 +66,36 @@ end
     @test_throws ErrorException Ressac.measure_impacts(g; analyze = gs -> Vector{Float64}[])
 end
 
-@testset "élagage — le studio sculpt : P, ✂, :prune" begin
-    old_an = Ressac._PRUNE_ANALYZE[]; old_render = Ressac._WAVE_RENDER[]; old_sync = Ressac._WAVE_SYNC[]
+@testset "élagage — la DOC d'un son : indices, P, ✂" begin
+    old_an = Ressac._PRUNE_ANALYZE[]; old_sync = Ressac._WAVE_SYNC[]
     Ressac._PRUNE_ANALYZE[] = _fake_analyze
-    Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100)
     Ressac._WAVE_SYNC[] = true
     try
         g, n = _prune_genome()
-        p = Ressac._pane_new(:waveform, Dict{String,Any}("genome" => Ressac.serialize_genome(g), "label" => "t", "sculpt" => true))
-        @test p isa Ressac.WaveformPane && p.sculpt
+        p = Ressac._pane_new(:synthdoc, Dict{String,Any}("mode" => "graph"))
+        Ressac._synthdoc_set_genome!(p, g)
         @test any(l -> occursin("ÉLAGAGE", l), p.explain_lines)
-        @test any(l -> occursin("fréquence 0", l), p.explain_lines)      # indices dès l'ouverture
+        @test any(l -> occursin("fréquence 0", l), p.explain_lines)      # indices dès la lecture
         @test haskey(p.hints, n.dead)
-        tb = Tachikoma.TestBackend(100, 30)
-        Ressac.render!(p, Tachikoma.Rect(1, 1, 100, 30), tb.buf)
-        scr = join((Tachikoma.row_text(tb, y) for y in 1:30), "\n")
+        tb = Tachikoma.TestBackend(140, 40)
+        Ressac.render!(p, Tachikoma.Rect(1, 1, 140, 40), tb.buf)
+        scr = join((Tachikoma.row_text(tb, y) for y in 1:40), "\n")
         @test occursin("✂", scr)
-        # P mesure (synchrone en test)
-        @test (Ressac._sculpt_measure_impacts!(p); true)
+        # P mesure (sur place en test)
+        @test Ressac._synthdoc_measure_impacts!(p)
         @test !p.measuring && !isempty(p.impacts) && p.impacts[n.f2] == 0.0
         @test any(l -> occursin("impact", l), p.explain_lines)
-        # :prune retire les ✂ mesurés, pas le filtre
-        nb = Ressac._sculpt_prune!(p)
-        @test nb >= 2 && !haskey(p.genome.nodes, n.f2) && haskey(p.genome.nodes, n.f)
-        @test isempty(p.impacts)                                         # périmés après la coupe
-        # un édit structurel vide aussi les impacts
-        Ressac._sculpt_measure_impacts!(p); @test !isempty(p.impacts)
-        Ressac.handle_key!(p, Tachikoma.KeyEvent('n')); @test isempty(p.impacts)
-        # sans mesure, :prune ne fait rien ; avec une analyse qui échoue, le message le dit
-        @test Ressac._sculpt_prune!(p) == 0
+        # un autre son : les mesures d'avant ne valent plus
+        Ressac._synthdoc_set_genome!(p, first(_prune_genome()))
+        @test isempty(p.impacts)
+        # avec une analyse qui échoue, le message le dit ; sans son, rien à mesurer
         Ressac._PRUNE_ANALYZE[] = gs -> error("nrt: sclang introuvable")
-        Ressac._sculpt_measure_impacts!(p)
+        Ressac._synthdoc_measure_impacts!(p)
         @test !p.measuring && isempty(p.impacts) && any(l -> occursin("indisponible", l), p.explain_lines)
+        Ressac._synthdoc_set_genome!(p, nothing)
+        @test !Ressac._synthdoc_measure_impacts!(p) && isempty(p.explain_lines)
     finally
-        Ressac._PRUNE_ANALYZE[] = old_an; Ressac._WAVE_RENDER[] = old_render; Ressac._WAVE_SYNC[] = old_sync
+        Ressac._PRUNE_ANALYZE[] = old_an; Ressac._WAVE_SYNC[] = old_sync
     end
 end
 
@@ -124,8 +120,8 @@ end
         # :explain sur le buffer : l'onglet explication de la DOC (DESIGN), avec ÉLAGAGE et ses indices
         ex("explain")
         parts = Ressac._synth_workspace_parts(app)
-        @test parts !== nothing && parts[3].mode === :explain
-        lines = parts[3].explain_lines
+        @test parts !== nothing && parts[2].mode === :explain
+        lines = parts[2].explain_lines
         @test any(l -> occursin("ÉLAGAGE", l), lines) && any(l -> occursin("fréquence 0", l), lines)
         Ressac._focus_pane!(app, parts[1])
         # :prune réécrit le bloc, garde les commentaires autour

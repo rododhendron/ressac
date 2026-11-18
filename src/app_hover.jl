@@ -14,7 +14,6 @@ function _hover_scrollpane(pane)
     pane isa WikiPane     && return pane.pane
     pane isa TutorialPane && return pane.view
     pane isa LogPane      && return pane.pane
-    pane isa WaveformPane && pane.sculpt && !pane.linked && return pane.explain_view
     return nothing
 end
 

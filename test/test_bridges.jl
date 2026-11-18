@@ -1,6 +1,6 @@
 include(joinpath(@__DIR__, "helpers.jl"))
 # Ponts son ⟷ patterns : workspaces PLAY / DESIGN / EXPLORE, gs, U,
-# :synth <nom> depuis la librairie, :sculpt robuste, export explorer.
+# :synth <nom> depuis la librairie, U, export et M de l'explorateur.
 using Test
 using Ressac
 import Tachikoma
@@ -131,32 +131,23 @@ end
     end
 end
 
-@testset ":sculpt — accepte la forme une-ligne ; refuse un synth SC brut avec un message clair" begin
+@testset "U depuis le son — sauve et pose un @dN dans les patterns ; Ctrl-w c ferme le volet" begin
     _in_sandbox() do
         app, tb, frame = _br_app()
-        _bex(app, "synth zorglub")                             # starter une-ligne, dans DESIGN
-        _bex(app, "sculpt")
-        @test Ressac._focused_sculpt_pane(app) !== nothing        # le studio du workspace a le focus
-        @test _bws(app) == "DESIGN"
+        _bex(app, "synth zorglub")                             # starter une-ligne, dans le volet
+        @test _bws(app) == "DESIGN" && Ressac._focused_role(app) === :synth
         Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')); _bkey(app, 'c'); _bkey(app, :escape)
         Ressac._PANE_MODE.active = false
-        @test Ressac._focused_sculpt_pane(app) === nothing && app.volet === :fiche   # Ctrl-w c ferme le volet
-        write(joinpath(pwd(), "plugins", "user-synths", "raw.jl"),
-              "@synth :raw (freq=220, sustain=0.5) SynthDSL.Sig(\"{ SinOsc.ar(freq) }.value\")\n")
-        _bex(app, "sculpt raw")
-        @test Ressac._focused_sculpt_pane(app) === nothing
-        @test occursin("SC brut", app.logs[end])
-        _bex(app, "sculpt nexistepas")
-        @test occursin("introuvable", app.logs[end])
-        # U depuis le studio : sauve + @dN dans les patterns
-        _bex(app, "synth zorglub")                               # l'onglet zorglub redevient courant
+        @test app.volet === :fiche                             # Ctrl-w c ferme le volet
+        _bex(app, "synth zorglub")                             # l'onglet zorglub redevient courant
         @test Ressac._focused_role(app) === :synth
-        _bex(app, "sculpt")
-        sp = Ressac._focused_sculpt_pane(app)
-        @test sp !== nothing && sp.label == "zorglub"
+        # depuis la DOC aussi, U envoie le son dans un pattern
+        (_, sdoc) = Ressac._synth_workspace_parts(app)
+        Ressac._focus_pane!(app, sdoc)
         _bkey(app, 'U')
         @test _bws(app) == "PLAY"
         @test occursin("p\"zorglub*4\"", Tachikoma.text(Ressac._active_editor(app)))
+        @test isfile(joinpath(pwd(), "plugins", "user-synths", "zorglub.jl"))
     end
 end
 
@@ -174,7 +165,7 @@ end
     @test Ressac._focused_pane_impl(app) isa Ressac.SynthExplorerPane   # l'explorer est toujours là
 end
 
-# ── Étape 5 : zoom de pane, sculpt en pane ────────────────────────────
+# ── Étape 5 : zoom de pane, candidat ouvert à droite ────────────────────────────
 @testset "zoom — Ctrl-w z rend la pane focalisée seule ; le focus ailleurs dézoome ; :zoom" begin
     app, tb, frame = _br_app()
     _bex(app, "vsplit log")
@@ -200,49 +191,34 @@ end
     _bex(app, "zoom"); @test app.zoom_leaf == 0
 end
 
-@testset "sculpt en pane — studio (onde, knobs groupés, explication), M depuis l'explorer, :w" begin
+@testset "M depuis l'explorateur — le candidat s'ouvre à droite, la DOC sur son explication ; :w le range" begin
     _in_sandbox() do
-        old = Ressac._WAVE_RENDER[]
-        Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100))
         try
             app, tb, frame = _br_app()
             _bex(app, "explore")
-            _bkey(app, 'M')                                   # sculpter le candidat focalisé : dans DESIGN
-            @test _bws(app) == "DESIGN"
-            sp = Ressac._focused_sculpt_pane(app)
-            @test sp !== nothing && sp.sculpt && sp.linked
-            @test !isempty(sp.explain_lines)
-            (ep, _, sdoc) = Ressac._synth_workspace_parts(app)
+            _bkey(app, 'M')
+            @test _bws(app) == "DESIGN" && app.volet === :son
+            @test Ressac._focused_role(app) === :synth               # le clavier est dans le texte : c'est là qu'on travaille
+            (ep, sdoc) = Ressac._synth_workspace_parts(app)
             @test ep.tabs[ep.current_tab].name == "candidat_1"
             @test occursin("@synth :candidat_1", Tachikoma.text(ep.tabs[ep.current_tab].code_editor))
-            @test sdoc.mode === :explain
+            @test sdoc.mode === :explain && sdoc.genome !== nothing && !isempty(sdoc.explain_lines)
             scr = _bscreen(app, tb, frame)
-            @test occursin("STUDIO ┄ candidat_1", scr)
-            @test occursin("▸ global", scr) || occursin("▸ ", scr)   # knobs groupés
-            # l'explication est sur l'onglet DOC, derrière le studio qui a le clavier
-            @test !occursin("EN SORTIE", scr) || occursin("STUDIO", scr)
-            # les touches vont bien au studio
-            f0 = sp.focus
-            _bkey(app, 'j')
-            @test sp.focus == f0 + 1
+            @test occursin("SYNTH · candidat_1", scr) && occursin("[explication]", scr)
+            @test !occursin("STUDIO", scr)
             # M de nouveau sur le même candidat : le même onglet, pas un de plus
             ntabs = length(ep.tabs)
             _bex(app, "explore"); _bkey(app, 'M')
             @test length(Ressac._synth_workspace_parts(app)[1].tabs) == ntabs
-            # :w <nom> sauve le sculpt (fichier avec génome embarqué)
+            # :w <nom> range le son
             _bex(app, "w scusave")
             path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")
-            @test isfile(path) && occursin("ressac-genome:", read(path, String))
-            @test Ressac._focused_sculpt_pane(app) !== nothing    # on reste dans le studio
-            # ? donne l'aide du sculpt
+            @test isfile(path) && occursin("@synth :scusave", read(path, String))
+            # ? donne l'aide du son
             _bkey(app, '?')
-            @test app.modal === :help && app.help_scopes[1] === :sculpt
+            @test app.modal === :help
             _bkey(app, :escape)
-            # e exporte dans DESIGN
-            _bkey(app, 'e')
-            @test _bws(app) == "DESIGN" && Ressac._focused_role(app) === :synth
         finally
-            Ressac._WAVE_RENDER[] = old
             Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
         end
     end
@@ -298,7 +274,6 @@ end
     leaf = Ressac._find_leaf_by_id(ws.tree, ws.focused_pane)
     leaf.current_tab = 0                              # état corrompu
     @test Ressac._focused_pane_impl(app) === nothing
-    @test !Ressac._is_waveform_sculpt_focused(app)
     @test (Tachikoma.view(app, frame); true)
     leaf.current_tab = 1
 end

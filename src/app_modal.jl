@@ -321,8 +321,6 @@ function _render_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     TK.render(m.modal_view, inner, buf)
 end
 
-# Sculpt : une pane :waveform en mode sculpt (app_sculpt.jl), plus un modal.
-
 """
     _render_modal_block!(buf, area; title, title_right="", w_max=100, h_target=20) -> Rect
 

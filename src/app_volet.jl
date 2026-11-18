@@ -4,7 +4,7 @@
 #
 #   :fiche     la doc vivante, qui suit le curseur (par défaut)
 #   :wiki      le wiki, à côté du travail
-#   :son       le texte d'un synth, et sa DOC / son studio en dessous
+#   :son       le texte d'un synth, et sa DOC en dessous
 #   :explorer  l'explorateur génétique, par-dessus (zoomé)
 #
 # Un volet déjà ouvert est gardé quand on en ouvre un autre : passer au wiki
@@ -37,12 +37,10 @@ function _build_volet(m::RessacApp, kind::Symbol)
         _load_text!(eb.code_editor, _STARTER_DSL("sketch"))
         eb.code_editor.mode = :normal
         text = _new_leaf!(wm, ep)
-        # Sous le texte, une feuille à onglets : la DOC (fiche · explication ·
-        # graphe) devant, le studio derrière. Le studio porte le génome que
-        # lisent l'explication et le graphe.
-        below = _new_leaf!(wm, _pane_new(:synthdoc, Dict{String,Any}()),
-                           _pane_new(:waveform, Dict{String,Any}("label" => "sketch", "sculpt" => true, "linked" => true)))
-        return Container(:v, LayoutNode[text, below], [0.58, 0.42])
+        # Sous le texte, la DOC (fiche · explication · graphe) ; la
+        # MODULATION d'un drone s'y range en onglet quand on tient le son.
+        below = _new_leaf!(wm, _pane_new(:synthdoc, Dict{String,Any}()))
+        return Container(:v, LayoutNode[text, below], [0.62, 0.38])
     end
     return _new_leaf!(wm, _pane_new(:doc, Dict{String,Any}("follow" => true)))
 end
@@ -290,7 +288,7 @@ end
 # Les commandes qui parlent d'un son. Tapées depuis les patterns, elles
 # ouvrent d'abord le son à droite : `:explain` ou `:sculpt` n'ont rien à
 # dire d'un texte de patterns.
-const _SOUND_VERBS = Set(["sculpt", "explain", "todsl", "to-dsl", "sc2dsl", "prune", "test", "note",
+const _SOUND_VERBS = Set(["explain", "todsl", "to-dsl", "sc2dsl", "prune", "test", "note",
                           "export", "export-synth", "tabs", "tabnext", "tabn", "tabprev", "tabp",
                           "scratch", "sandbox", "format", "fmt"])
 

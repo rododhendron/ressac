@@ -72,7 +72,7 @@ scope!(:editor, "Éditeur (patterns et synth)"; layer = :pane)
 # Tab n'a de sens que si les DEUX panes existent dans le workspace courant
 # (dans DESIGN, sans pane patterns, il ne ferait rien).
 _km_can_swap(m::RessacApp) = _km_normal_ed(m) && _synth_pane_open(m) &&
-    _patterns_pane_present(m) && !_is_waveform_sculpt_focused(m)
+    _patterns_pane_present(m)
 bind!(:editor, "Tab", "basculer patterns ⟷ synth"; short = "patterns⟷synth", group = :nav,
       when = _km_can_swap, action = _swap_focus!)
 bind!(:editor, ".", "répéter la dernière édition"; group = :edit, hint = false,
@@ -142,7 +142,7 @@ bind!(:mode_play, "K", "la fiche du mot sous le curseur (DOC)"; short = "fiche",
 bind!(:mode_play, "Space", "snippet…"; group = :edit, when = _km_normal,
       action = m -> (m.pending_leader = true))
 
-scope!(:mode_design, "SON — depuis le texte, la DOC ou le studio"; layer = :mode, modes = (:design,))
+scope!(:mode_design, "SON — depuis le texte ou sa DOC"; layer = :mode, modes = (:design,))
 bind!(:mode_design, ["T", "t"], "entendre le son (maintenir = rafale)"; short = "entendre", group = :audio,
       repeat = true, when = _km_normal,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
@@ -152,7 +152,7 @@ bind!(:mode_design, "Space", "maillon DSL…"; group = :edit, when = _km_normal,
       action = m -> (m.pending_leader = true))
 bind!(:mode_design, "U", "utiliser dans un pattern (sauve + @dN à gauche)"; short = "→ pattern",
       group = :file, when = _km_normal, action = _design_use_in_pattern!)
-bind!(:mode_design, "P", "élagage : mesurer l'impact de chaque nœud"; short = "élagage", group = :structure,
+bind!(:mode_design, "P", "élagage : mesurer ce que chaque étape change (:prune retire le reste)"; short = "élagage", group = :structure,
       when = _km_normal, action = _design_measure_impacts!)
 bind!(:mode_design, "K", "la fiche du mot sous le curseur (DOC)"; short = "fiche", group = :help,
       when = _km_normal, action = _design_doc_tab!)
@@ -184,7 +184,9 @@ bind!(:patterns, "g s", "ouvrir le son sous le curseur, à droite"; short = "son
 bind!(:patterns, "g w", "ouvrir le wiki, à droite"; short = "wiki", group = :nav,
       when = _km_patterns, action = m -> _open_wiki!(m))
 bind!(:patterns, "g x", "ouvrir l'explorateur de sons"; group = :nav, hint = false,
-      when = _km_patterns, action = m -> _open_volet!(m, :explorer))
+      when = _km_patterns, action = m -> _explore_slot_open!(m))
+bind!(:mode_explore, "Enter", "adopter ce candidat : le slot le joue, il est rangé"; short = "adopter", group = :file,
+      when = m -> m.explore_slot !== nothing, action = _explore_slot_adopt!)
 
 # ── :synth ─────────────────────────────────────────────────────────
 scope!(:synth, "Pane synth (texte)"; layer = :pane, modes = (:design,))

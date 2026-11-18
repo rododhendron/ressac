@@ -64,15 +64,14 @@ end
             synth_path = joinpath(pwd(), "plugins", "user-synths", "wmode.jl")
             session_path = joinpath(pwd(), "sessions", "_last.txt")
             rm(session_path; force = true)
-            # Sur chaque pane du volet (texte, DOC, studio), :w sauve le son.
+            # Sur chaque pane du volet (texte, DOC), :w sauve le son.
             ws = Ressac.current_workspace(app.workspaces)
             for leaf in Ressac._all_leaves(app.volet_shown), i in eachindex(leaf.tabs)
                 ws.focused_pane = leaf.id; leaf.current_tab = i
-                Tachikoma.view(app, frame)                    # le studio suit le texte
+                Tachikoma.view(app, frame)
                 rm(synth_path; force = true)
                 @test Ressac._workspace_mode(app) === :design
                 _exec_ex_command!(app, "w")
-                # (depuis le studio, c'est le génome sculpté qui s'écrit : `700.0`)
                 @test isfile(synth_path) && occursin("low_pass(700", read(synth_path, String))
                 @test !isfile(session_path)                               # pas une « session »
             end

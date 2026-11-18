@@ -202,6 +202,11 @@ non-empty), and the focus toggle for keystroke routing.
     at_pk::Picker = _picker()
     # Un son à redéfinir quand la main s'arrête de tirer un nombre : (onglet, échéance).
     redefine::Union{Nothing,Tuple{EditorBuffer,Float64}} = nothing
+    # L'explorateur ouvert sur un slot (app_explore_slot.jl) : le slot et son
+    # pattern d'origine, l'essai qui joue à sa place, et le candidat entendu.
+    explore_slot::Union{Nothing,Tuple{Symbol,Pattern}} = nothing
+    explore_trial::Union{Nothing,Pattern} = nothing
+    explore_heard::Tuple{Int,Int} = (0, -1)
     last_find::Union{Nothing,Tuple{Char,Char}} = nothing
     logs::Vector{String}         = String[]
     quit::Bool                   = false
@@ -378,7 +383,7 @@ function _active_editor(m::RessacApp)
     buf !== nothing && return buf.code_editor
     ws = current_workspace(m.workspaces)
     if ws !== nothing
-        # Le clavier est sur une pane sans texte (studio, DOC, wiki…) : le
+        # Le clavier est sur une pane sans texte (DOC, wiki…) : le
         # texte visé est celui du contexte — le son quand on travaille un
         # son, les patterns sinon.
         want = _workspace_mode(m) === :design ? :synth : :patterns
@@ -459,12 +464,6 @@ end
 # A synth pane is open when at least one synth-role buffer exists.
 _synth_pane_open(m::RessacApp) = !isempty(_all_synth_buffers(m))
 
-# Le pane focalisé est-il un WaveformPane en mode sculpt ? (laisse passer Tab)
-function _is_waveform_sculpt_focused(m::RessacApp)
-    pane = _focused_pane_impl(m)
-    return pane isa WaveformPane && pane.sculpt
-end
-
 """
     _current_synth_tab(m) -> Union{EditorBuffer, Nothing}
 
@@ -476,7 +475,7 @@ synth pane is open.
 function _current_synth_tab(m::RessacApp)
     buf = _focused_buffer(m)
     (buf !== nothing && buf.role === :synth) && return buf
-    # Le focus est ailleurs (studio, doc, modulation) : l'onglet courant
+    # Le focus est ailleurs (doc, modulation) : l'onglet courant
     # de la pane texte, pas son premier onglet.
     ws = current_workspace(m.workspaces)
     if ws !== nothing
@@ -583,8 +582,3 @@ function _toggle_zoom!(m::RessacApp)
     return
 end
 
-# La pane sculpt focalisée, ou nothing.
-function _focused_sculpt_pane(m::RessacApp)
-    p = _focused_pane_impl(m)
-    return p isa WaveformPane && p.sculpt ? p : nothing
-end

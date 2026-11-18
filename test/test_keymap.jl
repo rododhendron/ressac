@@ -135,7 +135,7 @@ end
     @test Ressac.scope_layer(:global) === :global
     @test Ressac.scope_layer(:modal_lib) === :modal
     @test Ressac.scope_layer(:leader) === :transient && Ressac.scope_layer(:pane_mode) === :transient
-    @test Ressac.scope_layer(:doc) === :pane && Ressac.scope_layer(:sculpt) === :pane
+    @test Ressac.scope_layer(:doc) === :pane && Ressac.scope_layer(:waveform) === :pane
     @test_throws ArgumentError Ressac.scope!(:t_bad, "x"; layer = :nope)
     # scroll_nav : les mêmes touches partout, les variantes par options
     keys(scope) = Set(k for b in Ressac.bindings(scope) if b.action !== nothing for k in b.keys)
@@ -149,7 +149,7 @@ end
     end
     # knob_nav
     knobs = Set(["j", "k", "h", "l", "→", "←", "=", "Tab", "S-Tab"])
-    @test knobs ⊆ keys(:sculpt) && knobs ⊆ keys(:drone) && "0" in keys(:drone) && "L" in keys(:drone)
+    @test knobs ⊆ keys(:drone) && "0" in keys(:drone) && "L" in keys(:drone)
     # un mixin sur un scope de test
     Ressac.clear_scope!(:t_mix)
     mutable struct _TMix; sp::Tachikoma.ScrollPane; end
@@ -191,15 +191,15 @@ end
 @testset "scopes par mode — déclarés une fois, l'aide « tout » et le wiki en dérivent" begin
     @test Ressac.scope_modes(:patterns) == (:play,) && Ressac.scope_modes(:explorer) == (:explore,)
     @test Ressac.scope_modes(:global) == (:play, :design, :explore)
-    @test Ressac.scope_in_mode(:sculpt, :design) && Ressac.scope_in_mode(:sculpt, :explore) && !Ressac.scope_in_mode(:sculpt, :play)
+    @test Ressac.scope_in_mode(:waveform, :design) && Ressac.scope_in_mode(:waveform, :explore) && !Ressac.scope_in_mode(:waveform, :play)
     @test_throws ArgumentError Ressac.scope!(:t_bad2, "x"; modes = (:nope,))
     d = Ressac.scopes_for_mode(:design)
     @test d[1] === :mode_design && d[2] === :global
-    @test :synth in d && :sculpt in d && :synthdoc in d && :modal_lib in d
+    @test :synth in d && :waveform in d && :synthdoc in d && :modal_lib in d
     @test !(:patterns in d) && !(:explorer in d) && !(:tap in d)
-    @test findfirst(==(:sculpt), d) < findfirst(==(:leader_synth), d) < findfirst(==(:modal_lib), d)   # panes, puis transitoires, puis modales
+    @test findfirst(==(:waveform), d) < findfirst(==(:leader_synth), d) < findfirst(==(:modal_lib), d)   # panes, puis transitoires, puis modales
     md = Ressac.keys_wiki_markdown()
     @test occursin("## PATTERNS\n", md) && occursin("## SON\n", md) && occursin("## EXPLORATEUR\n", md) && occursin("## Partout\n", md)
-    @test findfirst("### SON — depuis le texte, la DOC ou le studio", md)[1] < findfirst("### Sculpt", md)[1]
+    @test findfirst("### SON — depuis le texte ou sa DOC", md)[1] < findfirst("### Vue d'onde", md)[1]
     @test findfirst("## Partout", md)[1] < findfirst("### Éditeur (patterns et synth)", md)[1]
 end

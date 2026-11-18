@@ -67,7 +67,7 @@ src/
   synth_roles.jl             rôles d'usage (bass/kick/…) + adéquation
   synth_explainer.jl         « pourquoi ça sonne comme ça » + genome_from_dsl
   synth_audition.jl          écoute des candidats (OSC)
-  wave_sculpt.jl             sculpt : knobs, proximité, bricks structurels
+  genome_edit.jl             retirer un nœud (court-circuit), greffer un modulateur
 
   ── Panes (workspace) ──
   pane_interface.jl        ★ contrat PaneImpl + register_pane_kind!
@@ -78,7 +78,7 @@ src/
   pane_editor.jl             EditorPane (patterns et synth)
   pane_log.jl, pane_doc.jl, pane_scope.jl, pane_tuning.jl
   pane_synth_explorer.jl     :explorer (GA)
-  pane_waveform.jl           :waveform (vue d'onde + mode sculpt)
+  pane_waveform.jl           :waveform (l'onde complète d'un son)
   snippet_panes.jl           panes créées par :snippet
   command_line.jl            la barre `:` / `/` (widget indépendant)
 
@@ -89,6 +89,10 @@ src/
                              qu'on échange à droite (fiche, wiki, son, explorateur)
   slot_state.jl / app_slots.jl  les blocs @dN du texte et l'état de chaque ligne
   slot_marks.jl              signes de marge, ligne éclairée, piste d'un cycle
+  app_son.jl                 le volet d'un son : son texte ⟷ sa DOC, élagage, :todsl
+  atelier.jl / editor_links.jl  travailler un son dans son texte : maillons (objet
+                             texte m), propositions qui s'entendent, préfixe &
+  app_explore_slot.jl        gx : les candidats de l'explorateur joués dans un slot
   app_layers.jl            ★ la pile des couches de touches et le résolveur
   app_key_engines.jl         TK.update! clavier : les moteurs (frappe, vim, leader…)
   app_input.jl               TK.update! souris, routage vers la pane, drains
@@ -112,7 +116,7 @@ src/
   editor_fuzzy.jl               candidats de complétion
   content_livedoc.jl             docs UGen/params, _GUIDE_LINES
   io_scope.jl               écoute OSC des scopes, _APP_SCOPE_*
-  modal_*.jl                 browse, mixer, lib, sculpt, wiki, snip, sccode
+  modal_*.jl                 browse, mixer, lib, wiki, snip, sccode
 
   ── Contenu / configuration ──
   session_config.jl, session_themes.jl, content_sccode.jl, content_wiki.jl
@@ -133,8 +137,8 @@ _LIVE_SCHEDULER :: Ref{Union{Nothing,Scheduler}}    live_boot.jl
 _SAMPLE_REGISTRY / _INSTRUMENT_REGISTRY / _SYNTH_REGISTRY
                                                      plugin_registry.jl
   Écrits par : register_sample! / register_instrument! / register_synth!
-           (plugin_handlers.jl au chargement ; :import-wav, :w, sculpt
-           :w à chaud).
+           (plugin_handlers.jl au chargement ; :import-wav, :w à chaud,
+           adoption d'un candidat de l'explorateur).
   Lus par : browse, complétion, ghost, snippets, event_to_osc.
 
 _APP_SCOPE_TYPE, _APP_SCOPE_DATA, _APP_SPECTROGRAM_HISTORY   io_scope.jl
@@ -315,7 +319,7 @@ cellules sans rien savoir de l'état de l'éditeur.
    le CodeEditor Tachikoma.
 
 Une pane ne connaît pas `RessacApp` : quand elle a besoin de l'app
-(ouvrir un synth, un sculpt, exporter), elle poste une requête dans un
+(ouvrir un son, exporter), elle poste une requête dans un
 `Ref` global que `update!` draine (« seams », voir globals).
 
 ## Tâches de fond
@@ -324,8 +328,8 @@ Une pane ne connaît pas `RessacApp` : quand elle a besoin de l'app
 boucle scheduler        io_scheduler.jl::start! — Threads.@spawn,
                         toutes les lookahead/2 s (25 ms par défaut).
 moniteur stdin          Tachikoma — réveille la boucle de rendu.
-rendu sculpt            pane_waveform.jl — Threads.@spawn par
-                        version demandée, résultat déposé sous verrou.
+mesure d'impact (P)     pane_synthdoc.jl — Threads.@spawn, résultat
+                        déposé sous verrou, jeté si le son a changé.
 sauvegarde ghost usage  écriture asynchrone de ghost_usage.json.
 travaux de fond         app_jobs.jl::_background! — requêtes sccode, mesure
                         d'impact de :prune ; le résultat revient à la tâche

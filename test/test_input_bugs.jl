@@ -48,10 +48,10 @@ end
     @test n(Tachikoma.KeyEvent(:kp_3, '\0', Tachikoma.key_repeat)).action === Tachikoma.key_repeat
 end
 
-# ── Bout en bout : le pavé numérique dans le studio de sculpture ──────────
-# Le bug d'origine : `=` ouvre la saisie, les chiffres du pavé (`:kp_3`…)
-# n'y entraient pas parce qu'ils n'étaient traduits qu'après le routage
-# vers la pane. Ici on rejoue la scène entière à travers `Tachikoma.update!`.
+# ── Bout en bout : le pavé numérique dans l'éditeur ──────────────────────
+# Le bug d'origine : les chiffres du pavé (`:kp_3`…) n'étaient traduits
+# qu'après le routage vers la pane, et n'entraient pas dans une saisie. Ici
+# on rejoue la scène entière à travers `Tachikoma.update!`.
 function _ib_app()
     app = Ressac.RessacApp(; scheduler = Ressac.Scheduler(MockOSCClient(); cps = 0.5))
     tb = Tachikoma.TestBackend(120, 40)
@@ -70,28 +70,21 @@ function _ib_sandbox(f)
     try f() finally cd(old) end
 end
 
-@testset "sculpt — `=` puis chiffres du pavé puis Entrée du pavé posent la valeur" begin
+@testset "pavé numérique — ses chiffres entrent dans le texte, son Entrée valide une commande" begin
     _ib_sandbox() do
         app = _ib_app()
-        _ib_ex(app, "synth zorglub")
-        _ib_ex(app, "sculpt")
-        p = Ressac._focused_sculpt_pane(app)
-        @test p !== nothing
-        p === nothing && return
-        @test !isempty(p.knobs)
-        _ib_key(app, '=')
-        @test p.value_edit
+        ed = Ressac._active_editor(app)
+        Tachikoma.set_text!(ed, ""); ed.mode = :normal
+        _ib_key(app, 'i')
         for k in (:kp_3, :kp_3, :kp_0, :kp_decimal, :kp_5)
             _ib_key(app, k)
         end
-        @test p.value_buf == "330.5"
-        _ib_key(app, :kp_enter)
-        @test !p.value_edit
-        kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
-        @test Ressac.knob_value(p.genome, kb) ≈ 330.5
-        # Échap du pavé… n'existe pas ; Échap tout court annule sans toucher la valeur
-        _ib_key(app, '='); _ib_key(app, :kp_9); _ib_key(app, :escape)
-        @test !p.value_edit && Ressac.knob_value(p.genome, kb) ≈ 330.5
+        _ib_key(app, :escape)
+        @test Tachikoma.text(ed) == "330.5"
+        # `:calme` validé par l'Entrée du pavé.
+        was = app.calm
+        _ib_key(app, ':'); foreach(c -> _ib_key(app, c), "calme"); _ib_key(app, :kp_enter)
+        @test app.calm != was
     end
 end
 

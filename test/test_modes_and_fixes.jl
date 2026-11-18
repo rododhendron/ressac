@@ -53,7 +53,7 @@ end
     @test Ressac._workspace_mode(app) === :play
     # Toute commande est proposée d'où qu'on soit : plus de tri par mode.
     verbs = Ressac._command_completion_candidates(app, "")
-    @test "tap" in verbs && "mixer" in verbs && "sculpt" in verbs && "synth" in verbs && "todsl" in verbs
+    @test "tap" in verbs && "mixer" in verbs && "prune" in verbs && "synth" in verbs && "todsl" in verbs
     @test !("play" in verbs) && !("design" in verbs)               # les trois écrans n'existent plus
     # :synth ouvre le son dans le volet ; les patterns restent à côté.
     _mfex(app, "synth zorg")
@@ -63,7 +63,7 @@ end
     # l'aide complète montre les sections du contexte
     _mfkey(app, '?'); _mfkey(app, :tab)
     scopes = Ressac._help_scopes(app)
-    @test :synth in scopes && :leader_synth in scopes && :sculpt in scopes
+    @test :synth in scopes && :leader_synth in scopes && :synthdoc in scopes
     @test !(:patterns in scopes) && !(:tap in scopes) && !(:explorer in scopes)
     @test any(e -> occursin("tout SON", e[3]), Ressac._help_entries(app))
     _mfkey(app, :escape)
@@ -80,8 +80,8 @@ end
     try
         app, tb, frame = _mf_app()
         _mfex(app, "son")
-        @test Ressac._synth_workspace_parts(app) !== nothing             # texte, studio, DOC
-        (ep, _, _) = Ressac._synth_workspace_parts(app)
+        @test Ressac._synth_workspace_parts(app) !== nothing             # texte, DOC
+        (ep, _) = Ressac._synth_workspace_parts(app)
         Tachikoma.set_text!(ep.tabs[1].code_editor, "@synth :sketch (freq=110) saw(:freq)\n")
         # Une pane scindée à côté par le joueur survit aux changements de volet.
         _mfex(app, "back")
@@ -155,8 +155,8 @@ end
     try
         app, tb, frame = _mf_app()
         _mfex(app, "son")
-        (_, studio, _) = Ressac._synth_workspace_parts(app)
-        Ressac._focus_pane!(app, studio)                       # pas un éditeur, trois panes
+        (_, sdoc) = Ressac._synth_workspace_parts(app)
+        Ressac._focus_pane!(app, sdoc)                         # pas un éditeur, trois panes
         app.esc_quit_at = 0.0
         _mfkey(app, :escape)
         @test !app.quit && occursin("Échap encore pour quitter", app.logs[end])
@@ -173,7 +173,7 @@ end
     try
         app, tb, frame = _mf_app()
         _mfex(app, "son"); _mfex(app, "synth deux")
-        (ep, _, _) = Ressac._synth_workspace_parts(app)
+        (ep, _) = Ressac._synth_workspace_parts(app)
         @test length(ep.tabs) == 2
         ed = ep.tabs[ep.current_tab].code_editor
         Tachikoma.set_text!(ed, join(("ligne $i" for i in 1:15), "\n")); ed.mode = :normal
@@ -198,7 +198,7 @@ end
     try
         app, tb, frame = _mf_app()
         _mfex(app, "son")
-        (ep, _, _) = Ressac._synth_workspace_parts(app)
+        (ep, _) = Ressac._synth_workspace_parts(app)
         ed = ep.tabs[1].code_editor
         Tachikoma.set_text!(ed, "@synth :sketch (freq=220) saw(:freq)\n"); ed.mode = :normal
         ed.cursor_row = 1
@@ -244,14 +244,14 @@ end
     try
         app, tb, frame = _mf_app()
         _mfex(app, "son")
-        (ep, studio, _) = Ressac._synth_workspace_parts(app)
+        (ep, sdoc) = Ressac._synth_workspace_parts(app)
         tab = ep.tabs[1]
         tab.name = "rezzbass"
         Tachikoma.set_text!(tab.code_editor, src); tab.code_editor.mode = :normal
         _mfex(app, "todsl")
         @test occursin("@synth :rezzbass", Tachikoma.text(tab.code_editor))
         _mfscreen(app, tb, frame)
-        @test studio.genome !== nothing                          # le studio suit
+        @test sdoc.genome !== nothing                            # la DOC suit
         _mfkey(app, 'u')
         @test occursin("SynthDef(\\rezzbass", Tachikoma.text(tab.code_editor))
     finally
@@ -269,19 +269,19 @@ end
         app, tb, frame = _mf_app()
         Ressac._LIVE_SCHEDULER[] = app.scheduler
         _mfex(app, "son")
-        (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
+        (ep, sdoc) = Ressac._synth_workspace_parts(app)
         ed = ep.tabs[1].code_editor
         Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)\n"); ed.mode = :normal
         _mfscreen(app, tb, frame)
-        # depuis le studio : Espace ouvre le leader DSL et le maillon va dans le texte
-        Ressac._focus_pane!(app, studio)
+        # depuis la DOC : Espace ouvre le leader DSL et le maillon va dans le texte
+        Ressac._focus_pane!(app, sdoc)
         _mfkey(app, ' ')
         @test app.pending_leader
         @test Ressac._visible_layers(app) == ([(:leader_synth, app)], "Space")
         _mfkey(app, 't')
         @test occursin("|> tanh_drive(", Tachikoma.text(ed))
-        @test Ressac._focused_pane_impl(app) === studio
-        # T entend le son, D tient le drone, D relâche — depuis le studio
+        @test Ressac._focused_pane_impl(app) === sdoc
+        # T entend le son, D tient le drone, D relâche — depuis la DOC
         n0 = length(app.scheduler.osc.sent)
         _mfkey(app, 'T')
         @test length(app.scheduler.osc.sent) > n0

@@ -44,7 +44,7 @@ _prpane(app) = (Ressac._PANE_MODE.active = false; Tachikoma.update!(app, Tachiko
         @test root isa Ressac.Container && root.direction === :h && root.ratios == [0.5, 0.5]
         side = root.children[2]
         @test side isa Ressac.Container && side.direction === :v
-        @test side.ratios ≈ [0.58, 0.42]
+        @test side.ratios ≈ [0.62, 0.38]
         # le texte du son est focalisé (colonne de droite) : > l'élargit, < le rétrécit
         _prpane(app); _prkey(app, '>')
         @test root.ratios ≈ [0.45, 0.55]
@@ -53,17 +53,17 @@ _prpane(app) = (Ressac._PANE_MODE.active = false; Tachikoma.update!(app, Tachiko
         @test root.ratios ≈ [0.55, 0.45]
         # + le grandit en hauteur, aux dépens de la feuille du dessous
         _prkey(app, '+')
-        @test root.ratios ≈ [0.55, 0.45] && side.ratios ≈ [0.63, 0.37]
+        @test root.ratios ≈ [0.55, 0.45] && side.ratios ≈ [0.67, 0.33]
         _prkey(app, '-')
-        @test side.ratios ≈ [0.58, 0.42]
+        @test side.ratios ≈ [0.62, 0.38]
         _prkey(app, :escape)
-        # le studio (sous le texte) : + le grandit, - le réduit ; > joue sur la colonne
-        (_, studio, _) = Ressac._synth_workspace_parts(app)
-        Ressac._focus_pane!(app, studio)
+        # la DOC (sous le texte) : + la grandit, - la réduit ; > joue sur la colonne
+        (_, sdoc) = Ressac._synth_workspace_parts(app)
+        Ressac._focus_pane!(app, sdoc)
         _prpane(app); _prkey(app, '+')
-        @test side.ratios ≈ [0.53, 0.47]
+        @test side.ratios ≈ [0.57, 0.43]
         _prkey(app, '-'); _prkey(app, '-')
-        @test side.ratios ≈ [0.63, 0.37]
+        @test side.ratios ≈ [0.67, 0.33]
         _prkey(app, '>')
         @test root.ratios ≈ [0.5, 0.5]
         # bornes : jamais moins de 10 %
@@ -122,7 +122,7 @@ end
         @test app.resize_drag === nothing
         _prscreen(app, tb, frame)
         @test collect(Tachikoma.row_text(tb, y))[b.pos] != '┃'
-        # la frontière verticale entre studio et doc
+        # la frontière entre le texte du son et sa DOC
         bv = only(x for x in bs if x.dir === :v)
         x = bv.lo + 3
         _prmouse(app, x, bv.pos, Tachikoma.mouse_left, Tachikoma.mouse_press)

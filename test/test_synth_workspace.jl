@@ -1,6 +1,6 @@
 include(joinpath(@__DIR__, "helpers.jl"))
-# Workspace synth (DESIGN) : forme fixe texte | studio / doc, onglets de
-# synths, synchronisation texte ⟷ studio, doc à onglets, persistance.
+# Le volet d'un son : son texte et, dessous, sa DOC (fiche · explication ·
+# graphe) qui relit le texte ; onglets de synths, persistance.
 using Test
 using Ressac
 using Tachikoma
@@ -32,172 +32,122 @@ end
 _swleaves(app) = Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)
 const _SW_SRC = "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)\n"
 
-@testset "workspace synth — nombres sur place (_patch_literal)" begin
-    @test Ressac._patch_literal("freq=220, cut=800", 220.0, 226.443) == "freq=226.443, cut=800"
-    @test Ressac._patch_literal("rlpf(800.0, 0.3)", 800.0, 900.0) == "rlpf(900, 0.3)"
-    @test Ressac._patch_literal("a=0.5 b=0.5", 0.5, 0.6) === nothing          # ambigu
-    @test Ressac._patch_literal("a=1200 b=200", 200.0, 210.0) == "a=1200 b=210"  # pas dans 1200
-    @test Ressac._patch_literal("pan=-0.5", -0.5, 0.25) == "pan=0.25"
-    @test Ressac._patch_literal("x=3", 4.0, 5.0) === nothing
-    @test Ressac._fmt_literal(64.0) == "64" && Ressac._fmt_literal(63.5) == "63.5"
-end
-
-@testset "volet du son — le texte, et dessous la DOC et le studio en onglets ; un synth = un onglet" begin
-    oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
-    Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
+@testset "volet du son — le texte, et dessous sa DOC ; un synth = un onglet" begin
     mktempdir() do dir
         mkpath(joinpath(dir, "plugins", "user-synths"))
         cd(dir) do
-            try
-                app, tb, frame = _sw_app()
-                _swex(app, "son")
-                leaves = _swleaves(app)
-                @test length(leaves) == 3
-                parts = Ressac._synth_workspace_parts(app)
-                @test parts !== nothing
-                (ep, studio, sdoc) = parts
-                @test studio.linked && sdoc.mode === :doc
-                @test Ressac._focused_role(app) === :synth
-                scr = _swscreen(app, tb, frame)
-                @test occursin("SYNTH · sketch", scr)
-                @test occursin("PATTERNS", scr)                             # les patterns restent à gauche
-                @test occursin("DOC ✦ ◂ [doc] · explication · graphe ▸", scr)
-                # le studio est l'onglet derrière la DOC
-                Ressac._focus_pane!(app, studio)
-                @test occursin("STUDIO ┄ sketch ┄ synchronisé", _swscreen(app, tb, frame))
-                Ressac._focus_pane!(app, ep)
-                @test studio.genome !== nothing && !isempty(studio.knobs)    # le starter est analysable
-                @test studio.synced_name == "sketch"
+            app, tb, frame = _sw_app()
+            _swex(app, "son")
+            @test length(_swleaves(app)) == 3                               # patterns, texte du son, DOC
+            parts = Ressac._synth_workspace_parts(app)
+            @test parts !== nothing
+            (ep, sdoc) = parts
+            @test sdoc.mode === :doc
+            @test Ressac._focused_role(app) === :synth
+            scr = _swscreen(app, tb, frame)
+            @test occursin("SYNTH · sketch", scr)
+            @test occursin("PATTERNS", scr)                                 # les patterns restent à gauche
+            @test occursin("DOC ✦ ◂ [doc] · explication · graphe ▸", scr)
+            @test !occursin("STUDIO", scr) && !occursin("SCULPT", scr)      # plus de studio : le texte est le son
+            @test sdoc.genome !== nothing && sdoc.synced_name == "sketch"   # le starter se relit
 
-                # un autre synth : un onglet de plus, toujours 3 panes, le studio suit
-                _swex(app, "synth zorglub")
-                @test length(_swleaves(app)) == 3
-                @test length(ep.tabs) == 2 && ep.tabs[ep.current_tab].name == "zorglub"
-                _swscreen(app, tb, frame)
-                @test studio.label == "zorglub" && studio.synced_name == "zorglub"
-                # le rouvrir focalise l'onglet, sans en créer un autre
-                ep.current_tab = 1
-                Ressac._open_synth_tab!(app, "zorglub")
-                @test length(ep.tabs) == 2 && ep.current_tab == 2
-                # g t tourne dans les onglets
-                Ressac._cycle_synth_tab!(app)
-                @test ep.current_tab == 1
-                _swscreen(app, tb, frame)
-                @test studio.label == "sketch"
+            # un autre synth : un onglet de plus, toujours 3 panes, la DOC suit
+            _swex(app, "synth zorglub")
+            @test length(_swleaves(app)) == 3
+            @test length(ep.tabs) == 2 && ep.tabs[ep.current_tab].name == "zorglub"
+            _swscreen(app, tb, frame)
+            @test sdoc.synced_name == "zorglub"
+            # le rouvrir focalise l'onglet, sans en créer un autre
+            ep.current_tab = 1
+            Ressac._open_synth_tab!(app, "zorglub")
+            @test length(ep.tabs) == 2 && ep.current_tab == 2
+            # g t tourne dans les onglets
+            Ressac._cycle_synth_tab!(app)
+            @test ep.current_tab == 1
+            _swscreen(app, tb, frame)
+            @test sdoc.synced_name == "sketch"
 
-                # fermer l'onglet courant garde la pane ; le dernier laisse un sketch neuf
-                Ressac._close_active_synth_tab!(app)
-                @test length(ep.tabs) == 1 && ep.tabs[1].name == "zorglub" && length(_swleaves(app)) == 3
-                Ressac._close_active_synth_tab!(app)
-                @test length(ep.tabs) == 1 && ep.tabs[1].name == "sketch" && length(_swleaves(app)) == 3
-                @test occursin("@synth :sketch", Tachikoma.text(ep.tabs[1].code_editor))
-            finally
-                Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
-            end
+            # fermer l'onglet courant garde la pane ; le dernier laisse un sketch neuf
+            Ressac._close_active_synth_tab!(app)
+            @test length(ep.tabs) == 1 && ep.tabs[1].name == "zorglub" && length(_swleaves(app)) == 3
+            Ressac._close_active_synth_tab!(app)
+            @test length(ep.tabs) == 1 && ep.tabs[1].name == "sketch" && length(_swleaves(app)) == 3
+            @test occursin("@synth :sketch", Tachikoma.text(ep.tabs[1].code_editor))
         end
     end
 end
 
-@testset "workspace synth — texte → studio → texte" begin
-    oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
-    Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
-    try
-        app, tb, frame = _sw_app()
-        _swex(app, "son")
-        (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
-        tab = ep.tabs[1]; ed = tab.code_editor
-        Tachikoma.set_text!(ed, _SW_SRC); ed.mode = :normal
-        _swscreen(app, tb, frame)
-        @test studio.genome !== nothing
-        @test any(k -> k.name === :freq && k.kind === :control, studio.knobs)
-        @test !isempty(sdoc.explain_lines)
-        @test studio.synced_hash == hash(_SW_SRC)
+@testset "volet du son — la DOC relit le texte" begin
+    app, tb, frame = _sw_app()
+    _swex(app, "son")
+    (ep, sdoc) = Ressac._synth_workspace_parts(app)
+    tab = ep.tabs[1]; ed = tab.code_editor
+    Tachikoma.set_text!(ed, _SW_SRC); ed.mode = :normal
+    _swscreen(app, tb, frame)
+    @test sdoc.genome !== nothing && any(n -> n.ugen === :RLPF, values(sdoc.genome.nodes))
+    @test !isempty(sdoc.explain_lines)
+    @test sdoc.synced_hash == hash(_SW_SRC)
+    v0 = sdoc.version
 
-        # taper en insertion ne réévalue pas le texte ; Esc le fait
-        _swkey(app, 'G'); _swkey(app, 'o')
-        @test ed.mode === :insert
-        foreach(c -> _swkey(app, c), "# note")
-        _swscreen(app, tb, frame)
-        @test studio.synced_hash == hash(_SW_SRC)
-        _swkey(app, :escape)
-        _swscreen(app, tb, frame)
-        @test studio.synced_hash == hash(Tachikoma.text(ed)) && studio.synced_hash != hash(_SW_SRC)
+    # taper en insertion ne relit pas le texte ; Esc le fait
+    _swkey(app, 'G'); _swkey(app, 'o')
+    @test ed.mode === :insert
+    foreach(c -> _swkey(app, c), "# note")
+    _swscreen(app, tb, frame)
+    @test sdoc.synced_hash == hash(_SW_SRC) && sdoc.version == v0
+    _swkey(app, :escape)
+    _swscreen(app, tb, frame)
+    @test sdoc.synced_hash == hash(Tachikoma.text(ed)) && sdoc.version == v0 + 1
 
-        # tirer le knob freq dans le studio : le nombre change sur place dans le texte
-        Ressac._focus_pane!(app, studio)
-        i = findfirst(k -> k.name === :freq && k.kind === :control, studio.knobs)
-        studio.focus = i
-        _swkey(app, 'l')
-        v = Ressac.knob_value(studio.genome, studio.knobs[i])
-        @test v > 220
-        _swscreen(app, tb, frame)
-        txt = Tachikoma.text(ed)
-        @test occursin("freq=$(Ressac._fmt_literal(v))", txt)
-        @test occursin("saw(:freq) |> rlpf(800, 0.3)", txt)         # rien d'autre n'a bougé
-        @test !any(l -> occursin("forme canonique", l), app.logs)
-        @test studio.synced_hash == hash(txt)                        # pas de re-parse du texte réécrit
-        # u dans le texte annule
-        Ressac._focus_pane!(app, ep); ed.mode = :normal
-        _swkey(app, 'u')
-        @test occursin("freq=220", Tachikoma.text(ed))
+    # un texte qui ne se relit pas : la DOC le dit, sans rien casser
+    Tachikoma.set_text!(ed, "@synth :sketch (freq=220) saw(:freq) |> ")
+    sdoc.mode = :explain
+    scr = _swscreen(app, tb, frame)
+    @test sdoc.genome === nothing && occursin("le texte ne se relit pas", scr)
+    sdoc.mode = :graph
+    @test occursin("pas de graphe", _swscreen(app, tb, frame))
+    Tachikoma.set_text!(ed, _SW_SRC)
+    _swscreen(app, tb, frame)
+    @test sdoc.genome !== nothing
 
-        # un édit structurel réécrit le bloc en forme canonique
-        _swscreen(app, tb, frame)                                    # resynchronise depuis le texte annulé
-        Ressac._focus_pane!(app, studio)
-        j = findfirst(k -> k.kind === :node, studio.knobs)
-        studio.focus = j
-        _swkey(app, 'd')                                             # supprime le nœud (bypass)
-        _swscreen(app, tb, frame)
-        @test any(l -> occursin("forme canonique", l), app.logs)
-        txt2 = Tachikoma.text(ed)
-        @test occursin("@synth :sketch", txt2) && occursin("|> safe()", txt2)
+    # :explain bascule la DOC sur l'explication et y amène le clavier ; ← → tournent
+    sdoc.mode = :doc
+    _swex(app, "explain")
+    @test sdoc.mode === :explain && Ressac._focused_pane_impl(app) === sdoc
+    scr = _swscreen(app, tb, frame)
+    @test occursin("DOC ✦ ◂ doc · [explication] · graphe ▸", scr) && occursin("source", scr)
+    _swkey(app, :right)
+    @test sdoc.mode === :graph
+    _swkey(app, :right)
+    @test sdoc.mode === :doc
+    _swkey(app, :left); _swkey(app, :left)
+    @test sdoc.mode === :explain
+    # :sculpt n'existe plus
+    _swex(app, "sculpt")
+    @test occursin("commande inconnue", app.logs[end])
 
-        # :explain bascule la doc sur l'explication ; ← → tournent ; :sculpt focalise le studio
-        _swex(app, "explain")
-        @test sdoc.mode === :explain && Ressac._focused_pane_impl(app) === sdoc
-        scr = _swscreen(app, tb, frame)
-        @test occursin("DOC ✦ ◂ doc · [explication] · graphe ▸", scr) && occursin("source", scr)
-        _swkey(app, :right)
-        @test sdoc.mode === :graph
-        _swkey(app, :right)
-        @test sdoc.mode === :doc
-        _swkey(app, :left); _swkey(app, :left)
-        @test sdoc.mode === :explain
-        _swex(app, "sculpt")
-        @test Ressac._focused_pane_impl(app) === studio
-
-        # la doc vivante suit le curseur du texte, dans l'onglet doc
-        sdoc.mode = :doc
-        Ressac._focus_pane!(app, sdoc)                        # la DOC repasse devant le studio
-        Ressac._focus_pane!(app, ep); ed.mode = :normal
-        Tachikoma.set_text!(ed, _SW_SRC)
-        ed.cursor_row = 1; ed.cursor_col = length("@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rl")
-        scr = _swscreen(app, tb, frame)
-        @test sdoc.doc.name == "rlpf" && occursin("· rlpf", scr)
-    finally
-        Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
-    end
+    # la doc vivante suit le curseur du texte, dans la vue doc
+    sdoc.mode = :doc
+    Ressac._focus_pane!(app, ep); ed.mode = :normal
+    ed.cursor_row = 1; ed.cursor_col = length("@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rl")
+    scr = _swscreen(app, tb, frame)
+    @test sdoc.doc.name == "rlpf" && occursin("· rlpf", scr)
 end
 
 @testset "volet du son — sauvé avec la disposition" begin
-    oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
-    Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0], 44100); Ressac._WAVE_SYNC[] = true
-    try
-        app, tb, frame = _sw_app()
-        _swex(app, "son")
-        _swscreen(app, tb, frame)
-        path = joinpath(mktempdir(), "layout.toml")
-        Ressac.save_layout(app.workspaces, path)
-        wm = Ressac.WorkspaceManager()
-        Ressac.load_layout!(wm, path)
-        design = only(wm.workspaces)
-        kinds = sort([Ressac._kind_for(t) for leaf in Ressac._all_leaves(design.tree) for t in leaf.tabs])
-        @test kinds == ["editor", "editor", "synthdoc", "waveform"]       # patterns, texte du son, DOC, studio
-        studio = [t for leaf in Ressac._all_leaves(design.tree) for t in leaf.tabs if t isa Ressac.WaveformPane][1]
-        @test studio.linked
-    finally
-        Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
-    end
+    app, tb, frame = _sw_app()
+    _swex(app, "son")
+    _swscreen(app, tb, frame)
+    path = joinpath(mktempdir(), "layout.toml")
+    Ressac.save_layout(app.workspaces, path)
+    wm = Ressac.WorkspaceManager()
+    Ressac.load_layout!(wm, path)
+    design = only(wm.workspaces)
+    kinds = sort([Ressac._kind_for(t) for leaf in Ressac._all_leaves(design.tree) for t in leaf.tabs])
+    @test kinds == ["editor", "editor", "synthdoc"]                       # patterns, texte du son, DOC
+    # Une disposition d'avant (avec un studio) se recharge : il redevient une simple onde.
+    old = Ressac._pane_new(:waveform, Dict{String,Any}("label" => "sketch", "sculpt" => true, "linked" => true))
+    @test old isa Ressac.WaveformPane && old.label == "sketch"
 end
 
 @testset "DSL — le pipe diffusé .|> entre en premier argument" begin
@@ -237,54 +187,48 @@ end
     @test join(sp.content for sp in shifted) == String(collect(join(sp.content for sp in lines[2]))[6:end])
 end
 
-@testset "graphe — l'onglet de la DOC, navigation, Enter, d, G" begin
-    oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
-    Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
+@testset "graphe — la vue de la DOC, navigation, P et les ✂" begin
+    old_an = Ressac._PRUNE_ANALYZE[]; olds = Ressac._WAVE_SYNC[]
+    Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _sw_app()
         _swex(app, "son")
-        (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
+        (ep, sdoc) = Ressac._synth_workspace_parts(app)
         ed = ep.tabs[1].code_editor
         Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)\n"); ed.mode = :normal
         _swscreen(app, tb, frame)
-        @test sdoc.studio === studio
-        # → → : l'onglet graphe
-        Ressac._focus_pane!(app, sdoc)
-        _swkey(app, :right); _swkey(app, :right)
+        # Y (depuis le texte) met la DOC sur le graphe
+        _swkey(app, 'Y')
         @test sdoc.mode === :graph
         scr = _swscreen(app, tb, frame)
         @test occursin("DOC ✦ ◂ doc · explication · [graphe] ▸", scr)
         @test occursin("◉ out", scr) && occursin("RLPF", scr)
         @test !isempty(sdoc.graph_ids)
-        # l avance d'une boîte et le studio suit sur le knob du nœud
-        first_id = sdoc.graph_ids[1]
-        @test sdoc.graph_focus == first_id || sdoc.graph_focus in sdoc.graph_ids
-        sdoc.graph_focus = first_id
+        # dans la DOC, h / l passent d'une boîte à l'autre
+        Ressac._focus_pane!(app, sdoc)
+        sdoc.graph_focus = sdoc.graph_ids[1]
         _swkey(app, 'l')
         @test sdoc.graph_focus == sdoc.graph_ids[2]
-        kb = studio.knobs[studio.focus]
-        @test kb.kind === :node && kb.node_id == sdoc.graph_focus
-        # Enter : le focus passe au studio
-        _swkey(app, :enter)
-        @test Ressac._focused_pane_impl(app) === studio
-        # Y (mode DESIGN) depuis le studio met la DOC sur le graphe
-        sdoc.mode = :doc
-        _swkey(app, 'Y')
-        @test sdoc.mode === :graph
-        Ressac._focus_pane!(app, sdoc)
-        # d retire le nœud focalisé (bypass) : le graphe et le texte suivent
-        n0 = length(studio.genome.nodes)
-        rl = findfirst(i -> studio.genome.nodes[i].ugen === :RLPF, sdoc.graph_ids)
-        sdoc.graph_focus = sdoc.graph_ids[rl]
-        _swkey(app, 'd')
-        @test length(studio.genome.nodes) == n0 - 1
-        scr = _swscreen(app, tb, frame)
-        @test !occursin("RLPF", Tachikoma.text(ed)) && !occursin("rlpf", Tachikoma.text(ed))
-        @test !occursin("│ RLPF", scr)
+        _swkey(app, 'h')
+        @test sdoc.graph_focus == sdoc.graph_ids[1]
         # [ ] défilent
         _swkey(app, ']'); @test sdoc.graph_x == 8
         _swkey(app, '['); @test sdoc.graph_x == 0
+        # P mesure ce que chaque étape change : l'explication le dit
+        Ressac._PRUNE_ANALYZE[] = gs -> [fill(i == 1 ? 1.0 : 0.5, 8) for i in eachindex(gs)]
+        _swkey(app, 'P')
+        @test sdoc.mode === :explain && !sdoc.measuring
+        @test !isempty(sdoc.impacts) && any(l -> occursin("impact", l), sdoc.explain_lines)
+        # changer le texte périme la mesure
+        Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(900, 0.3) |> tanh_drive(2)\n")
+        _swscreen(app, tb, frame)
+        @test isempty(sdoc.impacts)
+        # une analyse qui échoue : l'explication dit pourquoi
+        Ressac._PRUNE_ANALYZE[] = gs -> error("nrt: sclang introuvable")
+        Ressac._focus_pane!(app, ep)
+        _swkey(app, 'P')
+        @test !sdoc.measuring && isempty(sdoc.impacts) && any(l -> occursin("indisponible", l), sdoc.explain_lines)
     finally
-        Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
+        Ressac._PRUNE_ANALYZE[] = old_an; Ressac._WAVE_SYNC[] = olds
     end
 end

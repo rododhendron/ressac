@@ -111,8 +111,8 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
     end
     wsed = _synth_workspace_editor(m)
     if wsed !== nothing
-        # Un onglet de plus dans le texte du volet ; la DOC et le studio
-        # suivent (synchronisation au rendu).
+        # Un onglet de plus dans le texte du volet ; la DOC
+        # suit (synchronisation au rendu).
         eb = EditorBuffer(; role = :synth, name = name, content = src)
         push!(wsed.tabs, eb)
         wsed.current_tab = length(wsed.tabs)

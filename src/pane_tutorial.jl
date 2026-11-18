@@ -40,11 +40,8 @@ _tuto_muted(m) = length(_APP_MUTED_PATTERNS) + length(collect(eachmatch(r"(?m)^\
 # Où le joueur travaille : le contexte de la pane focalisée (app_modes.jl).
 _tuto_ws(m) = (mode = _workspace_mode(m); mode === :design ? "DESIGN" : mode === :explore ? "EXPLORE" : "PLAY")
 _tuto_design_parts(m) = _synth_workspace_parts(m)
+_tuto_doc_mode(m) = (parts = _tuto_design_parts(m); (parts === nothing || parts[2] === nothing) ? :none : parts[2].mode)
 _tuto_synth_name(m) = (t = _current_synth_tab(m); t === nothing ? "" : t.name)
-function _tuto_studio_focused(m)
-    parts = _tuto_design_parts(m)
-    parts !== nothing && _focused_pane_impl(m) === parts[2]
-end
 
 function _tuto_snapshot!(m, p::TutorialPane)
     p.snapshot = Dict{Symbol,Any}(k => v for (k, v) in m.scheduler.patterns)
@@ -189,12 +186,11 @@ const _TUTO_STEPS = _TutoStep[
         (m, p) -> _tuto_ws(m) == "DESIGN"),
     _TutoStep("Le son, à côté des patterns",
         """
-        À droite, le **texte** du synth. Dessous, deux onglets : la **DOC**
-        devant, le **STUDIO** (son onde, ses knobs) derrière. Tous montrent
-        le même son.
+        À droite, le **texte** du synth : c'est le son lui-même, il n'y a
+        rien d'autre à régler ailleurs. Dessous, sa **DOC**.
 
-        Appuie sur `T` : tu l'entends. `T` marche depuis le texte, la DOC
-        ou le studio.
+        Appuie sur `T` : tu l'entends. `T` marche depuis le texte comme
+        depuis la DOC.
         """,
         (m, p) -> m.last_t_fire > get(p.snapshot, :t_fire, 0.0),
         (m, p) -> (p.snapshot[:t_fire] = m.last_t_fire),
@@ -209,20 +205,22 @@ const _TUTO_STEPS = _TutoStep[
         ```
 
         `saw` une dent de scie, `rlpf` un passe-bas résonnant. `Esc`, puis
-        `T` : plus brillant, plus filtré. Le studio s'est reconstruit tout
-        seul.
+        `T` : plus brillant, plus filtré.
         """,
         (m, p) -> occursin("rlpf(", _tuto_text(m)) && _tuto_mode(m) === :normal,
         (m, p) -> nothing, "DESIGN"),
-    _TutoStep("Le studio écrit dans le texte",
+    _TutoStep("L'atelier : travailler le son dans son texte",
         """
-        `:sculpt` amène le clavier au STUDIO. `j` / `k` choisissent un knob,
-        `l` / `h` le tirent : le nombre change **dans le texte**, sur place.
+        Un nombre se tire sur place : le curseur dessus, `+` / `-` le
+        bougent d'un pas, `*` / `/` de dix (la molette aussi). Le son est redéfini aussitôt.
 
-        Tire un knob, puis `T` pour écouter la différence. `Ctrl-w k`
-        revient au texte, `u` y annule si besoin.
+        Une étape de la chaîne est un **maillon**. Sur un maillon, `o` en
+        propose un nouveau après lui — il s'entend avant d'être gardé —,
+        `cim` le remplace, `dam` le retire. `&` ouvre le reste de l'atelier.
+
+        Tire un nombre, puis `T` pour écouter la différence. `u` annule.
         """,
-        (m, p) -> _tuto_studio_focused(m) && _tuto_text(m) != get(p.snapshot, :text, ""),
+        (m, p) -> _tuto_mode(m) === :normal && _tuto_text(m) != get(p.snapshot, :text, ""),
         (m, p) -> (p.snapshot[:text] = _tuto_text(m)), "DESIGN"),
     _TutoStep("La DOC raconte le son",
         """
@@ -232,7 +230,7 @@ const _TUTO_STEPS = _TutoStep[
 
         Appuie sur `Y`.
         """,
-        (m, p) -> (parts = _tuto_design_parts(m); parts !== nothing && parts[3] !== nothing && parts[3].mode === :graph),
+        (m, p) -> _tuto_doc_mode(m) === :graph,
         (m, p) -> nothing, "DESIGN"),
     _TutoStep("Tenir le son",
         """

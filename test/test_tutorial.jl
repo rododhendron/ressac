@@ -77,14 +77,15 @@ _tscreen(app, tb, frame) = (Tachikoma.view(app, frame); join((Tachikoma.row_text
             @test Ressac._focused_role(app) === :synth                       # le focus est resté au texte
             @test occursin("Le son,", _tscreen(app, tb, frame))
             _tk(app, 'T'); _tscreen(app, tb, frame); @test q.step == 15
-            (ep, studio, sdoc) = Ressac._synth_workspace_parts(app)
+            (ep, sdoc) = Ressac._synth_workspace_parts(app)
             ed = ep.tabs[ep.current_tab].code_editor
             Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)\n"); ed.mode = :normal
             _tscreen(app, tb, frame); @test q.step == 16
-            Ressac._focus_pane!(app, studio)
-            _tscreen(app, tb, frame); @test q.step == 16                      # le studio focalisé ne suffit pas
-            i = findfirst(k -> k.name === :freq && k.kind === :control, studio.knobs); studio.focus = i
-            _tk(app, 'l'); _tscreen(app, tb, frame); @test q.step == 17
+            _tk(app, 'j'); _tk(app, 'k')
+            _tscreen(app, tb, frame); @test q.step == 16                      # se promener ne suffit pas
+            ed.cursor_row = 1; ed.cursor_col = first(findfirst("800", String(ed.lines[1]))) - 1
+            _tk(app, '+'); _tscreen(app, tb, frame)                           # l'atelier : tirer un nombre sur place
+            @test !occursin("rlpf(800,", Tachikoma.text(ed)) && q.step == 17
             _tk(app, 'Y'); _tscreen(app, tb, frame); @test q.step == 18
             _tk(app, 'D'); _tscreen(app, tb, frame); @test Ressac.drone_running(:sketch) && q.step == 18
             _tk(app, 'D'); _tscreen(app, tb, frame); @test q.step == 19

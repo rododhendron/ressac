@@ -1,12 +1,12 @@
 # src/pane_waveform.jl
-# :waveform pane — onde sonore COMPLÈTE d'un son (rendu NRT hors-ligne),
-# navigable : zoom molette VERS LE POINTEUR, défilement h/l, 0 = tout voir.
-# Rendu min/max par colonne (style DAW) → fidèle à n'importe quel zoom.
-# La source est un génome (re-rendu à la demande).
+# :waveform — l'onde COMPLÈTE d'un son (rendu hors-ligne par sclang),
+# navigable : la molette zoome VERS LE POINTEUR, h / l défilent, 0 montre
+# tout. Tracé min/max par colonne, fidèle à n'importe quel zoom. La source
+# est un génome, re-rendu à la demande.
 #
-# Mode SCULPT (s) : manipulation des params dans la vue d'onde. Colonne
-# vertébrale stable (flux du signal) + quartiers mous (graphe×acoustique).
-# Cf. docs/journal/20260612_waveform_sculpt_design.md.
+# (Le studio « sculpt » qui vivait ici — knobs, quartiers, édition du graphe
+# — a laissé la place à l'atelier : le texte du son est son graphe, et on y
+# travaille avec les gestes de vim. Voir atelier.jl.)
 
 mutable struct WaveformPane <: PaneImpl
     samples::Vector{Float32}
@@ -14,64 +14,21 @@ mutable struct WaveformPane <: PaneImpl
     view_start::Int                 # 1er échantillon visible (1-based)
     view_len::Int                   # nb d'échantillons visibles
     label::String
-    genome::Union{Nothing,Genome}   # source (re-rendu / persistance)
-    last_rect::NTuple{4,Int}        # (x,y,w,h) de la zone de tracé (souris)
-    # ── mode sculpt ────────────────────────────────────────────────
-    sculpt::Bool
-    knobs::Vector{Knob}
-    focus::Int                      # index du knob focalisé
-    value_edit::Bool                # saisie directe d'une valeur en cours
-    value_buf::String               # tampon de saisie
-    structure_dirty::Bool           # un édit structurel a changé le graphe
-    labels::Vector{Int}             # quartier par knob
-    strength::Vector{Float64}       # vivacité d'appartenance par knob
-    dgraph::Matrix{Float64}         # distances de graphe (cache par structure)
-    sigs::KnobSignatures            # signatures acoustiques apprises
-    last_descr::Vector{Float64}     # descripteurs du dernier rendu
-    last_tugged::Int                # knob changé depuis le dernier rendu (0 = aucun/ambigu)
-    req_version::Int                # incrémenté à chaque tir (coalescing)
-    rendered_version::Int
-    rendering::Bool
-    closed::Bool
-    pending::Union{Nothing,Tuple{Vector{Float32},Int,Vector{Float64},Int}}  # (samples,sr,descr,version)
+    genome::Union{Nothing,Genome}   # la source (re-rendu / persistance)
+    last_rect::NTuple{4,Int}        # (x, y, w, h) de la zone de tracé, pour la souris
     audition::AuditionState
-    lock::ReentrantLock
-    explain_lines::Vector{String}   # prose de l'explainer (rafraîchie à chaque édit structurel)
-    explain_view::TK.ScrollPane     # la prose repliée et stylée, défilable (</>, molette)
-    explain_w::Int                  # largeur pour laquelle explain_view a été construite (0 = à refaire)
-    # ── élagage ────────────────────────────────────────────────────
-    hints::Dict{Int,String}         # indices statiques par nœud (recalculés à chaque structure)
-    impacts::Dict{Int,Float64}      # impact mesuré par nœud (P), vidé à chaque changement de structure
-    measuring::Bool                 # une mesure d'impact est en vol
-    prune_note::String              # pourquoi la mesure n'a pas abouti ("" sinon)
-    linked::Bool                    # studio du workspace synth : suit le texte, y reporte ses édits
-    synced_hash::UInt               # hash du texte dont le génome vient
-    synced_name::String             # nom du synth synchronisé
-    synced_req::Int                 # req_version au dernier report vers le texte
-    last_values::Vector{Float64}    # valeurs des knobs telles qu'écrites dans le texte
-    last_names::Vector{Symbol}      # noms des knobs à ce moment (structure)
 end
 
-# Constructeur de compatibilité 7-args (anciens appels + tests viewer).
 WaveformPane(samples, sr, vs, vl, label, genome, last_rect) =
-    WaveformPane(samples, sr, vs, vl, label, genome, last_rect,
-                 false, Knob[], 1, false, "", false, Int[], Float64[], zeros(0, 0),
-                 KnobSignatures(), Float64[], 0, 0, 0, false, false,
-                 nothing, AuditionState(1), ReentrantLock(), String[], _scrollpane(), 0,
-                 Dict{Int,String}(), Dict{Int,Float64}(), false, "",
-                 false, UInt(0), "", 0, Float64[], Symbol[])
+    WaveformPane(samples, sr, vs, vl, label, genome, last_rect, AuditionState(1))
 
-# Seam de rendu : par défaut le rendu NRT, surchargeable en test (sync, mock).
+# Seam de rendu : par défaut le rendu hors-ligne, surchargeable en test.
 const _WAVE_RENDER = Ref{Function}(render_genome_audio)
-# Seam « U » : la pane demande à l'app de la sauver + l'utiliser dans un
-# pattern (elle ne connaît pas RessacApp).
-const _SCULPT_USE_REQUEST = Ref{Union{Nothing,WaveformPane}}(nothing)
-# En test on rend SYNCHRONE (pas de thread → pas de course).
+# En test, ce qui se mesure en fond (l'impact des nœuds) se fait sur place.
 const _WAVE_SYNC = Ref{Bool}(false)
 
 function _waveform_pane_ctor(args::AbstractDict)
     label = String(get(args, "label", "waveform"))
-    sculpt = Bool(get(args, "sculpt", false))
     samples = Float32[]; sr = 44100; g = nothing
     if haskey(args, "genome")
         try
@@ -81,14 +38,7 @@ function _waveform_pane_ctor(args::AbstractDict)
             samples = Float32[]
         end
     end
-    n = length(samples)
-    p = WaveformPane(samples, sr, 1, max(n, 1), label, g, (0, 0, 0, 0))
-    p.linked = Bool(get(args, "linked", false))
-    p.sculpt = sculpt
-    if sculpt && g !== nothing
-        _sculpt_init!(p)
-    end
-    return p
+    return WaveformPane(samples, sr, 1, max(length(samples), 1), label, g, (0, 0, 0, 0))
 end
 
 const _WAVE_MIN_LEN = 64        # zoom maxi : 64 échantillons en travers
@@ -107,311 +57,7 @@ end
 _wave_pan!(p::WaveformPane, d::Int) =
     (n = length(p.samples); p.view_start = clamp(p.view_start + d, 1, max(1, n - p.view_len + 1)))
 
-# ── Mode sculpt : init, quartiers, tir ─────────────────────────────
-# Initialise l'état sculpt : knobs, distances de graphe, quartiers (α=0).
-function _sculpt_init!(p::WaveformPane)
-    p.sculpt = true
-    p.genome === nothing && return p
-    p.knobs = enumerate_knobs(p.genome)
-    p.focus = 1
-    p.dgraph = knob_graph_distances(p.genome, p.knobs)
-    _sculpt_recluster!(p)
-    _sculpt_refresh_explain!(p)
-    return p
-end
-
-# Prose « pourquoi ça sonne comme ça » du génome courant.
-function _sculpt_refresh_explain!(p::WaveformPane)
-    if p.genome === nothing
-        p.explain_lines = String[]; empty!(p.hints)
-    else
-        empty!(p.hints)
-        for h in static_prune_hints(p.genome); p.hints[h.id] = "$(h.ugen) — $(h.reason)"; end
-        p.explain_lines = vcat(explain_genome(p.genome), _prune_lines(p))
-    end
-    p.explain_w = 0                            # le contenu du ScrollPane sera refait au prochain rendu
-    _scroll_top!(p.explain_view)
-    return
-end
-
-# La section « ÉLAGAGE » de l'explication (voir genome_prune.jl).
-_prune_lines(p::WaveformPane) =
-    prune_report_lines(p.genome; impacts = p.impacts, measuring = p.measuring, note = p.prune_note)
-
-"""
-    _sculpt_measure_impacts!(p)
-
-`P` — rend le son sans chaque nœud, en un lot, et range les impacts.
-Asynchrone comme le rendu de l'onde ; synchrone en test (`_WAVE_SYNC`).
-"""
-function _sculpt_measure_impacts!(p::WaveformPane)
-    (p.genome === nothing || p.measuring) && return false
-    p.measuring = true
-    empty!(p.impacts); p.prune_note = ""
-    _sculpt_refresh_explain!(p)
-    g = _copy_genome(p.genome)
-    work = () -> begin
-        res = try measure_impacts(g) catch err; err end
-        lock(p.lock) do
-            p.closed && return
-            if res isa Exception
-                p.measuring = false
-                p.prune_note = first(sprint(showerror, res), 60)
-            else
-                for r in res; p.impacts[r.id] = r.impact; end
-                p.measuring = false
-            end
-        end
-        _WAVE_SYNC[] || (p.explain_w = 0)
-        return
-    end
-    if _WAVE_SYNC[]
-        work()
-        _sculpt_refresh_explain!(p)
-    else
-        Threads.@spawn (work(); _sculpt_refresh_explain!(p))
-    end
-    return true
-end
-
-"""
-    _sculpt_prune!(p; threshold = 0.02) -> Int
-
-`:prune` — retire tous les nœuds dont l'impact mesuré est sous le seuil.
-Il faut avoir mesuré (`P`) avant. Renvoie le nombre de nœuds retirés.
-"""
-function _sculpt_prune!(p::WaveformPane; threshold::Real = 0.02)
-    (p.genome === nothing || isempty(p.impacts)) && return 0
-    ranked = [(id = id, ugen = get(p.genome.nodes, id, nothing) === nothing ? :none : p.genome.nodes[id].ugen, impact = imp)
-              for (id, imp) in p.impacts]
-    removed = prune!(p.genome, ranked; threshold = threshold)
-    isempty(removed) && return 0
-    _sculpt_reinit_structure!(p; focus_node = p.genome.output_id)
-    return length(removed)
-end
-
-"""
-    _explain_spans(lines, width) -> Vector{Vector{Span}}
-
-La prose de l'explainer mise en forme pour `width` colonnes : titres de
-section en évidence, puces et flèches en accent avec retrait suspendu,
-tout replié plutôt que rogné.
-"""
-function _explain_spans(lines::Vector{String}, width::Int)
-    out = Vector{TK.Span}[]
-    for line in lines
-        t = rstrip(line)
-        if isempty(t)
-            push!(out, TK.Span[])
-        elseif !startswith(t, " ") && !any(islowercase, t)
-            append!(out, _md_wrap(TK.Span[TK.Span(t, TK.tstyle(:title, bold = true))], width))
-        elseif (m = match(r"^(\s*)(•|←|→|↳)\s*(.*)$", t)) !== nothing
-            pre = m.captures[1] * m.captures[2] * " "
-            body = String(m.captures[3])
-            spans = TK.Span[TK.Span(pre, TK.tstyle(:accent, bold = true))]
-            # « [rôle] Nom — description » : le rôle et le nom ressortent
-            if (r = match(r"^(\[[^\]]+\])\s*([^—]+?)(\s+—\s+.*)?$", body)) !== nothing
-                push!(spans, TK.Span(r.captures[1] * " ", TK.tstyle(:secondary, bold = true)))
-                push!(spans, TK.Span(r.captures[2], TK.tstyle(:text_bright, bold = true)))
-                r.captures[3] === nothing || push!(spans, TK.Span(r.captures[3], TK.tstyle(:text)))
-            else
-                push!(spans, TK.Span(body, TK.tstyle(:text)))
-            end
-            append!(out, _md_wrap(spans, width; indent = textwidth(pre)))
-        elseif startswith(t, "  ") && occursin("→", t)
-            append!(out, _md_wrap(TK.Span[TK.Span(t, TK.tstyle(:text_bright))], width; indent = 2))
-        else
-            ind = length(t) - length(lstrip(t))
-            append!(out, _md_wrap(TK.Span[TK.Span(t, TK.tstyle(:text))], width; indent = ind))
-        end
-    end
-    return out
-end
-
-# Recalcule quartiers + force depuis (graphe × signatures). NE déplace rien.
-function _sculpt_recluster!(p::WaveformPane)
-    isempty(p.knobs) && (p.labels = Int[]; p.strength = Float64[]; return p)
-    D = mixed_distances(p.dgraph, p.sigs, p.knobs)
-    p.labels, p.strength = soft_quartiers(D)
-    return p
-end
-
-# Tire le knob focalisé de `steps` crans, marque un re-render.
-function _sculpt_tug!(p::WaveformPane, steps::Int)
-    (isempty(p.knobs) || p.genome === nothing) && return
-    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
-    cur = knob_value(p.genome, kb)
-    set_knob!(p.genome, kb, knob_tug(kb, cur, steps))
-    # un seul knob changé depuis le dernier rendu → attribuable
-    p.last_tugged = (p.last_tugged == 0 || p.last_tugged == p.focus) ? p.focus : -1
-    p.req_version += 1
-    return
-end
-
-# Ré-énumère après un édit STRUCTUREL : le set de knobs a changé → on
-# recalcule knobs/quartiers et on réapprend les signatures (indices décalés).
-# `focus_node` (≠0) → refocalise sur le 1er knob de ce nœud (utile après un
-# insert : on atterrit sur le nœud qu'on vient d'ajouter). Marque l'explainer
-# à rafraîchir (structure_dirty).
-function _sculpt_reinit_structure!(p::WaveformPane; focus_node::Int = 0)
-    p.genome === nothing && return
-    p.knobs = enumerate_knobs(p.genome)
-    fi = focus_node == 0 ? nothing :
-         findfirst(k -> k.kind === :node && k.node_id == focus_node, p.knobs)
-    p.focus = fi === nothing ? clamp(p.focus, 1, max(1, length(p.knobs))) : fi
-    p.dgraph = knob_graph_distances(p.genome, p.knobs)
-    p.sigs = KnobSignatures()
-    p.last_descr = Float64[]
-    p.last_tugged = 0
-    empty!(p.impacts); p.prune_note = ""       # la structure a changé : les impacts mesurés sont périmés
-    _sculpt_recluster!(p)
-    _sculpt_refresh_explain!(p)
-    p.structure_dirty = true
-    p.req_version += 1
-    return
-end
-
-# Applique un édit structurel (dispatch `structural_edit!`) sur le nœud du
-# knob focalisé, puis ré-énumère en refocalisant sur le nœud renvoyé. Sans
-# effet sur un knob global (pas de nœud). Renvoie true si quelque chose a bougé.
-function _sculpt_structural!(p::WaveformPane, op::Symbol; kwargs...)
-    (isempty(p.knobs) || p.genome === nothing) && return false
-    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
-    kb.kind === :node || return false
-    newnode = structural_edit!(p.genome, op, kb.node_id; kwargs...)
-    newnode === nothing && return false
-    _sculpt_reinit_structure!(p; focus_node = newnode)
-    return true
-end
-
-# Édits structurels du nœud focalisé (bricks 1-7) :
-#   o/O swap · n insert · d delete · i/I rewire · r/R rate · x duplicate
-_sculpt_swap_focus_ugen!(p::WaveformPane, dir::Int) = _sculpt_structural!(p, :swap_ugen; dir = dir)
-_sculpt_insert_focus!(p::WaveformPane) = _sculpt_structural!(p, :insert_after)
-
-# m (graft) : cas à part — passe l'arg_index du knob focalisé au modulateur.
-function _sculpt_graft_focus!(p::WaveformPane)
-    (isempty(p.knobs) || p.genome === nothing) && return false
-    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
-    kb.kind === :node || return false
-    newnode = structural_edit!(p.genome, :graft_mod, kb.node_id; arg_index = kb.arg_index)
-    newnode === nothing && return false
-    _sculpt_reinit_structure!(p; focus_node = newnode)
-    return true
-end
-
-# Tab/⇧Tab : saut au NŒUD voisin (1er knob du groupe suivant/précédent, en
-# boucle). Les controls globaux forment un seul groupe. C'est la navigation
-# GROSSE MAILLE (voisin de graphe) ; j/k reste le pas fin knob-à-knob.
-_knob_group_key(kb::Knob) = kb.kind === :control ? (:control, 0) : (:node, kb.node_id)
-
-function _sculpt_focus_neighbour!(p::WaveformPane, dir::Int)
-    n = length(p.knobs); n <= 1 && return
-    gkeys = [_knob_group_key(kb) for kb in p.knobs]
-    groups = unique(gkeys)
-    length(groups) <= 1 && (p.focus = mod1(clamp(p.focus, 1, n) + dir, n); return)
-    curkey = gkeys[clamp(p.focus, 1, n)]
-    gi = something(findfirst(==(curkey), groups), 1)
-    nextkey = groups[mod1(gi + dir, length(groups))]
-    p.focus = findfirst(==(nextkey), gkeys)   # 1er knob du groupe cible
-    return
-end
-
-# = : commence la saisie directe de la valeur du knob focalisé (tampon vide,
-# la valeur courante reste affichée comme repère dans la bande).
-function _sculpt_begin_value!(p::WaveformPane)
-    isempty(p.knobs) && return
-    p.value_buf = ""
-    p.value_edit = true
-    return
-end
-
-# ⏎ en saisie : pose la valeur exacte tapée (si parseable), marque un re-render.
-function _sculpt_commit_value!(p::WaveformPane)
-    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
-    v = tryparse(Float64, strip(p.value_buf))
-    if v !== nothing
-        set_knob!(p.genome, kb, knob_set_value(kb, v))
-        p.last_tugged = (p.last_tugged == 0 || p.last_tugged == p.focus) ? p.focus : -1
-        p.req_version += 1
-    end
-    p.value_edit = false; p.value_buf = ""
-    return
-end
-
-# ── Boucle de rendu async (coalescée, bornée, thread-safe) ─────────
-# Applique un résultat de rendu prêt (s'il y en a un) : swap des samples +
-# descripteurs + signature (si UN seul knob a changé depuis le dernier rendu)
-# + re-teinte des quartiers. NE déplace JAMAIS un knob (positions = structure).
-function _sculpt_apply_pending!(p::WaveformPane)
-    ready = lock(p.lock) do
-        r = p.pending; p.pending = nothing; r
-    end
-    ready === nothing && return false
-    samples, sr, descr, ver = ready
-    ver <= p.rendered_version && return false
-    prev = p.last_descr
-    p.samples = samples; p.sr = sr
-    p.view_start = 1; p.view_len = max(length(samples), 1)
-    p.rendered_version = ver
-    if p.last_tugged > 0 && !isempty(prev) && length(prev) == length(descr)
-        update_signature!(p.sigs, p.last_tugged, descr .- prev)   # attribution
-    end
-    p.last_descr = descr
-    p.last_tugged = 0
-    _sculpt_recluster!(p)
-    return true
-end
-
-# Boucle de rendu (appelée chaque frame par render!). Applique un résultat
-# prêt ; si en retard et libre, lance UN rendu (thread worker en prod, ou
-# synchrone en test). Borné : au plus 1 rendu en vol, coalescé sur la
-# dernière version demandée.
-function _sculpt_pump!(p::WaveformPane)
-    p.genome === nothing && return
-    _sculpt_apply_pending!(p)
-    # Décision de lancer un rendu PRISE SOUS LE VERROU : `rendering` est aussi
-    # écrit par le worker (sous verrou), donc le lire/l'armer hors verrou depuis
-    # le thread principal serait une course (visibilité non garantie). `ver` et
-    # `req_version` ne sont écrits que par le thread principal → sûrs.
-    ver = p.req_version
-    should_spawn = lock(p.lock) do
-        if !p.rendering && !p.closed && ver > p.rendered_version
-            p.rendering = true
-            true
-        else
-            false
-        end
-    end
-    should_spawn || return
-    gcopy = _copy_genome(p.genome)            # copie hors verrou (peut être longue)
-    if _WAVE_SYNC[]
-        _sculpt_render_into!(p, gcopy, ver)   # remplit pending (synchrone)
-        _sculpt_apply_pending!(p)             # …et applique dans le même tour
-    else
-        Threads.@spawn _sculpt_render_into!(p, gcopy, ver)
-    end
-    return
-end
-
-# Rend `g` (NRT) puis dépose le résultat dans le slot sous verrou.
-function _sculpt_render_into!(p::WaveformPane, g::Genome, ver::Int)
-    local samples, sr, descr
-    try
-        samples, sr = _WAVE_RENDER[](g)
-        descr = descriptors_from_samples(samples, sr)
-    catch
-        lock(p.lock) do; p.rendering = false; end
-        return
-    end
-    lock(p.lock) do
-        p.closed || (p.pending = (samples, sr, descr, ver))
-        p.rendering = false
-    end
-    return
-end
-
-# ⏎ : joue le son courant sur le serveur SC live (si une session tourne).
+# p : joue le son courant sur le serveur SC live (si une session tourne).
 # Réutilise le chemin d'audition de l'explorer (audition_hold!). Sans
 # scheduler live → no-op silencieux (mais touche consommée).
 function _wave_play!(p::WaveformPane)
@@ -468,114 +114,33 @@ function _render_wave_buffer!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
     return
 end
 
-# Un rendu est en vol/en attente tant que la version demandée dépasse la
-# version affichée → indicateur « ↻ » (feedback : l'onde va se rafraîchir).
-_sculpt_busy(p::WaveformPane) = p.req_version > p.rendered_version
-
-# ‹RLPF · 2/5 o›  pour un knob-nœud : l'UGen porteur et sa position parmi
-# les UGens du même rôle — ce que `o` / `O` font tourner. "" pour un knob global.
-function _sculpt_ugen_tag(p::WaveformPane, kb::Knob)
-    kb.kind === :node || return ""
-    (u, i, tot) = ugen_role_position(p.genome, kb.node_id)
-    u === nothing && return ""
-    return tot > 1 ? "  ‹$(u) · $(i)/$(tot) o›" : "  ‹$(u)›"
-end
-
-# Bande de knobs : nom + valeur du focalisé (+ UGen porteur), indicateur de
-# rendu ; les autres en pastille teintée par quartier, vivacité = force
-# d'appartenance (bordure = terne).
-function _render_knob_strip!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
-    isempty(p.knobs) && return
-    kb = p.knobs[clamp(p.focus, 1, length(p.knobs))]
-    busy = _sculpt_busy(p) ? "↻ " : ""
-    head = if p.value_edit
-        "$(busy)[$(kb.name)] = $(p.value_buf)▏  (actuel $(round(knob_value(p.genome, kb); sigdigits = 4)) · ⏎ ok · Esc)"
-    else
-        "$(busy)[$(kb.name)] $(round(knob_value(p.genome, kb); sigdigits = 5))$(_sculpt_ugen_tag(p, kb))   (= saisir)"
-    end
-    line = head * "   "
-    for (i, _) in enumerate(p.knobs)
-        line *= i == p.focus ? "◉" : (get(p.strength, i, 1.0) > 0.5 ? "●" : "·")
-    end
-    TK.set_string!(buf, area.x, area.y, first(line, area.width), TK.tstyle(:text))
-    return
-end
-
 function render!(p::WaveformPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
-    p.sculpt && _sculpt_pump!(p)              # consomme un rendu prêt
     n = length(p.samples)
-    head = if p.linked
-        "STUDIO ┄ $(p.label) ┄ " * (p.genome === nothing ? "en attente d'un @synth" : "synchronisé") *
-            (_sculpt_busy(p) ? " ↻" : "")
-    elseif p.sculpt
-        "SCULPT · $(p.label)$(_sculpt_busy(p) ? " ↻" : "")"
-    elseif n == 0
-        "WAVE · $(p.label) · (pas d'audio)"
+    head = if n == 0
+        "ONDE · $(p.label) · (pas d'audio)"
     else
         vm = round(p.view_len / p.sr * 1000; digits = 1)
         tm = round(n / p.sr * 1000; digits = 0)
-        "WAVE · $(p.label) · $(vm)ms/$(tm)ms"
+        "ONDE · $(p.label) · $(vm)ms/$(tm)ms"
     end
     _render_pane_block_simple!(rect, head, buf)
     inner = _inner_rect_simple(rect)
     (inner.width < 2 || inner.height < 1) && return
-    if p.sculpt
-        if p.linked && p.genome === nothing
-            TK.set_string!(buf, inner.x, inner.y, first("  (le texte n'est pas un @synth analysable — le studio attend)", inner.width),
-                           TK.tstyle(:text_dim))
-            return
-        end
-        inner.height >= 12 && (_render_sculpt_studio!(p, inner, buf); return)
-        striph = min(2, inner.height)
-        waveh = inner.height - striph
-        if waveh >= 1 && n > 0
-            warea = TK.Rect(inner.x, inner.y, inner.width, waveh)
-            p.last_rect = (warea.x, warea.y, warea.width, waveh)
-            _render_wave_buffer!(p, warea, buf)
-        end
-        _render_knob_strip!(p, TK.Rect(inner.x, inner.y + max(waveh, 0), inner.width, striph), buf)
-        return
-    end
     p.last_rect = (inner.x, inner.y, inner.width, inner.height)
     if n == 0
-        TK.set_string!(buf, inner.x, inner.y,
-                       "  (pas d'audio — rendu NRT indisponible)", TK.tstyle(:text_dim))
+        TK.set_string!(buf, inner.x, inner.y, "  (pas d'audio — rendu hors-ligne indisponible)", TK.tstyle(:text_dim))
         return
     end
     _render_wave_buffer!(p, inner, buf)
     return
 end
 
-function handle_key!(p::WaveformPane, evt)
-    evt isa TK.KeyEvent || return false
-    ch = evt.char; k = evt.key
-    # ── saisie directe d'une valeur (prioritaire sur tout le reste) ──
-    # Le reste des touches passe par le registre (scopes :sculpt / :waveform).
-    if p.sculpt && p.value_edit
-        if k === :enter || ch == '\r'
-            _sculpt_commit_value!(p); return true
-        elseif k === :escape
-            p.value_edit = false; p.value_buf = ""; return true
-        elseif k === :backspace || ch == '\b' || ch == '\x7f'
-            isempty(p.value_buf) || (p.value_buf = p.value_buf[1:prevind(p.value_buf, lastindex(p.value_buf))])
-            return true
-        elseif ch isa Char && (isdigit(ch) || ch == '.' || ch == '-' || ch == 'e' || ch == 'E')
-            p.value_buf *= ch; return true
-        end
-        return true   # on consomme tout pendant la saisie
-    end
-    return dispatch!(((pane_scope(p), p),), evt)
-end
+handle_key!(p::WaveformPane, evt) = evt isa TK.KeyEvent && dispatch!(((:waveform, p),), evt)
 
 # Molette = zoom VERS LE POINTEUR (l'échantillon sous le curseur reste fixe).
 function handle_mouse!(p::WaveformPane, evt)
     evt isa TK.MouseEvent || return false
-    # La molette au-dessus de l'explication la fait défiler.
-    if p.sculpt && p.explain_view.last_area.width > 0 &&
-       Base.contains(p.explain_view.last_area, evt.x, evt.y)
-        return TK.handle_mouse!(p.explain_view, evt)
-    end
     (x, _, w, _) = p.last_rect
     length(p.samples) == 0 && return false
     f = w <= 1 ? 0.5 : clamp((evt.x - x) / (w - 1), 0.0, 1.0)
@@ -588,16 +153,10 @@ function handle_mouse!(p::WaveformPane, evt)
 end
 
 title(p::WaveformPane) = "wave:$(p.label)"
-
-function on_close!(p::WaveformPane)
-    lock(p.lock) do
-        p.closed = true
-    end
-    return nothing
-end
+pane_scope(::WaveformPane) = :waveform
 
 function serialize(p::WaveformPane)
-    d = Dict{String,Any}("label" => p.label, "sculpt" => p.sculpt, "linked" => p.linked)
+    d = Dict{String,Any}("label" => p.label)
     p.genome !== nothing && (d["genome"] = serialize_genome(p.genome))
     return d
 end
@@ -606,14 +165,9 @@ _kind_for(::WaveformPane) = "waveform"
 
 register_pane_kind!(:waveform, _waveform_pane_ctor)
 
-# ── Registre de touches : :waveform (vue) et :sculpt ─────────────
-# La saisie de valeur (`=`) est un sous-mode géré dans handle_key!.
-pane_scope(p::WaveformPane) = p.sculpt ? :sculpt : :waveform
 _wv_has(p::WaveformPane) = !isempty(p.samples)
-_sc_has(p::WaveformPane) = !isempty(p.knobs)
 
 scope!(:waveform, "Vue d'onde"; layer = :pane, modes = (:design, :explore))
-bind!(:waveform, "s", "sculpter"; group = :structure, action = p -> _sculpt_init!(p))
 bind!(:waveform, ["l", "→"], "défiler →"; group = :nav, when = _wv_has, repeat = true,
       action = p -> _wave_pan!(p, p.view_len ÷ 8))
 bind!(:waveform, ["h", "←"], "défiler ←"; group = :nav, when = _wv_has, repeat = true,
@@ -624,132 +178,5 @@ bind!(:waveform, ["-", "o"], "zoom −"; group = :view, when = _wv_has, repeat =
       action = p -> _wave_zoom!(p, 0.5, 1.25))
 bind!(:waveform, "0", "toute l'onde"; group = :view, when = _wv_has,
       action = p -> (p.view_start = 1; p.view_len = length(p.samples)))
-
-scope!(:sculpt, "Sculpt (l'onde et ses knobs)"; layer = :pane, modes = (:design, :explore))
-mixin_knob_nav!(:sculpt; has = _sc_has,
-    next = p -> (p.focus = clamp(p.focus + 1, 1, length(p.knobs))),
-    prev = p -> (p.focus = clamp(p.focus - 1, 1, length(p.knobs))),
-    tab_next = p -> _sculpt_focus_neighbour!(p, +1), tab_prev = p -> _sculpt_focus_neighbour!(p, -1),
-    more = p -> _sculpt_tug!(p, +1), less = p -> _sculpt_tug!(p, -1),
-    value = p -> _sculpt_begin_value!(p),
-    labels = (next = "knob suivant", prev = "knob précédent", more = "tirer +", less = "tirer −",
-              tab = "nœud suivant", tab_short = "nœud", value = "saisir une valeur",
-              reset = "", reset_short = ""))
-bind!(:sculpt, "Enter", "jouer"; group = :audio, when = _sc_has, repeat = true,
-      action = p -> _wave_play!(p))
-bind!(:sculpt, "o", "UGen suivant (même rôle)"; short = "UGen", group = :structure, when = _sc_has,
-      action = p -> _sculpt_swap_focus_ugen!(p, +1))
-bind!(:sculpt, "O", "UGen précédent"; group = :structure, hint = false, when = _sc_has,
-      action = p -> _sculpt_swap_focus_ugen!(p, -1))
-bind!(:sculpt, "n", "insérer un filtre après"; short = "filtre+", group = :structure, when = _sc_has,
-      action = p -> _sculpt_insert_focus!(p))
-bind!(:sculpt, "d", "supprimer le nœud (bypass)"; short = "supprimer", group = :structure, when = _sc_has,
-      action = p -> _sculpt_structural!(p, :delete))
-bind!(:sculpt, "i", "recâbler l'entrée →"; short = "recâbler", group = :structure, when = _sc_has,
-      action = p -> _sculpt_structural!(p, :rewire; dir = +1))
-bind!(:sculpt, "I", "recâbler l'entrée ←"; group = :structure, hint = false, when = _sc_has,
-      action = p -> _sculpt_structural!(p, :rewire; dir = -1))
-bind!(:sculpt, "r", "taux ar/kr suivant"; short = "taux", group = :structure, when = _sc_has,
-      action = p -> _sculpt_structural!(p, :rate; dir = +1))
-bind!(:sculpt, "R", "taux précédent"; group = :structure, hint = false, when = _sc_has,
-      action = p -> _sculpt_structural!(p, :rate; dir = -1))
-bind!(:sculpt, "x", "dupliquer en parallèle"; short = "dupliquer", group = :structure, when = _sc_has,
-      action = p -> _sculpt_structural!(p, :duplicate))
-bind!(:sculpt, "m", "greffer un LFO sur le slot"; short = "LFO", group = :structure, when = _sc_has,
-      action = p -> _sculpt_graft_focus!(p))
-bind!(:sculpt, "e", "exporter dans l'éditeur"; short = "exporter", group = :file, when = _sc_has,
-      action = p -> _wave_export!(p))
-bind!(:sculpt, "L", "défiler l'onde →"; group = :view, hint = false, when = _sc_has,
-      action = p -> _wave_pan!(p, p.view_len ÷ 8))
-bind!(:sculpt, "H", "défiler l'onde ←"; group = :view, hint = false, when = _sc_has,
-      action = p -> _wave_pan!(p, -(p.view_len ÷ 8)))
-bind!(:sculpt, "0", "toute l'onde"; group = :view, hint = false, when = _sc_has,
-      action = p -> (p.view_start = 1; p.view_len = max(length(p.samples), 1)))
-bind!(:sculpt, "s", "revenir à la vue d'onde"; short = "vue", group = :view, action = p -> (p.sculpt = false))
-bind!(:sculpt, ["Enter", "Esc", "Bksp"], "saisie de valeur : valider / annuler / effacer";
-      group = :submode, hint = false)
-
-# ── Disposition « studio » (pane assez haute, typiquement zoomée) ────
-# Onde en haut (tiers), bande de knobs, puis knobs groupés par fonction
-# (gauche) ⟷ explication (droite, défilable </>).
-function _render_sculpt_studio!(p::WaveformPane, inner::TK.Rect, buf::TK.Buffer)
-    waveh = clamp(inner.height ÷ 3, 3, inner.height - 5)
-    warea = TK.Rect(inner.x, inner.y, inner.width, waveh)
-    if !isempty(p.samples)
-        p.last_rect = (warea.x, warea.y, warea.width, waveh)
-        _render_wave_buffer!(p, warea, buf)
-    else
-        TK.set_string!(buf, inner.x, inner.y, "  (rendu en cours / indisponible)", TK.tstyle(:text_dim))
-    end
-    sepy = inner.y + waveh
-    TK.set_string!(buf, inner.x, sepy, "─"^inner.width, TK.tstyle(:text_dim))
-    _render_knob_strip!(p, TK.Rect(inner.x, sepy + 1, inner.width, 1), buf)
-    bottomy = sepy + 2
-    bottomh = inner.y + inner.height - bottomy
-    bottomh < 2 && return
-    if p.linked
-        # L'explication vit dans la pane DOC du workspace : les knobs ont toute la largeur.
-        _render_sculpt_knobs!(p, TK.Rect(inner.x, bottomy, inner.width, bottomh), buf)
-        return
-    end
-    kw = clamp(inner.width ÷ 2, 16, inner.width - 10)
-    _render_sculpt_knobs!(p, TK.Rect(inner.x, bottomy, kw - 1, bottomh), buf)
-    for yy in bottomy:(bottomy + bottomh - 1)
-        TK.set_string!(buf, inner.x + kw, yy, "│", TK.tstyle(:text_dim))
-    end
-    _render_sculpt_explain!(p, TK.Rect(inner.x + kw + 2, bottomy, inner.width - kw - 2, bottomh), buf)
-    return
-end
-
-# Knobs groupés par fonction ; le focalisé surligné (+ saisie en cours). Pour
-# un knob-nœud on montre l'UGen porteur (‹RLPF 2/5›) → feedback de o/O/n.
-function _render_sculpt_knobs!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
-    p.genome === nothing && return
-    groups = knob_groups(p.genome, p.knobs)
-    y = area.y
-    for (label, idxs) in groups
-        y >= area.y + area.height && break
-        gtag = isempty(idxs) ? "" : _sculpt_ugen_tag(p, p.knobs[idxs[1]])
-        TK.set_string!(buf, area.x, y, first("▸ $label$gtag", area.width), TK.tstyle(:text_dim))
-        y += 1
-        for i in idxs
-            y >= area.y + area.height && break
-            kb = p.knobs[i]
-            mark = i == p.focus ? "◉" : (get(p.strength, i, 1.0) > 0.5 ? "●" : "·")
-            val = if i == p.focus && p.value_edit
-                "= $(p.value_buf)▏"
-            else
-                string(round(knob_value(p.genome, kb); sigdigits = 5))
-            end
-            row = "  $mark $(rpad(String(kb.name), 8)) $val" * _sculpt_prune_mark(p, kb)
-            sty = i == p.focus ? TK.tstyle(:primary) : TK.tstyle(:text)
-            TK.set_string!(buf, area.x, y, first(row, area.width), sty)
-            y += 1
-        end
-    end
-end
-
-# ✂ après un knob dont le nœud ne s'entend pas (indice ou impact mesuré < 0.02).
-function _sculpt_prune_mark(p::WaveformPane, kb::Knob)
-    kb.kind === :node || return ""
-    haskey(p.hints, kb.node_id) && return "  ✂"
-    imp = get(p.impacts, kb.node_id, nothing)
-    imp === nothing && return ""
-    return imp < 0.02 ? "  ✂" : "  " * string(round(imp; digits = 2))
-end
-
-# Prose de l'explainer dans son ScrollPane (défilable via </> et la molette).
-function _render_sculpt_explain!(p::WaveformPane, area::TK.Rect, buf::TK.Buffer)
-    isempty(p.explain_lines) && return
-    (area.width < 8 || area.height < 1) && return
-    w = area.width - 1                         # une colonne pour la barre
-    if p.explain_w != w
-        TK.set_content!(p.explain_view, _explain_spans(p.explain_lines, w))
-        p.explain_w = w
-    end
-    TK.render(p.explain_view, area, buf)
-end
-
-bind!(:sculpt, [">", "<"], "défiler l'explication"; short = "explication", group = :view,
-      hint = false, when = _sc_has,
-      action = (p, evt) -> _scroll!(p.explain_view, evt.char == '>' ? :down : :up))
+bind!(:waveform, "p", "jouer ce son"; short = "jouer", group = :audio, repeat = true, action = p -> _wave_play!(p))
+bind!(:waveform, "e", "ouvrir ce son dans l'éditeur"; short = "éditeur", group = :file, action = p -> _wave_export!(p))

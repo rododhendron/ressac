@@ -283,7 +283,7 @@ n'est pas sauvé ; `:e` et `:enew` refusent alors de le jeter, `:e!` et
 `:enew!` passent outre. Au lancement, Ressac rouvre le texte de la veille,
 en silence.
 
-Du côté d'un son (son texte, sa DOC, son studio), `:w` sauve le son.
+Du côté d'un son (son texte, sa DOC), `:w` sauve le son.
 
 ## La réserve
 

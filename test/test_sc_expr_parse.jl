@@ -1,6 +1,6 @@
 include(joinpath(@__DIR__, "helpers.jl"))
 # Expression SC → Genome (sc_expr_parse.jl) et genome_from_dsl par
-# évaluation du corps : la sculpture et l'explication lisent le vrai son.
+# évaluation du corps : l'explication et le graphe lisent le vrai son.
 using Test
 using Ressac
 
@@ -76,14 +76,9 @@ end
     @test Ressac.render_synthdef(g1, :x) == Ressac.render_synthdef(g0, :x)
 end
 
-@testset "studio — un synth écrit à la main a des knobs nommés et une explication repliée" begin
+@testset "DOC — un synth écrit à la main a une explication repliée" begin
     g = Ressac.genome_from_dsl("@synth :acid (freq=60, sustain=0.3) saw(:freq) |> rlpf(line(3000, 500, :sustain), 0.18) |> tanh_drive(2)")
-    ks = Ressac.enumerate_knobs(g)
-    names = [k.name for k in ks if k.kind === :node]
-    @test :start in names && :end in names && :rq in names && :mul in names    # Line, RLPF, MulAdd du drive
-    @test !(:param in names)                                                    # plus de slot inconnu
-    groups = [gl for (gl, _) in Ressac.knob_groups(g, ks)]
-    @test groups == ["global", "enveloppe", "filtre", "mix"]
+    @test Set(n.ugen for n in values(g.nodes)) ⊇ Set([:Saw, :RLPF, :Line])        # chaque étape est un nœud connu
     lines = Ressac.explain_genome(g)
     spans = Ressac._explain_spans(lines, 40)
     @test all(l -> sum(sp -> textwidth(sp.content), l; init = 0) <= 40, spans)   # replié, jamais rogné
@@ -112,7 +107,7 @@ end
     for role in (:source, :filter, :math, :mod)
         @test !any(s -> s.name in (:Raw, :Midicps, :Cpsmidi, :Div, :K2A, :DC, :Klang), Ressac.catalog_by_role(role))
     end
-    @test Ressac.ugen_spec(:Midicps) !== nothing                # mais restent connus (knobs, explication)
+    @test Ressac.ugen_spec(:Midicps) !== nothing                # mais restent connus (explication, graphe)
 end
 
 

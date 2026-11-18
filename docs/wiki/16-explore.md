@@ -1,11 +1,10 @@
 # L'explorateur : trouver un son sans savoir l'écrire
 
 L'explorateur (`gx` ou `:explorer`) s'ouvre par-dessus l'écran et sert à
-**chercher un son** plutôt qu'à l'écrire. Deux outils s'y enchaînent : l'**explorateur**,
-qui fait évoluer une population de synths par sélection, et le studio
-**sculpt**, qui prend un son et le pétrit sur son onde. Ce qu'on trouve
-finit dans un pattern (`U`), dans l'éditeur (`e`) ou dans la librairie
-(`w`).
+**chercher un son** plutôt qu'à l'écrire : il fait évoluer une population
+de synths par sélection. Ce qu'on trouve finit dans la ligne qu'on jouait
+(`Entrée`), dans l'éditeur (`e`, `M`) ou dans la réserve (`w`) — et se
+retravaille ensuite dans son texte, à l'atelier (voir `03-synth-dsl`).
 
 ## L'explorateur en deux minutes
 
@@ -71,7 +70,8 @@ hauteur). Quand un rôle est actif :
 
 | Touche | Ce qu'elle fait |
 |---|---|
-| `M` | ouvre le candidat dans le studio **sculpt** |
+| `Entrée` | ouvert sur un slot (voir plus bas) : **adopte** le candidat dans la ligne |
+| `M` | ouvre le candidat à droite, la DOC sur son **explication** |
 | `e` | exporte son DSL dans le volet du son, à droite des patterns |
 | `w` | le sauve comme synth dans `plugins/user-synths/` |
 | `s` | le sauve comme **graine** dans `plugins/synth-seeds/`, pour repartir de lui |
@@ -79,51 +79,36 @@ hauteur). Quand un rôle est actif :
 
 Un synth sauvé se joue comme n'importe quel son : `@d1 :nom`.
 
-## Le studio sculpt
+## Chercher un son pour une ligne qui joue
 
-`M` depuis l'explorateur, ou `:sculpt` sur un synth DSL ouvert
-(`:sculpt nom` pour un fichier de `plugins/user-synths/`). En haut,
-l'onde rendue hors-ligne ; en bas à gauche, les **knobs** du son groupés
-par fonction (global, source, filtre, enveloppe, effet…) ; à droite,
-l'explication, qui se met à jour à chaque changement de structure.
+`gx` sur une ligne `@dN` **qui joue** ouvre l'explorateur *sur ce slot* :
+le candidat sous le curseur joue alors **dans le pattern**, à la place du
+son de la ligne — même rythme, mêmes notes, mêmes effets. On choisit un
+son dans son contexte, pas dans le vide. Le titre le rappelle : « un autre
+son pour d2 ».
 
-```
-j / k        knob suivant / précédent        Tab   nœud suivant
-l / h        tirer + / −  (maintenir accélère)   =     saisir une valeur
-Space        jouer
-```
+- se déplacer dans la grille change le son du slot ; `n` (génération
+  suivante) aussi ;
+- `Entrée` **adopte** : le candidat est rangé comme un son (`trouve`,
+  `trouve2`… dans `plugins/user-synths/`), son nom remplace l'ancien dans
+  la ligne, et la ligne est réévaluée. `gs` dessus l'ouvre pour le
+  travailler ; `u` dans les patterns revient à l'ancien son ;
+- sortir autrement (`:q`, `:back`) rend le son d'origine.
 
-L'onde se re-rend après chaque geste (`↻` pendant le rendu). Les knobs
-sont teintés par **quartier** : ceux qui bougent l'onde de la même façon
-partagent une couleur, et la vivacité dit la force du lien — le studio
-apprend en t'écoutant tirer.
+Sur une ligne qui ne joue pas, ou ailleurs, `gx` ouvre l'explorateur tout
+court.
 
-La structure aussi se sculpte, nœud par nœud (le nœud porteur du knob
-est affiché, ‹RLPF · 3/21 o›) :
+## Élaguer ce qu'on a trouvé
 
-| Touche | Ce qu'elle fait |
-|---|---|
-| `o` / `O` | remplace l'UGen par le suivant / précédent du même rôle |
-| `n` | insère un filtre après le nœud |
-| `d` | retire le nœud (l'entrée passe au travers) |
-| `i` / `I` | recâble l'entrée sur un autre nœud |
-| `r` / `R` | change le taux (audio ⟷ contrôle) |
-| `x` | duplique le nœud en parallèle |
-| `m` | greffe un LFO sur le paramètre focalisé |
-
-**Élaguer.** Un son trouvé par évolution traîne souvent des nœuds qui ne
-s'entendent pas. L'explication se termine par une section ÉLAGAGE : les
-indices lus sur la structure (un nœud hors de la chaîne, une saturation
-qui replie un signal déjà replié, une source à 0 Hz…) apparaissent tout
-de suite, avec ✂ à côté des knobs concernés. `P` **mesure** : le son est
-rendu sans chaque nœud, en un lot, et l'impact de chacun s'affiche du
-plus faible au plus fort. `Tab` puis `d` retire un nœud ; `:prune`
-retire d'un coup tous ceux dont l'impact mesuré est sous 0,02
-(`:prune 0.05` pour un seuil plus large).
-
-Et pour finir : `e` exporte dans l'éditeur, `U` **utilise** le son dans
-un pattern (sauve, puis pose `@dN p"nom*4"` dans les patterns), `s` revient à la
-vue d'onde, `<` / `>` défilent l'explication.
+Un son trouvé par évolution traîne souvent des étapes qui ne s'entendent
+pas. Une fois ouvert (`M`, `e`), `X` montre son explication, qui se
+termine par une section ÉLAGAGE : les indices lus sur la structure (un
+nœud hors de la chaîne, une saturation qui replie un signal déjà replié,
+une source à 0 Hz…) y sont tout de suite. `P` **mesure** : le son est
+rendu sans chaque étape, en un lot, et l'impact de chacune s'affiche du
+plus faible au plus fort. `:prune` retire d'un coup tout ce dont l'impact
+est sous 0,02 (`:prune 0.05` pour un seuil plus large) ; `dam` retire un
+maillon à la main.
 
 ## Un parcours typique
 

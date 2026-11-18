@@ -2,7 +2,7 @@ include(joinpath(@__DIR__, "helpers.jl"))
 import Random
 # Le côté synthèse ne perd rien en silence — phase 3 de la roadmap.
 #
-# `:sculpt`, `:prune` et `:todsl` relisent le SC d'un synth, en font un
+# `:prune`, `:explain` et `:todsl` relisent le SC d'un synth, en font un
 # génome, et réécrivent le synth à partir de lui. Tout ce que la relecture
 # « devinait » (un 0 pour un inconnu, la première voie d'un tableau, la
 # priorité des opérateurs) finissait donc dans le texte du joueur.

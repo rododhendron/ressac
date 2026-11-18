@@ -342,8 +342,9 @@ function _view!(m::RessacApp, f::TK.Frame)
     _reserve_index(m.modal) === nothing || (m.reserve_tab = m.modal)
     m.modal === :patterns || _patterns_preview_stop!(m)
     _redefine_tick!(m)                # un son dont on a tiré un nombre
+    _explore_slot_tick!(m)            # l'explorateur ouvert sur un slot : le candidat joue dans le pattern
     _update_live_doc!(m)
-    _synth_workspace_sync!(m)         # texte ⟷ studio ⟷ doc du workspace synth
+    _synth_workspace_sync!(m)         # la DOC d'un son relit son texte
     _tutorial_tick!(m)                # le tutoriel avance quand l'étape est faite (après la synchro : il lit le texte)
     buf = f.buffer
 

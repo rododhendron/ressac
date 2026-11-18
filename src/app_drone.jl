@@ -92,7 +92,7 @@ function _drone_pane!(m::RessacApp)
     p = _find_pane(m, DronePane)
     p !== nothing && return p
     # Dans le volet du son, elle se range en onglet sous le texte, à côté de
-    # la DOC et du studio, et passe devant ; le clavier ne bouge pas.
+    # la DOC, et passe devant ; le clavier ne bouge pas.
     son = get(m.volets, :son, nothing)
     if son !== nothing && m.volet === :son
         for leaf in _all_leaves(son)

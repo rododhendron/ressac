@@ -32,7 +32,7 @@ end
 function _serialize_tree(node::LayoutNode)
     if node isa PaneLeaf
         # Toutes les panes de la feuille, dans l'ordre de leurs onglets (une
-        # feuille peut en porter plusieurs : la DOC et le studio d'un son).
+        # feuille peut en porter plusieurs : la DOC et la MODULATION d'un son).
         # `kind` / `state` répètent l'onglet courant : c'est ce que lisaient
         # les fichiers d'avant, qui n'en gardaient qu'un.
         kind = "editor"

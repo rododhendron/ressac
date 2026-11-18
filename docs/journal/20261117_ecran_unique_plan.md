@@ -186,25 +186,32 @@ en forme, à SC égal ; `gcc` sur chaque maillon d'un son laisse un son valide.
 
 ## Étape 5 — L'atelier
 
-- [ ] **E5.1 — Le son dans le volet.** `gs` sur un nom de son ouvre son
+- [x] **E5.1 — Le son dans le volet.** `gs` sur un nom de son ouvre son
   texte à droite ; l'onde en dessous. Plus de studio, plus de knobs en liste.
   `pane_waveform.jl` (mode sculpt), `modal_sculpt.jl`, `app_sculpt.jl`,
   `wave_sculpt.jl` : ce qui sert à l'atelier est repris, le reste supprimé.
-- [ ] **E5.2 — La réglette.** Sous le nombre : nom de l'argument, bornes
+- [x] **E5.2 — La réglette.** Sous le nombre : nom de l'argument, bornes
   (catalogue d'UGens), « en direct » ou « à la prochaine note ».
-- [ ] **E5.3 — En direct.** Le temps du réglage, le littéral devient un
+- [x] **E5.3 — En direct.** Le temps du réglage, le littéral devient un
   argument d'un jumeau du son (extension du jumeau `_drone`) : une note
   tenue bouge sans être coupée.
-- [ ] **E5.4 — L'objet texte `m`.** `im` / `am`, donc `dam`, `cim`, `yam`,
+- [x] **E5.4 — L'objet texte `m`.** `im` / `am`, donc `dam`, `cim`, `yam`,
   `.`. Marche aussi dans une ligne de pattern.
-- [ ] **E5.5 — La complétion qui s'entend.** Sur `o`, `O` et `cim` : les
+- [x] **E5.5 — La complétion qui s'entend.** Sur `o`, `O` et `cim` : les
   maillons qui ont un sens à cet endroit, chacun joué à la place ⚑ E0.1.
   `Entrée` garde, `Échap` rend. Un seul `u` annule.
-- [ ] **E5.6 — `&`.** Faire bouger (écrit une ligne nommée au-dessus), en
+- [x] **E5.6 — `&`.** Faire bouger (écrit une ligne nommée au-dessus), en
   faire un argument, écouter seul, bifurquer, expliquer.
-- [ ] **E5.7 — L'explorateur sur un slot.** `gx` : les candidats se jouent
+- [x] **E5.7 — L'explorateur sur un slot.** `gx` : les candidats se jouent
   dans le pattern, à la place du son du slot. Cartes décrites en mots ;
   réglages derrière `g`.
+
+*(Fait le 2026-11-18. Écarts : sous le texte c'est la DOC — fiche,
+explication, graphe — et non l'onde ; la MODULATION d'un drone reste, en
+onglet, tant que « en direct » n'est pas un vrai jumeau à littéraux : E5.3
+redéfinit le son et relance le drone, une note tenue est donc recoupée ;
+l'onde d'un candidat reste une pane à part, `V` dans l'explorateur. E5.7 :
+`Entrée` adopte le candidat dans la ligne, sortir rend le son d'origine.)*
 
 Tests : chaque geste sur trois sons du corpus (chaîne simple, deux voix,
 réinjection) ; le texte reste valide et le son rendu change comme attendu.

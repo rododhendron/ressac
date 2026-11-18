@@ -21,7 +21,7 @@ ENV["RESSAC_CONFIG_DIR"] = joinpath(_TEST_SANDBOX, "config")
 cd(mkpath(joinpath(_TEST_SANDBOX, "project")))
 
 # Jamais de sclang dans la suite par défaut : tout rendu hors-ligne
-# (récolte NRT de l'explorateur, onde d'une pane, sculpt) échoue vite et
+# (récolte NRT de l'explorateur, onde d'une pane, mesure d'impact) échoue vite et
 # proprement. RESSAC_NRT_TESTS=1 pour les tests qui le veulent vraiment.
 Ressac._NRT_ALLOWED[] = get(ENV, "RESSAC_NRT_TESTS", "") == "1"
 

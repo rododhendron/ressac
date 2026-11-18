@@ -381,7 +381,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 ## SON
 
-### SON — depuis le texte, la DOC ou le studio
+### SON — depuis le texte ou sa DOC
 
 **Jouer / écouter**
 
@@ -406,7 +406,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `P` | élagage : mesurer l'impact de chaque nœud |
+| `P` | élagage : mesurer ce que chaque étape change (:prune retire le reste) |
 
 **Aide**
 
@@ -417,12 +417,6 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `Y` | le graphe du son (DOC) |
 
 ### Vue d'onde
-
-**Structure**
-
-| Touche | Action |
-|---|---|
-| `s` | sculpter |
 
 **Naviguer**
 
@@ -439,67 +433,17 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `- / o` | zoom − |
 | `0` | toute l'onde |
 
-### Sculpt (l'onde et ses knobs)
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / ↓` | knob suivant |
-| `k / ↑` | knob précédent |
-| `Tab` | nœud suivant |
-| `S-Tab` | précédent (groupe) |
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `l / →` | tirer + |
-| `h / ←` | tirer − |
-| `=` | saisir une valeur |
-
 **Jouer / écouter**
 
 | Touche | Action |
 |---|---|
-| `Enter` | jouer |
-
-**Structure**
-
-| Touche | Action |
-|---|---|
-| `o` | UGen suivant (même rôle) |
-| `O` | UGen précédent |
-| `n` | insérer un filtre après |
-| `d` | supprimer le nœud (bypass) |
-| `i` | recâbler l'entrée → |
-| `I` | recâbler l'entrée ← |
-| `r` | taux ar/kr suivant |
-| `R` | taux précédent |
-| `x` | dupliquer en parallèle |
-| `m` | greffer un LFO sur le slot |
+| `p` | jouer ce son |
 
 **Fichiers**
 
 | Touche | Action |
 |---|---|
-| `e` | exporter dans l'éditeur |
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `L` | défiler l'onde → |
-| `H` | défiler l'onde ← |
-| `0` | toute l'onde |
-| `s` | revenir à la vue d'onde |
-| `> / <` | défiler l'explication |
-
-**Sous-modes (touches une fois dedans)**
-
-| Touche | Action |
-|---|---|
-| `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
+| `e` | ouvrir ce son dans l'éditeur |
 
 ### Modulation (drones)
 
@@ -548,19 +492,12 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `h` | onglet précédent |
 | `l` | graphe : nœud suivant |
 | `h` | graphe : nœud précédent |
-| `Enter` | graphe : le knob de ce nœud dans le studio |
 | `j / ↓` | défiler |
 | `k / ↑` | remonter |
 | `PgDn / Ctrl-d` | descendre d'un écran |
 | `PgUp / Ctrl-u` | remonter d'un écran |
 | `g` | haut |
 | `G` | bas |
-
-**Structure**
-
-| Touche | Action |
-|---|---|
-| `d` | graphe : retirer le nœud (bypass) |
 
 **Vues**
 
@@ -812,6 +749,12 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `T / t` | entendre le candidat |
 | `D` | drone du candidat on/off |
 
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `Enter` | adopter ce candidat : le slot le joue, il est rangé |
+
 ### Explorateur de synths (GA)
 
 **Structure**
@@ -847,7 +790,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `M` | sculpter le candidat |
+| `M` | ouvrir le candidat à droite, avec son explication |
 | `e` | exporter dans l'éditeur… |
 | `w` | sauver comme synth… |
 | `s` | sauver comme graine… |
@@ -905,12 +848,6 @@ Lecture d'une carte :
 
 ### Vue d'onde
 
-**Structure**
-
-| Touche | Action |
-|---|---|
-| `s` | sculpter |
-
 **Naviguer**
 
 | Touche | Action |
@@ -926,67 +863,17 @@ Lecture d'une carte :
 | `- / o` | zoom − |
 | `0` | toute l'onde |
 
-### Sculpt (l'onde et ses knobs)
-
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `j / ↓` | knob suivant |
-| `k / ↑` | knob précédent |
-| `Tab` | nœud suivant |
-| `S-Tab` | précédent (groupe) |
-
-**Éditer**
-
-| Touche | Action |
-|---|---|
-| `l / →` | tirer + |
-| `h / ←` | tirer − |
-| `=` | saisir une valeur |
-
 **Jouer / écouter**
 
 | Touche | Action |
 |---|---|
-| `Enter` | jouer |
-
-**Structure**
-
-| Touche | Action |
-|---|---|
-| `o` | UGen suivant (même rôle) |
-| `O` | UGen précédent |
-| `n` | insérer un filtre après |
-| `d` | supprimer le nœud (bypass) |
-| `i` | recâbler l'entrée → |
-| `I` | recâbler l'entrée ← |
-| `r` | taux ar/kr suivant |
-| `R` | taux précédent |
-| `x` | dupliquer en parallèle |
-| `m` | greffer un LFO sur le slot |
+| `p` | jouer ce son |
 
 **Fichiers**
 
 | Touche | Action |
 |---|---|
-| `e` | exporter dans l'éditeur |
-
-**Vues**
-
-| Touche | Action |
-|---|---|
-| `L` | défiler l'onde → |
-| `H` | défiler l'onde ← |
-| `0` | toute l'onde |
-| `s` | revenir à la vue d'onde |
-| `> / <` | défiler l'explication |
-
-**Sous-modes (touches une fois dedans)**
-
-| Touche | Action |
-|---|---|
-| `Enter / Esc / Bksp` | saisie de valeur : valider / annuler / effacer |
+| `e` | ouvrir ce son dans l'éditeur |
 
 ## Partout
 

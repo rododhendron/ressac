@@ -16,7 +16,7 @@ Un seul écran. **Les patterns sont à gauche et y restent** ; à droite, un
 |---|---|---|
 | la fiche | par défaut, `:back` | la doc de ce qui est sous le curseur, et ce que fait la ligne `@dN` où il se trouve |
 | le wiki | `gw`, `:wiki` | cette documentation, à côté du travail |
-| un son | `gs` sur son nom, `:synth nom`, `:son` | le texte du synth ; dessous, sa DOC et son studio en onglets |
+| un son | `gs` sur son nom, `:synth nom`, `:son` | le texte du synth — c'est là qu'on le travaille ; dessous, sa DOC |
 | l'explorateur | `gx`, `:explorer` | l'explorateur génétique de sons, par-dessus |
 
 `:q` ferme le volet et rend le clavier aux patterns ; `:q` de nouveau
@@ -73,14 +73,14 @@ Le contexte est ce que porte la pane qui a le clavier :
 - **les patterns** (le texte, la fiche, le wiki, le journal) : `e` évalue
   la ligne, `E` tous les blocs, `m` coupe, `K` montre la fiche, `Espace`
   ouvre les snippets — d'où qu'on soit de ce côté-là ;
-- **un son** (son texte, sa DOC, son studio) : `T` l'entend, `D` le tient
+- **un son** (son texte, sa DOC) : `T` l'entend, `D` le tient
   en drone, `Espace` ouvre les maillons du DSL, `U` l'envoie dans un
   pattern, `P` mesure l'élagage, `K` `X` `Y` mettent la DOC sur la fiche,
   l'explication, le graphe ;
 - **l'explorateur** : `T` et `D` sur le candidat.
 
 Les commandes, elles, valent partout ; celles qui parlent d'un son
-(`:sculpt`, `:explain`, `:todsl`…) l'ouvrent d'abord à droite. `?` puis
+(`:explain`, `:prune`, `:todsl`…) l'ouvrent d'abord à droite. `?` puis
 `Tab` liste toutes les touches du contexte. `:reset` refait l'écran à neuf
 en gardant le texte des patterns.
 
@@ -141,4 +141,4 @@ insertion, après un Espace-leader, dans un modal…).
 - `15-maths` — les mathématiques de la musique : temps, hauteurs,
   rythmes euclidiens, hasard tenu, chaos, et des pistes à essayer
 - `16-explore` — l'explorateur génétique de synths, les rôles
-  d'usage, et le studio sculpt
+  d'usage, et comment garder ce qu'on a trouvé

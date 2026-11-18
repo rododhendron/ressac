@@ -782,7 +782,7 @@ end
         # l'explication concerne le sketch de DESIGN
         @test app.volet === :son
         parts = Ressac._synth_workspace_parts(app)
-        @test parts !== nothing && parts[3].mode === :explain
+        @test parts !== nothing && parts[2].mode === :explain
     end
 end
 
@@ -1401,108 +1401,51 @@ end
     end
 end
 
-@testset "sculpt et explorateur — points d'entrée" begin
-    @testset "sculpt entry points" begin
-        # test_pane_interface.jl vide _PANE_KINDS ; on (ré)enregistre les
-        # kinds dont on a besoin ici (ré-enregistrés plus loin par leurs tests).
-        Ressac.register_pane_kind!(:explorer, Ressac._synth_explorer_pane_ctor)
-        Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
+@testset "explorateur et onde — les ponts vers le texte du son" begin
+    # test_pane_interface.jl vide _PANE_KINDS ; on (ré)enregistre les kinds
+    # dont on a besoin ici.
+    Ressac.register_pane_kind!(:explorer, Ressac._synth_explorer_pane_ctor)
+    Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
 
-        @testset "explorer M posts a sculpt request" begin
-            Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
-            p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 5))
-            @test Ressac.handle_key!(p, Tachikoma.KeyEvent('M')) == true
-            @test Ressac._EXPLORER_SCULPT_REQUEST[] !== nothing
-            Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
-        end
+    @testset "M dans l'explorateur poste le candidat à ouvrir" begin
+        Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
+        p = Ressac._pane_new(:explorer, Dict{String,Any}("rng" => 5))
+        @test Ressac.handle_key!(p, Tachikoma.KeyEvent('M')) == true
+        @test Ressac._EXPLORER_SCULPT_REQUEST[] !== nothing
+        Ressac._EXPLORER_SCULPT_REQUEST[] = nothing
+    end
 
-        @testset ":sculpt <name> opens a zoomed sculpt pane (studio), Ctrl-w z unzooms" begin
-            dir = joinpath(pwd(), "plugins", "user-synths")
-            mkpath(dir)
-            path = joinpath(dir, "scutest.jl")
-            write(path, "@synth :scutest (freq=120, sustain=0.5) begin\n" *
-                        "  n1 = ugen(:Saw, :freq)\n" *
-                        "  ugen(:Limiter, ugen(:LeakDC, ugen(:Sanitize, " *
-                        "ugen(:RLPF, n1, 800, 0.3))), 0.95)\nend\n")
-            try
-                old = Ressac._WAVE_RENDER[]
-                Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100))
-                app, frame = _new_app()
-                try
-                    _exec_ex_command!(app, "sculpt scutest")   # dans DESIGN : le studio lié
-                    sp = Ressac._focused_sculpt_pane(app)
-                    @test sp isa Ressac.WaveformPane && sp.sculpt && sp.linked
-                    @test !isempty(sp.explain_lines)          # explication chargée
-                    @test (Tachikoma.view(app, frame); true)  # le studio se rend
-                    Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
-                    Tachikoma.update!(app, Tachikoma.KeyEvent('z'))
-                    Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))
-                    Ressac._PANE_MODE.active = false
-                    @test app.zoom_leaf != 0                  # z zoome le studio
-                    @test Ressac._focused_sculpt_pane(app) !== nothing
-                finally
-                    Ressac._WAVE_RENDER[] = old
-                end
-            finally
-                rm(path; force = true)
-            end
-        end
+    @testset ":sculpt n'existe plus ; le son se travaille dans son texte" begin
+        app, frame = _new_app()
+        _exec_ex_command!(app, "sculpt")
+        @test occursin("commande inconnue", app.logs[end])
+        @test !("sculpt" in Ressac._command_completion_candidates(app, ""))
+    end
 
-        @testset "keys reach the sculpt pane (registry :sculpt) when it is focused" begin
-            old = Ressac._WAVE_RENDER[]
-            Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
-            app, _ = _new_app()
-            try
-                Ressac.cmd_vsplit!(app.workspaces, "explorer", Dict{String,Any}("rng" => 2))
-                g = Ressac.archetype(:pluck)
-                Ressac._open_sculpt_pane!(app, Ressac.serialize_genome(g), "x")
-                sp = Ressac._focused_sculpt_pane(app)
-                @test sp !== nothing
-                f0 = sp.focus
-                Tachikoma.update!(app, Tachikoma.KeyEvent('j'))
-                @test sp.focus == f0 + 1
-            finally
-                Ressac._WAVE_RENDER[] = old
-            end
-        end
-
-        @testset "e in the sculpt pane exports to an editor in DESIGN (then :w saves)" begin
-            Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
-            old = Ressac._WAVE_RENDER[]
-            Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
+    @testset "e dans une onde ouvre son son dans l'éditeur ; :w le range" begin
+        old = Ressac._WAVE_RENDER[]
+        Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
+        Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
+        path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")
+        rm(path; force = true)
+        app, frame = _new_app()
+        try
+            g = Ressac.archetype(:pluck)
+            Ressac.cmd_split!(app.workspaces, "waveform",
+                              Dict{String,Any}("genome" => Ressac.serialize_genome(g), "label" => "mybass"))
+            @test Ressac._focused_pane_impl(app) isa Ressac.WaveformPane
+            @test (Tachikoma.view(app, frame); true)
+            Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
+            @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing        # export drainé
+            @test app.volet === :son
+            @test Ressac._focused_role(app) === :synth
+            @test occursin("@synth :mybass", Tachikoma.text(Ressac._active_editor(app)))
+            _exec_ex_command!(app, "w scusave")
+            @test isfile(path) && occursin("@synth :scusave", read(path, String))
+        finally
+            Ressac._WAVE_RENDER[] = old
             Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
-            app, _ = _new_app()
-            try
-                g = Ressac.archetype(:pluck)
-                Ressac._open_sculpt_pane!(app, Ressac.serialize_genome(g), "mybass")
-                Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
-                @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing # export drainé
-                    @test app.volet === :son
-                @test Ressac._focused_role(app) === :synth
-            finally
-                Ressac._WAVE_RENDER[] = old
-                Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
-            end
-        end
-
-        @testset ":w <name> in the sculpt pane saves the synth directly" begin
-            Ressac.register_pane_kind!(:waveform, Ressac._waveform_pane_ctor)
-            old = Ressac._WAVE_RENDER[]
-            Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
-            path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")
             rm(path; force = true)
-            app, _ = _new_app()
-            try
-                g = Ressac.archetype(:pluck)
-                Ressac._open_sculpt_pane!(app, Ressac.serialize_genome(g), "x")
-                _exec_ex_command!(app, "w scusave")
-                @test isfile(path)                       # fichier écrit
-                @test Ressac._focused_sculpt_pane(app) !== nothing   # on reste dans le studio
-                @test occursin("ressac-genome:", read(path, String))   # re-sculptable
-            finally
-                Ressac._WAVE_RENDER[] = old
-                rm(path; force = true)
-            end
         end
     end
 end
