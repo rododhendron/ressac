@@ -1279,8 +1279,8 @@ end
             "<pre>1\n2</pre><pre>SynthDef(\\uiitverb, { |out=0| Out.ar(out, SinOsc.ar(220)) }).add;</pre>"
         try
             _exec_ex_command!(app, "sc 1-4Qy")
-            path = joinpath(pwd(), "plugins", "user-synths", "uiitverb.scd")
-            @test isfile(path) && occursin("SynthDef(\\uiitverb", read(path, String))
+            path = joinpath(pwd(), "plugins", "user-synths", "uiitverb.jl")       # converti en DSL à l'arrivée
+            @test isfile(path) && occursin("@synth :uiitverb", read(path, String)) && occursin("sin_osc(220", read(path, String))
             @test Ressac.synth_info(:uiitverb) !== nothing
         finally
             delete!(_SCCODE_PAGES, "https://sccode.org/1-4Qy")

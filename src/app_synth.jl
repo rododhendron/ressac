@@ -86,27 +86,34 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
             return
         end
     end
-    # Mode detection: prefer existing `.jl` (DSL); fall back to `.scd`
-    # (raw SC); then a LIBRARY recipe (copied into user-synths, comme le
-    # fait :lib) ; otherwise a fresh DSL starter.
+    # Le texte : le `.jl` s'il existe ; sinon un `.scd` laissé là, converti en
+    # DSL à l'ouverture (tout son s'édite en DSL) ; sinon une recette de la
+    # librairie, copiée ; sinon le point de départ.
     dsl_path = _app_synth_path(name; mode = :dsl)
     sc_path  = _app_synth_path(name; mode = :sc)
     if !isfile(dsl_path) && !isfile(sc_path)
         entry = _synthlib_builtin_entry(name)
         entry === nothing || return _instantiate_synth_entry!(m, entry)
     end
-    src, mode = if isfile(dsl_path)
-        (read(dsl_path, String), :dsl)
+    origin = "ouvert"
+    src = if isfile(dsl_path)
+        read(dsl_path, String)
     elseif isfile(sc_path)
-        (read(sc_path, String), :sc)
+        (dsl, why) = as_dsl(read(sc_path, String))
+        if dsl === nothing
+            _push_app_log!(m, "[ERROR] « $name » est en SuperCollider et ne se convertit pas en entier : $why")
+            return
+        end
+        origin = "converti depuis $(name).scd (:w le range en .jl)"
+        "# converti depuis $(name).scd\n\n" * _align_dsl_synth_name(dsl, name)
     else
-        (_STARTER_DSL(name), :dsl)
+        _STARTER_DSL(name)
     end
     wsed = _synth_workspace_editor(m)
     if wsed !== nothing
-        # Workspace synth : un onglet de plus dans la pane texte, le
-        # studio et la doc suivent (synchronisation au rendu).
-        eb = EditorBuffer(; role = :synth, name = name, content = src, synth_mode = mode)
+        # Un onglet de plus dans le texte du volet ; la DOC et le studio
+        # suivent (synchronisation au rendu).
+        eb = EditorBuffer(; role = :synth, name = name, content = src)
         push!(wsed.tabs, eb)
         wsed.current_tab = length(wsed.tabs)
         _focus_pane!(m, wsed)
@@ -117,12 +124,11 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
         ))
         pane isa EditorPane || return
         eb = pane.tabs[1]
-        eb.synth_mode = mode
         _load_text!(eb.code_editor, src)
     end
     eb.code_editor.mode = :normal
     eb.code_editor.focused = true
-    _push_app_log!(m, "[INFO] synth « $name » ouvert [$mode] — T teste, :w sauve, U l'utilise dans un pattern")
+    _push_app_log!(m, "[INFO] synth « $name » $origin — T teste, :w sauve, U l'utilise dans un pattern")
 end
 
 
@@ -216,49 +222,40 @@ function _list_synth_tabs!(m::RessacApp)
     ws = current_workspace(m.workspaces)
     for (leaf, buf) in syn
         marker = (ws !== nothing && leaf.id == ws.focused_pane) ? "▶" : " "
-        _push_app_log!(m, "  $marker $(buf.name) [$(buf.synth_mode)]")
+        _push_app_log!(m, "  $marker $(buf.name)")
     end
 end
 
 """
     _save_current_synth!(m; new_name=nothing)
 
-Persist the synth source to `plugins/user-synths/<name>.scd`. If
-`new_name` is given, save under that name AND switch the editor to
-the new identity (rewriting the `SynthDef(\\old, ...)` declaration).
+Range le texte du son dans `plugins/user-synths/<nom>.jl`. Avec
+`new_name`, sous ce nom-là, et l'éditeur passe sur la nouvelle identité
+(le `@synth :ancien` est réécrit). Un texte resté en SuperCollider n'est
+pas rangé : `:todsl` d'abord.
 """
 function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractString}=nothing)
     _synth_pane_open(m) || (_push_app_log!(m, "[ERROR] :w — aucun synth ouvert"); return)
     tab = _current_synth_tab(m)
-    old_name = tab.name
     text = TK.text(tab.code_editor)
+    if _is_raw_synthdef(text)
+        _push_app_log!(m, "[ERROR] :w — ce texte est du SuperCollider ; :todsl le convertit, puis :w le range")
+        return
+    end
+    name = new_name === nothing ? tab.name : String(new_name)
     dir = joinpath(_project_dir(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
-    align = tab.synth_mode === :dsl ? _align_dsl_synth_name : _align_synthdef_name
-    if new_name === nothing
-        # Plain :w — overwrite the current tab's backing file at the
-        # extension that matches its mode (.jl for DSL, .scd for SC).
-        text = align(text, old_name)
-        _edit_text!(tab.code_editor, text)
-        write(_app_synth_path(old_name; mode = tab.synth_mode), text)
-        register_synth!(SynthEntry(Symbol(old_name), "user-synths",
-            Dict{String,Any}("description" => "live-edited synth",
-                             "tags" => ["user", String(tab.synth_mode)],
-                             "params" => _dsl_params_from_text(text))); update = true)
-        _push_app_log!(m, "[INFO] synth sauvé → $(_app_synth_path(old_name; mode = tab.synth_mode))")
-    else
-        # :w newname — Save-As. Same mode as the originating tab; the
-        # name token in the source gets rewritten to match.
-        name = String(new_name)
-        new_text = align(text, name)
-        write(_app_synth_path(name; mode = tab.synth_mode), new_text)
-        register_synth!(SynthEntry(Symbol(name), "user-synths",
-            Dict{String,Any}("description" => "live-edited synth",
-                             "tags" => ["user", String(tab.synth_mode)],
-                             "params" => _dsl_params_from_text(new_text))); update = true)
-        _push_app_log!(m, "[INFO] synth sauvé sous → $(_app_synth_path(name; mode = tab.synth_mode))")
-        _open_synth_tab!(m, name)
-    end
+    text = _align_dsl_synth_name(text, name)
+    new_name === nothing && _edit_text!(tab.code_editor, text)
+    path = _app_synth_path(name; mode = :dsl)
+    write(path, text)
+    register_synth!(SynthEntry(Symbol(name), "user-synths",
+        Dict{String,Any}("description" => "live-edited synth",
+                         "tags" => ["user", "dsl"],
+                         "params" => _dsl_params_from_text(text))); update = true)
+    _push_app_log!(m, "[INFO] synth sauvé → $path")
+    new_name === nothing || _open_synth_tab!(m, name)
+    return
 end
 
 """
@@ -312,36 +309,26 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
     end
     src = TK.text(tab.code_editor)
     extra = _audition_args(m, tab, src)
-    if tab.synth_mode === :dsl
-        # DSL mode: realign the @synth name to the tab name (same
-        # contract as SC mode's SynthDef name), then eval the buffer
-        # as Julia. The @synth macro inside calls play_synth which
-        # compiles to SC and ships to /ressac/evalAndPlay itself.
-        src = _align_dsl_synth_name(src, tab.name)
+    if _is_raw_synthdef(src)
+        _push_app_log!(m, "[INFO] ce texte est du SuperCollider — :todsl le convertit en DSL, puis T le joue")
+        return
+    end
+    # Le nom du @synth est celui de l'onglet ; le texte s'évalue dans
+    # SynthDSL (saw, sin_osc, rlpf… y sont des UGens, pas les signaux de
+    # patterns du même nom), en entier : un commentaire final ou une
+    # variable d'aide ne font pas échouer le test. Le @synth compile en SC
+    # et envoie lui-même à /ressac/evalAndPlay.
+    src = _align_dsl_synth_name(src, tab.name)
+    try
+        _AUDITION_ARGS[] = extra
         try
-            # Eval in the SynthDSL submodule so unqualified UGen names
-            # (saw, sin_osc, rlpf, …) resolve. Main only has the Pattern
-            # signal variants of the colliding names (saw, tri, square).
-            # _dsl_preprocess joins leading-`|>` continuation lines.
-            _AUDITION_ARGS[] = extra
-            try
-                # Tout le fichier, pas seulement la première expression :
-                # un commentaire final ou une variable d'aide ne doivent
-                # pas faire échouer le test du synth.
-                Core.eval(SynthDSL, SynthDSL._dsl_parse_all(src))
-            finally
-                _AUDITION_ARGS[] = Any[]
-            end
-            _push_app_log!(m, "[INFO] T — test de $(tab.name) (DSL → SC compilé)$(_audition_note_suffix(m, extra))")
-        catch err
-            _push_app_log!(m, "[ERROR] éval DSL : $(sprint(showerror, err))")
+            Core.eval(SynthDSL, SynthDSL._dsl_parse_all(src))
+        finally
+            _AUDITION_ARGS[] = Any[]
         end
-    else
-        # SuperCollider brut (.scd) : on envoie le buffer tel quel.
-        src = _align_synthdef_name(src, tab.name)
-        send_osc(sched.osc, encode(OSCMessage("/ressac/evalAndPlay",
-                                              Any[tab.name, src, extra...])))
-        _push_app_log!(m, "[INFO] T — test de $(tab.name) (SC brut)$(_audition_note_suffix(m, extra))")
+        _push_app_log!(m, "[INFO] T — test de $(tab.name)$(_audition_note_suffix(m, extra))")
+    catch err
+        _push_app_log!(m, "[ERROR] éval DSL : $(sprint(showerror, err))")
     end
 end
 
@@ -358,12 +345,7 @@ registre pour `pitch`.
 """
 function _synth_pitch_info(tab::EditorBuffer)
     src = TK.text(tab.code_editor)
-    params = if tab.synth_mode === :dsl
-        _dsl_params_from_text(src)
-    else
-        defs = _sc_params_from_text(src)
-        isempty(defs) ? Dict{String,Any}() : first(values(defs))
-    end
+    params = _dsl_params_from_text(src)
     entry = synth_info(Symbol(tab.name))
     explicit = entry === nothing ? nothing : get(entry.metadata, "pitch", nothing)
     pitch = explicit isa AbstractString && !isempty(explicit) ? Symbol(explicit) :
@@ -448,22 +430,6 @@ function _align_dsl_synth_name(src::AbstractString, target::AbstractString)
                    SubstitutionString("@synth :$(target)"); count = 1)
 end
 
-"""
-    _align_synthdef_name(src, target)
-
-Replace the FIRST `SynthDef(\\<anything>, …)` declaration in `src`
-so its name matches `target`. Returns the rewritten source. If no
-SynthDef declaration is found, `src` is returned unchanged — the
-user might be experimenting with a non-SynthDef snippet and we
-don't want to fight them.
-"""
-function _align_synthdef_name(src::AbstractString, target::AbstractString)
-    m = match(r"(SynthDef\s*\(\s*\\)(\w+)", src)
-    m === nothing && return src
-    current = m.captures[2]
-    current == target && return src
-    return replace(src, r"(SynthDef\s*\(\s*\\)(\w+)" => SubstitutionString("\\1$(target)"); count=1)
-end
 
 # ── Sub-project 9 — WorkspaceManager bootstrap ─────────────────────
 

@@ -13,7 +13,30 @@ function _fmt_const(v::Float64; inf::String = "inf")
     isnan(v) && return "0.0"
     isinf(v) && return v > 0 ? inf : "-" * inf
     (isinteger(v) && abs(v) < 1e15) && return string(Int(v)) * ".0"
-    return string(v)
+    return _fmt_short(v)
+end
+
+"""
+    _fmt_short(v) -> String
+
+Un nombre comme on l'écrit à la main : trois décimales au plus
+(`408.1107981565365` → `408.111`), en notation scientifique quand il est
+trop petit ou trop grand pour ça (`0.00507499` → `5.075e-3`). Au-delà, les
+décimales ne s'entendent pas et rendent le texte illisible.
+"""
+function _fmt_short(v::Float64)
+    a = abs(v)
+    dec(x) = isinteger(x) ? string(Int(x)) * ".0" : string(x)
+    if 1e-3 <= a < 1e6
+        r = round(v; digits = 3)
+        # Trois décimales, tant qu'elles disent encore le nombre (à 1 % près) :
+        # 0.008 reste 0.008, mais 0.0015 ne devient pas 0.002.
+        abs(r - v) <= 0.01 * a && return dec(r)
+    end
+    e = floor(Int, log10(a))
+    m = round(v / 10.0^e; digits = 3)
+    abs(m) >= 10 && (m /= 10; e += 1)
+    return dec(m) * "e" * string(e)
 end
 
 # Un nœud lu par plusieurs autres est écrit à chaque lecture — comme le DSL,
@@ -48,7 +71,6 @@ function _emit_special(g::Genome, n::UGenNode)
         return "($(A(1))).$(SynthDSL._UGEN_METHOD_FORMS[u])$rest"
     end
     haskey(SynthDSL._UGEN_ENV_FORMS, u) && return "Env.$(SynthDSL._UGEN_ENV_FORMS[u])($(all_args()))"
-    u === :Raw && return "Silent.ar"   # un bloc écrit à la main : pas re-rendable
     (u === :Silent && isempty(n.args)) && return "Silent.ar"   # ce que l'export en fait
     # Les nœuds de structure (voir genome.jl).
     u === :Chan && return "[$(all_args())]"
@@ -61,6 +83,13 @@ function _emit_special(g::Genome, n::UGenNode)
     _is_classcall_node(u) && return "$(u)($(all_args()))"
     return nothing
 end
+
+# L'EnvGen libère-t-il la note à sa fin (`doneAction` ≥ 2) ? Et n'a-t-il
+# que ses réglages par défaut (pas d'échelle de niveau ni de temps) ?
+_envgen_frees(eg::UGenNode) = length(eg.args) >= 6 && eg.args[6] isa ConstArg && eg.args[6].value >= 2
+_envgen_plain(eg::UGenNode) =
+    all(((i, d),) -> i > length(eg.args) || (eg.args[i] isa ConstArg && eg.args[i].value == d),
+        ((3, 1.0), (4, 0.0), (5, 1.0)))
 
 _has_feedback(g::Genome) = any(n.ugen === :FbIn for n in values(g.nodes))
 
@@ -83,7 +112,8 @@ function _node_is_audio(g::Genome, id::Int, seen::Set{Int} = Set{Int}())
     spec = ugen_spec(n.ugen)
     spec === nothing && return n.rate === :ar
     spec.role === :math && return any(a -> _is_audio_expr(g, a, seen), n.args)
-    return n.rate === :ar && (spec.role === :source || spec.role === :filter)
+    # Un délai, une réverbe, un panoramique laissent passer l'audio comme un filtre.
+    return n.rate === :ar && spec.role in (:source, :filter, :fx, :space)
 end
 
 _is_audio_expr(g::Genome, a::Arg, seen::Set{Int} = Set{Int}()) =
@@ -359,13 +389,29 @@ end
 _dsl_input_slot(n::UGenNode) = _bypass_input_slot(n)
 
 # Les arguments d'un wrapper à partir des indices, sans les valeurs par défaut de queue.
+# Les derniers arguments qui valent leur défaut ne s'écrivent pas :
+# `sin_osc(:freq)`, pas `sin_osc(:freq, 0.0)`. C'est aussi ce qui rend
+# l'aller-retour stable — le SC compilé les explicite, la relecture les
+# retrouve, l'écriture les retire.
+function _trim_defaults(n::UGenNode, idxs)
+    spec = ugen_spec(n.ugen)
+    keep = [i for i in idxs if i <= length(n.args)]
+    spec === nothing && return keep
+    while length(keep) > 1
+        i = keep[end]
+        a = n.args[i]
+        (i <= length(spec.slots) && a isa ConstArg && a.value == spec.slots[i].default) || break
+        pop!(keep)
+    end
+    return keep
+end
+
 _dsl_call_args(g, n, idxs, vars) = join((_dsl_arg(g, n.args[i], vars) for i in idxs if i <= length(n.args)), ", ")
 
 function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     A(i) = _dsl_arg(g, n.args[i], vars)
     u = n.ugen
     u === :FbIn && return "fb"
-    u === :Raw && return "ugen(:Silent)"
     u === :Chan && return _dsl_chan(g, n, vars)
     if u === :Klang
         k = _dsl_klang(g, n, vars)
@@ -390,6 +436,19 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
             eg = g.nodes[mul.id]
             env = !isempty(eg.args) && eg.args[1] isa NodeRef ? get(g.nodes, eg.args[1].id, nothing) : nothing
             gate_ok = length(eg.args) < 2 || (eg.args[2] isa ConstArg && eg.args[2].value == 1.0)
+            # `x * EnvGen(Env(niveaux, temps, courbe), doneAction: 2)` : une
+            # enveloppe libre qui libère la note, `x |> env_pairs(temps, niveaux)`.
+            # Sans `doneAction`, c'est une modulation d'amplitude : elle reste
+            # un EnvGen, pour que le son ne soit pas coupé à sa fin.
+            if env !== nothing && env.ugen === :Env && gate_ok && _envgen_frees(eg) && _envgen_plain(eg) &&
+               2 <= length(env.args) <= 3
+                curve = length(env.args) < 3 ? "" :
+                        (c = env.args[3]; c isa LitArg && startswith(c.code, "\\") ?
+                            (c.code == "\\lin" ? "" : "; curve = :$(c.code[2:end])") : "; curve = $(_dsl_arg(g, c, vars))")
+                piped = "$(A(1)) |> env_pairs($(_dsl_arg(g, env.args[2], vars)), $(_dsl_arg(g, env.args[1], vars))$curve)"
+                (n.args[3] isa ConstArg && n.args[3].value == 0.0) && return piped
+                return "($piped) + $(O(3))"
+            end
             if env !== nothing && haskey(_DSL_ENV_FNS, env.ugen) && gate_ok
                 fn = _DSL_ENV_FNS[env.ugen]
                 pos = env.ugen === :EnvPerc ? [1, 2] : env.ugen === :EnvLinen ? [1, 2, 3] :
@@ -458,7 +517,7 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
     if haskey(_DSL_SOURCES, u) && (n.rate === :ar || u in (:SinOscKR, :Line, :XLine)) &&
        length(n.args) <= length(_DSL_SOURCES[u][2])
         (fn, idxs) = _DSL_SOURCES[u]
-        return "$fn($(_dsl_call_args(g, n, idxs, vars)))"
+        return "$fn($(_dsl_call_args(g, n, _trim_defaults(n, idxs), vars)))"
     end
     # La tête d'un pipe : une somme ou un produit prend des parenthèses
     # (`(a + b) |> f`), une chaîne de pipes continue telle quelle.

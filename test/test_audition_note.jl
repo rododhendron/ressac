@@ -86,14 +86,12 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
                 # le DSL ajoute toujours freq / sustain : un @synth répond à n
                 Tachikoma.set_text!(tab.code_editor, "@synth :auditest (amp=0.5) white() |> env_perc(0.01, 0.1)")
                 @test Ressac._synth_title_suffix(tab) == "hauteur freq · durée sustain"
-                # un SynthDef SC sans paramètre de hauteur, lui, n'en a pas
-                tab.synth_mode = :sc
+                # un texte resté en SuperCollider ne part pas : T dit de le convertir
                 Tachikoma.set_text!(tab.code_editor, "SynthDef(\\auditest, { |out = 0, amp = 0.5| Out.ar(out, WhiteNoise.ar * amp) }).add;")
-                @test Ressac._synth_title_suffix(tab) == "sans hauteur"
                 empty!(mock.sent)
                 _ankey(app, 'T')
-                @test length(_anlast(mock).args) == 2
-                @test occursin("sans hauteur connue", app.logs[end])
+                @test isempty(mock.sent) && occursin(":todsl", app.logs[end])
+                Tachikoma.set_text!(tab.code_editor, "@synth :auditest (amp=0.5) white() |> env_perc(0.01, 0.1)")
 
                 # pitch déclaré dans le registre : midinote
                 delete!(Ressac._SYNTH_REGISTRY, :auditest)      # T l'a enregistré en user-dsl
@@ -104,17 +102,6 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
                 _ankey(app, 'T')
                 @test _anlast(mock).args[3:4] == ["midinote", 48.0f0]
                 delete!(Ressac._SYNTH_REGISTRY, :auditest)
-
-                # mode SC brut : arguments lus dans le SynthDef, paire ajoutée au message
-                tab.synth_mode = :sc
-                Tachikoma.set_text!(tab.code_editor,
-                    "SynthDef(\\auditest, { |out = 0, freq = 110, sustain = 0.2| Out.ar(out, SinOsc.ar(freq)) }).add;")
-                @test Ressac._synth_title_suffix(tab) == "hauteur freq · durée sustain"
-                _anex(app, "note a4")
-                empty!(mock.sent)
-                _ankey(app, 'T')
-                m2 = _anlast(mock)
-                @test m2.args[1] == "auditest" && m2.args[3] == "freq" && m2.args[4] == 220.0f0
             finally
                 Ressac._LIVE_SCHEDULER[] = old
             end

@@ -222,6 +222,12 @@ function _handle_synthdefs(plugin_dir, data, plugin_name)
             @error "plugin '$plugin_name' [synthdefs]: no such file '$path'"
             continue
         end
+        # Un `.scd` qui a son `.jl` à côté n'est plus qu'une archive : c'est
+        # le `.jl` qui fait foi, et il est chargé plus bas avec les autres.
+        if splitext(path)[2] == ".scd" && isfile(splitext(path)[1] * ".jl")
+            push!(loaded_abs, abspath(path))
+            continue
+        end
         _load_synth_file!(sched, plugin_name, path)
         push!(loaded_abs, abspath(path))
     end
@@ -245,6 +251,9 @@ function _handle_synthdefs(plugin_dir, data, plugin_name)
         ext in (".scd", ".jl") || continue
         path = abspath(joinpath(plugin_dir, f))
         path in loaded_abs && continue
+        # Le même son en `.scd` et en `.jl` : le `.jl` fait foi (c'est lui
+        # que l'éditeur écrit), le `.scd` n'est plus qu'une archive.
+        ext == ".scd" && isfile(splitext(path)[1] * ".jl") && continue
         _looks_like_synth_source(path) || continue
         push!(orphans, path)
     end

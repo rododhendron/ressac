@@ -244,7 +244,7 @@ function _todsl_command!(m::RessacApp)
     tab === nothing && (_push_app_log!(m, "[ERROR] :todsl — ouvre d'abord un synth (:synth <nom>)"); return)
     ed = tab.code_editor
     text = TK.text(ed)
-    if tab.synth_mode === :dsl && !occursin("SynthDef(", text)
+    if !_is_raw_synthdef(text)
         _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » est déjà en DSL")
         return
     end
@@ -256,7 +256,6 @@ function _todsl_command!(m::RessacApp)
     (_, dsl) = r
     header = "# converti depuis SuperCollider par :todsl — T teste, :w sauve en .jl, u annule\n\n"
     _edit_text!(ed, header * _align_dsl_synth_name(dsl, tab.name); row = 3, col = 0)
-    tab.synth_mode = :dsl
     _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » en DSL : le studio suit, T teste, :w sauve en .jl (u annule)")
     return
 end

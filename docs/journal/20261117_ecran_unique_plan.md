@@ -150,10 +150,15 @@ libre et dans un slot choisi.
 
 ## Étape 4 — Un seul langage, lisible
 
-- [ ] **E4.1 — Zéro SuperCollider brut** ⚑ E0.4. Les 18 `.scd` convertis ;
+- [x] **E4.1 — Zéro SuperCollider brut** ⚑ E0.4. *(Fait : l'éditeur ne
+  travaille plus qu'en DSL — un `.scd` s'ouvre converti, `:w` range en `.jl`,
+  sccode convertit à l'arrivée ou refuse. Les 18 `.scd` de `user-synths`
+  ont leur `.jl` à côté, non suivi par git ; les `.scd` restent comme
+  archives, ignorés par le chargeur. Supprimer les uns et suivre les autres
+  est une décision de dépôt laissée à Rodolphe.)* Les 18 `.scd` convertis ;
   l'import sccode convertit à l'arrivée ou refuse avec la raison ; `:sc`
   n'ouvre plus de `.scd`. Le chemin `.scd` de l'éditeur est supprimé.
-- [ ] **E4.2 — Les nombres.** Trois décimales, notation scientifique au
+- [x] **E4.2 — Les nombres.** Trois décimales, notation scientifique au
   besoin, par `sc_num` et un pendant côté DSL. À l'export de l'explorateur,
   à la conversion, et une passe sur les fichiers existants.
 - [ ] **E4.3 — Compter l'usage.** Chaque nom documenté d'un bloc évalué avec

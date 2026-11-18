@@ -66,7 +66,7 @@ function _synth_workspace_sync!(m::RessacApp)
 end
 
 function _text_to_studio!(studio::WaveformPane, sdoc, tab::EditorBuffer, text::AbstractString, h::UInt)
-    g = tab.synth_mode === :dsl ? _genome_from_any(text) : nothing
+    g = _genome_from_any(text)
     studio.label = tab.name
     studio.genome = g
     studio.sculpt = true
@@ -197,7 +197,7 @@ function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::A
     if wsed !== nothing
         i = findfirst(b -> b.role === :synth && b.name == name, wsed.tabs)
         if i === nothing
-            push!(wsed.tabs, EditorBuffer(; role = :synth, name = name, content = text, synth_mode = :dsl))
+            push!(wsed.tabs, EditorBuffer(; role = :synth, name = name, content = text))
             i = length(wsed.tabs)
         else
             _edit_text!(wsed.tabs[i].code_editor, text)
@@ -216,7 +216,6 @@ function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::A
     pane = _place_pane!(m, :editor, Dict{String,Any}("buffer_role" => "synth", "name" => name))
     if pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs)
         eb = pane.tabs[pane.current_tab]
-        eb.synth_mode = :dsl
         _edit_text!(eb.code_editor, text)
         eb.code_editor.mode = :normal
     end

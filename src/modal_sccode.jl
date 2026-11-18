@@ -57,8 +57,8 @@ end
 """
     _sccode_import!(m, id; title = "", then = nothing)
 
-Single source of truth for "fetch sccode/<id>, write a unique .scd
-under `plugins/user-synths/`, register it, open it in a tab". Used
+Single source of truth for "fetch sccode/<id>, convert its SynthDef to DSL,
+write a unique .jl under `plugins/user-synths/`, register it, open it". Used
 by `:sccode <id|url>`, by Enter on a row in the picker modal, and by
 `_direct_load_sccode!` for URL-paste flows.
 
@@ -75,27 +75,45 @@ function _sccode_import!(m::RessacApp, id::AbstractString; title::AbstractString
             _push_app_log!(m, "[ERROR] sccode fetch $(id): $(sprint(showerror, err))")
             return
         end
+        # Tout son s'édite en DSL : le SynthDef est converti à l'arrivée, ou
+        # refusé avec ce qui a manqué — jamais rangé à moitié lu.
+        if !_is_raw_synthdef(src)
+            _push_app_log!(m, "[ERROR] sccode/$(id) : pas de SynthDef dans ce code (un Pbind, un Ndef… ne s'importent pas)")
+            return
+        end
+        # Un nom de synth est un identifiant : un SynthDef nommé autrement
+        # prend un nom dérivé de l'id, avant la conversion.
         base = _sccode_extract_synthdef_name(src)
-        (base === nothing || !SynthDSL.valid_synth_name(base)) && (base = "sccode_" * replace(id, r"[^A-Za-z0-9_]" => "_"))
+        if base === nothing || !SynthDSL.valid_synth_name(base)
+            base = "sccode_" * replace(id, r"[^A-Za-z0-9_]" => "_")
+            src = replace(src, r"SynthDef\s*\(\s*\\\w+" => SubstitutionString("SynthDef(\\\\" * base); count = 1)
+        end
+        (dsl, why) = as_dsl(src)
+        if dsl === nothing
+            _push_app_log!(m, "[ERROR] sccode/$(id) ne se convertit pas en DSL : $why")
+            return
+        end
         dir = joinpath(_project_dir(), "plugins", "user-synths")
         isdir(dir) || mkpath(dir)
         final_name = base
-        target = joinpath(dir, "$(final_name).scd")
+        target = joinpath(dir, "$(final_name).jl")
         n = 1
         while isfile(target)
             n += 1
             final_name = "$(base)_$n"                  # un nom de synth reste un identifiant
-            target = joinpath(dir, "$(final_name).scd")
+            target = joinpath(dir, "$(final_name).jl")
         end
         header = isempty(title) ?
-            "// Imported from sccode.org/$(id)\n//\n" :
-            "// Imported from sccode.org/$(id) — \"$(title)\"\n//\n"
-        write(target, header * src)
+            "# importé de sccode.org/$(id), converti en DSL\n\n" :
+            "# importé de sccode.org/$(id) — « $(title) », converti en DSL\n\n"
+        text = header * _align_dsl_synth_name(dsl, final_name)
+        write(target, text)
         register_synth!(SynthEntry(Symbol(final_name), "user-synths",
-                                   Dict{String,Any}("description" => "imported from sccode",
-                                                    "tags" => ["sccode"])); update = true)
+                                   Dict{String,Any}("description" => "importé de sccode",
+                                                    "tags" => ["sccode"],
+                                                    "params" => _dsl_params_from_text(text))); update = true)
         _open_synth_tab!(m, final_name)
-        _push_app_log!(m, "[INFO] sccode/$(id) → plugins/user-synths/$(final_name).scd")
+        _push_app_log!(m, "[INFO] sccode/$(id) → plugins/user-synths/$(final_name).jl")
         then === nothing || then(final_name)
     end
     return

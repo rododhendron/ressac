@@ -102,10 +102,9 @@ function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0, pre_roll:
             # A side-effect of the wait: the WAV has a fade-in margin of
             # silence which is convenient for downstream editing.
             sleep(pre_roll)
-            # Le chemin de T, exactement : un synth DSL est évalué en Julia
-            # puis compilé en SC, un .scd part tel quel. (Envoyer le texte
-            # du buffer à sclang donnait une prise muette pour tout synth
-            # écrit en DSL.)
+            # Le chemin de T, exactement : le texte est évalué en Julia puis
+            # compilé en SC. (Envoyer le texte du buffer à sclang donnait
+            # une prise muette.)
             _test_current_synth!(m)
             sleep(duration)
             send_osc(sched.osc, encode(OSCMessage("/ressac/recStop", Any[])))

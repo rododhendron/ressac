@@ -22,7 +22,7 @@ authoring language (DSL Julia vs raw SuperCollider).
 function _snip_context(m::RessacApp)
     if _focused_role(m) === :synth
         tab = _current_synth_tab(m)
-        tab !== nothing && return tab.synth_mode === :dsl ? :synth_dsl : :synth_sc
+        tab !== nothing && return :synth_dsl
     end
     return :patterns
 end
@@ -178,8 +178,7 @@ end
 function _render_snippets_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     snips = _snippets_visible(m)
     ctx = _snip_context(m)
-    ctx_label = ctx === :synth_dsl ? "synth DSL (.jl)" :
-                ctx === :synth_sc  ? "synth SC (.scd)" : "patterns"
+    ctx_label = ctx === :synth_dsl ? "maillons de synth" : "patterns"
     inner = _render_modal_block!(buf, area;
         title = "RÉSERVE · $ctx_label",
         title_right = _modal_hint_text(m, :modal_snippets),

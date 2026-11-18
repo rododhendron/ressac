@@ -50,7 +50,6 @@ const _UGEN_DESC = Dict{Symbol,String}(
     :ClipNoise => "bruit binaire, dur et plein",
     :Dust2 => "impulsions aléatoires bipolaires, crépitement",
     :Klang => "banque de sinus fixes, timbre de cloche",
-    :Raw => "bloc SuperCollider écrit à la main (non analysé)",
     :Line => "rampe linéaire : la valeur glisse d'un point à l'autre",
     :XLine => "rampe exponentielle : glissement régulier à l'oreille",
     :Lag => "lissage : les changements arrivent en douceur",
@@ -539,6 +538,49 @@ function _unwrap_safety(g::Genome, id::Int)
         cur = nxt
     end
     return cur
+end
+
+# La chaîne `Limiter(LeakDC(Sanitize(y)), 0.95)` partant du nœud `id` : rend
+# (y, [les trois nœuds]) ou `nothing`.
+function _safety_chain(g::Genome, id::Int)
+    ids = Int[]
+    cur = id
+    for nm in (:Limiter, :LeakDC, :Sanitize)
+        n = get(g.nodes, cur, nothing)
+        (n !== nothing && n.ugen === nm && !isempty(n.args) && n.args[1] isa NodeRef) || return nothing
+        push!(ids, cur)
+        cur = n.args[1].id
+    end
+    return (cur, ids)
+end
+
+"""
+    _unwrap_inner_safety!(g, root) -> Nothing
+
+`safe()` s'écrit en fin de corps ; quand le son n'a pas d'enveloppe à lui,
+le compilateur ajoute la sienne et le gain PAR-DESSUS — la chaîne de
+sécurité se retrouve dessous, plus à la racine. On la retire là aussi,
+sinon chaque aller-retour texte → SC → texte en empilerait une de plus.
+"""
+function _unwrap_inner_safety!(g::Genome, root::Int)
+    parent = root
+    for _ in 1:8
+        n = get(g.nodes, parent, nothing)
+        (n !== nothing && n.ugen === :MulAdd && !isempty(n.args) && n.args[1] isa NodeRef) || return
+        child = n.args[1].id
+        chain = _safety_chain(g, child)
+        if chain !== nothing
+            (inner, ids) = chain
+            # Lue ailleurs aussi, elle n'est pas la nôtre : on n'y touche pas.
+            readers = count(m -> any(a -> a isa NodeRef && a.id == child, m.args), values(g.nodes))
+            readers == 1 || return
+            n.args[1] = NodeRef(inner)
+            foreach(i -> delete!(g.nodes, i), ids)
+            return
+        end
+        parent = child
+    end
+    return
 end
 
 function _apply_synth_params!(g::Genome, expr)

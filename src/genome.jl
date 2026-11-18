@@ -88,8 +88,8 @@ const UGEN_CATALOG = Dict{Symbol,UGenSpec}()
 register_ugen!(s::UGenSpec) = (UGEN_CATALOG[s.name] = s)
 ugen_spec(name::Symbol) = get(UGEN_CATALOG, name, nothing)
 # Dans le catalogue pour être sculptés et expliqués, mais pas tirés par
-# la mutation ni par `o` : un bloc opaque, des tables, des conversions.
-const _NOT_FOR_MUTATION = Set{Symbol}((:Raw, :Klang, :Div, :Midicps, :Cpsmidi, :K2A, :DC, :Abs, :Sqrt, :Pow,
+# la mutation ni par `o` : des tables, des conversions.
+const _NOT_FOR_MUTATION = Set{Symbol}((:Klang, :Div, :Midicps, :Cpsmidi, :K2A, :DC, :Abs, :Sqrt, :Pow,
                                        :EnvGen, :EnvPerc, :EnvLinen, :EnvAsr, :EnvAdsr))
 catalog_by_role(role::Symbol) =
     [s for s in values(UGEN_CATALOG) if s.role === role && !(s.name in _NOT_FOR_MUTATION)]
@@ -211,14 +211,17 @@ function _install_builtin_ugens!()
     register_ugen!(UGenSpec(:ClipNoise,  [:ar], SlotSpec[], :source))
     register_ugen!(UGenSpec(:Dust2,      [:ar], [sig(:density, 4, 0.1, 200)], :source))
     register_ugen!(UGenSpec(:Klang,      [:ar], [sca(:specs, 0, 0, 0), sca(:freqscale, 1, 0.1, 4), sca(:freqoffset, 0, 0, 1000)], :source))
-    register_ugen!(UGenSpec(:Raw,        [:ar], SlotSpec[], :source))        # bloc SC opaque `{ … }`
     # enveloppes, rampes, lissages
     register_ugen!(UGenSpec(:Line,     [:kr, :ar], [sca(:start, 0, -20000, 20000), sca(:end, 1, -20000, 20000), sig(:dur, 1, 0.001, 30)], :env))
     register_ugen!(UGenSpec(:XLine,    [:kr, :ar], [sca(:start, 1, 0.001, 20000), sca(:end, 2, 0.001, 20000), sig(:dur, 1, 0.001, 30)], :env))
     register_ugen!(UGenSpec(:Lag,      [:kr, :ar], [aud(:in), sca(:time, 0.1, 0, 5)], :env))
     register_ugen!(UGenSpec(:Lag2,     [:kr, :ar], [aud(:in), sca(:time, 0.1, 0, 5)], :env))
     register_ugen!(UGenSpec(:Lag3,     [:kr, :ar], [aud(:in), sca(:time, 0.1, 0, 5)], :env))
-    register_ugen!(UGenSpec(:EnvGen,   [:kr, :ar], [sig(:env, 0, 0, 0), sig(:gate, 1, 0, 1)], :env))
+    # Les places de SC, dans l'ordre : `doneAction` est la sixième, et c'est
+    # elle qui dit si l'enveloppe libère la note (2) ou non (0).
+    register_ugen!(UGenSpec(:EnvGen,   [:kr, :ar], [sig(:env, 0, 0, 0), sig(:gate, 1, 0, 1), sca(:levelScale, 1, 0, 4),
+                                                    sca(:levelBias, 0, -1, 1), sca(:timeScale, 1, 0.01, 10),
+                                                    sca(:doneAction, 0, 0, 14)], :env))
     register_ugen!(UGenSpec(:EnvPerc,  [:kr], [sca(:attack, 0.01, 0.0005, 5), sca(:release, 1, 0.005, 20), sca(:level, 1, 0, 2), sca(:curve, -4, -12, 12)], :env))
     register_ugen!(UGenSpec(:EnvLinen, [:kr], [sca(:attack, 0.01, 0.0005, 5), sca(:sustain, 1, 0.005, 30), sca(:release, 1, 0.005, 20), sca(:level, 1, 0, 2), sca(:curve, 0, -12, 12)], :env))
     register_ugen!(UGenSpec(:EnvAsr,   [:kr], [sca(:attack, 0.01, 0.0005, 5), sca(:level, 1, 0, 2), sca(:release, 1, 0.005, 20), sca(:curve, -4, -12, 12)], :env))

@@ -10,8 +10,8 @@ using Random
 # TK types directly.
 
 # Synths are no longer a separate side-panel structure — each open
-# synth is a workspace EditorPane with role=:synth and a synth_mode
-# (:dsl | :sc) on its EditorBuffer. See _all_synth_buffers /
+# synth is a workspace EditorPane with role=:synth on its EditorBuffer
+# (always DSL text — see `as_dsl`). See _all_synth_buffers /
 # _current_synth_tab in this file.
 
 """
@@ -341,7 +341,7 @@ end
 The `EditorBuffer` of the EditorPane currently focused in the active
 workspace, or `nothing` if the focused leaf isn't an editor pane.
 The single source of truth for "what is the user editing right now",
-including its role (`:patterns` / `:synth`), name and synth_mode.
+including its role (`:patterns` / `:synth`) and name.
 """
 function _focused_buffer(m::RessacApp)
     _ensure_default_workspace!(m)

@@ -11,18 +11,16 @@ mutable struct EditorBuffer
     code_editor::TK.CodeEditor
     role::Symbol            # :patterns | :synth
     name::String
-    synth_mode::Symbol      # :dsl | :sc  (only meaningful for :synth role)
 end
 
 function EditorBuffer(; role::Symbol = :patterns,
                        name::AbstractString = "main",
-                       content::AbstractString = "",
-                       synth_mode::Symbol = :dsl)
+                       content::AbstractString = "")
     ed = TK.CodeEditor(; text = String(content),
                          focused = false,
                          tick = 0,
                          mode = :normal)
-    return EditorBuffer(ed, role, String(name), synth_mode)
+    return EditorBuffer(ed, role, String(name))
 end
 
 mutable struct EditorPane <: PaneImpl
@@ -44,9 +42,7 @@ function _editor_pane_ctor(args::AbstractDict)
             role = String(get(t, "role", "patterns")) == "synth" ? :synth : :patterns
             name = String(get(t, "name", "main"))
             content = String(get(t, "content", ""))
-            smode = Symbol(String(get(t, "synth_mode", "dsl")))
-            buf = EditorBuffer(; role = role, name = name,
-                                content = content, synth_mode = smode)
+            buf = EditorBuffer(; role = role, name = name, content = content)
             buf.code_editor.cursor_row = Int(get(t, "cursor_row", 1))
             buf.code_editor.cursor_col = Int(get(t, "cursor_col", 0))
             buf.code_editor.scroll_offset = Int(get(t, "scroll_offset", 0))
@@ -142,7 +138,6 @@ function serialize(p::EditorPane)
             "role" => String(t.role),
             "name" => t.name,
             "content" => TK.text(t.code_editor),
-            "synth_mode" => String(t.synth_mode),
             "cursor_row" => t.code_editor.cursor_row,
             "cursor_col" => t.code_editor.cursor_col,
             "scroll_offset" => t.code_editor.scroll_offset,

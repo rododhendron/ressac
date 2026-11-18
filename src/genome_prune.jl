@@ -47,7 +47,7 @@ function static_prune_hints(g::Genome)
         elseif n.ugen === :MulAdd && length(n.args) == 3 && _const_val(n.args[2]) == 1.0 && _const_val(n.args[3]) == 0.0
             push!(out, (id = id, ugen = n.ugen, reason = "identité : × 1 + 0"))
         elseif n.ugen === :Mix && any(a -> _const_val(a) == 0.0 ||
-                                          (s = get(g.nodes, _ref_id(a), nothing); s !== nothing && s.ugen in (:Silent, :Raw)), n.args)
+                                          (s = get(g.nodes, _ref_id(a), nothing); s !== nothing && s.ugen === :Silent), n.args)
             push!(out, (id = id, ugen = n.ugen, reason = "additionne du silence"))
         end
     end

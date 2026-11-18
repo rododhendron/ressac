@@ -38,8 +38,8 @@ const _CTL = (:freq, :sustain, :gain, :release)
     g = Ressac.genome_from_sc("Pan2.ar([Saw.ar(freq), Pulse.ar(freq)], 0, 1)", _CTL); @test _out(g).args[1] isa Ressac.NodeRef && "Saw" in _names(g)
     g = Ressac.genome_from_sc("Env.linen(0.01, sustain, 0.1, 1, \\lin)", _CTL); @test _out(g).ugen === :EnvLinen
     g = Ressac.genome_from_sc("(Saw.ar(fb) + fb)", _CTL); @test count(==("FbIn"), _names(g)) == 1
-    # bloc opaque
-    g = Ressac.genome_from_sc("{ SinOsc.ar(freq) }.value", _CTL); @test _names(g) == ["Raw"]
+    # une fonction appelée : son corps, pas un bloc opaque
+    g = Ressac.genome_from_sc("{ SinOsc.ar(freq) }.value", _CTL); @test _names(g) == ["SinOsc"]
     # chaîne de sécurité retirée
     g = Ressac.genome_from_sc("Limiter.ar(LeakDC.ar(Sanitize.ar(Saw.ar(freq))), 0.95)", _CTL); @test _out(g).ugen === :Saw
     # pi vaut pi ; un identifiant inconnu n'est pas un 0 silencieux : rien n'est rendu
@@ -61,9 +61,9 @@ end
     # feedback avec les wrappers, pas seulement la forme exportée
     g = Ressac.genome_from_dsl("@synth :f (freq=200) feedback() do fb\n  saw(:freq) + fb * 0.3\nend")
     @test "FbIn" in _names(g) && _out(g).ugen === :Mix
-    # SC brut : un bloc opaque, que la sculpture refuse en amont
+    # SC brut dans un Sig : la fonction appelée se lit comme le reste
     g = Ressac.genome_from_dsl("@synth :raw (freq=220) SynthDSL.Sig(\"{ SinOsc.ar(freq) }.value\")")
-    @test g !== nothing && _names(g) == ["Raw"]
+    @test g !== nothing && _names(g) == ["SinOsc"]
     # ce qui ne s'évalue pas donne nothing, sans exception
     @test Ressac.genome_from_dsl("@synth :b (freq=220) pas_un_wrapper(:freq)") === nothing
     @test Ressac.genome_from_dsl("@synth :c (freq=220) 42") === nothing

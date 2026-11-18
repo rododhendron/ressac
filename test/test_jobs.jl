@@ -76,12 +76,20 @@ include(joinpath(@__DIR__, "helpers.jl"))
         app, frame = _new_app()
         Ressac._active_editor(app).mode = :normal
         with_clean_registries() do
+            # Pas de SynthDef : rien à importer, et c'est dit.
             _SCCODE_PAGES["https://sccode.org/1-zz9"] = "<pre>1</pre><pre>{ SinOsc.ar(220) }.play;</pre>"
+            n = length(app.logs)
+            Ressac._sccode_import!(app, "1-zz9")
+            @test any(l -> occursin("pas de SynthDef", l), app.logs[(n + 1):end])
+            @test !isdir(joinpath(pwd(), "plugins", "user-synths")) || isempty(filter(f -> startswith(f, "sccode_1_zz9"), readdir(joinpath(pwd(), "plugins", "user-synths"))))
+            # Un SynthDef dont le nom n'est pas un identifiant : nom dérivé de l'id.
+            empty!(Ressac._SCCODE_SOURCE_CACHE)
+            _SCCODE_PAGES["https://sccode.org/1-zz9"] = "<pre>1</pre><pre>SynthDef(\\9vies, { |out=0| Out.ar(out, SinOsc.ar(220)) }).add;</pre>"
             try
                 closed = Ref("")
                 Ressac._sccode_import!(app, "1-zz9"; then = name -> (closed[] = name))
-                @test closed[] == "sccode_1_zz9"                       # pas de SynthDef : nom dérivé de l'id, sans tiret
-                @test isfile(joinpath(pwd(), "plugins", "user-synths", "sccode_1_zz9.scd"))
+                @test closed[] == "sccode_1_zz9"                       # nom dérivé de l'id, sans tiret
+                @test isfile(joinpath(pwd(), "plugins", "user-synths", "sccode_1_zz9.jl"))
                 Ressac._sccode_import!(app, "1-zz9"; then = name -> (closed[] = name))
                 @test closed[] == "sccode_1_zz9_2" && Ressac.SynthDSL.valid_synth_name(closed[])
             finally

@@ -5,7 +5,7 @@
 # DAG d'UGens pour la sculpter et l'expliquer. Grammaire couverte : celle
 # que produisent les wrappers du DSL et `render_dsl` — appels
 # `Nom.ar(...)` / `Nom.kr(...)`, arithmétique, méthodes postfixes,
-# tableaux, références, arguments nommés, blocs `{ … }` opaques. Lecture
+# tableaux, références, arguments nommés, fonctions `{ … }` déroulées. Lecture
 # stricte : voir `ScParseError`.
 
 mutable struct _ScParser
@@ -122,7 +122,9 @@ function _sc_call_node(p::_ScParser, ugen::Symbol, rate::Symbol, pos::Vector{Arg
     spec = ugen_spec(ugen)
     named = Dict{Int,Arg}()                # place → valeur, dans n'importe quel ordre
     for (key, val) in kws
-        key === :doneAction && continue
+        # `doneAction:` est gardé là où il a une place (EnvGen : c'est lui qui
+        # dit si l'enveloppe libère la note) ; ailleurs il ne change pas le son.
+        key === :doneAction && (spec === nothing || !any(sl -> sl.name === :doneAction, spec.slots)) && continue
         key === :mul && (mul = val; continue)
         key === :add && (add = val; continue)
         idx = spec === nothing ? nothing : findfirst(sl -> sl.name === key, spec.slots)
@@ -179,7 +181,12 @@ function _sc_primary!(p::_ScParser)
         a = _sc_primary!(p)
         return NodeRef(add_node!(p.g, :Ref, :kr, Arg[a]))
     elseif c == '{'
-        # Bloc SC opaque : on saute jusqu'à l'accolade fermante.
+        # Une fonction SC, `{ |i| … }`. On la garde telle quelle, en texte :
+        # ce n'est pas un signal tant qu'on ne l'a pas appelée. Les formes
+        # qui l'appellent (`Array.fill(n, f)`, `f.dup(n)`, `f.value`) la
+        # déroulent ; laissée ailleurs, elle fait refuser l'expression
+        # (`_sc_no_stray_blocks`) — jamais un silence à la place.
+        j = p.i
         depth = 0; closed = false
         while p.i <= length(p.s)
             ch = p.s[p.i]; p.i += 1
@@ -187,7 +194,7 @@ function _sc_primary!(p::_ScParser)
             ch == '}' && (depth -= 1; depth == 0 && (closed = true; break))
         end
         closed || _sc_fail(p, "bloc { … } non fermé")
-        return NodeRef(add_node!(p.g, :Raw, :ar, Arg[]))
+        return LitArg(String(p.s[j:p.i-1]))
     elseif c == '\\'
         p.i += 1
         return LitArg("\\" * _sc_ident!(p))                         # symbole SC (\lin, \sin…)
@@ -236,12 +243,83 @@ function _sc_class!(p::_ScParser, name::String)
         name == "Mix" && isempty(kws) && length(pos) == 1 && return _sc_mixdown(p, pos[1])
         return _sc_call_node(p, _sc_ugen_name(name, rate), rate, pos, kws)
     end
+    # `Array.fill(n, { |i| … })` : la fonction déroulée n fois, i de 0 à n-1.
+    if name == "Array" && meth == "fill" && isempty(kws) && length(pos) == 2 && _sc_is_block(pos[2])
+        return _sc_fill(p, _sc_const(pos[1]), pos[2], "Array.fill")
+    end
     # Une méthode de classe. Les constructeurs d'enveloppe du catalogue ont
     # leur nom (EnvPerc…) ; les autres gardent le leur, `Env.triangle`.
     known = Symbol(name * uppercasefirst(meth))
     ugen_spec(known) !== nothing && return _sc_call_node(p, known, :kr, pos, kws)
     isempty(kws) || _sc_fail(p, "argument nommé dans $name.$meth(…) : place inconnue")
     return NodeRef(add_node!(p.g, Symbol(name, ".", meth), :kr, pos))
+end
+
+# ── Les fonctions `{ |i| … }` ────────────────────────────────────────
+
+_sc_is_block(a::Arg) = a isa LitArg && startswith(a.code, "{")
+
+# Une fonction restée dans le génome sans avoir été appelée, ou `nothing`.
+function _sc_stray_block(g::Genome)
+    for n in values(g.nodes), a in n.args
+        _sc_is_block(a) && return a.code
+    end
+    return nothing
+end
+
+"""
+    _sc_call_block(p, block, k) -> Arg
+
+Appelle la fonction `block` avec son premier paramètre valant `k` : son
+corps est relu comme une expression, dans le même génome. Les `var` et les
+affectations du corps sont résolues comme dans un SynthDef ; la valeur est
+celle de la dernière instruction.
+"""
+function _sc_call_block(p::_ScParser, block::LitArg, k::Integer)
+    body = strip(block.code)[2:end-1]
+    vars = Dict{String,String}()
+    mp = match(r"^\s*\|([^|]*)\|", body)
+    mp === nothing && (mp = match(r"^\s*arg\s+([^;]*);", body))
+    if mp !== nothing
+        names = [strip(first(split(x, '='))) for x in split(mp.captures[1], ',')]
+        isempty(names) || isempty(names[1]) || (vars[String(names[1])] = "($k)")
+        body = body[mp.offset + ncodeunits(mp.match):end]
+    end
+    result = nothing
+    for st in _sc_split_statements(body)
+        t = strip(st)
+        isempty(t) && continue
+        if startswith(t, "var ")
+            for decl in _sc_split_top(t[5:end], ',')
+                md = match(r"^\s*([A-Za-z_]\w*)\s*=\s*(.*)$"s, decl)
+                md === nothing && continue
+                vars[String(md.captures[1])] = "(" * _sc_inline_vars(strip(String(md.captures[2])), vars) * ")"
+            end
+            continue
+        end
+        me = match(r"^([A-Za-z_]\w*)\s*=(?!=)\s*(.*)$"s, t)
+        if me !== nothing
+            vars[String(me.captures[1])] = "(" * _sc_inline_vars(strip(String(me.captures[2])), vars) * ")"
+            result = vars[String(me.captures[1])]
+            continue
+        end
+        result = _sc_inline_vars(t, vars)
+    end
+    result === nothing && _sc_fail(p, "fonction { … } sans valeur")
+    q = _ScParser(collect(String(result)), 1, p.g, p.controls, p.fbid)
+    a = _sc_expr!(q)
+    _sc_skip_ws!(q)
+    q.i <= length(q.s) && _sc_fail(p, "fonction { … } : texte non lu « $(first(String(q.s[q.i:end]), 24)) »")
+    p.fbid = q.fbid
+    return a
+end
+
+# `n` appels de la fonction, en voies d'un tableau.
+function _sc_fill(p::_ScParser, n, block::LitArg, what::AbstractString)
+    (n === nothing || !isinteger(n) || !(1 <= n <= 64)) &&
+        _sc_fail(p, "$what : le nombre de voies doit être un entier de 1 à 64")
+    elems = Arg[_sc_call_block(p, block, k) for k in 0:(Int(n) - 1)]
+    return NodeRef(add_node!(p.g, :Chan, _sc_rate_of(p, elems), elems))
 end
 
 # `Mix.ar([a, b, c])` est la somme de ses voies : `a + b + c`, que le génome
@@ -291,7 +369,10 @@ function _sc_method(p::_ScParser, a::Arg, meth::String, args::Vector{Arg})
     elseif meth == "neg" && isempty(args)
         return _sc_negate(p, a)
     elseif meth == "value" && isempty(args)
-        return a                                                     # `{ … }.value` : le bloc opaque
+        return _sc_is_block(a) ? _sc_call_block(p, a, 0) : a         # `{ … }.value` : la fonction, appelée
+    elseif meth == "dup" && _sc_is_block(a)
+        n = isempty(args) ? 2.0 : _sc_const(args[1])
+        return _sc_fill(p, n, a, "dup")
     elseif meth == "range" && length(args) == 2
         return _sc_range(p, a, args[1], args[2])
     elseif haskey(_SC_METHOD_UGENS, meth)
@@ -427,7 +508,10 @@ function parse_sc_expr(code::AbstractString, controls; g::Genome = Genome())
         return (nothing, sprint(showerror, err))
     end
     root isa NodeRef || return (nothing, "l'expression est une constante ou un contrôle, pas un signal")
+    stray = _sc_stray_block(g)
+    stray === nothing || return (nothing, "fonction { … } hors de Array.fill, .dup ou .value : « $(first(stray, 32)) » — non lue")
     g.output_id = _unwrap_safety(g, root.id)
+    _unwrap_inner_safety!(g, g.output_id)
     _merge_identical_nodes!(g)
     _prune_unreachable!(g)
     return (g, "")
@@ -444,7 +528,7 @@ genome_from_sc(code::AbstractString, controls; g::Genome = Genome()) =
 # Les UGens dont deux instances ne donnent pas le même signal : jamais fusionnées.
 const _STOCHASTIC = Set{Symbol}((:WhiteNoise, :PinkNoise, :BrownNoise, :GrayNoise, :ClipNoise, :Dust, :Dust2,
     :LFNoise0, :LFNoise1, :LFNoise2, :Crackle, :Logistic, :LorenzL, :HenonL, :LatoocarfianL, :CuspL, :QuadL,
-    :GbmanL, :StandardL, :FBSineL, :Raw, :FbIn, :LFDNoise0, :LFDNoise1, :LFDNoise3, :LFClipNoise,
+    :GbmanL, :StandardL, :FBSineL, :FbIn, :LFDNoise0, :LFDNoise1, :LFDNoise3, :LFClipNoise,
     :Rand, :TRand, :ExpRand, :TExpRand, :IRand, :TIRand, :Dwhite, :Dbrown, :CoinGate))
 
 """

@@ -115,7 +115,7 @@ _ld_library_items() = Pair{String,String}[
 end
 
 if get(ENV, "RESSAC_USER_SYNTHS_TESTS", "") == "1"
-    dir = joinpath(pwd(), "plugins", "user-synths")
+    dir = joinpath(dirname(@__DIR__), "plugins", "user-synths")      # le dépôt, pas le bac à sable
     items = isdir(dir) ? Pair{String,String}[f => read(joinpath(dir, f), String)
                                            for f in sort(readdir(dir)) if endswith(f, ".jl")] :
                          Pair{String,String}[]

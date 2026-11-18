@@ -13,11 +13,9 @@ struct _SynthLibEntry
     name::String          # the SynthDef name (and filename stem)
     category::String
     description::String
-    source::String        # body to write — DSL Julia for :dsl mode, raw SC for :sc mode
-    mode::Symbol          # :dsl or :sc — picks the file extension on save
+    source::String        # le texte du son
+    mode::Symbol          # :dsl ; :sc pour un `.scd` laissé dans user-synths (converti à l'ouverture)
 end
-_SynthLibEntry(name, category, description, source) =
-    _SynthLibEntry(name, category, description, source, :sc)
 
 """
     _dsl_entry(name, category, description, dsl_text; params, auto_env, auto_gain)
@@ -64,28 +62,6 @@ function _format_params(params::NamedTuple)
 end
 
 const _SYNTH_LIBRARY = _SynthLibEntry[
-    # ═══════════════════════════════════════════════════════════════
-    # Raw SC reference — left in for users who want to see what an
-    # untransformed SuperCollider SynthDef looks like.
-    # ═══════════════════════════════════════════════════════════════
-    _SynthLibEntry(
-        "raw_sine", "reference",
-        "SuperCollider brut — un simple sinus + Env.linen, sans DSL.",
-        raw"""
-        // raw_sine.scd  —  reference SynthDef in hand-written SC
-        //
-        // Compare to the DSL versions in the rest of the library:
-        // the DSL collapses this into a single line.
-        SynthDef(\raw_sine, { |out, pan = 0, freq = 220, sustain = 0.5, gain = 0.5|
-            var sig, amp;
-            sig = SinOsc.ar(freq);
-            amp = EnvGen.kr(Env.linen(0.01, sustain, 0.1), doneAction: 2);
-            sig = sig * amp * gain;
-            OffsetOut.ar(out, DirtPan.ar(sig, ~dirt.numChannels, pan));
-        }).add;
-        """,
-    ),
-
     # ═══════════════════════════════════════════════════════════════
     # Percussion
     # ═══════════════════════════════════════════════════════════════

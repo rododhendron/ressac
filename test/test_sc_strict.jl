@@ -53,7 +53,7 @@ end
         @test _ss_sc(_ss("RLPF.ar(Saw.ar(freq), rq: 0.2)")) == "RLPF.ar(Saw.ar(freq), 1200.0, 0.2)"
         @test _ss("RLPF.ar(Saw.ar(freq), 800, freq: 900)") === nothing        # donné deux fois
         @test _ss_sc(_ss("(Saw.ar(freq) * EnvGen.kr(Env.perc(0.01, 0.4), doneAction: 2))")) ==
-              "((Saw.ar(freq) * EnvGen.kr(Env.perc(0.01, 0.4))) + 0.0)"
+              "((Saw.ar(freq) * EnvGen.kr(Env.perc(0.01, 0.4), 1.0, 1.0, 0.0, 1.0, 2.0)) + 0.0)"   # doneAction gardé
         # Un tableau garde toutes ses voies.
         g = _ss("Saw.ar([freq, freq * 1.01])")
         @test _ss_sc(g) == "Saw.ar([freq, ((freq * 1.01) + 0.0)])"
@@ -320,7 +320,7 @@ end
             _exec_ex_command!(app, "synth expdsl")
             Tachikoma.view(app, frame)
             tab = Ressac._current_synth_tab(app)
-            @test tab !== nothing && tab.synth_mode === :dsl
+            @test tab !== nothing
             Tachikoma.set_text!(tab.code_editor, "@synth :expdsl (freq=220, sustain=0.2) saw(:freq) |> low_pass(900)\n")
             empty!(app.scheduler.osc.sent)
             Ressac._export_current_synth!(app; duration = 0.02, pre_roll = 0.0)
@@ -363,13 +363,146 @@ end
             @test any(l -> occursin(":prune — le buffer ne se relit pas en entier", l) && occursin("« amp »", l), logs)
             @test Tachikoma.text(tab.code_editor) == rstrip(text, '\n') || Tachikoma.text(tab.code_editor) == text
             sc = "SynthDef(\\pourquoi, { |out=0, freq=440| Out.ar(out, Saw.ar(freq) * amp); })"
-            Tachikoma.set_text!(tab.code_editor, sc); tab.synth_mode = :sc
+            Tachikoma.set_text!(tab.code_editor, sc)
             logs = _cmd_logs(app, "todsl")
             @test any(l -> occursin(":todsl — « pourquoi » n'est pas converti", l) && occursin("« amp »", l), logs)
-            @test Tachikoma.text(tab.code_editor) == sc && tab.synth_mode === :sc
+            @test Tachikoma.text(tab.code_editor) == sc
         finally
             Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
         end
     end
 
+end
+
+# ── Ce que la conversion des .scd perdait (mesures E0.4) ─────────────
+
+@testset "conversion SC → DSL — fonctions, enveloppes, délais" begin
+    ctl = Set([:freq, :sustain, :gain, :sweep])
+    names(g) = sort!([String(n.ugen) for n in values(g.nodes)])
+
+    @testset "Array.fill(n, { |i| … }) est déroulé, pas remplacé par du silence" begin
+        (g, why) = Ressac.parse_sc_expr("Mix.ar(Array.fill(3, { |i| Saw.ar(freq * (1 + (i * 0.01))) })) * 0.2", ctl)
+        @test g !== nothing && count(==("Saw"), names(g)) == 3 && !("Silent" in names(g))
+        dsl = Ressac.render_dsl(g, :x)
+        @test occursin("saw(:freq)", dsl) && occursin("saw(:freq * 1.01)", dsl) && occursin("saw(:freq * 1.02)", dsl)
+        # .dup(n) et .value de même ; les `var` du corps sont résolus.
+        (g, _) = Ressac.parse_sc_expr("{ var f = freq * 2; SinOsc.ar(f) }.dup(2)", ctl)
+        @test g !== nothing && count(==("SinOsc"), names(g)) >= 1
+        (g, _) = Ressac.parse_sc_expr("{ WhiteNoise.ar }.value * 0.1", ctl)
+        @test g !== nothing && "WhiteNoise" in names(g)
+    end
+
+    @testset "une fonction qu'on ne sait pas appeler fait refuser, avec la raison" begin
+        (g, why) = Ressac.parse_sc_expr("SinOsc.ar(freq).collect({ |x| x * 2 })", ctl)
+        @test g === nothing
+        (g, why) = Ressac.parse_sc_expr("Saw.ar(freq) * { LFNoise1.kr(1) }", ctl)
+        @test g === nothing && occursin("fonction { … }", why)
+        (g, why) = Ressac.parse_sc_expr("Array.fill(freq, { Saw.ar(100) })", ctl)
+        @test g === nothing && occursin("nombre de voies", why)
+    end
+
+    @testset "doneAction: 2 sur une enveloppe libre : elle libère la note, une seule fois" begin
+        src = "Saw.ar(freq) * EnvGen.kr(Env([0, 1, 0], [0.1, sustain], \\sin), doneAction: 2)"
+        (g, _) = Ressac.parse_sc_expr(src, ctl)
+        dsl = Ressac.render_dsl(g, :x)
+        @test occursin("env_pairs(", dsl) && occursin("curve = :sin", dsl)
+        @test !occursin("env_linen", dsl)                          # pas de seconde enveloppe par-dessus
+        sc = Core.eval(Ressac.SynthDSL, Ressac.SynthDSL._dsl_parse_all(dsl))
+        @test count("doneAction: 2", sc) == 1
+        # Sans doneAction, c'est une modulation : elle reste un EnvGen et ne coupe rien.
+        (g, _) = Ressac.parse_sc_expr("RLPF.ar(Saw.ar(freq), EnvGen.kr(Env([400, 4000, 400], [1, 1])), 0.4)", ctl)
+        @test !occursin("env_pairs", Ressac.render_dsl(g, :x))
+    end
+
+    @testset "un délai laisse passer l'audio : pas de DC devant le filtre qui suit" begin
+        (g, _) = Ressac.parse_sc_expr("LPF.ar(CombL.ar(WhiteNoise.ar, 0.05, 1 / freq, sustain), 2000)", ctl)
+        dsl = Ressac.render_dsl(g, :x)
+        @test !occursin(":DC", dsl) && occursin("comb_l(", dsl) && occursin("low_pass(", dsl)
+    end
+
+    @testset "sin_osc(:freq), pas sin_osc(:freq, 0.0) — et l'aller-retour est stable" begin
+        (g, _) = Ressac.parse_sc_expr("SinOsc.ar(freq, 0) * 0.3", ctl)
+        dsl = Ressac.render_dsl(g, :x)
+        @test occursin("sin_osc(:freq)", dsl)
+        # Le SC compilé explicite la phase ; relu puis réécrit, le DSL ne bouge plus.
+        compile(t) = Core.eval(Ressac.SynthDSL, Ressac.SynthDSL._dsl_parse_all(t))
+        (once, _) = Ressac.synthdef_to_dsl_reason(compile(dsl))
+        (twice, _) = Ressac.synthdef_to_dsl_reason(compile(once[2]))
+        @test occursin("sin_osc(:freq)", once[2]) && once[2] == twice[2]
+    end
+end
+
+@testset "tout son s'édite en DSL" begin
+    sc = "SynthDef(\\vieux, { |out, freq = 220, sustain = 0.5, gain = 0.5|\n" *
+         "    var sig = Saw.ar(freq) * EnvGen.kr(Env.perc(0.01, sustain), doneAction: 2);\n" *
+         "    OffsetOut.ar(out, sig * gain);\n}).add;\n"
+
+    @testset "as_dsl : un @synth passe, un SynthDef est converti, l'illisible est refusé" begin
+        @test Ressac.as_dsl("@synth :a (freq=220) saw(:freq)") == ("@synth :a (freq=220) saw(:freq)", "")
+        (dsl, why) = Ressac.as_dsl(sc)
+        @test dsl !== nothing && occursin("@synth :vieux", dsl) && occursin("env_perc(", dsl)
+        (dsl, why) = Ressac.as_dsl(replace(sc, "Saw.ar(freq)" => "Saw.ar(inconnu)"))
+        @test dsl === nothing && occursin("inconnu", why)
+        @test Ressac._is_raw_synthdef("// rien\nSynthDef(\\a, {})")
+        @test !Ressac._is_raw_synthdef("// SynthDef(\\a, …) en commentaire SC")
+    end
+
+    @testset "un .scd laissé dans user-synths s'ouvre converti, :w le range en .jl" begin
+        app, frame = _new_app()
+        Ressac._active_editor(app).mode = :normal
+        dir = joinpath(pwd(), "plugins", "user-synths"); mkpath(dir)
+        write(joinpath(dir, "vieux.scd"), sc)
+        _exec_ex_command!(app, "synth vieux")
+        tab = Ressac._current_synth_tab(app)
+        text = Tachikoma.text(tab.code_editor)
+        @test tab.name == "vieux" && occursin("@synth :vieux", text) && !occursin("SynthDef(", text)
+        _exec_ex_command!(app, "w")
+        @test isfile(joinpath(dir, "vieux.jl")) && isfile(joinpath(dir, "vieux.scd"))   # l'archive n'est pas touchée
+        # La librairie ne liste plus que le .jl.
+        @test count(e -> e.name == "vieux", Ressac._synthlib_all_entries()) == 1
+        @test only(e for e in Ressac._synthlib_all_entries() if e.name == "vieux").mode === :dsl
+        # Un .scd illisible : on le dit, rien ne s'ouvre à moitié.
+        write(joinpath(dir, "casse.scd"), replace(sc, "vieux" => "casse", "Saw.ar(freq)" => "Saw.ar(inconnu)"))
+        logs = _cmd_logs(app, "synth casse")
+        @test any(l -> occursin("ne se convertit pas en entier", l) && occursin("inconnu", l), logs)
+        @test Ressac._current_synth_tab(app).name == "vieux"
+    end
+
+    @testset "du SuperCollider collé dans l'éditeur : T et :w renvoient à :todsl" begin
+        _with_live_app() do app, frame
+            Ressac._active_editor(app).mode = :normal
+            _exec_ex_command!(app, "synth colle")
+            tab = Ressac._current_synth_tab(app)
+            Tachikoma.set_text!(tab.code_editor, replace(sc, "vieux" => "colle"))
+            empty!(app.scheduler.osc.sent)
+            _key!(app, 'T')
+            @test isempty(app.scheduler.osc.sent) && occursin(":todsl", app.logs[end])
+            @test any(l -> occursin(":todsl", l), _cmd_logs(app, "w"))
+            @test !isfile(joinpath(pwd(), "plugins", "user-synths", "colle.jl"))
+            _exec_ex_command!(app, "todsl")
+            @test occursin("@synth :colle", Tachikoma.text(tab.code_editor))
+            _exec_ex_command!(app, "w")
+            @test isfile(joinpath(pwd(), "plugins", "user-synths", "colle.jl"))
+        end
+    end
+end
+
+@testset "les nombres exportés : trois décimales, notation scientifique au besoin" begin
+    f = Ressac._fmt_const
+    @test f(408.1107981565365) == "408.111"
+    @test f(220.0) == "220.0" && f(0.5) == "0.5" && f(0.18) == "0.18"
+    @test f(0.008) == "0.008"                          # trois décimales suffisent à le dire
+    @test f(0.00507499) == "5.075e-3"                  # sinon la notation scientifique
+    @test f(0.0015) == "1.5e-3"                        # jamais arrondi à 0.002
+    @test f(-0.0004321) == "-4.321e-4"
+    @test f(1.0e-5) == "1.0e-5"
+    @test f(Inf) == "inf" && f(NaN) == "0.0"
+    # Ce qui est écrit se relit au même nombre, à 1 % près.
+    for v in (408.1107981565365, 0.00507499, 0.0015, 7.778780781446e-3, 123456.789, -0.0004321)
+        @test isapprox(parse(Float64, f(v)), v; rtol = 0.01)
+    end
+    # Un export de l'explorateur n'a plus de queue de décimales.
+    (g, _) = Ressac.parse_sc_expr("RLPF.ar(Saw.ar(freq), 200.0000000000007, 0.175000000000002)", Set([:freq]))
+    dsl = Ressac.render_dsl(g, :x)
+    @test occursin("rlpf(200.0, 0.175)", dsl)
 end

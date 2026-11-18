@@ -45,8 +45,8 @@ function _drone_launch!(m::RessacApp, tab::EditorBuffer)
         _push_app_log!(m, "[ERROR] drone : pas de serveur SuperCollider")
         return
     end
-    if tab.synth_mode !== :dsl
-        _push_app_log!(m, "[INFO] le drone demande un synth DSL (@synth) — un SynthDef brut se teste avec T")
+    if _is_raw_synthdef(TK.text(tab.code_editor))
+        _push_app_log!(m, "[INFO] ce texte est du SuperCollider — :todsl le convertit, puis D le tient")
         return
     end
     src = _align_dsl_synth_name(TK.text(tab.code_editor), tab.name)

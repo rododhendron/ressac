@@ -161,3 +161,23 @@ function _sc_inline_vars(e::AbstractString, vars::Dict{String,String})
     isempty(vars) && return String(e)
     return replace(String(e), r"(?<![\w.])([A-Za-z_]\w*)(?![\w(])" => (w -> get(vars, w, w)))
 end
+
+# ── Tout son s'édite en DSL ──────────────────────────────────────────
+
+# Le texte est-il un SynthDef SuperCollider (et pas du DSL) ?
+_is_raw_synthdef(src::AbstractString) = occursin(r"^(?:(?!//).)*SynthDef\s*\("m, src)
+
+"""
+    as_dsl(src) -> (texte | nothing, raison)
+
+Le texte d'un son, en DSL. Un `@synth` passe tel quel ; un SynthDef
+SuperCollider est converti. Quand il ne se convertit pas en entier, on ne
+rend rien et `raison` dit ce qui a manqué — l'éditeur ne montre jamais un
+son amputé.
+"""
+function as_dsl(src::AbstractString)
+    _is_raw_synthdef(src) || return (String(src), "")
+    (r, why) = synthdef_to_dsl_reason(src)
+    r === nothing && return (nothing, why)
+    return (r[2], "")
+end

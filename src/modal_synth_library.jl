@@ -44,6 +44,9 @@ function _synthlib_all_entries()
         name, ext = splitext(f)
         mode = ext == ".jl"  ? :dsl :
                ext == ".scd" ? :sc  : continue
+        # Un `.scd` qui a son `.jl` n'est plus qu'une archive : c'est le
+        # `.jl` qu'on liste. Seul, il s'ouvrira converti.
+        mode === :sc && isfile(joinpath(dir, String(name) * ".jl")) && continue
         # Don't double-list a user file that shadows a built-in name —
         # the user's edits are what they want to revisit.
         existing = findfirst(e -> e.name == String(name), entries)
@@ -149,7 +152,7 @@ function _instantiate_synth_entry!(m::RessacApp, entry::_SynthLibEntry)
     end
     path, final_name = _write_library_synth(entry)
     _open_synth_tab!(m, final_name)
-    _push_app_log!(m, "[INFO] librairie : $final_name créé depuis « $(entry.name) » [$( entry.mode )]")
+    _push_app_log!(m, "[INFO] librairie : $final_name créé depuis « $(entry.name) »")
 end
 
 """
@@ -162,7 +165,7 @@ function _write_library_synth(entry::_SynthLibEntry)
     name = entry.name
     dir = joinpath(_project_dir(), "plugins", "user-synths")
     isdir(dir) || mkpath(dir)
-    ext = entry.mode === :dsl ? ".jl" : ".scd"
+    ext = ".jl"
     target = joinpath(dir, "$name$ext")
     n = 1
     while isfile(target)

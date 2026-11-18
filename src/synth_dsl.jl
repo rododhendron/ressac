@@ -161,7 +161,6 @@ function ugen(name::Symbol, args...; rate::Symbol = :ar)
     end
     haskey(_UGEN_ENV_FORMS, name) && return Sig(string("Env.", _UGEN_ENV_FORMS[name], "(", join(sc_arg.(args), ", "), ")"))
     name === :Div && length(args) == 2 && return Sig(string("(", sc_arg(args[1]), " / ", sc_arg(args[2]), ")"))
-    name === :Raw && return Sig("Silent.ar")
     # Les formes de structure du génome (voir genome.jl) : un tableau, une
     # référence, une méthode ou une méthode de classe sans wrapper, un
     # opérateur binaire. Ce qu'un export écrit pour ce qu'il ne sait pas
@@ -529,7 +528,7 @@ env_sine(s::SigLike, dur=1, level=1) =
 env_dadsr(s::SigLike, delay, attack, decay, sustain_level, release; gate=:gate, peak=1, curve=-4) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env.dadsr($(sc_arg(delay)), $(sc_arg(attack)), $(sc_arg(decay)), $(sc_arg(sustain_level)), $(sc_arg(release)), $(sc_arg(peak)), $(sc_arg(curve))), $(sc_arg(gate)), doneAction: 2))")
 
-env_pairs(s::SigLike, times::AbstractVector, levels::AbstractVector; curve=:lin) =
+env_pairs(s::SigLike, times, levels; curve=:lin) =
     Sig("($(sc_arg(s)) * EnvGen.kr(Env($(sc_arg(levels)), $(sc_arg(times)), $(sc_sym(curve))), doneAction: 2))")
 
 """

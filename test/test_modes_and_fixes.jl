@@ -246,10 +246,9 @@ end
         _mfex(app, "son")
         (ep, studio, _) = Ressac._synth_workspace_parts(app)
         tab = ep.tabs[1]
-        tab.name = "rezzbass"; tab.synth_mode = :sc
+        tab.name = "rezzbass"
         Tachikoma.set_text!(tab.code_editor, src); tab.code_editor.mode = :normal
         _mfex(app, "todsl")
-        @test tab.synth_mode === :dsl
         @test occursin("@synth :rezzbass", Tachikoma.text(tab.code_editor))
         _mfscreen(app, tb, frame)
         @test studio.genome !== nothing                          # le studio suit

@@ -34,7 +34,6 @@ function _build_volet(m::RessacApp, kind::Symbol)
     elseif kind === :son
         ep = _pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "sketch"))
         eb = ep.tabs[1]
-        eb.synth_mode = :dsl
         _load_text!(eb.code_editor, _STARTER_DSL("sketch"))
         eb.code_editor.mode = :normal
         text = _new_leaf!(wm, ep)
