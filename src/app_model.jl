@@ -191,6 +191,9 @@ non-empty), and the focus toggle for keystroke routing.
     # `f` / `F` / `t` / `T` en attente du caractère à chercher sur la ligne,
     # et le dernier couple (motion, caractère) pour `;` et `,`.
     pending_find::Union{Nothing,Char} = nothing
+    # `gc` attend son mouvement (editor_comment.jl) : "" après `gc`, "a" / "i"
+    # quand un objet texte suit.
+    pending_gc::Union{Nothing,String} = nothing
     last_find::Union{Nothing,Tuple{Char,Char}} = nothing
     logs::Vector{String}         = String[]
     quit::Bool                   = false

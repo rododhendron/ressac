@@ -489,6 +489,12 @@ function _dsl_node_expr(g::Genome, n::UGenNode, vars::Dict{Int,String})
         m = _fmt_const(n.args[2] isa ConstArg ? n.args[2].value : 1.0)
         add = length(n.args) >= 3 && n.args[3] isa ConstArg && n.args[3].value == 0.0 ? "" : " + $(O(3))"
         mulstr = n.args[2] isa ConstArg ? m : O(2)
+        # Une chaîne de pipes qu'on multiplie reste une chaîne : `… |> amp(k)`,
+        # un maillon comme les autres, plutôt que `(…) * k` qui l'enferme
+        # dans une parenthèse.
+        if isempty(add) && occursin(" |> ", A(1))
+            return "$(A(1)) |> amp($(n.args[2] isa ConstArg ? m : A(2)))"
+        end
         return "$(O(1)) * $mulstr$add"
     end
     # `((x) * k).tanh` : `x |> tanh_drive(k)`.

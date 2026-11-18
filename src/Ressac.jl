@@ -128,10 +128,13 @@ include("editor_autocomplete.jl")# Tab : identifiants, ghost, commandes ex
 include("editor_vim_ops.jl")     # opérations texte pures (mots, lignes)
 include("app_tap_piano.jl")      # tap / piano / bpm
 include("app_volet.jl")          # l'écran unique : patterns à gauche, volet à droite
+include("usage.jl")              # ce qui a été joué : classement, voisines, « pas encore essayé »
 include("app_sessions.jl")       # sessions : :w :e :enew, état d'un lancement à l'autre
 include("app_slots.jl")          # l'état des lignes lu sur l'app (scheduler, erreurs, densité)
 include("slot_marks.jl")         # marge en signes, ligne éclairée, piste d'un cycle au bout de la ligne
-include("app_patterns.jl")       # mute/solo, preview, eval @dN + cascade
+include("app_patterns.jl")
+include("synth_format.jl")       # mise en forme d'un texte de son : pipes en tête, nombres courts
+include("editor_comment.jl")     # gcc / gc + mouvement, :format       # mute/solo, preview, eval @dN + cascade
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
 include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION

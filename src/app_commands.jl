@@ -148,6 +148,7 @@ _register_literal!(m -> _session_new!(m),               "enew")
 _register_literal!(m -> _session_new!(m; force = true), "enew!")
 _register_literal!(m -> _open_sessions_modal!(m), "sessions", "ls")
 _register_literal!(m -> _open_reserve!(m), "réserve", "reserve")
+_register_literal!(m -> _format_current_synth!(m), "format", "fmt")
 
 # ── Workspaces et panes ──────────────────
 _register_regex!(r"^workspace\s+new(?:\s+(\S+))?$",

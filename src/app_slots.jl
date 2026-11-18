@@ -94,6 +94,7 @@ end
 function _slot_evaluated!(m::RessacApp, slot::Symbol, src::AbstractString)
     m.slot_evaluated[slot] = String(src)
     delete!(m.slot_errors, slot)
+    _note_played!(src)
     return nothing
 end
 

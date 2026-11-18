@@ -391,7 +391,8 @@ function _compute_ghost!(m::RessacApp)
     end
     # Rank by usage count desc, then by length, then alpha.
     kind_key = String(kind)
-    sort!(matching, by = c -> (-_ghost_count(kind_key, c), length(c), c))
+    # (ce qu'on a accepté en complétion, plus ce qu'on a réellement joué)
+    sort!(matching, by = c -> (-(_ghost_count(kind_key, c) + _played_count(c)), length(c), c))
     suggestion = matching[1]
     completion = suggestion[length(partial) + 1 : end]
     m.ghost = completion

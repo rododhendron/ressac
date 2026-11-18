@@ -292,7 +292,7 @@ end
 # dire d'un texte de patterns.
 const _SOUND_VERBS = Set(["sculpt", "explain", "todsl", "to-dsl", "sc2dsl", "prune", "test", "note",
                           "export", "export-synth", "tabs", "tabnext", "tabn", "tabprev", "tabp",
-                          "scratch", "sandbox"])
+                          "scratch", "sandbox", "format", "fmt"])
 
 function _open_son_for_command!(m::RessacApp, cmd::AbstractString)
     verb = String(first(split(strip(cmd), ' '; limit = 2)))

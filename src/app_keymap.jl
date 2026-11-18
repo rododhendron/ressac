@@ -119,6 +119,9 @@ bind!(:patterns, "g K", "écouter le mot sous le curseur"; short = "écouter", g
 bind!(:editor, ["W", "B", "E"], "MOT (séparé par des espaces)"; group = :nav, hint = false)
 bind!(:editor, ["0", "\$"], "début / fin de ligne"; group = :nav, hint = false)
 bind!(:editor, ["g g", "G"], "début / fin du buffer"; group = :nav, hint = false)
+bind!(:editor, "g c", "commenter / décommenter : gcc la ligne, gcj gck avec la voisine, gcap le paragraphe";
+      short = "commenter", group = :edit, hint = false, when = _km_normal_ed,
+      action = m -> (m.pending_gc = ""))
 bind!(:editor, ["dd", "yy", "p"], "supprimer / copier / coller la ligne"; group = :edit, hint = false)
 bind!(:editor, ["cw", "dw", "yw"], "opérateur + motion (aussi b, e, W, B, E, \$, 0)"; group = :edit, hint = false)
 bind!(:editor, "x", "supprimer le caractère"; group = :edit, hint = false)

@@ -326,6 +326,7 @@ function _test_current_synth!(m::RessacApp; raw::Bool = false)
         finally
             _AUDITION_ARGS[] = Any[]
         end
+        _note_played!(src)
         _push_app_log!(m, "[INFO] T — test de $(tab.name)$(_audition_note_suffix(m, extra))")
     catch err
         _push_app_log!(m, "[ERROR] éval DSL : $(sprint(showerror, err))")

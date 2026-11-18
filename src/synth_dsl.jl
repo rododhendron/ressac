@@ -993,25 +993,67 @@ function _normalize_kw_group(ex)
     return ex
 end
 
+# Coupe une ligne en (code, commentaire) au premier `#` hors chaîne.
+function _split_code_comment(line::AbstractString)
+    in_str = false
+    i = firstindex(line)
+    while i <= lastindex(line)
+        c = line[i]
+        if in_str
+            c == '\\' && i < lastindex(line) && (i = nextind(line, i))
+            c == '"' && (in_str = false)
+        elseif c == '"'
+            in_str = true
+        elseif c == '#'
+            return (String(line[1:prevind(line, i)]), String(line[i:end]))
+        end
+        i = nextind(line, i)
+    end
+    return (String(line), "")
+end
+
 """
     _dsl_preprocess(src) -> String
 
-Normalize a DSL source string before `Meta.parse` so a chain can put
-the pipe operator at the START of a continuation line. Julia only
-continues an expression onto the next line when the PREVIOUS line is
-syntactically incomplete, so a leading `|>` would be an orphan parse
-error. We join any `\\n<whitespace>|>` back onto the previous line.
+Prépare un texte de son pour `Meta.parse`, qui ne sait pas lire un `|>` en
+tête de ligne (Julia ne continue une expression que si la ligne d'avant est
+incomplète). Chaque ligne qui commence par `|>` est raccrochée à la
+dernière ligne de CODE au-dessus :
 
-    sin_osc(:freq)
-      |> rlpf(800)        # ← leading pipe, joined to the line above
+    sin_osc(:freq)        # la source
+      # |> rlpf(800)      ← un maillon commenté : court-circuité
       |> tanh_drive(3)
 
-Only `|>` is handled — it's unambiguously binary, so joining is
-always correct. Other operators (`-`, `+`) can be unary at line
-start, so we leave them alone.
+Les commentaires sont retirés au passage — sans quoi celui de la première
+ligne avalerait le maillon raccroché derrière lui, et un maillon commenté
+couperait la chaîne. Le nombre de lignes est gardé (les messages d'erreur
+désignent la bonne).
+
+Seul `|>` est traité : il est toujours binaire. `-` ou `+` en tête de ligne
+peuvent être unaires, on n'y touche pas.
 """
-_dsl_preprocess(src::AbstractString) =
-    replace(String(src), r"\n[ \t]*\|>" => " |>")
+function _dsl_preprocess(src::AbstractString)
+    out = String[]
+    last_code = 0                      # la dernière ligne qui porte du code
+    for raw in split(String(src), '\n'; keepempty = true)
+        code = rstrip(_split_code_comment(raw)[1])
+        if isempty(strip(code))
+            push!(out, "")
+        elseif startswith(lstrip(code), "|>") && last_code > 0
+            out[last_code] *= " " * lstrip(code)
+            push!(out, "")
+        else
+            push!(out, String(code))
+            last_code = length(out)
+        end
+    end
+    # Les lignes vidées en fin de texte ne servent à rien, et `Meta.parse`
+    # (une seule expression) refuse ce qui traîne après elle.
+    while length(out) > 1 && isempty(out[end]) && isempty(out[end - 1])
+        pop!(out)
+    end
+    return join(out, '\n')
+end
 
 """
     _dsl_parse_all(src) -> Expr

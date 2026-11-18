@@ -357,6 +357,32 @@ Dans un synth, `Espace` puis une lettre insère un maillon du DSL en bout
 de chaîne : `s` saw, `o` sin_osc, `l` rlpf, `e` env_perc, `t` tanh_drive,
 `f` fold2, `r` free_verb, `L` lfo… (`Espace ?` les liste).
 
+## Un maillon par ligne
+
+Un son s'écrit de haut en bas, le `|>` en tête de ligne :
+
+```julia
+@synth :wob (freq=110, sustain=0.5) begin
+  saw(:freq)            # la source
+  |> rlpf(900, 0.3)
+  |> tanh_drive(2)
+end
+```
+
+Chaque ligne est alors un maillon qu'on manipule comme une ligne :
+
+- `gcc` le **commente**, c'est-à-dire le court-circuite — le signal passe
+  tout droit. `gcc` de nouveau le remet. (`gcj` / `gck` avec la ligne
+  voisine, `gcap` tout le paragraphe.)
+- `dd` le retire, `yy` puis `p` le déplace ou le copie dans un autre son.
+- `:format` remet en forme le son ouvert : pipes en tête, nombres à trois
+  décimales au plus. `u` annule.
+
+Tout son s'édite en DSL. Un `.scd` laissé dans `plugins/user-synths` s'ouvre
+converti (`:w` le range en `.jl`) ; s'il ne se convertit pas en entier,
+Ressac le dit et ne l'ouvre pas à moitié. Du SuperCollider collé dans un
+son : `:todsl`.
+
 ## Sculpter un son
 
 Sous le texte d'un son, deux onglets : la **DOC** devant, le **STUDIO**

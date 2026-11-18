@@ -59,6 +59,11 @@ Sur une ligne `@dN`, la fiche commence par ce que fait le slot : son état
 (joue, modifié, muet, à l'arrêt), ses coups par cycle, les notes exactes
 qu'il joue ce cycle, et l'erreur en entier s'il y en a une.
 
+Sous une fiche de fonction, ses **voisines** — et parmi elles la première
+que tu n'as jamais jouée (`○ pas encore essayé`). Ressac compte ce que tu
+évalues avec succès (`played.toml`, dans le dossier de config) ; la
+complétion propose d'abord ce que tu emploies.
+
 Un nom de son passe avant une fiche de fonction : dans un buffer de
 patterns, `bd` est un son. `f` fige la pane, `f` de nouveau la remet à
 suivre. `K` et `:doc <nom>` visent la même pane.

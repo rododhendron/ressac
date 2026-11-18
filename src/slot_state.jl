@@ -146,7 +146,7 @@ end
 """
     _join_logical_block(rows) -> String
 
-Recolle les lignes d'un bloc en une expression Julia. Une ligne de
+Recolle les lignes d'un bloc en une expression Julia, commentaires retirés. Une ligne de
 continuation qui commence par `|>` est accrochée à la précédente par
 une espace : Julia lit `@d1 p"bd"` puis `|> gain(1)` comme deux
 expressions et échoue, alors que `@d1 p"bd" |> gain(1)` est ce que l'on
@@ -156,13 +156,20 @@ gardent leur saut de ligne.
 function _join_logical_block(rows)
     isempty(rows) && return ""
     out = IOBuffer()
-    for (i, line) in enumerate(rows)
-        if i == 1
-            print(out, line)
-        elseif startswith(lstrip(String(line)), "|>")
-            print(out, " ", strip(String(line)))
+    first_line = true
+    for line in rows
+        # Les commentaires ne font pas partie de l'expression : celui d'une
+        # fin de ligne avalerait le `|>` raccroché derrière lui, et un
+        # maillon commenté (`# |> lpf(800)`) est un maillon court-circuité.
+        code = rstrip(SynthDSL._split_code_comment(String(line))[1])
+        isempty(strip(code)) && continue
+        if first_line
+            print(out, code)
+            first_line = false
+        elseif startswith(lstrip(code), "|>")
+            print(out, " ", strip(code))
         else
-            print(out, "\n", line)
+            print(out, "\n", code)
         end
     end
     return String(take!(out))

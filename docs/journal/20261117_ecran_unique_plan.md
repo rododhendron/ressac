@@ -75,7 +75,7 @@ Tests : `test_slot_state.jl` — un cas par état, plus les transitions
   est longue ; densité au-delà d'un coup par colonne ; bande pour un drone ;
   trait de début de boucle pour un slot hors grille. Reprend l'interrogation
   de `pane_notes.jl`.
-- [ ] **E2.5 — La fiche.** *(fait : l'état du slot du curseur, ses notes
+- [x] **E2.5 — La fiche.** *(fait : l'état du slot du curseur, ses notes
   exactes, l'erreur entière ; reste « voisins » et « pas encore essayé »,
   qui attendent E4.3.)* Suit le curseur (existant), plus « voisins » et
   « pas encore essayé » ⚑ E4.3.
@@ -161,15 +161,25 @@ libre et dans un slot choisi.
 - [x] **E4.2 — Les nombres.** Trois décimales, notation scientifique au
   besoin, par `sc_num` et un pendant côté DSL. À l'export de l'explorateur,
   à la conversion, et une passe sur les fichiers existants.
-- [ ] **E4.3 — Compter l'usage.** Chaque nom documenté d'un bloc évalué avec
+- [x] **E4.3 — Compter l'usage.** Chaque nom documenté d'un bloc évalué avec
   succès est compté (`usage.toml`). D'où le classement de la complétion et
   « pas encore essayé ».
-- [ ] **E4.4 — Pipes en tête de ligne.** Une mise en forme unique des
+- [x] **E4.4 — Pipes en tête de ligne.** Une mise en forme unique des
   `@synth` : un maillon par ligne, `|>` au début.
-- [ ] **E4.5 — Les exports en pipes.** Quand le graphe d'un candidat est
+- [x] **E4.5 — Les exports en pipes.** Quand le graphe d'un candidat est
   une chaîne, l'explorateur l'écrit en pipes, pas en `n1 = ugen(…)`.
-- [ ] **E4.6 — `gcc` / `gc`.** Commenter, décommenter. Sur un maillon :
+- [x] **E4.6 — `gcc` / `gc`.** Commenter, décommenter. Sur un maillon :
   le court-circuiter.
+
+Notes de réalisation (2026-11-18) :
+- E4.4 / E4.5 : une chaîne multipliée s'écrit `… |> amp(k)`, donc les exports
+  sont des chaînes plates, un maillon par ligne. `:format` met en forme le son
+  ouvert (pipes en tête, nombres courts) sans le relire. La passe sur les
+  fichiers existants de `plugins/user-synths` n'a **pas** été faite : réécrire
+  en masse les fichiers du joueur n'est pas un geste à faire sans lui.
+- E4.6 a révélé que le DSL et les blocs de patterns recollaient les lignes
+  `|>` sans voir les commentaires : un commentaire de fin de ligne avalait le
+  maillon suivant, un maillon commenté coupait la chaîne. Corrigé des deux côtés.
 
 Tests : le corpus (`test/fixtures/synths`) passe l'aller-retour après mise
 en forme, à SC égal ; `gcc` sur chaque maillon d'un son laisse un son valide.

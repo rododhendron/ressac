@@ -1059,6 +1059,7 @@ Lecture d'une carte :
 | `/` | nombre −10 |
 | `i / a / o / O` | insérer (avant / après / ligne dessous / dessus) |
 | `Esc` | retour au mode normal |
+| `g c` | commenter / décommenter : gcc la ligne, gcj gck avec la voisine, gcap le paragraphe |
 | `dd / yy / p` | supprimer / copier / coller la ligne |
 | `cw / dw / yw` | opérateur + motion (aussi b, e, W, B, E, $, 0) |
 | `x` | supprimer le caractère |

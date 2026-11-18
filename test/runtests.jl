@@ -19,6 +19,8 @@ end
     _isolated_include("test_slot_marks.jl")
     _isolated_include("test_volet.jl")
     _isolated_include("test_sessions.jl")
+    _isolated_include("test_format_comment.jl")
+    _isolated_include("test_usage.jl")
     _isolated_include("test_algebra.jl")
     _isolated_include("test_mininotation.jl")
     _isolated_include("test_osc.jl")

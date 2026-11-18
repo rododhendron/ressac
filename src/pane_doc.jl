@@ -21,7 +21,7 @@ end
 # Pose dans le ScrollPane la fiche courante rendue à `width` colonnes,
 # une fois par (nom, largeur) ; changer de fiche remonte en haut.
 function _doc_sync!(p::DocPane, width::Int)
-    key = (p.name, width, hash(p.header))
+    key = (p.name, width, hash((p.header, _PLAYED_EPOCH[])))
     p.rendered == key && return
     p.rendered[1] == p.name || (p.pane.offset = 0)
     lines = _MdLine[]
@@ -83,6 +83,15 @@ function _doc_pane_lines(name::String, width::Int)
         push!(out, TK.Span[])
         body_lines = [String(l) for l in split(body, '\n') if !startswith(l, "# ")]   # le titre est déjà affiché
         append!(out, _md_render(body_lines, width))
+    end
+    # Les voisines, et parmi elles la première qu'on n'a jamais jouée.
+    near = _doc_neighbours(entry)
+    if !isempty(near)
+        push!(out, TK.Span[])
+        append!(out, _md_wrap([TK.Span("voisines  ", TK.tstyle(:text_dim)),
+                               TK.Span(join(near, " · "), TK.tstyle(:accent))], width))
+        fresh = _untried(near)
+        fresh === nothing || push!(out, _md_plain("○ pas encore essayé : $fresh", TK.tstyle(:success)))
     end
     return out
 end
