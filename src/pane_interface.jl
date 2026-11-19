@@ -118,65 +118,27 @@ const _PANE_FOCUS_COLOR = Ref{Any}(nothing)
 _pill_style(color) = TK.Style(fg = TK.theme().bg, bg = color, bold = true)
 _pill_style(field::Symbol) = _pill_style(getfield(TK.theme(), field))
 
+"""
+    _render_pane_block_simple!(rect, title, buf)
+
+L'habillage d'une pane : une bande de titre sur sa première ligne et, si
+elle n'est pas au bord gauche de l'écran, un filet vertical qui la sépare de
+sa voisine. Pas de cadre. « NOM · précision » : le nom en gras (dans la
+couleur du mode quand la pane a le clavier), la précision en secondaire.
+Le contenu se dessine dans `_inner_rect_simple(rect)`.
+"""
 function _render_pane_block_simple!(rect::TK.Rect, title::AbstractString,
                                     buf::TK.Buffer)
     (rect.width < 2 || rect.height < 2) && return
-    th = TK.theme()
     fc = _PANE_FOCUS_COLOR[]
-    border = fc === nothing ? TK.Style(fg = th.border) : TK.Style(fg = fc, bold = true)
-    TK.set_string!(buf, rect.x, rect.y, "╭" * "─"^(rect.width - 2) * "╮", border)
-    for y in 1:(rect.height - 2)
-        TK.set_string!(buf, rect.x, rect.y + y, "│", border)
-        TK.set_string!(buf, rect.x + rect.width - 1, rect.y + y, "│", border)
-    end
-    TK.set_string!(buf, rect.x, rect.y + rect.height - 1,
-                   "╰" * "─"^(rect.width - 2) * "╯", border)
-    # Boutons du cadre (⊞ split vertical · ⊟ split horizontal · ⤢ zoom ·
-    # ✕ fermer), en haut à droite ; app_input.jl les rend cliquables.
-    btns = _pane_buttons(rect)
-    bsty = fc === nothing ? TK.Style(fg = th.text_dim) : TK.Style(fg = fc, bold = true)
-    for (x, sym, _) in btns
-        TK.set_string!(buf, x, rect.y, " " * sym * " ", bsty)
-    end
-    # Titre tronqué à la largeur (jamais omis : une pane doit être nommée) ;
-    # en pastille de la couleur du mode quand la pane est focalisée.
-    maxw = rect.width - 4 - (isempty(btns) ? 0 : 3 * length(btns) + 1)
-    if maxw >= 3
-        t = String(title)
-        textwidth(t) > maxw && (t = first(t, max(1, maxw - 1)) * "…")
-        sty = fc === nothing ? TK.Style(fg = th.text_dim) : _pill_style(fc)
-        TK.set_string!(buf, rect.x + 2, rect.y, " " * t * " ", sty)
-    end
+    parts = split(String(title), " · "; limit = 2)
+    _band!(buf, rect.x, rect.y, rect.width, String(parts[1]);
+           sub = length(parts) > 1 ? String(parts[2]) : "", sep = " · ", focus = fc)
+    rect.x > buf.area.x && _vrule!(buf, rect.x, rect.y, rect.height)
     return nothing
 end
 
 function _inner_rect_simple(rect::TK.Rect)
     TK.Rect(rect.x + 1, rect.y + 1,
             max(0, rect.width - 2), max(0, rect.height - 2))
-end
-
-# ── Boutons de cadre ────────────────────────────────────────────────
-const _PANE_BUTTONS = (("⊞", :vsplit), ("⊟", :hsplit), ("⤢", :zoom), ("✕", :close))
-
-"""
-    _pane_buttons(rect) -> Vector{Tuple{Int,String,Symbol}}
-
-(x, glyphe, action) des boutons du bord supérieur d'une pane, de gauche
-à droite ; vide si la pane est trop étroite. Chaque bouton occupe 3
-colonnes (« ⊞ » entouré d'espaces) et répond au clic sur x..x+2.
-"""
-function _pane_buttons(rect::TK.Rect)
-    rect.width < 28 && return Tuple{Int,String,Symbol}[]
-    n = length(_PANE_BUTTONS)
-    x0 = rect.x + rect.width - 2 - 3 * n
-    return Tuple{Int,String,Symbol}[(x0 + 3 * (i - 1), sym, act) for (i, (sym, act)) in enumerate(_PANE_BUTTONS)]
-end
-
-# Action d'un bouton de cadre au clic (x, y) dans `rect`, ou nothing.
-function _pane_button_at(rect::TK.Rect, x::Int, y::Int)
-    y == rect.y || return nothing
-    for (bx, _, act) in _pane_buttons(rect)
-        bx <= x <= bx + 2 && return act
-    end
-    return nothing
 end

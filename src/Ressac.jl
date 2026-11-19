@@ -101,7 +101,8 @@ include("io_scope.jl")           # écoute OSC 57121 : scope, mètres, réponses
 include("audio_outputs.jl")      # les sorties vues par PipeWire : graphe, plan de routage (pur)
 include("session_config.jl")     # RessacConfig, _load_ressac_config!
 include("session_keyboard.jl")   # disposition du clavier (table Maj azerty/qwerty, détection)
-include("session_themes.jl")     # _apply_theme!, palette switching
+include("session_themes.jl")
+include("ui_style.jl")           # la palette, les fonds, les bandes, la dernière passe du rendu     # _apply_theme!, palette switching
 include("tk_patches.jl")         # correctifs Tachikoma appliqués à l'exécution
 include("content_sccode.jl")     # sccode.org HTTP client
 include("content_wiki.jl")       # docs/wiki/*.md loader

@@ -204,7 +204,7 @@ end
         tb = Tachikoma.TestBackend(40, 5)
         Ressac.render!(dp, Tachikoma.Rect(1, 1, 40, 5), tb.buf)
         # Body starts at y=2 (just below top border)
-        @test occursin("aucune entrée", Tachikoma.row_text(tb, 2))
+        @test occursin("aucune entrée", Tachikoma.row_text(tb, 3))
     end
 
     @testset "handle_key! j/k adjust scroll" begin

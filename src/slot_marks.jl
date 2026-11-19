@@ -4,8 +4,13 @@
 #     vitesse du pattern, un silence pour un slot muet, un dièse pour un
 #     texte modifié, un point d'orgue pour un drone…) ;
 #   • le FOND de la ligne, qui s'allume au coup et retombe ;
-#   • une PISTE d'un cycle au bout de la ligne ;
-#   • l'ERREUR, écrite au bout de la ligne fautive.
+#   • la GRILLE du cycle, une colonne fixe à droite du texte : un temps sur
+#     deux a un fond, chaque ligne @dN y a sa piste nommée, la tête de
+#     lecture la traverse de haut en bas ;
+#   • l'ERREUR, écrite dans la grille à la place de la piste fautive.
+#
+# La couleur dit l'état, jamais l'identité d'un slot : vert = joue, discret =
+# muet, rouge = erreur, orange = la ligne du curseur.
 #
 # Tout est dessiné par-dessus le rendu de l'éditeur : le texte n'est jamais
 # déplacé. L'état vient de app_slots.jl ; rien n'est décidé ici.
@@ -117,13 +122,41 @@ function _lane_cells(events, cycle::Integer, width::Integer)
     return cells
 end
 
-# La largeur de piste qui tient à droite d'un texte de `text_len` colonnes
-# dans une ligne de `width` : large, étroite, ou rien.
-function _lane_width(text_len::Integer, width::Integer)
-    room = width - text_len - 2
-    room >= _LANE_WIDE && return _LANE_WIDE
-    room >= _LANE_NARROW && return _LANE_NARROW
-    return 0
+# La note d'un événement quand elle s'écrit en chiffres (`n("0 3 7")`), ou rien.
+function _note_digits(value)
+    value isa AbstractDict || return nothing
+    for k in (:n, :note)
+        haskey(value, k) || continue
+        v = _resolve_value(value[k])
+        (v isa Real && isinteger(v) && abs(v) < 1000) && return string(Int(v))
+    end
+    return nothing
+end
+
+"""
+    _lane_digits!(cells, events, cycle) -> cells
+
+Quand toutes les notes d'un cycle s'écrivent en chiffres, la piste les
+montre telles qu'on les a écrites (`0···3·7·`) plutôt qu'en hauteurs de
+bloc : on lit le pattern, pas une silhouette. Un nombre à deux chiffres
+déborde sur la cellule suivante si elle est libre.
+"""
+function _lane_digits!(cells::Vector{Char}, events, cycle::Integer)
+    labels = [_note_digits(ev.value) for ev in events]
+    (isempty(labels) || any(isnothing, labels)) && return cells
+    width = length(cells)
+    starts = Set(clamp(floor(Int, (Float64(ev.start) - cycle) * width) + 1, 1, width) for ev in events if 0 <= Float64(ev.start) - cycle < 1)
+    for (ev, lab) in zip(events, labels)
+        pos = Float64(ev.start) - cycle
+        0 <= pos < 1 || continue
+        k = clamp(floor(Int, pos * width) + 1, 1, width)
+        for (j, ch) in enumerate(lab)
+            kk = k + j - 1
+            (kk > width || (j > 1 && kk in starts)) && break
+            cells[kk] = ch
+        end
+    end
+    return cells
 end
 
 function _lane_for(m::RessacApp, slot::Symbol, pat, cyc::Int, width::Int)
@@ -131,7 +164,8 @@ function _lane_for(m::RessacApp, slot::Symbol, pat, cyc::Int, width::Int)
     c = get(m.lane_cache, slot, nothing)
     (c !== nothing && c[1] == key) && return c[2]
     cells = try
-        _lane_cells(Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1)), cyc, width)
+        evs = Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+        _lane_digits!(_lane_cells(evs, cyc, width), evs, cyc)
     catch
         fill(' ', width)
     end
@@ -159,29 +193,31 @@ end
 const _GLOW_SECONDS = 0.25
 _glow(now::Float64, fired::Float64) = now < fired ? 0.0 : clamp(1 - (now - fired) / _GLOW_SECONDS, 0.0, 1.0)
 
-"""
-    _line_tint(line, glow, calm) -> (couleur, force, hachuré) | nothing
-
-Le fond d'une ligne selon son état. `force` est la part de la couleur dans
-le mélange avec le fond du thème.
-"""
-function _line_tint(l::SlotLine, glow::Float64, calm::Bool)
-    th = TK.theme()
-    l.state === :error && return (_rgb(th.error), 0.22, false)
-    l.state === :modified && return (_rgb(_slot_color(l.slot)), 0.16, true)
-    l.state === :playing || return nothing
-    l.held && return (_rgb(_slot_color(l.slot)), 0.18, false)
-    return (_rgb(_slot_color(l.slot)), calm ? 0.10 : 0.08 + 0.26 * glow, false)
-end
-
 # ── Le rendu ─────────────────────────────────────────────────────────
+
+const _GRID_LABEL = 4      # « d1 » et ses marges, à gauche de la piste
+
+"""
+    _grid_zone(body) -> (x0, largeur) | nothing
+
+Où se dessine la grille du cycle dans le texte `body` : ses `largeur`
+cellules finissent au bord droit, précédées du nom du slot et d'un filet.
+Large si le texte garde de quoi s'écrire, étroite sinon, absente quand la
+pane est trop petite.
+"""
+function _grid_zone(body::TK.Rect)
+    for w in (_LANE_WIDE, _LANE_NARROW)
+        body.width - (w + _GRID_LABEL + 1) >= 44 && return (body.x + body.width - w, w)
+    end
+    return nothing
+end
 
 """
     _render_slot_marks!(m, pane, rect, buf)
 
-Dessine signes, fonds, pistes et erreurs par-dessus la pane des patterns
-(`rect` est le rectangle de la pane, cadre compris). Sans effet sur une
-pane qui ne montre pas le texte des patterns.
+Dessine signes, fonds, grille et erreurs par-dessus la pane des patterns
+(`rect` est le rectangle de la pane, bande de titre comprise). Sans effet
+sur une pane qui ne montre pas le texte des patterns.
 """
 function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf::TK.Buffer)
     1 <= pane.current_tab <= length(pane.tabs) || return
@@ -190,11 +226,9 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     body = _editor_text_rect(pane, rect)
     signs_x = body.x - _SIGN_COLS
     signs_x > rect.x || return                       # pas de colonne des signes (pane trop étroite)
+    p = _ui()
     lines = _slot_lines(m)
-    isempty(lines) && return
     set = _mark_set()
-    th = TK.theme()
-    base = _rgb(th.bg)
     now = time()
     fired = fired_snapshot(m.scheduler)
     sched = m.scheduler
@@ -203,43 +237,117 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     playing = Dict{Symbol,Pattern}(pattern_snapshot(sched))
     gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0
     right = body.x + body.width - 1
+    bottom = body.y + body.height - 1
+    calm = m.calm || ressac_config().calm
+    cursor_y = (ed.focused && m.modal === :none) ? body.y + (ed.cursor_row - 1 - ed.scroll_offset) : 0
+    text_end(row) = body.x + gw + max(length(ed.lines[row]) - ed.h_scroll, 0)   # première colonne libre après le texte
+
+    zone = m.lanes ? _grid_zone(body) : nothing
+    x0, w = zone === nothing ? (right + 1, 0) : zone
+    xr = x0 - _GRID_LABEL - 1                          # le filet de la grille
+    beat = max(w ÷ 4, 1)
+    zebra(k) = iseven(k ÷ beat) ? p.s1 : TK.NoColor()
+    # La ligne du curseur garde son texte entier : si elle arrive sur la
+    # grille, c'est la grille qui s'efface sur cette ligne.
+    cursor_long = zone !== nothing && body.y <= cursor_y <= bottom &&
+                  1 <= ed.cursor_row <= length(ed.lines) && text_end(ed.cursor_row) > xr - 1
+
+    # ── Le fond de la grille : un temps sur deux, sur toute la hauteur ──
+    if zone !== nothing
+        for y in body.y:bottom
+            (cursor_long && y == cursor_y) && continue
+            _clear_rect!(buf, TK.Rect(xr, y, right - xr + 1, 1))
+            TK.set_char!(buf, xr, y, '│', TK.Style(fg = p.x))
+            for k in 0:(w - 1)
+                iseven(k ÷ beat) && TK.set_char!(buf, x0 + k, y, ' ', TK.Style(bg = p.s1))
+            end
+        end
+        # L'en-tête, dans la bande de titre de la pane : SL 1 · · · 2 · · ·
+        hy = rect.y
+        TK.set_char!(buf, xr, hy, '│', TK.Style(fg = p.x, bg = p.s2))
+        TK.set_string!(buf, xr + 1, hy, " SL ", TK.Style(fg = p.n, bg = p.s2))
+        step = beat >= 12 ? 3 : 2
+        for k in 0:(w - 1)
+            ch, sty = k % beat == 0 ? (Char('1' + k ÷ beat), TK.Style(fg = p.tx, bg = p.s2, bold = true)) :
+                      k % step == 0 ? ('·', TK.Style(fg = p.n, bg = p.s2)) : (' ', TK.Style(bg = p.s2))
+            TK.set_char!(buf, x0 + k, hy, ch, sty)
+        end
+    end
+
+    # ── La ligne du curseur ──────────────────────────────────────────
+    cursor_bg = _ui_tint(p.o, 0.15)
+    if body.y <= cursor_y <= bottom && ed.mode === :normal
+        for x in signs_x:right
+            _tint_cell!(buf, x, cursor_y, cursor_bg)
+        end
+    end
+
     for l in lines
         y0 = body.y + (l.row - 1 - ed.scroll_offset)
-        # Le fond, sur toutes les lignes du bloc.
-        tint = _line_tint(l, _glow(now, get(fired, l.slot, 0.0)), m.calm || ressac_config().calm)
-        if tint !== nothing
-            (color, force, hatched) = tint
-            bg = TK.color_lerp(base, color, force)
+        on_cursor = cursor_y != 0 && l.row <= ed.cursor_row <= l.last_row
+        # Le fond du bloc : rouge pour une erreur, vert pour un texte modifié,
+        # un éclat au coup pour une ligne qui joue.
+        glow = _glow(now, get(fired, l.slot, 0.0))
+        tint = l.state === :error ? _ui_tint(p.r, 0.17) :
+               l.state === :modified ? _ui_tint(p.g, 0.11) :
+               (l.state === :playing && !l.held && !calm && glow > 0) ? TK.color_lerp(p.bg, p.tx, 0.10 * glow) : nothing
+        if tint !== nothing && !on_cursor
+            whole = l.state !== :playing              # l'éclat ne couvre que le texte : la grille garde ses temps
             for r in l.row:l.last_row
                 y = body.y + (r - 1 - ed.scroll_offset)
-                body.y <= y < body.y + body.height || continue
-                for x in signs_x:right
-                    (hatched && iseven((x - signs_x) ÷ 2)) && continue
-                    _tint_cell!(buf, x, y, bg)
+                body.y <= y <= bottom || continue
+                for x in signs_x:(whole || zone === nothing ? right : xr - 1)
+                    _tint_cell!(buf, x, y, tint)
                 end
             end
         end
-        body.y <= y0 < body.y + body.height || continue
+        body.y <= y0 <= bottom || continue
         # Le signe.
+        color = on_cursor ? p.o : l.state === :error ? p.r : l.state === :muted ? p.n : p.g
         ch = _mark_char(l, set)
-        if ch !== nothing
-            fg = l.state === :error ? th.error :
-                 l.state === :muted ? th.text_dim : _slot_color(l.slot)
-            TK.set_char!(buf, signs_x, y0, ch, TK.Style(fg = fg, bold = l.state !== :muted))
-        end
-        text_len = gw + length(ed.lines[l.row]) - ed.h_scroll
-        # L'erreur prend la place de la piste.
-        if l.error !== nothing
-            x = body.x + max(text_len, 0) + 2
-            room = right - x + 1
-            room >= 12 && TK.set_string!(buf, x, y0, _fit(_error_text(l.error), room), TK.tstyle(:error))
+        ch === nothing || TK.set_char!(buf, signs_x, y0, ch,
+                                       TK.Style(fg = color, bg = buf.content[TK.buf_index(buf, signs_x, y0)].style.bg,
+                                                bold = l.state !== :muted))
+        rowbg = on_cursor ? cursor_bg : (tint !== nothing && l.state !== :playing) ? tint : nothing
+        if zone === nothing
+            # Pas de grille : l'erreur s'écrit au bout de la ligne.
+            if l.error !== nothing
+                x = text_end(l.row) + 2
+                room = right - x + 1
+                room >= 12 && TK.set_string!(buf, x, y0, _fit(_error_text(l.error), room),
+                                             TK.Style(fg = p.r, bg = rowbg === nothing ? TK.NoColor() : rowbg))
+            end
             continue
         end
-        m.lanes || continue
-        (l.state === :playing || l.state === :modified) || continue
-        w = _lane_width(max(text_len, 0), body.width)
-        w == 0 && continue
-        _render_lane!(buf, right - w + 1, y0, w, l, _lane_for(m, l.slot, get(playing, l.slot, nothing), cyc, w), phase)
+        (cursor_long && y0 == cursor_y) && continue
+        cellbg(k) = rowbg === nothing ? zebra(k) : rowbg
+        labelbg = rowbg === nothing ? TK.NoColor() : rowbg
+        # Le nom de la piste.
+        TK.set_string!(buf, xr + 1, y0, rpad(" " * String(l.slot), _GRID_LABEL), TK.Style(fg = color, bg = labelbg, bold = on_cursor))
+        # L'erreur prend la place de la piste.
+        if l.error !== nothing
+            TK.set_string!(buf, x0, y0, rpad(_fit(_error_text(l.error), w), w), TK.Style(fg = p.r, bg = labelbg))
+            continue
+        end
+        pat = get(playing, l.slot, nothing)
+        (pat === nothing || !(l.state in (:playing, :modified, :muted))) && continue
+        cells = _lane_for(m, l.slot, pat, cyc, w)
+        hit = on_cursor ? p.o : l.state === :muted ? TK.color_lerp(p.x, p.n, 0.5) : p.d
+        for k in 0:(w - 1)
+            ch, fg, bold = l.held ? ('━', hit, false) :
+                           cells[k + 1] != ' ' ? (cells[k + 1], hit, true) : ('·', p.x, false)
+            TK.set_char!(buf, x0 + k, y0, ch, TK.Style(fg = fg, bg = cellbg(k), bold = bold))
+        end
+    end
+
+    # ── La tête de lecture : une colonne qui traverse toute la grille ──
+    if zone !== nothing && sched.t_start > 0
+        hx = x0 + clamp(floor(Int, phase * w), 0, w - 1)
+        for y in body.y:bottom
+            (cursor_long && y == cursor_y) && continue
+            cur = buf.content[TK.buf_index(buf, hx, y)].style.bg
+            _tint_cell!(buf, hx, y, TK.color_lerp(cur isa TK.NoColor ? p.bg : _ui_rgb(cur), p.o, 0.32))
+        end
     end
     return nothing
 end
@@ -250,24 +358,19 @@ _error_text(e::SlotError) =
 
 _fit(s::AbstractString, room::Int) = textwidth(s) <= room ? String(s) : first(s, max(room - 1, 0)) * "…"
 
-function _render_lane!(buf::TK.Buffer, x0::Int, y::Int, w::Int, l::SlotLine, cells::Vector{Char}, phase::Float64)
-    th = TK.theme()
-    color = _slot_color(l.slot)
-    dim = TK.Style(fg = th.border)
-    beat = w ÷ 4
-    head = clamp(floor(Int, phase * w), 0, w - 1)
-    for k in 0:(w - 1)
-        ch, sty = if l.held
-            ('━', TK.Style(fg = color))                # un drone : une bande, pas des coups
-        elseif cells[k + 1] != ' '
-            (cells[k + 1], TK.Style(fg = color, bold = true))
-        else
-            (k % beat == 0 ? '┆' : '·', dim)            # la grille : un trait par temps
-        end
-        TK.set_char!(buf, x0 + k, y, ch, sty)
+# La ligne du curseur d'un éditeur qui n'est pas celui des patterns (le
+# texte d'un son) : le même fond orangé, pour que l'œil la retrouve.
+function _render_cursor_line!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf::TK.Buffer)
+    1 <= pane.current_tab <= length(pane.tabs) || return
+    ed = pane.tabs[pane.current_tab].code_editor
+    (ed === _patterns_editor(m) || !ed.focused || ed.mode !== :normal || m.modal !== :none) && return
+    body = _editor_text_rect(pane, rect)
+    y = body.y + (ed.cursor_row - 1 - ed.scroll_offset)
+    body.y <= y < body.y + body.height || return
+    bg = _ui_tint(_ui().o, 0.15)
+    for x in body.x:(body.x + body.width - 1)
+        _tint_cell!(buf, x, y, bg)
     end
-    # La tête de lecture : une colonne qui traverse toutes les pistes.
-    _tint_cell!(buf, x0 + head, y, TK.color_lerp(_rgb(th.bg), _rgb(th.accent), 0.45))
     return
 end
 

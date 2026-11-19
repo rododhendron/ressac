@@ -10,6 +10,9 @@ using Tachikoma
 const _RESSAC_CUSTOM_THEMES = Dict{Symbol, Tachikoma.Theme}()
 
 function _init_custom_themes!()
+    # Ressac — le thème de la maison (ui_style.jl) : ses couleurs exactes
+    # sont posées par la dernière passe du rendu.
+    _RESSAC_CUSTOM_THEMES[:ressac] = _ressac_theme()
     # Cyberpunk — dense city night, hot magenta on near-black, cyan
     # accents. Borders glow electric. Errors bleed bright red.
     _RESSAC_CUSTOM_THEMES[:cyberpunk] = Tachikoma.Theme(
@@ -104,15 +107,15 @@ function _install_syntax_theme!()
         elseif kind == tok_type
             tstyle(:warning)
         elseif kind == tok_number
-            tstyle(:accent)
+            tstyle(:text)
         elseif kind == tok_string
-            tstyle(:success)
+            tstyle(:warning)
         elseif kind == tok_comment
             tstyle(:text_dim, italic = true)
         elseif kind == tok_macro
             tstyle(:secondary, bold = true)
         elseif kind == tok_symbol
-            tstyle(:accent, italic = true)
+            tstyle(:warning)
         elseif kind == tok_bool
             tstyle(:accent, bold = true)
         elseif kind == tok_builtin

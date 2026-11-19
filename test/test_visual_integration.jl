@@ -143,7 +143,7 @@ end
     Ressac._active_editor(app).mode = :normal
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     Tachikoma.reset!(tb.buf); Tachikoma.view(app, frame)
-    @test occursin("PANE", Tachikoma.row_text(tb, 1))
+    @test _find_row(tb, " PANE ") > 0
     rendered = join((Tachikoma.row_text(tb, y) for y in 1:_VIS_H), '\n')
     @test occursin("split vertical", rendered)
     Tachikoma.update!(app, Tachikoma.KeyEvent(:escape))

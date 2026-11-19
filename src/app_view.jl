@@ -113,23 +113,11 @@ function _render_pane_block!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer;
                              title_right::AbstractString = "",
                              focused::Bool = false,
                              title_right_accent::Bool = false)
-    border = focused ? TK.tstyle(:accent, bold = true) : TK.tstyle(:border)
-    ttl    = focused ? TK.tstyle(:accent, bold = true) : TK.tstyle(:title, bold = true)
-    # Right title can opt-in to accent (used for "live" indicators like
-    # the active @dN slot list — it's the most action-relevant info
-    # on screen and deserves to pop even on unfocused panes).
-    right_style = title_right_accent ?
-        TK.tstyle(:warning, bold = true) : TK.tstyle(:text_dim)
-    block = TK.Block(
-        title              = " " * String(title) * " ",
-        title_right        = isempty(title_right) ? "" : " " * String(title_right) * " ",
-        title_style        = ttl,
-        title_right_style  = right_style,
-        border_style       = border,
-        box                = TK.BOX_ROUNDED,
-        title_padding      = 0,
-    )
-    TK.render(block, rect, buf)
+    (rect.width < 2 || rect.height < 1) && return
+    _clear_rect!(buf, rect)
+    _band!(buf, rect.x, rect.y, rect.width, String(title); right = String(title_right),
+           focus = focused ? _ui().o : nothing)
+    return
 end
 
 """
@@ -229,6 +217,7 @@ function _render_tree_inner!(node::LayoutNode, rects::Dict, buf::TK.Buffer,
             try
                 _render_pane_guarded!(m, pane, rect, buf)
                 pane isa EditorPane && _render_slot_marks!(m, pane, rect, buf)
+                pane isa EditorPane && _render_cursor_line!(m, pane, rect, buf)
                 pane isa EditorPane && _render_knob!(m, pane, rect, buf)
             finally
                 _PANE_FOCUS_COLOR[] = nothing
@@ -367,6 +356,7 @@ function _view!(m::RessacApp, f::TK.Frame)
         ws_nt = (x = area.x, y = ws_y, w = area.width, h = ws_height)
         m._last_ws_area = ws_nt
         _volet_follow_width!(m)       # le son gagne sa colonne sur un grand écran
+        _fiche_fit_width!(m)          # la fiche : une colonne de lecture, pas un tiers
         ws = current_workspace(m.workspaces)
         if ws !== nothing
             # Un changement de focus dézoome (comme tmux).
@@ -421,6 +411,7 @@ function _view!(m::RessacApp, f::TK.Frame)
     # montre ses raccourcis) ni sur le journal.
     if m.modal !== :none
         marea = TK.Rect(area.x, ws_y, area.width, max(1, keybar_y - ws_y))
+        _ui_dim!(buf, marea)          # ce qui flotte éteint le reste
         if m.modal === :browse
             _render_browser_modal!(m, marea, buf)
         elseif m.modal === :synth_library
@@ -450,6 +441,7 @@ function _view!(m::RessacApp, f::TK.Frame)
         end
     end
     _render_hover!(m, buf)
+    _ui_finish!(buf)                  # les fonds et les couleurs exactes
 end
 
 
@@ -478,125 +470,104 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     beat = sched.t_start > 0 ? floor(Int, cycle_phase * 4) + 1 : 0
     cycle_bar = "▮" ^ beat * "▯" ^ (4 - beat)
 
-    # Sections — each is a tuple of (text, style). They get joined with
-    # ` │ ` separators rendered in :text_dim so the eye groups them.
-    sections = Vector{Vector{Tuple{String,TK.Style}}}()
+    p = _ui()
+    band = p.s1
+    on(c; bold = false) = TK.Style(fg = c, bg = band, bold = bold)
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), TK.Style(bg = band))
+    empty!(m._status_hits)
+    m._status_y = area.y
 
-    # Logo — pastille accent.
-    push!(sections, [(" RESSAC ", _pill_style(:accent))])
-
-    # Tempo / cycle / events section. BPM assumes 4 beats per cycle
-    # (the SuperDirt / TidalCycles convention) so cps=0.5 → 120 BPM.
-    bpm = round(Int, sched.cps * 4 * 60)
-    tempo_section = Tuple{String,TK.Style}[
-        ("♪ $(round(sched.cps; digits = 2)) cps", TK.tstyle(:title, bold = true)),
-        (" · ", TK.tstyle(:text_dim)),
-        ("$(bpm) bpm", TK.tstyle(:text_dim)),
-        ("  ", TK.tstyle(:text)),
-        (cycle_bar, TK.tstyle(:accent)),
-        ("  ", TK.tstyle(:text)),
-        ("cycle $(sched.t_start > 0 ? _cycle_index(sched) : 0)", TK.tstyle(:text_dim)),
-    ]
-    # SuperCollider répond-il ? (Rien tant qu'on ne peut pas le savoir.)
-    sc = _sc_state()
-    sc === :alive  && push!(sections, [("● SC", TK.tstyle(:success, bold = true))])
-    sc === :silent && push!(sections, [("○ SC ne répond pas — `just audio`", TK.tstyle(:error, bold = true))])
-    aud = _AUDIO_SETTINGS[]
-    (aud !== nothing && !isempty(aud.casque)) &&
-        push!(sections, [(aud.preview ? "casque · essais" : "casque", TK.tstyle(aud.preview ? :accent : :text_dim))])
-    push!(sections, tempo_section)
-
-    # Mode (pastille de sa couleur) + surface focalisée.
-    push!(sections, [(" " * _MODE_LABELS_FR[_current_mode_symbol(m)] * " ", _pill_style(_mode_color(m)))])
-    push!(sections, [(_surface_label(m), TK.Style(fg = TK.theme().text_bright, bg = TK.theme().border, bold = true))])
-
-    # La session ouverte ; `+` quand son texte n'est pas sauvé.
-    push!(sections, [(_session_label(m), TK.tstyle(_session_dirty(m) ? :warning : :text_dim))])
-
-    # Synth section (only if a synth pane is open)
-    syn = _all_synth_buffers(m)
-    if !isempty(syn)
-        cur = _current_synth_tab(m)
-        synth_label = "♬ $(cur === nothing ? "?" : cur.name)" *
-                      (length(syn) > 1 ? " [$(length(syn))]" : "")
-        push!(sections, [(synth_label, TK.tstyle(:title, bold = true))])
+    # ── À droite : ce qui joue ───────────────────────────────────────
+    right = Tuple{String,TK.Style}[]
+    add!(txt, sty) = push!(right, (txt, sty))
+    # La ligne de commande occupe la ligne d'état : son mode se dit ici.
+    let mode = _current_mode_symbol(m)
+        mode in (:command, :search) &&
+            (add!(" " * _MODE_LABELS_FR[mode] * " ", _chip(_ui_rgb(_mode_color(m)))); add!("   ", on(p.tx)))
     end
-
-    # Live-state section (rec / tap / piano / visual) — each gets a
-    # priority colour so it pops against the normal title style.
-    state_parts = Tuple{String,TK.Style}[]
-    m.zoom_leaf != 0 && push!(state_parts, ("⤢ ZOOM", TK.tstyle(:accent, bold = true)))
+    m.zoom_leaf != 0 && (add!("ZOOM", on(p.o; bold = true)); add!("   ", on(p.tx)))
     if m.recording
         secs = floor(Int, time() - m.recording_start_ts)
         mins, s = divrem(secs, 60)
-        push!(state_parts,
-            ("● REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0'))",
-             TK.tstyle(:error, bold = true)))
+        add!(" REC $(lpad(mins, 2, '0')):$(lpad(s, 2, '0')) ", _chip(p.r)); add!("   ", on(p.tx))
     end
     if m.loop !== nothing
         n = length(m.loop.hits)
-        push!(state_parts, ("● BOUCLE $(m.loop.slot) · $n frappe$(n == 1 ? "" : "s") · o ferme", TK.tstyle(:warning, bold = true)))
+        add!(" BOUCLE $(m.loop.slot) ", _chip(p.r))
+        add!(" $n frappe$(n == 1 ? "" : "s") · o ferme   ", on(p.r))
     end
     if m.tap_recording
-        label = m.tap_mode === :tempo ? "● TAP-TEMPO" :
-                m.tap_mode === :loop  ? "● TAP-LOOP" :
-                m.tap_bars > 1        ? "● TAP×$(m.tap_bars) bars" :
-                                        "● TAP"
+        label = m.tap_mode === :tempo ? "TAP-TEMPO" :
+                m.tap_mode === :loop  ? "TAP-LOOP" :
+                m.tap_bars > 1        ? "TAP×$(m.tap_bars) bars" : "TAP"
         n = length(m.tap_events)
-        push!(state_parts,
-            ("$label $(n) hit$(n == 1 ? "" : "s")",
-             TK.tstyle(:warning, bold = true)))
+        add!(" $label ", _chip(p.y)); add!(" $(n) hit$(n == 1 ? "" : "s")   ", on(p.y))
     end
     if m.test_note !== nothing && _synth_pane_open(m)
-        push!(state_parts, ("♪ T=$(_note_name(m.test_note))", TK.tstyle(:accent, bold = true)))
+        add!("♪ T=$(_note_name(m.test_note))   ", on(p.o; bold = true))
     end
     if m.piano_active
-        label = m.piano_rec ? "● PIANO REC" : "♪ PIANO"
-        push!(state_parts,
-            ("$label oct=$(m.piano_octave) [$(length(m.piano_events))]",
-             TK.tstyle(:warning, bold = true)))
+        label = m.piano_rec ? "PIANO REC" : "PIANO"
+        add!(" $label ", _chip(p.y)); add!(" oct=$(m.piano_octave) [$(length(m.piano_events))]   ", on(p.y))
     end
     if m.visual_active && (ved = _active_editor(m)) !== nothing
         r1 = min(m.visual_anchor_row, ved.cursor_row)
         r2 = max(m.visual_anchor_row, ved.cursor_row)
         n = r2 - r1 + 1
-        if m.visual_kind === :char
-            push!(state_parts,
-                ("▌ VISUAL CHAR $(m.visual_anchor_row):$(m.visual_anchor_col)→$(ved.cursor_row):$(ved.cursor_col)",
-                 TK.tstyle(:accent, bold = true)))
-        else
-            push!(state_parts,
-                ("▌ VISUAL LINE $r1-$r2 ($n line$(n == 1 ? "" : "s"))",
-                 TK.tstyle(:accent, bold = true)))
-        end
+        add!(m.visual_kind === :char ?
+             "VISUAL CHAR $(m.visual_anchor_row):$(m.visual_anchor_col)→$(ved.cursor_row):$(ved.cursor_col)   " :
+             "VISUAL LINE $r1-$r2 ($n line$(n == 1 ? "" : "s"))   ", on(p.o; bold = true))
     end
-    isempty(state_parts) || push!(sections, state_parts)
+    # Tempo : BPM suppose 4 temps par cycle (la convention de Tidal).
+    bpm = round(Int, sched.cps * 4 * 60)
+    add!("♪ $(round(sched.cps; digits = 2)) cps", on(p.n)); add!(" · ", on(p.x))
+    add!("$(bpm)", on(p.tx; bold = true)); add!(" bpm   ", on(p.d))
+    add!("▮"^beat, on(p.o)); add!("▮"^(4 - beat), on(p.x)); add!("   ", on(p.tx))
+    add!("cycle $(sched.t_start > 0 ? _cycle_index(sched) : 0)", on(p.d)); add!("   ", on(p.tx))
+    # SuperCollider répond-il ? (Rien tant qu'on ne peut pas le savoir.)
+    sc = _sc_state()
+    sc === :alive  && (add!("● SC", on(p.g; bold = true)); add!("   ", on(p.tx)))
+    sc === :silent && (add!("○ SC ne répond pas — `just audio`", on(p.r; bold = true)); add!("   ", on(p.tx)))
+    aud = _AUDIO_SETTINGS[]
+    if aud !== nothing && !isempty(aud.casque)
+        add!(aud.preview ? "◖ casque · essais" : "◖ casque", on(aud.preview ? p.v : p.d)); add!(" ", on(p.tx))
+    end
 
-    # ── Render —— left to right ────────────────────────────────────
-    # Blank the row first so we don't leak previous-frame content
-    # when sections shrink (e.g. recording stops).
-    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), _band_style())
-    empty!(m._status_hits)
-    m._status_y = area.y
-    wsx = area.x + area.width
-    # La pastille RESSAC ouvre l'aide.
-    push!(m._status_hits, (area.x, area.x + 7, () -> _open_help!(m)))
-    sep = " "
-    sep_style = _band_style()
+    # ── À gauche : le nom, puis ce qui est ouvert ────────────────────
     x = area.x
-    xmax = wsx - 1
-    for (i, sec) in enumerate(sections)
-        if i > 1
-            x + textwidth(sep) > xmax && break
-            TK.set_string!(buf, x, area.y, sep, sep_style)
-            x += textwidth(sep)
-        end
-        for (txt, sty) in sec
-            x + textwidth(txt) > xmax && (txt = first(txt, max(0, xmax - x)))
-            isempty(txt) && break
-            TK.set_string!(buf, x, area.y, txt, _on_band(sty))
-            x += textwidth(txt)
-        end
+    xmax = area.x + area.width - 1
+    put!(txt, sty) = begin
+        room = xmax - x + 1
+        room <= 0 && return
+        t = textwidth(txt) > room ? first(txt, room) : txt
+        TK.set_string!(buf, x, area.y, t, sty); x += textwidth(t)
+    end
+    # La pastille RESSAC ouvre l'aide.
+    put!(" RESSAC ", _chip(p.o))
+    push!(m._status_hits, (area.x, area.x + 7, () -> _open_help!(m)))
+    put!(" ", on(p.tx))
+    fb = _focused_buffer(m)
+    tab(label, active; mark = "") = begin
+        sty = active ? TK.Style(fg = p.tx, bg = p.bg, bold = true) : on(p.n)
+        put!(" " * label, sty)
+        isempty(mark) || put!(" " * mark, active ? TK.Style(fg = p.o, bg = p.bg, bold = true) : on(p.o))
+        put!(" ", sty); put!(" ", on(p.tx))
+    end
+    tab(_session_label(m), fb !== nothing && fb.role === :patterns)
+    syn = _all_synth_buffers(m)
+    cur = _current_synth_tab(m)
+    for (_, b) in syn
+        tab("♬ " * b.name, fb === b || (fb === nothing && cur === b))
+    end
+
+    # La droite se pose depuis le bord ; elle cède devant la gauche.
+    rw = sum(textwidth(t) for (t, _) in right; init = 0)
+    while !isempty(right) && area.x + area.width - rw < x + 1
+        rw -= textwidth(popfirst!(right)[1])
+    end
+    rx = area.x + area.width - rw
+    for (t, sty) in right
+        TK.set_string!(buf, rx, area.y, t, sty); rx += textwidth(t)
     end
 end
 
@@ -640,7 +611,7 @@ function _surface_label(m::RessacApp)
 end
 
 const _MODE_COLORS = (
-    normal  = :primary,
+    normal  = :accent,
     insert  = :success,
     visual  = :title,
     command = :warning,
@@ -703,9 +674,30 @@ coupée à la largeur. Un placeholder de snippet en cours a sa propre
 ligne (Tab / S-Tab / Esc + compteur).
 """
 function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), _band_style())
+    p = _ui()
+    band = p.s1
+    on(c; bold = false) = TK.Style(fg = c, bg = band, bold = bold)
+    TK.set_string!(buf, area.x, area.y, repeat(' ', area.width), TK.Style(bg = band))
     empty!(m._keybar_hits)
     m._keybar_y = area.y
+    # À gauche : le mode (pastille de sa couleur), puis où l'on est.
+    x = area.x
+    mode = " " * _MODE_LABELS_FR[_current_mode_symbol(m)] * " "
+    TK.set_string!(buf, x, area.y, mode, _chip(_ui_rgb(_mode_color(m)))); x += textwidth(mode) + 2
+    where_ = _surface_label(m)
+    TK.set_string!(buf, x, area.y, where_, on(p.tx; bold = true)); x += textwidth(where_) + 2
+    if m.modal === :none && (ed = _active_editor(m)) !== nothing
+        pos = "$(ed.cursor_row):$(ed.cursor_col + 1)"
+        TK.set_string!(buf, x, area.y, pos, on(p.n)); x += textwidth(pos) + 2
+        # Sur une ligne vide : ce qu'on peut y créer.
+        if (hint = _creation_hint(m)) !== nothing
+            txt = first(hint, area.width ÷ 3)
+            TK.set_string!(buf, x, area.y, txt, on(p.n)); x += textwidth(txt) + 2
+        end
+    end
+    left_end = x
+    # À droite : quatre touches au plus, puis « ? aide ». Le reste est dans
+    # l'aide et dans le menu Espace.
     entries = if m.placeholder_active
         NamedTuple[(key = k, label = l, binding = nothing, target = nothing) for (k, l) in
                    [("Tab", "suivant"), ("S-Tab", "précédent"), ("Esc", "sortir"),
@@ -714,21 +706,12 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         layers, prefix = _keybar_layers(m)
         hint_entries(layers; prefix = prefix)
     end
-    pairs = Tuple{String,String}[(e.key, e.label) for e in entries]
-    th = TK.theme()
-    sep_style = _band_style(fg = th.text_dim)
-    key_style = _band_style(fg = th.text_bright, bold = true)
-    txt_style = _band_style()
-    # « ? aide » toujours visible, épinglé à droite ; retiré de la liste.
-    # Sous un modal, « : commande » l'accompagne (la barre de commande
-    # reste accessible). Sinon, la livedoc du mot sous le curseur prend
-    # la partie droite (au plus la moitié de la largeur).
-    keep = [e.key != "?" for e in entries]
-    entries = entries[keep]; pairs = pairs[keep]
-    pin = " ? aide "
+    entries = [e for e in entries if e.key != "?"]
+    pin = "? aide "
     right = area.x + area.width - textwidth(pin)
-    if right > area.x + 8
-        TK.set_string!(buf, right, area.y, pin, _pill_style(:accent))
+    if right > left_end + 4
+        TK.set_string!(buf, right, area.y, "?", on(p.tx; bold = true))
+        TK.set_string!(buf, right + 1, area.y, " aide ", on(p.d))
         push!(m._keybar_hits, (right, right + textwidth(pin) - 1, () -> _open_help!(m)))
     else
         right = area.x + area.width
@@ -736,44 +719,36 @@ function _render_footer(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     if m.modal !== :none
         cmd = ": commande"
         right -= textwidth(cmd) + 3
-        TK.set_string!(buf, right, area.y, ":", key_style)
-        TK.set_string!(buf, right + 1, area.y, " commande  ", txt_style)
-        push!(m._keybar_hits, (right, right + textwidth(cmd), () -> enter!(m.command_line, :command)))
-    elseif (ld = _livedoc_under_cursor(m)) === nothing && (hint = _creation_hint(m)) !== nothing
-        txt = first(hint, area.width ÷ 3)
-        right -= textwidth(txt) + 3
-        TK.set_string!(buf, right, area.y, txt, txt_style)
-        TK.set_string!(buf, right + textwidth(txt), area.y, "   ", txt_style)
-    elseif ld !== nothing
-        word, doc = ld
-        maxw = area.width ÷ 2
-        txt = first("✎ " * word * " — " * doc, maxw)
-        right -= textwidth(txt) + 3
-        TK.set_string!(buf, right, area.y, "✎ ", txt_style)
-        TK.set_string!(buf, right + 2, area.y, word, _band_style(fg = th.accent, bold = true))
-        TK.set_string!(buf, right + 2 + textwidth(word), area.y,
-                       first(" — " * doc, max(0, textwidth(txt) - 2 - textwidth(word))), txt_style)
-        TK.set_string!(buf, right + textwidth(txt), area.y, "   ", txt_style)
-    end
-    x = area.x + 1
-    for (i, (k, t)) in enumerate(pairs)
-        chunk_w = textwidth(k) + (isempty(t) ? 0 : 1 + textwidth(t))
-        x + chunk_w + (i == 1 ? 0 : 3) > right - 2 && break
-        if i > 1
-            TK.set_string!(buf, x, area.y, " · ", sep_style)
-            x += 3
+        if right > left_end
+            TK.set_string!(buf, right, area.y, ":", on(p.tx; bold = true))
+            TK.set_string!(buf, right + 1, area.y, " commande", on(p.d))
+            push!(m._keybar_hits, (right, right + textwidth(cmd), () -> enter!(m.command_line, :command)))
         end
-        # Le morceau « touche libellé » est un bouton : clic = la touche.
-        let e = entries[i], x0 = x, x1 = x + chunk_w - 1
+    end
+    # Les touches se posent de droite à gauche, dans l'ordre du registre.
+    shown = NamedTuple[]
+    budget = right - left_end - 3
+    limit = m.modal === :none ? 6 : 8
+    for e in entries
+        length(shown) >= limit && break
+        w = textwidth(e.key) + (isempty(e.label) ? 0 : 1 + textwidth(e.label)) + 3
+        w > budget && break
+        budget -= w
+        push!(shown, e)
+    end
+    total = sum(textwidth(e.key) + (isempty(e.label) ? 0 : 1 + textwidth(e.label)) + 3 for e in shown; init = 0)
+    x = right - total
+    for e in shown
+        w = textwidth(e.key) + (isempty(e.label) ? 0 : 1 + textwidth(e.label))
+        let e = e, x0 = x, x1 = x + w - 1
             e.binding === nothing ||
                 push!(m._keybar_hits, (x0, x1, () -> click_binding!(e.binding, e.target)))
         end
-        TK.set_string!(buf, x, area.y, k, key_style)
-        x += textwidth(k)
-        if !isempty(t)
-            TK.set_string!(buf, x, area.y, " " * t, txt_style)
-            x += 1 + textwidth(t)
+        TK.set_string!(buf, x, area.y, e.key, on(p.tx; bold = true)); x += textwidth(e.key)
+        if !isempty(e.label)
+            TK.set_string!(buf, x, area.y, " " * e.label, on(p.d)); x += 1 + textwidth(e.label)
         end
+        x += 3
     end
 end
 
@@ -901,33 +876,25 @@ function _render_whichkey!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     end
     isempty(entries) && return
     n = length(entries)
+    p = _ui()
     kw = maximum(textwidth(k) for (k, _) in entries)
-    cells = String[rpad(k, kw) * "  " * l for (k, l) in entries]
-    cw = min(maximum(textwidth, cells), 30) + 2
-    ncol = n > 16 ? 3 : n > 8 ? 2 : 1
-    ncol = max(1, min(ncol, (area.width - 4) ÷ cw))
+    cw = min(maximum(textwidth(l) for (_, l) in entries) + kw + 5, 40)
+    ncol = max(1, min((area.width - 4) ÷ cw, cld(n, 4)))
     nrow = cld(n, ncol)
-    w = min(area.width - 2, ncol * cw + 2)
-    h = min(area.height - 1, nrow + 2)
+    h = min(area.height - 1, nrow + 3)
     h < 3 && return
-    x0 = area.x + area.width - w - 1
-    y0 = area.y + area.height - h
-    rect = TK.Rect(x0, y0, w, h)
-    inner = _inner_rect(rect)
-    blank = " " ^ inner.width
-    for y in inner.y:(inner.y + inner.height - 1)
-        TK.set_string!(buf, inner.x, y, blank, TK.tstyle(:text))
-    end
-    TK.render(TK.Block(title = " $prefix + … ", title_style = _pill_style(:accent),
-                       border_style = TK.tstyle(:accent), box = TK.BOX_ROUNDED,
-                       title_padding = 0), rect, buf)
+    rect = TK.Rect(area.x, area.y + area.height - h, area.width, h)
+    _clear_rect!(buf, rect)
+    _surface!(rect, p.s2)
+    _band!(buf, rect.x, rect.y, rect.width, prefix == "Space" ? "ESPACE" : "$prefix + …";
+           right = "une touche choisit · Échap ne fait rien", focus = p.o, bg = p.s3)
     for (i, (k, l)) in enumerate(entries)
         col, row = divrem(i - 1, nrow)
-        y = inner.y + row
-        y >= inner.y + inner.height && continue
-        x = inner.x + col * cw
-        TK.set_string!(buf, x, y, rpad(k, kw), TK.tstyle(:title, bold = true))
-        TK.set_string!(buf, x + kw + 2, y, first(l, max(0, cw - kw - 4)), TK.tstyle(:text))
+        y = rect.y + 2 + row
+        y >= rect.y + rect.height && continue
+        x = rect.x + 2 + col * cw
+        TK.set_string!(buf, x, y, rpad(k, kw), TK.Style(fg = p.o, bold = true))
+        TK.set_string!(buf, x + kw + 2, y, first(l, max(0, cw - kw - 4)), TK.Style(fg = p.tx))
     end
     return
 end

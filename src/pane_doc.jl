@@ -7,29 +7,69 @@ mutable struct DocPane <: PaneImpl
     follow::Bool              # suit le mot sous le curseur (doc vivante)
     rendered::Tuple{String,Int,UInt64}   # (nom, largeur, en-tête) du contenu posé dans `pane`
     # Ce que la ligne @dN du curseur est en train de faire (app_slots.jl :
-    # `_slot_summary`) — au-dessus de la fiche. Vide hors d'une ligne @dN.
+    # `_slot_summary`) — sous la fiche, dans sa bande LIGNE. Vide hors d'une ligne @dN.
     header::Vector{Tuple{String,Symbol}}
+    # Tous les slots du texte et leur état (bande EN JEU) : (slot, état, coups par cycle).
+    slots::Vector{Tuple{Symbol,Symbol,Int}}
 end
 
 DocPane(name::AbstractString, offset::Int = 0, follow::Bool = false) =
-    DocPane(String(name), _scrollpane(; offset), follow, ("\0", 0, UInt64(0)), Tuple{String,Symbol}[])
+    DocPane(String(name), _scrollpane(; offset), follow, ("\0", 0, UInt64(0)), Tuple{String,Symbol}[],
+            Tuple{Symbol,Symbol,Int}[])
 
 function _doc_pane_ctor(args::AbstractDict)
     return DocPane(String(get(args, "ref", "")), Int(get(args, "scroll", 0)), get(args, "follow", false) == true)
 end
 
+# Une bande de titre à l'intérieur d'un texte défilant : une ligne pleine
+# largeur sur le fond des bandes.
+function _md_band(title::AbstractString, sub::AbstractString, width::Int)
+    p = _ui()
+    t = " " * String(title)
+    st = isempty(sub) ? "" : "  " * String(sub)
+    fill = max(0, width - textwidth(t) - textwidth(st))
+    return TK.Span[TK.Span(t, TK.Style(fg = p.tx, bg = p.s2, bold = true)),
+                   TK.Span(st * " "^fill, TK.Style(fg = p.d, bg = p.s2))]
+end
+
 # Pose dans le ScrollPane la fiche courante rendue à `width` colonnes,
-# une fois par (nom, largeur) ; changer de fiche remonte en haut.
+# une fois par (nom, largeur) ; changer de fiche remonte en haut. Sous la
+# fiche : la bande LIGNE (ce que fait la ligne @dN du curseur) puis la bande
+# EN JEU (tous les slots, d'un coup d'œil).
 function _doc_sync!(p::DocPane, width::Int)
-    key = (p.name, width, hash((p.header, _PLAYED_EPOCH[])))
+    key = (p.name, width, hash((p.header, p.slots, _PLAYED_EPOCH[], TK.theme().name)))
     p.rendered == key && return
     p.rendered[1] == p.name || (p.pane.offset = 0)
-    lines = _MdLine[]
-    for (text, sty) in p.header, l in _wrap_text(text, width)
-        push!(lines, _md_plain(l, TK.tstyle(sty, bold = sty !== :text_dim)))
-    end
-    isempty(lines) || push!(lines, TK.Span[])
+    ui = _ui()
+    lines = _MdLine[TK.Span[]]
     append!(lines, _doc_pane_lines(p.name, width))
+    if !isempty(p.header)
+        push!(lines, TK.Span[])
+        push!(lines, _md_band("LIGNE", "", width))
+        push!(lines, TK.Span[])
+        for (text, sty) in p.header, l in _wrap_text(text, width - 1)
+            push!(lines, _md_plain(" " * l, TK.tstyle(sty, bold = sty !== :text_dim)))
+        end
+    end
+    if !isempty(p.slots)
+        n = count(s -> s[2] === :playing, p.slots)
+        push!(lines, TK.Span[])
+        push!(lines, _md_band("EN JEU", "$n sur $(length(p.slots))", width))
+        push!(lines, TK.Span[])
+        set = _mark_set()
+        for (slot, state, onsets) in p.slots
+            color = state === :error ? ui.r : state === :muted ? ui.n : state === :playing ? ui.g :
+                    state === :modified ? ui.g : ui.n
+            mark = state === :error ? set.error : state === :muted ? set.rests[3] :
+                   state === :modified ? set.modified : state === :playing ? set.notes[3] : ' '
+            phrase = String(first(split(get(_STATE_PHRASES, state, String(state)), r" — | · ")))
+            cadence = (state === :playing && onsets > 0) ? "$(onsets) coup$(onsets == 1 ? "" : "s")" : ""
+            push!(lines, TK.Span[TK.Span(" " * string(mark) * " ", TK.Style(fg = color, bold = true)),
+                                 TK.Span(rpad(String(slot), 5), TK.Style(fg = state === :playing ? ui.tx : color)),
+                                 TK.Span(rpad(phrase, 22), TK.Style(fg = state === :playing ? ui.d : color)),
+                                 TK.Span(cadence, TK.Style(fg = ui.n))])
+        end
+    end
     TK.set_content!(p.pane, lines)
     p.rendered = key
     return
@@ -37,7 +77,7 @@ end
 
 function render!(p::DocPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
-    title_str = (p.follow ? "DOC ✦" : "DOC") * (isempty(p.name) ? "" : " · $(p.name)")
+    title_str = "FICHE" * (isempty(p.name) ? "" : " · $(p.name)") * (p.follow ? "" : " · figée")
     _render_pane_block_simple!(rect, title_str, buf)
     inner = _inner_rect_simple(rect)
     (inner.height < 1 || inner.width < 4) && return

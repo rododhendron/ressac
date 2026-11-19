@@ -350,25 +350,15 @@ function _render_modal_block!(buf::TK.Buffer, area::TK.Rect;
     box_y = area.y + max(0, (ah - box_h) ÷ 2)
     rect = TK.Rect(box_x, box_y, box_w, box_h)
     inner = _inner_rect(rect)
-    # Clear inner first so any cells previously drawn by the editor /
-    # panes underneath get overwritten with blank text style. Without
-    # this the modal looks "transparent" on the body.
-    blank = " " ^ inner.width
-    bg_style = TK.tstyle(:text)
-    for y in inner.y:(inner.y + inner.height - 1)
-        TK.set_string!(buf, inner.x, y, blank, bg_style)
-    end
-    block = TK.Block(
-        title              = " " * String(title) * " ",
-        title_right        = isempty(title_right) ? "" :
-                             " " * String(title_right) * " ",
-        title_style        = _pill_style(:accent),
-        title_right_style  = TK.tstyle(:text_dim),
-        border_style       = TK.tstyle(:accent),
-        box                = TK.BOX_ROUNDED,
-        title_padding      = 0,
-    )
-    TK.render(block, rect, buf)
+    # La fenêtre recouvre tout son rectangle (rien de ce qui est dessous ne
+    # la traverse), prend le fond de ce qui flotte, et s'ouvre par une bande
+    # de titre. Pas de cadre : le fond la détache du reste, déjà éteint.
+    p = _ui()
+    _clear_rect!(buf, rect)
+    _surface!(rect, p.s2)
+    # Les touches d'une fenêtre sont dans la ligne d'état, une seule fois :
+    # la bande ne porte que son nom.
+    _band!(buf, rect.x, rect.y, rect.width, String(title); focus = p.o, bg = p.s3)
     return inner
 end
 

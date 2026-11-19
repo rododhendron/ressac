@@ -157,6 +157,26 @@ function _focus_in_volet(m::RessacApp)
     return any(l -> l.id == ws.focused_pane, _all_leaves(m.volet_shown))
 end
 
+# La fiche n'a pas besoin d'un tiers de l'écran : elle prend la largeur d'une
+# colonne de lecture, et laisse le reste au texte et à la grille du cycle.
+# Sans effet dès que le joueur a redimensionné lui-même.
+const _FICHE_COLS = 46
+const _FICHE_AUTO = Ref(0.0)
+
+function _fiche_fit_width!(m::RessacApp)
+    (m.volet === :fiche && m._last_ws_area !== nothing) || return
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    root = ws.tree
+    (root isa Container && length(root.children) == 2 && root.children[2] === m.volet_shown) || return
+    cur = root.ratios[2]
+    (isapprox(cur, _VOLET_SHARE[:fiche]; atol = 1e-6) || isapprox(cur, _FICHE_AUTO[]; atol = 1e-6)) || return
+    want = clamp(_FICHE_COLS / max(m._last_ws_area.w, 1), 0.2, _VOLET_SHARE[:fiche])
+    root.ratios = [1 - want, want]
+    _FICHE_AUTO[] = want
+    return
+end
+
 # Quand la fenêtre passe la largeur seuil, le son gagne ou perd sa colonne.
 function _volet_follow_width!(m::RessacApp)
     m.volet === :son || return

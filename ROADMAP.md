@@ -114,6 +114,18 @@ Décidée le 2026-11-17. Détail des tâches, tests et risques : `docs/journal/2
 - [x] E6 — Hors grille : `Entrée` = maintenant, `frappes`, la boucle.
 - [x] E7 — Le casque en delta, découverte des sorties PipeWire. *(Codé et testé sans matériel ; reste à l'entendre avec SuperCollider lancé.)*
 
+## Phase 8 — Le langage visuel (refonte « A + D »)
+
+Décidée le 2026-11-19 sur maquettes. Le système et ce qui reste : `docs/journal/20261119_refonte_visuelle.md`.
+
+- [x] V1 — La palette (`ui_style.jl`), le thème `ressac`, la dernière passe du rendu (fonds et couleurs exactes).
+- [x] V2 — Plus de cadres ni de boutons de fenêtre : bandes de titre, filets, ligne du haut, ligne d'état.
+- [x] V3 — La grille du cycle : temps alternés, pistes nommées, tête de lecture pleine hauteur, notes en chiffres.
+- [x] V4 — La fiche en colonne de lecture, avec ses bandes LIGNE et EN JEU.
+- [x] V5 — Les fenêtres recouvrent et éteignent le reste ; le menu Espace en panneau.
+- [ ] V6 — L'écran d'un son en trois colonnes, la chaîne en tableau sous le texte.
+- [ ] V7 — Le menu Espace rangé par intention ; les fenêtres à table (réserve, mixer, sorties) ; l'explorateur sans cadres.
+
 ## Fonctionnalités (ancien `TODO.txt` et wiki)
 
 - [ ] F1 — Snippets : éditeur de snippets et alias de snippets (les raccourcis `:sg0.9` / `:sng…` existent déjà) ; table du leader sortie du code (`editor_snippets.jl:64`).

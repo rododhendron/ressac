@@ -18,11 +18,11 @@ _sm_cell(buf, x, y) = buf.content[Tachikoma.buf_index(buf, x, y)]
 function _sm_sign(buf, needle)
     y = _sm_row(buf, needle)
     row = _sm_rows(buf)[y]
-    x = findfirst(c -> c == '│', collect(row))                # le cadre gauche de la pane
+    x = 1                                                     # le bord gauche de la pane (plus de cadre)
     return _sm_cell(buf, x + 1, y).char
 end
 _sm_bg(buf, needle; dx = 3) = (y = _sm_row(buf, needle);
-    x = findfirst(c -> c == '│', collect(_sm_rows(buf)[y])); _sm_cell(buf, x + dx, y).style.bg)
+    x = 1; _sm_cell(buf, x + dx, y).style.bg)
 
 function _sm_with(f, marks::Symbol = :transport)
     cfg = Ressac.ressac_config()
@@ -64,10 +64,11 @@ end
         # Une seule hauteur : pas d'échelle à montrer, bloc plein.
         @test Ressac._lane_cells([ev(0 // 1, Dict(:n => 5))], 0, 4)[1] == '█'
         @test all(==(' '), Ressac._lane_cells(Ressac.Event[], 0, 8))
-        # Large, étroite, ou rien selon la place à droite du texte.
-        @test Ressac._lane_width(20, 100) == 48
-        @test Ressac._lane_width(60, 100) == 24
-        @test Ressac._lane_width(90, 100) == 0
+        # La grille : large quand le texte garde de quoi s'écrire, étroite sinon, absente trop à l'étroit.
+        zone(w) = Ressac._grid_zone(Tachikoma.Rect(1, 1, w, 10))
+        @test zone(120) == (120 - 48 + 1, 48)
+        @test zone(80) == (80 - 24 + 1, 24)
+        @test zone(60) === nothing
     end
 
     @testset "le signe est dans la marge, le texte ne bouge pas" begin
@@ -119,8 +120,7 @@ end
             Ressac.set_pattern!(app.scheduler, :d1, :pad |> n(fib(5)))
             buf = _sm_draw(app, frame)
             row = _sm_rows(buf)[_sm_row(buf, "@d1")]
-            @test count(c -> c in Ressac._LANE_LEVELS, row) == 5         # 1 1 2 3 5
-            @test occursin('▁', row) && occursin('█', row)               # du plus grave au plus aigu
+            @test occursin(r"d1 1·+1·+2·+3·+5", row)                    # les notes, en chiffres : 1 1 2 3 5
             # Un slot écrit mais pas lancé n'a pas de piste.
             @test !any(c -> c in Ressac._LANE_LEVELS, _sm_rows(buf)[_sm_row(buf, "@d9")])
         end
@@ -153,9 +153,10 @@ end
 
     @testset "le fond : allumé au coup, stable quand l'écran est calme" begin
         _sm_with() do app, frame
-            _set_buffer!(app, "@d1 p\"bd\"\n@d2 p\"cp\"")
+            _set_buffer!(app, "@d1 p\"bd\"\n@d2 p\"cp\"\n")
+            Ressac._patterns_editor(app).cursor_row = 3              # le curseur ailleurs : sa ligne a son propre fond
             buf = _sm_draw(app, frame)
-            @test _sm_bg(buf, "@d1") isa Tachikoma.NoColor           # à l'arrêt : pas de fond
+            @test _sm_bg(buf, "@d1") == Ressac._ui().bg              # à l'arrêt : le sol, rien d'autre
             _key!(app, 'E')
             lock(app.scheduler.lock) do
                 app.scheduler.last_fired_at[:d1] = time()            # d1 vient de frapper

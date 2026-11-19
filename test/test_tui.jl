@@ -174,20 +174,21 @@ end
     app = Ressac.RessacApp(; scheduler=sched)
     Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = false
+    # Le mode et la surface sont dans la ligne d'état du bas (comme vim).
     tb = Tachikoma.TestBackend(120, 5)
-    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
+    Ressac._render_footer(app, Tachikoma.Rect(1, 1, 120, 1), tb.buf)
     row = _row_to_string(tb.buf, 1)
     @test occursin(" NORMAL ", row)
     @test occursin("PATTERNS", row)
     @test !occursin("insert", row)               # plus de strip listant tous les modes
     Ressac._active_editor(app).mode = :insert
     tb2 = Tachikoma.TestBackend(120, 5)
-    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb2.buf)
+    Ressac._render_footer(app, Tachikoma.Rect(1, 1, 120, 1), tb2.buf)
     @test occursin("INSERTION", _row_to_string(tb2.buf, 1))
     Ressac._active_editor(app).mode = :normal
     Ressac._PANE_MODE.active = true
     tb3 = Tachikoma.TestBackend(120, 5)
-    Ressac._render_status_bar(app, Tachikoma.Rect(1, 1, 120, 1), tb3.buf)
+    Ressac._render_footer(app, Tachikoma.Rect(1, 1, 120, 1), tb3.buf)
     @test occursin(" PANE ", _row_to_string(tb3.buf, 1))
     Ressac._PANE_MODE.active = false
 end

@@ -17,6 +17,7 @@ end
     _isolated_include("test_held.jl")
     _isolated_include("test_slot_state.jl")
     _isolated_include("test_slot_marks.jl")
+    _isolated_include("test_ui_style.jl")
     _isolated_include("test_volet.jl")
     _isolated_include("test_sessions.jl")
     _isolated_include("test_format_comment.jl")

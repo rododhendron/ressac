@@ -25,13 +25,20 @@ grand écran (200 colonnes et plus), le son s'ouvre entre les patterns et
 la fiche au lieu de la remplacer.
 
 Chaque ligne `@dN` dit ce qu'elle fait, sur la ligne elle-même : un signe
-dans la marge, un fond qui s'allume au coup, et au bout de la ligne une
-piste d'un cycle. Voir `07-scope`.
+dans la marge, un fond qui s'allume au coup, et à droite du texte sa piste
+dans la **grille du cycle** — une colonne où un temps sur deux a un fond, et
+que la tête de lecture traverse de haut en bas. Voir `07-scope`.
 
-En haut, la **status line** : le tempo, les quatre temps du cycle, et
-`● SC` quand SuperCollider répond. En bas, la **barre de touches** de
-l'endroit où tu es, puis la dernière ligne du **journal** (`:log` le
-déplie).
+L'écran n'a pas de cadres : une zone, c'est une bande de titre (dans la
+couleur du mode quand elle a le clavier) et un filet qui la sépare de sa
+voisine. La couleur dit un état : orange pour maintenant (le curseur, la
+tête de lecture), vert pour ce qui joue, rouge pour une erreur.
+
+En haut, ce qui joue : la session et les sons ouverts, le tempo, les quatre
+temps du cycle, et `● SC` quand SuperCollider répond. En bas, la **ligne
+d'état** : le mode, l'endroit où tu es, et les touches les plus utiles (le
+reste est dans `?` et dans le menu `Espace`) ; dessous, la dernière ligne du
+**journal** (`:log` le déplie).
 
 ## Tout retrouver : Ctrl-p
 

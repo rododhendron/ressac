@@ -75,7 +75,7 @@ end
     @test ws.focused_pane == focus0                                 # l'éditeur garde le focus
     @test occursin("[doc] gain", app.logs[end])
     scr = _gdscreen(app, tb, frame)
-    @test occursin("DOC · gain", scr) && occursin("exemples", scr)
+    @test occursin("FICHE · gain", scr) && occursin("exemples", scr)
     # K sur un mot : la même pane change de fiche
     Tachikoma.set_text!(ed, "@d1 p\"bd hh\" |> every(4, rev) |> lpf(800)")
     ed.cursor_row = 1; ed.cursor_col = 20                           # sur « every »

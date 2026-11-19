@@ -34,6 +34,8 @@ scope_zoom_max  = 32.0
 Changer en live : `:theme <nom>`. Lister : `:theme` seul.
 
 **Thèmes Ressac :**
+- `ressac` — celui par défaut : un sol sombre, trois surfaces, six couleurs
+  qui disent chacune un état (orange = maintenant, vert = ça joue…)
 - `cyberpunk` — magenta chaud + cyan électrique sur noir
 - `solarpunk` — sauge + or + vert forêt sur crème
 

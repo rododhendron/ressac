@@ -265,12 +265,6 @@ function _workspace_mouse_dispatch!(m::RessacApp, evt::TK.MouseEvent)
     for (leaf_id, r) in rects
         if _in_rect_xywh(r.x, r.y, r.w, r.h, evt.x, evt.y)
             ws.focused_pane = leaf_id
-            # Boutons du cadre (⊞ ⊟ ⤢ ✕) avant la pane elle-même.
-            act = _pane_button_at(TK.Rect(r.x, r.y, r.w, r.h), evt.x, evt.y)
-            if act !== nothing
-                _pane_button_action!(m, act)
-                return true
-            end
             leaf = _find_leaf_by_id(ws.tree, leaf_id)
             if leaf isa PaneLeaf && !isempty(leaf.tabs) &&
                1 <= leaf.current_tab <= length(leaf.tabs)
@@ -280,20 +274,6 @@ function _workspace_mouse_dispatch!(m::RessacApp, evt::TK.MouseEvent)
         end
     end
     return false
-end
-
-# Boutons du cadre d'une pane (elle est déjà focalisée).
-function _pane_button_action!(m::RessacApp, act::Symbol)
-    if act === :vsplit
-        cmd_vsplit!(m.workspaces, "editor", Dict{String,Any}())
-    elseif act === :hsplit
-        cmd_hsplit!(m.workspaces, "editor", Dict{String,Any}())
-    elseif act === :zoom
-        _toggle_zoom!(m)
-    elseif act === :close
-        _close_focused_pane!(m)
-    end
-    return
 end
 
 # Clic sur la barre de touches / la status line : exécute le bouton

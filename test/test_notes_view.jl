@@ -118,7 +118,7 @@ end
     # le focus reste sur les patterns
     @test ws.focused_pane == left.id
     scr = _nv_screen(app, tb, frame, 30)
-    @test occursin("PATTERNS", scr) && !occursin("WIKI", scr) && occursin("DOC ✦", scr)
+    @test occursin("PATTERNS", scr) && !occursin("WIKI", scr) && occursin("FICHE", scr)
 
     old = Ressac._LIVE_SCHEDULER[]
     Ressac._LIVE_SCHEDULER[] = app.scheduler

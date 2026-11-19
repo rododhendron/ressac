@@ -6,7 +6,7 @@ using TOML
 
 @kwdef mutable struct RessacConfig
     # ── UI ───────────────────────────────────────────────────────────
-    theme::Symbol           = :kokaku   # any Tachikoma theme name OR a
+    theme::Symbol           = :ressac   # any Tachikoma theme name OR a
                                         # Ressac custom (:cyberpunk, :solarpunk).
     keyboard::Symbol        = :auto     # :auto (détection), :azerty, :qwerty
     marks::Symbol           = :auto     # signes de marge : :auto, :solfege, :transport, :formes

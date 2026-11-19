@@ -197,15 +197,15 @@ end
 @testset "whichkey — Space : popup immédiat avec les snippets ; Esc le ferme" begin
     app, tb, frame = _help_app()
     scr = _screen(app, tb, frame)
-    @test !occursin("Space + …", scr)
+    @test !occursin("ESPACE", scr)
     _hkey(app, ' ')
     scr = _screen(app, tb, frame)
-    @test occursin("Space + …", scr)
+    @test occursin("ESPACE", scr)
     @test occursin("slot @dN", scr) && occursin("▸ wiki", scr)
     @test app.prefix_kind === :leader
     _hkey(app, :escape)
     scr = _screen(app, tb, frame)
-    @test !occursin("Space + …", scr)
+    @test !occursin("ESPACE", scr)
     @test app.prefix_kind === :none
 end
 
@@ -248,21 +248,22 @@ end
     app, tb, frame = _help_app()
     scr = _screen(app, tb, frame)
     rows = split(scr, "\n")
-    @test occursin("RESSAC", rows[1]) && occursin("NORMAL", rows[1]) && occursin("PATTERNS", rows[1])
+    @test occursin("RESSAC", rows[1])                          # en haut : le nom, la session, ce qui joue
+    @test occursin("NORMAL", rows[39]) && occursin("PATTERNS", rows[39])   # en bas : le mode et où l'on est
     # Le journal tient sur la dernière ligne, sans cadre ; la barre de touches est juste au-dessus.
-    @test !any(r -> startswith(r, "╭ JOURNAL"), rows)
+    @test !any(r -> startswith(r, " JOURNAL"), rows)
     @test occursin("? aide", rows[39])
     @test !any(occursin("insert · visual", r) for r in rows)   # plus de mode strip
     @test !occursin("PLAY", rows[1]) && !occursin("DESIGN", rows[1])   # un seul écran : plus de pastilles
     # :log déplie (3 lignes, 10 lignes), replie, puis revient à une ligne
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
-    i = findfirst(r -> startswith(r, "╭ JOURNAL"), rows)
-    @test i == 40 - 4 && startswith(rows[40], "╰")        # boîte de 5 lignes (3 + bordures)
+    i = findfirst(r -> startswith(r, " JOURNAL"), rows)
+    @test i == 40 - 4                                     # sa bande de titre, puis ses lignes
     @test occursin("? aide", rows[i - 1])
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
-    @test findfirst(r -> startswith(r, "╭ JOURNAL"), rows) == 40 - 11
+    @test findfirst(r -> startswith(r, " JOURNAL"), rows) == 40 - 11
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
-    @test findfirst(r -> startswith(r, "╭ JOURNAL"), rows) === nothing
+    @test findfirst(r -> startswith(r, " JOURNAL"), rows) === nothing
     @test occursin("? aide", rows[40])                    # la barre est alors tout en bas
     _hex(app, "log"); rows = split(_screen(app, tb, frame), "\n")
     @test app.log_tail_rows == 1 && occursin("? aide", rows[39])
@@ -276,23 +277,12 @@ end
     rows = split(_screen(app, tb, frame), "\n")
     @test occursin("? aide", rows[39]) && occursin(": commande", rows[39])   # la barre, au-dessus du journal
     @test !any(occursin(": commande─", r) for r in rows)       # plus d'artefact sur la bordure
-    @test occursin("LIBRAIRIE", rows[1])                        # surface = modal
+    @test occursin("LIBRAIRIE", rows[39])                       # la ligne d'état dit la fenêtre ouverte
     # la barre de commande prend la place de la barre de touches
     _hkey(app, ':')
     rows = split(_screen(app, tb, frame), "\n")
     @test occursin(":", rows[39]) && !occursin("? aide", rows[39])
     _hkey(app, :escape)
-end
-
-@testset "chrome — livedoc du mot sous le curseur à droite de la barre" begin
-    app, tb, frame = _help_app()
-    ed = Ressac._active_editor(app)
-    Tachikoma.set_text!(ed, "SinOsc.ar(440)")
-    ed.cursor_row = 1; ed.cursor_col = 2                       # sur « SinOsc »
-    rows = split(_screen(app, tb, frame), "\n")
-    i = length(rows)
-    @test occursin("✎ SinOsc", rows[i - 1])
-    @test occursin("? aide", rows[i - 1])
 end
 
 cd(_HELP_OLD_PWD)   # fin du sandbox
@@ -303,41 +293,43 @@ _cell(tb, x, y) = tb.buf.content[(y - 1) * tb.buf.area.width + x]
 # renvoie des offsets en OCTETS, faux dès qu'il y a un ♪ ou un ─ avant.
 _col(row, needle) = length(row[1:prevind(row, findfirst(needle, row).start)]) + 1
 
-@testset "look — status line et barre de touches sont des bandeaux pleins avec pastilles" begin
+@testset "look — la ligne du haut et la ligne d'état sont des bandes ; le mode est une pastille" begin
     app, tb, frame = _help_app()
     _screen(app, tb, frame)
     th = Tachikoma.theme()
-    @test _cell(tb, 60, 1).style.bg == th.border            # bandeau du haut
-    @test _cell(tb, 2, 1).style.bg == th.accent             # pastille RESSAC
+    ui = Ressac._ui()
+    @test _cell(tb, 60, 1).style.bg == ui.s1                # bande du haut
+    @test _cell(tb, 2, 1).style.bg == ui.o                  # pastille RESSAC
     rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
     ky = length(rows) - 1
-    @test _cell(tb, 40, ky).style.bg == th.border           # bandeau du bas
-    x_aide = _col(rows[ky], "? aide")
-    @test _cell(tb, x_aide, ky).style.bg == th.accent       # pastille ? aide
-    # badge de mode : NORMAL en pastille de la couleur du mode (primary)
-    x_mode = _col(rows[1], "NORMAL")
-    @test _cell(tb, x_mode, 1).style.bg == th.primary
+    @test _cell(tb, 60, ky).style.bg == ui.s1               # ligne d'état
+    # le mode : une pastille de sa couleur (NORMAL = accent, INSERTION = success)
+    x_mode = _col(rows[ky], "NORMAL")
+    @test _cell(tb, x_mode, ky).style.bg == Ressac._ui_rgb(th.accent)
     _hkey(app, 'i'); _screen(app, tb, frame)
     rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
-    x_mode = _col(rows[1], "INSERTION")
-    @test _cell(tb, x_mode, 1).style.bg == th.success
+    x_mode = _col(rows[ky], "INSERTION")
+    @test _cell(tb, x_mode, ky).style.bg == Ressac._ui_rgb(th.success)
     _hkey(app, :escape)
 end
 
-@testset "look — pane focalisée : cadre arrondi couleur du mode, titre en pastille ; autres atténuées" begin
+@testset "look — pas de cadre : une bande de titre, dans la couleur du mode quand la pane a le clavier" begin
     app, tb, frame = _help_app()
     _screen(app, tb, frame)
     th = Tachikoma.theme()
-    @test _cell(tb, 1, 2).char == '╭'
-    @test _cell(tb, 1, 2).style.fg == th.primary            # bordure = couleur du mode normal
-    @test _cell(tb, 4, 2).style.bg == th.primary            # titre PATTERNS en pastille
+    ui = Ressac._ui()
+    rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
+    @test !any(c -> c in ('╭', '╮', '╰', '╯'), join(rows))   # plus aucun cadre
+    xp = _col(rows[2], "PATTERNS")
+    @test _cell(tb, xp, 2).style.bg == ui.s2                 # la bande
+    @test Ressac._ui_rgb(_cell(tb, xp, 2).style.fg) == Ressac._ui_rgb(th.accent)   # focalisée : couleur du mode normal
     _hex(app, "vsplit log")                                  # focus → JOURNAL
     _screen(app, tb, frame)
-    @test _cell(tb, 4, 2).style.bg isa Tachikoma.NoColor    # PATTERNS n'est plus focalisée
-    @test _cell(tb, 1, 2).style.fg == th.border
     rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
+    @test _cell(tb, _col(rows[2], "PATTERNS"), 2).style.fg == ui.tx   # PATTERNS n'a plus le clavier
     xj = _col(rows[2], "JOURNAL")
-    @test _cell(tb, xj, 2).style.bg == th.primary           # le journal focalisé a la pastille
+    @test Ressac._ui_rgb(_cell(tb, xj, 2).style.fg) == Ressac._ui_rgb(th.accent)
+    @test _cell(tb, xj - 1, 3).char == '│'                   # un filet la sépare de sa voisine
 end
 
 # ── Boutons : barre de touches, status line, cadre des panes ────────────
@@ -369,33 +361,6 @@ end
     _hkey(app, :escape)
 end
 
-@testset "boutons — ⊞ ⊟ ⤢ ✕ sur le cadre de la pane focalisée" begin
-    app, tb, frame = _help_app()
-    rows = split(_screen(app, tb, frame), "\n")
-    @test occursin("⊞", rows[2]) && occursin("✕", rows[2])
-    ws = Ressac.current_workspace(app.workspaces)
-    n0 = length(collect(Ressac._all_leaves(ws.tree)))
-    _click(app, _col(rows[2], "⊞"), 2)                      # split vertical
-    @test length(collect(Ressac._all_leaves(ws.tree))) == n0 + 1
-    rows = split(_screen(app, tb, frame), "\n")
-    # la nouvelle pane (à droite) est focalisée : son ⤢ zoome
-    xz = _col(rows[2], "⤢"); xz2 = findlast("⤢", rows[2])
-    x_last = length(rows[2][1:prevind(rows[2], xz2.start)]) + 1
-    _click(app, x_last, 2)
-    @test app.zoom_leaf == ws.focused_pane
-    _click(app, x_last, 2); @test app.zoom_leaf == 0        # re-clic dézoome
-    rows = split(_screen(app, tb, frame), "\n")
-    # ✕ sur la fiche (la dernière à droite) ne ferme rien : elle accompagne.
-    xc = findlast("✕", rows[2]); x_close = length(rows[2][1:prevind(rows[2], xc.start)]) + 1
-    _click(app, x_close, 2)
-    @test length(collect(Ressac._all_leaves(ws.tree))) == n0 + 1
-    @test Ressac._focused_role(app) === :patterns
-    # ✕ sur la pane scindée (la deuxième) la ferme.
-    xs = [length(rows[2][1:prevind(rows[2], r.start)]) + 1 for r in findall("✕", rows[2])]
-    _click(app, xs[2], 2)
-    @test length(collect(Ressac._all_leaves(ws.tree))) == n0
-end
-
 # ── Wiki : le style « bloc de code » survit au défilement ; livedoc englobante ──
 @testset "wiki — une ligne de bloc de code reste stylée quand la clôture est hors écran" begin
     app, tb, frame = _help_app()
@@ -416,15 +381,15 @@ end
     rows = split(join((Tachikoma.row_text(tb, y) for y in 1:40), "\n"), "\n")
     ty = findfirst(r -> occursin("WIKI ·", r), rows)
     y = ty + 1
-    # la pane wiki : de son « ╭ » (le dernier de la ligne de titre) à son « ╮ »
-    x0 = length(collect(rows[ty][1:prevind(rows[ty], findlast("╭", rows[ty]).start)])) + 1
-    x1 = length(collect(rows[ty][1:prevind(rows[ty], findlast("╮", rows[ty]).start)])) + 1
+    # la pane wiki : de son filet (juste avant son titre) au bord droit de l'écran
+    x0 = _col(rows[ty], "WIKI ·") - 1
+    x1 = 121
     x = x0 + 1                                               # début de la colonne contenu
     xs = [i for i in x:min(x1 - 1, 120) if _cell(tb, i, y).char != ' ']
     @test !isempty(xs)
     # la ligne de code est colorée comme dans l'éditeur, même si la clôture est hors écran
     code = lines[fence + 1]
-    @test _cell(tb, xs[1], y).style.fg == code[1].style.fg
+    @test Ressac._ui_rgb(_cell(tb, xs[1], y).style.fg) == Ressac._ui_rgb(code[1].style.fg)
     @test code[1].style.fg != Tachikoma.tstyle(:text).fg
     _hkey(app, :escape)
 end
