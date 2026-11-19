@@ -1,9 +1,26 @@
 # MIDI et contrôle OSC externe
 
-Ressac n'embarque pas de driver MIDI. Il expose deux points d'entrée OSC
-que tout ce qui parle OSC peut piloter : contrôleurs MIDI, séquenceurs
-matériels, layouts TouchOSC, patches Max, ou un autre processus Julia. Le
-pont MIDI, ce sont 6 lignes de SuperCollider à coller une fois.
+## Un clavier MIDI branché
+
+Rien à régler : au démarrage, SuperCollider ouvre les périphériques MIDI
+et renvoie chaque note à Ressac. Une note va là où elle a un sens :
+
+- **le piano est ouvert** (`:piano <son>`, ou `:piano-rec <son>` pour écrire
+  ce que tu joues) : elle le joue à sa vraie hauteur, et s'enregistre avec
+  les autres ;
+- **sinon, un son est ouvert** (`gs` sur son nom) : tu l'entends à cette
+  hauteur — elle devient la note de test, comme avec `:note` ;
+- **sinon** : le journal te dit une fois comment t'en servir.
+
+Un clavier branché après le démarrage n'est vu qu'au prochain lancement de
+SuperCollider. La vélocité et les boutons (CC) arrivent jusqu'à Ressac mais
+ne servent pas encore.
+
+## Tout ce qui parle OSC
+
+Ressac expose aussi deux points d'entrée OSC que tout ce qui parle OSC peut
+piloter : séquenceurs matériels, layouts TouchOSC, patches Max, ou un autre
+processus Julia.
 
 ## Points d'entrée
 

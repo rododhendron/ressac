@@ -316,6 +316,9 @@ function _app_scope_listener_loop()
             elseif addr == "/ressac/level"
                 _handle_synth_level!(msg.args)
                 continue
+            elseif addr == "/ressac/midi"
+                _handle_midi!(msg.args)
+                continue
             elseif (handler = _osc_reply_handler(addr)) !== nothing
                 # Ephemeral handler installed by short-lived callers
                 # (sc-discoverer waiting on /ressac/sc-meta-reply or

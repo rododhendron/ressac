@@ -147,7 +147,7 @@ par Julia (mot-clé ou clash avec `Base`) : `struct` → `structPat`,
 | `sec` `msec` | `secs` `msecs` |
 | fonctions d'état : `nTake` `sTake` | `nTake([0, 3, 7])`, `sTake([:bd, :hh])`, `nCount()` — sans nom de compteur : le rang d'un coup est le nombre de coups depuis le cycle 0, donc réévaluer ne « consomme » rien |
 
-- **Entrée MIDI** — pas de driver natif (voir `13-external-midi`).
+- **Entrée MIDI** — un clavier branché joue le piano ou le son ouvert (voir `13-external-midi`) ; la vélocité et les CC ne servent pas encore.
 
 S'il te manque quelque chose de précis, ouvre une issue.
 

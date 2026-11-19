@@ -79,6 +79,24 @@ s.waitForBoot({
         ~ressacScopeAddr.sendMsg(msg[0], *msg[1..]);
     }, '/ressac/level');
 
+    // ── MIDI entrant ──
+    // Un clavier ou un contrôleur branché : ses notes et ses boutons vont
+    // à Ressac (/ressac/midi <on|off|cc> <numéro> <valeur> <canal>), qui
+    // décide quoi en faire. Sans périphérique, ou sans MIDI sur la
+    // machine, rien ne se passe et le reste du démarrage continue.
+    try {
+        MIDIClient.init;
+        MIDIIn.connectAll;
+        MIDIdef.noteOn(\ressac_midi_on, { |vel, num, chan|
+            ~ressacScopeAddr.sendMsg("/ressac/midi", "on", num, vel, chan) });
+        MIDIdef.noteOff(\ressac_midi_off, { |vel, num, chan|
+            ~ressacScopeAddr.sendMsg("/ressac/midi", "off", num, vel, chan) });
+        MIDIdef.cc(\ressac_midi_cc, { |val, num, chan|
+            ~ressacScopeAddr.sendMsg("/ressac/midi", "cc", num, val, chan) });
+    } { |err|
+        "[ressac] MIDI indisponible : %".format(err.errorString).postln;
+    };
+
     ~ressacOrbitMeters = nil;
     ~ressacInstallOrbitMeters = {
         if(~ressacOrbitMeters.notNil) {

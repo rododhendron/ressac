@@ -290,6 +290,7 @@ function TK.view(m::RessacApp, f::TK.Frame)
     end
     # …et les résultats des travaux de fond (requêtes, rendus hors-ligne).
     _drain_jobs!(m)
+    _midi_tick!(m)                    # les notes d'un clavier MIDI branché
     # Dernier filet, comme pour les touches : Tachikoma relance toute
     # exception sortie de `view`, ce qui ferme la session en plein jeu.
     try

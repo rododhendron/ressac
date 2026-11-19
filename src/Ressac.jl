@@ -165,6 +165,7 @@ include("pattern_evolve.jl")     # variations de patterns (mutation, croisement)
 include("modal_evolve.jl")       # modal « variations »
 include("modal_palette.jl")      # palette universelle (Ctrl-p)
 include("modal_sccode.jl")       # :sccode
+include("app_midi.jl")            # entrée MIDI : les notes du clavier branché
 include("app_command_docs.jl")   # une ligne par commande : palette et complétion
 include("app_view.jl")           # TK.view : chrome + arbre + modal
 include("app_keymap.jl")         # bindings :global/:editor/:patterns/:synth/:leader (après toutes les actions)
