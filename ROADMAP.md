@@ -133,4 +133,4 @@ Décidée le 2026-11-19 sur maquettes. Le système et ce qui reste : `docs/journ
 - [x] F2 — Les plugins contribuent des pages de wiki : section `[wiki]` du `plugin.toml`.
 - [x] F3 — Fonctions d'état : `nTake`, `sTake`, `nCount` (le rang d'un coup depuis le cycle 0 ; `fix` existait déjà). *(« numerals » de l'ancien TODO : je n'ai pas retrouvé à quelle fonction de Tidal ça renvoie — rien fait sous ce nom.)*
 - [ ] F4 — Entrée MIDI native (aujourd'hui : pont OSC, wiki 13).
-- [ ] F5 — `shared(x)` dans le DSL : lire deux fois le MÊME signal (un bruit scindé en deux bandes puis recombiné). Aujourd'hui une variable Julia recopie son expression, et `:todsl` inline de même les `var` d'un SynthDef : deux lectures d'un bruit sont deux bruits.
+- [x] F5 — `shared(x)` dans le DSL : lire deux fois le MÊME signal (une variable SuperCollider, déclarée une fois). *(Limites : l'explication et le graphe lisent la structure, donc y voient deux branches ; `:prune` refuse un son qui a un `shared` plutôt que de le réécrire en deux signaux ; `:todsl` inline toujours les `var` d'un SynthDef.)*

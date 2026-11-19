@@ -640,7 +640,7 @@ function parse_dsl_synth(text::AbstractString)
     (sig, why) = _dsl_eval_body(body)
     sig === nothing && return (nothing, why)
     controls = union(Set(keys(g.controls)), Set(CONTROL_EDIT_ORDER), Set([:gate, :pan, :out]))
-    return parse_sc_expr(sig.code, controls; g = g)
+    return parse_sc_expr(SynthDSL._shared_expand(sig.code), controls; g = g)
 end
 
 "Le génome de [`parse_dsl_synth`](@ref), sans la raison."

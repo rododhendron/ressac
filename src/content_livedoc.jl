@@ -550,6 +550,7 @@ const _DSL_DOCS = Dict{String,String}(
     "pow_sig" => "pow_sig(s, n) — raises a Sig to a power (`s.pow(n)` in SC).",
     "sc_arg"  => "sc_arg(x) — renders a Julia value (Sig / Symbol / Real / Array) as SC source. Used by every DSL wrapper.",
     "ugen"    => "sig |> ugen(:Name, args...; rate=\"ar\") — an SC UGen without a DSL wrapper, the signal as first argument (`ugen(:RLPF, 800, 0.3)`).",
+    "shared" => "shared(x) — the signal x, read as many times as you like: every read hears the same one. Needed for a noise or a chaos you split then recombine: b = shared(white()); (b |> low_pass(400)) + (b |> high_pass(4000)).",
     "tanh_drive" => "sig |> tanh_drive(k) — soft saturation: the signal is multiplied by k then passed through tanh (`(sig * k).tanh` in SC). k = 1 rounds it off, k = 4 growls.",
     "fold2"   => "sig |> fold2(a) — symmetric wave folding: whatever exceeds ±a folds back towards the centre (`.fold2` in SC). Distortion rich in odd harmonics.",
     "clip2"   => "sig |> clip2(a) — hard symmetric clipping at ±a (`.clip2` in SC). Harsher than tanh_drive.",

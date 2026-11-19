@@ -31,7 +31,7 @@ import ..Ressac: _LIVE_SCHEDULER, _INSTALLING_SYNTH, _AUDITION_ARGS, _DRONE_CAPT
 
 # Re-export the whole UGen surface so `using Ressac.SynthDSL` brings
 # everything in scope at once.
-export Sig, sc_arg, ugen
+export Sig, sc_arg, ugen, shared
 # Oscillators
 export saw, sin_osc, pulse, tri, square, var_saw, blip, formant, klang
 export impulse_ar, impulse_kr
@@ -180,6 +180,72 @@ function ugen(name::Symbol, args...; rate::Symbol = :ar)
     Sig(string(name, ".", rate, "(", join(sc_arg.(args), ", "), ")"))
 end
 
+
+# ════════════════════════════════════════════════════════════════════
+# shared — lire deux fois le MÊME signal
+# ════════════════════════════════════════════════════════════════════
+# Un `Sig` est du texte SuperCollider : `b = white()` puis `b + b` écrit
+# deux `WhiteNoise.ar`, donc deux bruits différents. `shared(x)` donne à
+# `x` un nom : chaque lecture écrit ce nom, et `build_synth` déclare la
+# variable une seule fois en tête du SynthDef. Le nom vient du contenu
+# (deux `shared` du même texte sont le même signal), ce qui garde tout
+# cela une fonction pure du texte.
+
+const _SHARED_DEFS = Dict{String,String}()          # nom de variable → son code SC
+const _SHARED_RX = r"\bsh_[0-9a-z]{10}\b"
+
+"""
+    shared(x)
+
+Le signal `x`, lu autant de fois qu'on veut : toutes les lectures
+entendent le même. Indispensable pour un bruit ou un chaos qu'on scinde
+puis qu'on recombine.
+
+    b = shared(white())
+    (b |> low_pass(400)) + (b |> high_pass(4000))    # deux bandes du MÊME bruit
+
+Sans `shared`, chaque lecture de `b` serait un bruit différent.
+"""
+function shared(x::SigLike)
+    code = sc_arg(x)
+    name = "sh_" * lpad(string(hash(code) % UInt64(36)^10; base = 36), 10, '0')
+    _SHARED_DEFS[name] = code
+    return Sig(name)
+end
+
+# Les noms partagés lus par `code`, dépendances d'abord.
+function _shared_names(code::AbstractString)
+    out = String[]
+    visit(c) = for m in eachmatch(_SHARED_RX, c)
+        nm = String(m.match)
+        (nm in out || !haskey(_SHARED_DEFS, nm)) && continue
+        visit(_SHARED_DEFS[nm])
+        nm in out || push!(out, nm)
+    end
+    visit(code)
+    return out
+end
+
+"Les déclarations `var` SuperCollider des signaux partagés que lit `code` (vide s'il n'y en a pas)."
+_shared_decls(code::AbstractString) =
+    join(("    var $nm = $(_SHARED_DEFS[nm]);\n" for nm in _shared_names(code)))
+
+"""
+    _shared_expand(code) -> String
+
+`code` avec chaque signal partagé remplacé par son expression : ce que
+lisent les outils d'analyse (l'explication, le graphe), qui regardent la
+structure et non l'identité des signaux.
+"""
+function _shared_expand(code::AbstractString)
+    s = String(code)
+    for _ in 1:32
+        m = match(_SHARED_RX, s)
+        (m === nothing || !haskey(_SHARED_DEFS, m.match)) && break
+        s = replace(s, m.match => "(" * _SHARED_DEFS[m.match] * ")")
+    end
+    return s
+end
 
 # ════════════════════════════════════════════════════════════════════
 # Audio-rate oscillators
@@ -794,7 +860,8 @@ function build_synth(name::Symbol, sig::Sig;
     end
     param_decl = "|" * join(param_parts, ", ") * "|"
     body = "    OffsetOut.ar(out, DirtPan.ar($code, ~dirt.numChannels, pan));"
-    "SynthDef(\\$name, { $param_decl\n$body\n}).add;\n"
+    # Les signaux partagés (`shared`) : une variable chacun, déclarée une fois.
+    "SynthDef(\\$name, { $param_decl\n$(_shared_decls(code))$body\n}).add;\n"
 end
 
 # La chaîne libère-t-elle son nœud ? (`doneAction: 2` et au-delà ; 0 ne fait

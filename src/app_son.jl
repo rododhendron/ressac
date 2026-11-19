@@ -200,6 +200,10 @@ function _prune_synth_buffer!(m::RessacApp, thr::Real)
     tab === nothing && return
     ed = tab.code_editor
     text = TK.text(ed)
+    # Élaguer réécrit le texte depuis son graphe, qui ne sait pas dire
+    # « le même signal » : un `shared` y redeviendrait deux signaux.
+    occursin(r"\bshared\(", text) &&
+        (_push_app_log!(m, "[WARN] :prune — ce son lit un signal partagé (shared) : le réécrire en ferait deux signaux, rien n'est touché"); return)
     (g, why) = parse_dsl_synth(text)
     g === nothing && (_push_app_log!(m, "[WARN] :prune — le buffer ne se relit pas en entier, rien n'est touché : $why"); return)
     plural(n) = n > 1 ? "s" : ""

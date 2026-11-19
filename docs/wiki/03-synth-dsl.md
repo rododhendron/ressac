@@ -463,3 +463,20 @@ complet. Le bloc `@synth` est réécrit sous sa forme canonique
 pour sauver. `P` mesure sans rien retirer : l'explication liste alors
 l'impact de chaque étape, et `dam` sur une ligne retire ce maillon-là.
 
+
+## Lire deux fois le même signal : `shared`
+
+Un son est du texte : `b = white()` puis `b + b` écrit deux bruits, et deux
+bruits ne sont pas le même bruit. Quand tu scindes un signal pour le
+recombiner — un bruit en deux bandes, un chaos qui module deux choses —
+dis-le avec `shared` :
+
+```julia
+@synth :pluie (sustain=2) begin
+    b = shared(white())
+    (b |> low_pass(400)) + (b |> high_pass(4000)) * 0.3
+end
+```
+
+Toutes les lectures de `b` entendent le même signal. `:prune` laisse un tel
+son tranquille (le réécrire en ferait deux signaux).
