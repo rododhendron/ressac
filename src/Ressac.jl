@@ -195,7 +195,7 @@ export randcat, wrandcat, wedge, spaceOut
 export sew, stitch, euclidFull, binary, binaryN, asciip, necklace, mono
 export substruct, sampled, both, secs, msecs
 export when, whenT, within, ifp, always, never, almostAlways, almostNever
-export somecycles, somecyclesBy, fix, unfix, contrast
+export somecycles, somecyclesBy, fix, unfix, contrast, nTake, sTake, nCount
 export irand, brand, brandBy, chooseBy, wchoose, wchooseBy, cycleChoose, unDegradeBy
 export randslice, select, selectF, pickF, squeeze, bite, chew
 export striateBy, slice, splice, loopAt, smash, fit

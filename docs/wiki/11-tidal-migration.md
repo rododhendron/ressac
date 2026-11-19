@@ -145,7 +145,7 @@ par Julia (mot-clé ou clash avec `Base`) : `struct` → `structPat`,
 | contrôles : `s` `sound` `n` `note` `up` `gain` `pan` `speed` `begin` `end` `unit` `cut` `orbit` `nudge` `loop` `squiz` `midinote` `channel` `dry` `legato` `sustain` `accelerate` `vowel` `cutoff` `resonance` `room` `size` `delay`… | idem (`begin_`, `end_`) ; `set(:size, x)` pour les rares absents |
 | session : `setcps` `hush` `once` `solo` `mute` `xfade` `jump` | `cps!` `:hush` `T` `:solo` `:mute` ; transitions : `:xfade [n]`, `:jump [n]`, `:now` (voir 06-modes) |
 | `sec` `msec` | `secs` `msecs` |
-| `nTake` `numerals` `fix` avec fonctions d'état | pas encore |
+| fonctions d'état : `nTake` `sTake` | `nTake([0, 3, 7])`, `sTake([:bd, :hh])`, `nCount()` — sans nom de compteur : le rang d'un coup est le nombre de coups depuis le cycle 0, donc réévaluer ne « consomme » rien |
 
 - **Entrée MIDI** — pas de driver natif (voir `13-external-midi`).
 

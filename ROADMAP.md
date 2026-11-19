@@ -131,6 +131,6 @@ Décidée le 2026-11-19 sur maquettes. Le système et ce qui reste : `docs/journ
 
 - [ ] F1 — Snippets : éditeur de snippets et alias de snippets (les raccourcis `:sg0.9` / `:sng…` existent déjà) ; table du leader sortie du code (`editor_snippets.jl:64`).
 - [x] F2 — Les plugins contribuent des pages de wiki : section `[wiki]` du `plugin.toml`.
-- [ ] F3 — `nTake`, `numerals`, `fix` avec fonctions d'état.
+- [x] F3 — Fonctions d'état : `nTake`, `sTake`, `nCount` (le rang d'un coup depuis le cycle 0 ; `fix` existait déjà). *(« numerals » de l'ancien TODO : je n'ai pas retrouvé à quelle fonction de Tidal ça renvoie — rien fait sous ce nom.)*
 - [ ] F4 — Entrée MIDI native (aujourd'hui : pont OSC, wiki 13).
 - [ ] F5 — `shared(x)` dans le DSL : lire deux fois le MÊME signal (un bruit scindé en deux bandes puis recombiné). Aujourd'hui une variable Julia recopie son expression, et `:todsl` inline de même les `var` d'un SynthDef : deux lectures d'un bruit sont deux bruits.

@@ -417,6 +417,75 @@ fix(f, ctrls) = p -> fix(f, ctrls, p)
 unfix(f, ctrls, p) = contrast(identity, f, ctrls, p)
 unfix(f, ctrls) = p -> unfix(f, ctrls, p)
 
+# ---------------------------------------------------------------------------
+# Fonctions d'état : la valeur d'un coup dépend de son rang
+# ---------------------------------------------------------------------------
+# Dans Tidal, `nTake` lit un compteur gardé dans l'état du flux. Ici un
+# pattern reste une fonction pure du temps : le rang d'un coup est le
+# nombre de coups que le pattern a frappés depuis le cycle 0. On le calcule
+# cycle par cycle, une fois (les cycles déjà comptés sont gardés), si bien
+# que le même instant donne toujours la même valeur — évaluer deux fois, ou
+# regarder la piste, ne « consomme » rien.
+
+# Le pattern avec, sur chaque coup, son rang (0, 1, 2…) passé à `set`.
+function _with_onset_rank(set::Function, p)
+    cp = _lift_to_control(_as_pattern(p))
+    lk = ReentrantLock()
+    starts = Dict{Int,Vector{Rational{Int64}}}()      # cycle → instants de ses coups, triés
+    prefix = Int[0]                                   # prefix[c + 1] = coups avant le cycle c (c ≥ 0)
+    onsets(c::Int) = get!(starts, c) do
+        sort!(unique!(Rational{Int64}[ev.start for ev in cp(c // 1, (c + 1) // 1) if c <= ev.start < c + 1]))
+    end
+    function rank(t::Rational{Int64})
+        c = floor(Int, t)
+        lock(lk) do
+            c < 0 && return searchsortedfirst(onsets(c), t) - 1     # avant le cycle 0 : le rang dans son cycle
+            while length(prefix) <= c
+                k = length(prefix) - 1
+                push!(prefix, prefix[end] + length(onsets(k)))
+            end
+            return prefix[c + 1] + searchsortedfirst(onsets(c), t) - 1
+        end
+    end
+    stamp(evs) = Event{ControlMap}[Event{ControlMap}(ev.start, ev.stop, set(ev.value, rank(ev.start))) for ev in evs]
+    return Pattern{ControlMap}((s::Rational, e::Rational) -> stamp(cp(s, e)))
+end
+
+_take(key::Symbol, values, p) = isempty(values) ? _lift_to_control(_as_pattern(p)) :
+    _with_onset_rank((v, i) -> merge(v, ControlMap(key => values[mod1(i + 1, length(values))])), p)
+
+"""
+    nTake(values)
+
+Donne à chaque coup la note suivante de `values`, dans l'ordre et en
+boucle, quel que soit le rythme : `p"bd*3 bd" |> nTake([0, 3, 7])` joue
+0 3 7 0 au premier cycle, 3 7 0 3 au suivant. La liste avance d'un cran par
+coup, pas par cycle — c'est ce qui la distingue de `n("0 3 7")`.
+"""
+nTake(values::AbstractVector, p) = _take(:n, collect(values), p)
+nTake(values::AbstractVector) = p -> nTake(values, p)
+
+"""
+    sTake(names)
+
+Comme `nTake`, pour le son : chaque coup prend le nom suivant de `names`.
+`p"x*8" |> sTake([:bd, :hh, :hh])`.
+"""
+sTake(names::AbstractVector, p) = _take(:s, Symbol[Symbol(x) for x in names], p)
+sTake(names::AbstractVector) = p -> sTake(names, p)
+
+"""
+    nCount()
+    nCount(modulo)
+
+Donne à chaque coup son rang comme note : 0, 1, 2… depuis le cycle 0.
+Avec `modulo`, le compte repart à zéro : `p"hh*8" |> nCount(5)`.
+"""
+nCount(p::Pattern) = _with_onset_rank((v, i) -> merge(v, ControlMap(:n => i)), p)
+nCount(modulo::Integer, p) = _with_onset_rank((v, i) -> merge(v, ControlMap(:n => mod(i, max(1, modulo)))), p)
+nCount(modulo::Integer) = p -> nCount(modulo, p)
+nCount() = p -> nCount(p)
+
 _ctrl_dict(d::AbstractDict) = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in d)
 _ctrl_dict(pr::Pair) = Dict{Symbol,Any}(Symbol(first(pr)) => last(pr))
 _ctrl_dict(prs::AbstractVector) = Dict{Symbol,Any}(Symbol(first(pr)) => last(pr) for pr in prs)

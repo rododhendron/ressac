@@ -108,7 +108,7 @@ const _COMBINATOR_NAMES = [
     "fastcat", "slowcat", "append", "slowAppend", "fastAppend", "overlay", "timeCat", "ncat",
     "randcat", "wrandcat", "wedge", "spaceOut", "sew", "stitch", "euclidFull", "binary",
     "binaryN", "asciip", "necklace", "mono", "when", "whenT", "within", "ifp", "always",
-    "never", "almostAlways", "almostNever", "fix", "unfix", "contrast", "irand", "brand",
+    "never", "almostAlways", "almostNever", "fix", "unfix", "contrast", "nTake", "sTake", "nCount", "irand", "brand",
     "brandBy", "chooseBy", "wchoose", "wchooseBy", "unDegradeBy", "randslice", "select",
     "selectF", "pickF", "squeeze", "bite", "chew", "striate", "striateBy", "chopp", "slice",
     "splice", "loopAt", "smash", "fit", "echo", "echoWith", "stutter", "plyWith", "arpeggiate",
