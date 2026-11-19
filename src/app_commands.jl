@@ -527,6 +527,10 @@ _register_literal!(m -> _show_listing!(m, "THÈMES",
 _register_regex!(r"^theme\s+(\w+)$",
     (m, mt) -> _theme_switch(m, mt))
 _register_literal!(m -> _reload_config_action(m),    "reload-config", "reload-cfg")
+# Le menu Espace : le voir, y ajouter une touche, en retirer une.
+_register_literal!(m -> _show_listing!(m, "MENU ESPACE", _leader_listing()), "leader")
+_register_regex!(r"^leader\s+(\S)\s+(.+)$", (m, mt) -> _leader_set_cmd!(m, mt.captures[1], mt.captures[2]))
+_register_regex!(r"^leader-rm\s+(\S)$", (m, mt) -> _leader_rm_cmd!(m, mt.captures[1]))
 _register_literal!(m -> _push_app_log!(m,
         "[INFO] :safety on|off — limiteur master + DC block + HPF 10 Hz (ON par défaut)"),
     "safety")
@@ -762,6 +766,7 @@ end
 function _reload_config_action(m::RessacApp)
     cfg = _load_ressac_config!()
     _apply_theme!(cfg.theme)
+    _leader_user_load!()
     _push_app_log!(m, "[INFO] config rechargée — thème=$(cfg.theme), t_init=$(cfg.t_hold_initial_ms)ms accel=$(cfg.t_hold_accel)")
 end
 function _safety_toggle(m::RessacApp, mt::RegexMatch)

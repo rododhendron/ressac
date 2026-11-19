@@ -90,6 +90,9 @@ function live(; host::AbstractString = "127.0.0.1",
     sched = existed ? _LIVE_SCHEDULER[] : start_live!(; host, port, cps, lookahead)
     cfg = _load_ressac_config!()
     _apply_theme!(cfg.theme)
+    try _leader_user_load!() catch err
+        @warn "leader.toml : menu Espace d'origine gardé" err
+    end
     _install_syntax_theme!()   # punctuation/builtins legible on dark bg
     # La disposition du clavier : la table Maj de Tachikoma est QWERTY,
     # on installe celle qui correspond (voir session_keyboard.jl).

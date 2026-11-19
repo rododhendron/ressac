@@ -129,7 +129,7 @@ Décidée le 2026-11-19 sur maquettes. Le système et ce qui reste : `docs/journ
 
 ## Fonctionnalités (ancien `TODO.txt` et wiki)
 
-- [ ] F1 — Snippets : éditeur de snippets et alias de snippets (les raccourcis `:sg0.9` / `:sng…` existent déjà) ; table du leader sortie du code (`editor_snippets.jl:64`).
+- [x] F1 — Le menu Espace hors du code : sa table est dans `plugins/core/leader.toml`, la tienne dans ton dossier de configuration ; `:leader` la montre, `:leader x <texte>` y met une touche, `:leader-rm x` l'en retire. *(Pas d'éditeur en fenêtre : les commandes et le fichier en tiennent lieu.)*
 - [x] F2 — Les plugins contribuent des pages de wiki : section `[wiki]` du `plugin.toml`.
 - [x] F3 — Fonctions d'état : `nTake`, `sTake`, `nCount` (le rang d'un coup depuis le cycle 0 ; `fix` existait déjà). *(« numerals » de l'ancien TODO : je n'ai pas retrouvé à quelle fonction de Tidal ça renvoie — rien fait sous ce nom.)*
 - [ ] F4 — Entrée MIDI native (aujourd'hui : pont OSC, wiki 13).

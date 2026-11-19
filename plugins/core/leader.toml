@@ -1,0 +1,119 @@
+# Le menu Espace des patterns : une touche, ce qu'elle écrit, son nom, sa
+# colonne. `$1`, `$2`… sont les arrêts de Tab. C'est la table d'origine ;
+# la tienne est dans ton dossier de configuration (`leader.toml`, même
+# format) et passe devant : `:leader` la montre, `:leader x <texte>` y
+# ajoute une touche, `:leader-rm x` l'en retire.
+
+[[snippet]]
+key = "d"
+template = '@d$1 p"$2"'
+label = "slot @dN"
+column = "ÉCRIRE"
+
+[[snippet]]
+key = "n"
+template = '|> n(p"$1")'
+label = "n()"
+column = "ÉCRIRE"
+
+[[snippet]]
+key = "S"
+template = '|> stack(p"$1", p"$2")'
+label = "stack"
+column = "ÉCRIRE"
+
+[[snippet]]
+key = "c"
+template = '|> cat([p"$1", p"$2"])'
+label = "cat"
+column = "ÉCRIRE"
+
+[[snippet]]
+key = "E"
+template = '$1($2,$3)'
+label = "euclidien"
+column = "ÉCRIRE"
+
+[[snippet]]
+key = "R"
+template = '$1($2,$3,$4)'
+label = "euclidien tourné"
+column = "ÉCRIRE"
+
+[[snippet]]
+key = "J"
+template = '@d$1 p"bd(3,8)" |> gain($2)'
+label = "jersey (bd(3,8))"
+column = "ÉCRIRE"
+
+[[snippet]]
+key = "g"
+template = '|> gain($1)'
+label = "gain"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "l"
+template = '|> lpf($1)'
+label = "lpf"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "h"
+template = '|> hpf($1)'
+label = "hpf"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "p"
+template = '|> pan($1)'
+label = "pan"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "r"
+template = '|> room($1)'
+label = "room"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "f"
+template = '|> fast($1)'
+label = "fast"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "s"
+template = '|> slow($1)'
+label = "slow"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "v"
+template = 'rev'
+label = "rev"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "e"
+template = '|> every($1, $2)'
+label = "every"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "m"
+template = '|> mask(p"$1")'
+label = "mask"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "D"
+template = '|> delay($1) |> delaytime($2) |> delayfeedback($3)'
+label = "chaîne delay"
+column = "TRANSFORMER LA LIGNE"
+
+[[snippet]]
+key = "a"
+template = '|> gain($1) |> lpf($2) |> room($3)'
+label = "chaîne d'effets (gain, lpf, room)"
+column = "TRANSFORMER LA LIGNE"

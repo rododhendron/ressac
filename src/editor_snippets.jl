@@ -10,44 +10,60 @@
 # stay on RessacApp.
 
 """
+Une entrée du menu Espace : la touche, ce qu'elle écrit (`\$N` = arrêts de
+Tab, sur une seule ligne), son nom et sa colonne dans le menu.
+"""
+struct LeaderSnippet
+    key::Char
+    template::String
+    label::String
+    column::String
+end
+
+# La table d'origine vit dans un fichier de données, pas dans le code.
+const _LEADER_FILE = joinpath(dirname(@__DIR__), "plugins", "core", "leader.toml")
+include_dependency(_LEADER_FILE)
+
+"""
+    _read_leader_file(path; column = "") -> Vector{LeaderSnippet}
+
+Les `[[snippet]]` d'un `leader.toml`. Une entrée mal formée (touche de
+plus d'un caractère, texte vide, sur plusieurs lignes) est laissée de côté
+avec un avertissement : elle ne coûte qu'elle-même.
+"""
+function _read_leader_file(path::AbstractString; column::AbstractString = "")
+    out = LeaderSnippet[]
+    isfile(path) || return out
+    data = try TOML.parsefile(path) catch err
+        @warn "leader.toml illisible" path err
+        return out
+    end
+    for e in get(data, "snippet", Any[])
+        e isa AbstractDict || continue
+        key = String(get(e, "key", "")); tpl = String(get(e, "template", ""))
+        if length(key) != 1 || isspace(first(key)) || isempty(strip(tpl)) || occursin('\n', tpl)
+            @warn "leader.toml : entrée ignorée (une touche d'un caractère, un texte d'une ligne)" path key
+            continue
+        end
+        label = String(get(e, "label", "")); isempty(label) && (label = first(tpl, 28))
+        col = String(get(e, "column", "")); isempty(col) && (col = String(column))
+        push!(out, LeaderSnippet(first(key), tpl, label, col))
+    end
+    return out
+end
+
+const _LEADER_BASE = _read_leader_file(_LEADER_FILE)
+# Ce que le joueur a ajouté ou changé (son `leader.toml`) : passe devant.
+const _LEADER_USER = LeaderSnippet[]
+const _LEADER_USER_COLUMN = "À TOI"
+
+"""
     _LEADER_SNIPPETS
 
-Trigger char → template. `\$N` markers are tabstops. Single-line for
-now; the placeholder tracker assumes everything fits on the row
-where the snippet was inserted. Add multi-line templates only after
-extending the tracker to (row, col) tuples.
+Touche → texte, la table en vigueur (celle d'origine, puis celle du
+joueur par-dessus). Tenue à jour par `_leader_rebuild!`.
 """
-const _LEADER_SNIPPETS = Dict{Char,String}(
-    'd' => "@d\$1 p\"\$2\"",
-    'g' => "|> gain(\$1)",
-    'l' => "|> lpf(\$1)",
-    'h' => "|> hpf(\$1)",
-    'p' => "|> pan(\$1)",
-    'f' => "|> fast(\$1)",
-    's' => "|> slow(\$1)",
-    'r' => "|> room(\$1)",
-    'n' => "|> n(p\"\$1\")",
-    'e' => "|> every(\$1, \$2)",
-    'm' => "|> mask(p\"\$1\")",
-    'D' => "|> delay(\$1) |> delaytime(\$2) |> delayfeedback(\$3)",
-    'c' => "|> cat([p\"\$1\", p\"\$2\"])",
-    'S' => "|> stack(p\"\$1\", p\"\$2\")",
-    'v' => "rev",     # no placeholder, just inserts as-is
-    # Chaîne d'effets type, à dégrossir : gain, filtre, espace.
-    'a' => "|> gain(\$1) |> lpf(\$2) |> room(\$3)",
-    # ── Euclidean rhythms (Bjorklund k-of-n) ──
-    # `E` = generic euclidean token: sample, k, n. Drop it inside a
-    # p"…" or as the body of a fresh pattern.  Examples:
-    #   Space E → bd Tab 3 Tab 8 → bd(3,8)         # jersey kick
-    #   Space E → cp Tab 1 Tab 8 → cp(1,8)         # single clap
-    'E' => "\$1(\$2,\$3)",
-    # `R` for rotated euclidean — useful for off-beat snares / claps.
-    # E.g. Space R → cp Tab 1 Tab 8 Tab 4 → cp(1,8,4)  # clap on beat 3
-    'R' => "\$1(\$2,\$3,\$4)",
-    # `J` = jersey starter — full @dN line with the iconic 3-against-8
-    # kick, ready to eval. Two placeholders: slot id + gain.
-    'J' => "@d\$1 p\"bd(3,8)\" |> gain(\$2)",
-)
+const _LEADER_SNIPPETS = Dict{Char,String}(s.key => s.template for s in _LEADER_BASE)
 
 """
     _LEADER_ACTIONS
@@ -69,23 +85,25 @@ const _LEADER_ACTIONS = Dict{Char,Function}(
     'V' => m -> _open_evolve_modal!(m),    # V comme variations
 )
 
+# Les entrées du menu qui ouvrent quelque chose au lieu d'écrire : la
+# touche, son nom, sa colonne. (Leur action est dans `_LEADER_ACTIONS`.)
+const _LEADER_ACTION_LABELS = [
+    ('b', "▸ sons (samples, instruments, synths)", "OUVRIR"), ('L', "▸ sons rangés (réserve)", "OUVRIR"),
+    ('P', "▸ motifs rangés (réserve)", "OUVRIR"), ('I', "▸ recettes (réserve)", "OUVRIR"),
+    ('V', "▸ variations du bloc", "OUVRIR"), ('w', "▸ wiki", "OUVRIR"), ('?', "▸ aide", "OUVRIR"),
+    ('k', "ranger la ligne @dN dans la réserve", "FAIRE"),
+    ('o', "boucle : frapper un motif, de la longueur qu'on veut", "FAIRE"),
+]
+
 """
     _LEADER_LABELS
 
-Short labels for the footer hint shown while a leader is pending.
-Keep each label terse — the footer is one row.
+Touche → nom, pour tout ce que le menu Espace connaît (textes et actions),
+dans l'ordre d'affichage. Tenue à jour par `_leader_rebuild!`.
 """
-const _LEADER_LABELS = Pair{Char,String}[
-    'd' => "slot",   'g' => "gain",   'l' => "lpf",
-    'h' => "hpf",    'p' => "pan",    'f' => "fast",
-    's' => "slow",   'r' => "room",   'n' => "n()",
-    'e' => "every",  'm' => "mask",   'D' => "delay-chain",
-    'c' => "cat",    'S' => "stack",  'v' => "rev",
-    'E' => "eucl",   'R' => "eucl-rot", 'J' => "jersey", 'a' => "chaîne fx",
-    # ── pickers ──
-    'b' => "▸browse-sounds", 'L' => "▸synth-lib", 'I' => "▸snippets", 'P' => "▸patterns", 'V' => "▸variations",
-    'w' => "▸wiki",  '?' => "▸guide", 'k' => "ranger la ligne", 'o' => "boucle",
-]
+const _LEADER_LABELS = Pair{Char,String}[]
+
+_leader_user_path() = joinpath(_config_dir(), "leader.toml")
 
 """
     _parse_snippet_template(tpl) -> (text::String, placeholder_cols::Vector{Int})

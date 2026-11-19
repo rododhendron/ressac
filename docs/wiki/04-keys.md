@@ -162,23 +162,23 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | Touche | Action |
 |---|---|
 | `Space d` | slot @dN |
+| `Space n` | n() |
+| `Space S` | stack |
+| `Space c` | cat |
+| `Space E` | euclidien |
+| `Space R` | euclidien tourné |
+| `Space J` | jersey (bd(3,8)) |
 | `Space g` | gain |
 | `Space l` | lpf |
 | `Space h` | hpf |
 | `Space p` | pan |
+| `Space r` | room |
 | `Space f` | fast |
 | `Space s` | slow |
-| `Space r` | room |
-| `Space n` | n() |
+| `Space v` | rev |
 | `Space e` | every |
 | `Space m` | mask |
 | `Space D` | chaîne delay |
-| `Space c` | cat |
-| `Space S` | stack |
-| `Space v` | rev |
-| `Space E` | euclidien |
-| `Space R` | euclidien tourné |
-| `Space J` | jersey (bd(3,8)) |
 | `Space a` | chaîne d'effets (gain, lpf, room) |
 
 **Aide**
@@ -187,8 +187,8 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 |---|---|
 | `Space b` | ▸ sons (samples, instruments, synths) |
 | `Space L` | ▸ sons rangés (réserve) |
-| `Space I` | ▸ recettes (réserve) |
 | `Space P` | ▸ motifs rangés (réserve) |
+| `Space I` | ▸ recettes (réserve) |
 | `Space V` | ▸ variations du bloc |
 | `Space w` | ▸ wiki |
 | `Space ?` | ▸ aide |

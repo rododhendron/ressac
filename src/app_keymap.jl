@@ -213,31 +213,117 @@ bind!(:synth, "g T", "synth précédent"; group = :nav, hint = false,
 
 # ── :leader — Space + touche (pane patterns) ───────────────────────
 scope!(:leader, "Space + …"; layer = :transient, modes = (:play,))
-const _LEADER_FR = Dict{Char,String}(
-    'd' => "slot @dN", 'g' => "gain", 'l' => "lpf", 'h' => "hpf", 'p' => "pan",
-    'f' => "fast", 's' => "slow", 'r' => "room", 'n' => "n()", 'e' => "every",
-    'm' => "mask", 'D' => "chaîne delay", 'c' => "cat", 'S' => "stack", 'v' => "rev",
-    'E' => "euclidien", 'R' => "euclidien tourné", 'J' => "jersey (bd(3,8))",
-    'a' => "chaîne d'effets (gain, lpf, room)",
-    'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ sons rangés (réserve)",
-    'I' => "▸ recettes (réserve)", 'P' => "▸ motifs rangés (réserve)", 'k' => "ranger la ligne @dN dans la réserve", 'o' => "boucle : frapper un motif, de la longueur qu'on veut", 'V' => "▸ variations du bloc", 'w' => "▸ wiki", '?' => "▸ aide",
-)
-# Le menu Espace rangé par intention : ce qu'on y cherche, pas l'ordre des
-# déclarations. Une touche absente d'ici tombe dans « AUTRES ».
-const _LEADER_COLUMNS = ("ÉCRIRE" => "dnScERJ", "TRANSFORMER LA LIGNE" => "glhprfsvemDa",
-                         "OUVRIR" => "bLPIVw?", "FAIRE" => "ko")
+# Les colonnes du menu Espace, dans l'ordre ; chaque touche dit la sienne
+# (`_LEADER_COLUMN_OF`). Une touche sans colonne tombe dans « AUTRES ».
+const _LEADER_COLUMN_ORDER = ["ÉCRIRE", "TRANSFORMER LA LIGNE", "OUVRIR", "FAIRE", _LEADER_USER_COLUMN]
+const _LEADER_COLUMN_OF = Dict{String,String}()
 
-for (c, _) in _LEADER_LABELS
-    label = get(_LEADER_FR, c, String([c]))
-    if haskey(_LEADER_ACTIONS, c)
-        bind!(:leader, "Space $c", label; group = :help, action = _LEADER_ACTIONS[c],
-              short = first(split(label, " (")))
-    else
-        tpl = _LEADER_SNIPPETS[c]
-        bind!(:leader, "Space $c", label; group = :edit,
+"""
+    _leader_rebuild!()
+
+Rebâtit le menu Espace des patterns : la table d'origine
+(`plugins/core/leader.toml`), les entrées qui ouvrent quelque chose, puis
+celles du joueur (`_LEADER_USER`), qui passent devant sur la même touche.
+"""
+function _leader_rebuild!()
+    clear_scope!(:leader)
+    empty!(_LEADER_SNIPPETS); empty!(_LEADER_LABELS); empty!(_LEADER_COLUMN_OF)
+    user = Dict(s.key => s for s in _LEADER_USER)
+    seen = Set{Char}()
+    put!(sn::LeaderSnippet) = begin
+        sn.key in seen && return
+        push!(seen, sn.key)
+        _LEADER_SNIPPETS[sn.key] = sn.template
+        push!(_LEADER_LABELS, sn.key => sn.label)
+        _LEADER_COLUMN_OF[string(sn.key)] = sn.column
+        tpl = sn.template
+        bind!(:leader, "Space $(sn.key)", sn.label; group = :edit,
               action = m -> _expand_snippet!(m, _km_ed(m), _prefill_slot(tpl, _km_ed(m))))
     end
+    for sn in _LEADER_BASE
+        put!(get(user, sn.key, sn))
+    end
+    for (c, label, column) in _LEADER_ACTION_LABELS
+        if haskey(user, c)
+            put!(user[c])                       # le joueur a repris cette touche pour un texte
+            continue
+        end
+        push!(seen, c)
+        push!(_LEADER_LABELS, c => label)
+        _LEADER_COLUMN_OF[string(c)] = column
+        bind!(:leader, "Space $c", label; group = :help, action = _LEADER_ACTIONS[c],
+              short = first(split(label, " (")))
+    end
+    foreach(put!, _LEADER_USER)                  # les touches nouvelles
+    return
 end
+
+"""
+    _leader_user_load!() -> Int
+
+Lit le `leader.toml` du joueur (dossier de configuration) et rebâtit le
+menu. Rend le nombre d'entrées lues ; sans fichier, le menu d'origine.
+"""
+function _leader_user_load!()
+    empty!(_LEADER_USER)
+    append!(_LEADER_USER, _read_leader_file(_leader_user_path(); column = _LEADER_USER_COLUMN))
+    _leader_rebuild!()
+    return length(_LEADER_USER)
+end
+
+function _leader_user_save!()
+    path = _leader_user_path()
+    mkpath(dirname(path))
+    open(path, "w") do io
+        println(io, "# Tes touches du menu Espace (même format que plugins/core/leader.toml).")
+        for s in _LEADER_USER
+            println(io, "\n[[snippet]]")
+            TOML.print(io, Dict("key" => string(s.key), "template" => s.template, "label" => s.label, "column" => s.column))
+        end
+    end
+    return path
+end
+
+# `:leader x <texte>` : la touche x du menu écrit <texte>.
+function _leader_set_cmd!(m::RessacApp, key::AbstractString, tpl::AbstractString)
+    (length(key) == 1 && !isempty(strip(tpl))) ||
+        (_push_app_log!(m, "[WARN] :leader <touche> <texte> — une touche d'un caractère, puis ce qu'elle écrit (\$1 \$2 = arrêts de Tab)"); return)
+    c = first(key)
+    filter!(s -> s.key != c, _LEADER_USER)
+    push!(_LEADER_USER, LeaderSnippet(c, String(strip(tpl)), first(String(strip(tpl)), 28), _LEADER_USER_COLUMN))
+    _leader_rebuild!()
+    path = try _leader_user_save!() catch err
+        _push_app_log!(m, "[ERROR] :leader — pas pu écrire le fichier : $(first(sprint(showerror, err), 80))"); return
+    end
+    _push_app_log!(m, "[INFO] Espace $c écrit « $(strip(tpl)) » — gardé dans $path")
+    return
+end
+
+# `:leader-rm x` : la touche x redevient ce qu'elle était (ou disparaît).
+function _leader_rm_cmd!(m::RessacApp, key::AbstractString)
+    c = isempty(key) ? ' ' : first(key)
+    any(s -> s.key == c, _LEADER_USER) ||
+        (_push_app_log!(m, "[WARN] :leader-rm — « $key » n'est pas une de tes touches (:leader les liste)"); return)
+    filter!(s -> s.key != c, _LEADER_USER)
+    _leader_rebuild!()
+    try _leader_user_save!() catch; end
+    _push_app_log!(m, "[INFO] Espace $c : " * (haskey(_LEADER_SNIPPETS, c) || haskey(_LEADER_ACTIONS, c) ? "revenu à l'origine" : "retiré"))
+    return
+end
+
+# `:leader` : tout le menu, les tiennes marquées.
+function _leader_listing()
+    mine = Set(s.key for s in _LEADER_USER)
+    rows = String[]
+    for (c, label) in _LEADER_LABELS
+        tpl = get(_LEADER_SNIPPETS, c, "")
+        push!(rows, "$(c in mine ? "●" : " ") $c   $(rpad(first(label, 34), 34))  $tpl")
+    end
+    return vcat("Le menu Espace. ● = à toi · `:leader x <texte>` ajoute ou change · `:leader-rm x` retire",
+                "Ton fichier : $(_leader_user_path())", "", rows)
+end
+
+_leader_rebuild!()
 
 # Le leader d'un mode : les snippets de patterns dans PLAY, les maillons
 # du DSL dans DESIGN (depuis n'importe quelle pane : ils vont dans le texte).

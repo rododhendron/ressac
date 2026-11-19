@@ -165,7 +165,7 @@ end
     _hkey(app, ' ')
     @test app.pending_leader
     bar = _bottom_bar(app, tb, frame)
-    @test occursin("d slot", bar) && occursin("g gain", bar)
+    @test occursin("d slot", bar) && occursin("n n()", bar)        # les premières du menu, dans son ordre
     _hkey(app, :escape)
     @test !app.pending_leader
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))

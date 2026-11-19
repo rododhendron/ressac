@@ -887,12 +887,9 @@ function _render_whichkey!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     groups = Pair{String,Vector{Tuple{String,String}}}[]
     if kind === :leader && any(((sc, _),) -> sc === :leader, layers)
         left = copy(entries)
-        for (title, keys) in _LEADER_COLUMNS
-            got = Tuple{String,String}[]
-            for c in keys
-                i = findfirst(e -> e[1] == string(c), left)
-                i === nothing || push!(got, popat!(left, i))
-            end
+        for title in _LEADER_COLUMN_ORDER
+            got = Tuple{String,String}[e for e in left if get(_LEADER_COLUMN_OF, e[1], "") == title]
+            filter!(e -> get(_LEADER_COLUMN_OF, e[1], "") != title, left)
             isempty(got) || push!(groups, title => got)
         end
         isempty(left) || push!(groups, "AUTRES" => left)
