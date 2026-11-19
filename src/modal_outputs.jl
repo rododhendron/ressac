@@ -141,7 +141,7 @@ function _outputs_sync!(m::RessacApp, width::Int = 80)
         extra = (sink.default ? "  · par défaut du système" : "") *
                 (sink.bluetooth ? "  · Bluetooth : le son arrive en retard" : "")
         style = sink.name == s.main ? TK.tstyle(:success, bold = true) :
-                sink.name == s.casque ? TK.tstyle(:accent, bold = true) : TK.tstyle(:text)
+                sink.name == s.casque ? TK.tstyle(:secondary, bold = true) : TK.tstyle(:text)   # violet : ce qu'on essaie
         push!(rows, TK.ListItem(first(role * sink.label * extra, width), style))
     end
     _picker_set!(m.outs, rows, g.sinks)
@@ -210,7 +210,7 @@ function _render_outputs_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         title = "SORTIES",
         title_right = _modal_hint_text(m, :modal_outputs),
         w_max = 96,
-        h_target = max(12, min(area.height - 4, n + 9)))
+        h_target = max(12, min(area.height - 4, n + 10)))
     inner.width < 24 && return
     s = _audio_settings()
     _outputs_sync!(m, inner.width - 3)
@@ -219,7 +219,9 @@ function _render_outputs_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         why = isempty(m.audio_note) ? "Aucune sortie audio trouvée — r pour relire." : m.audio_note
         TK.set_string!(buf, inner.x, inner.y, first(why, inner.width), TK.tstyle(:text_dim))
     else
-        _picker_render_list!(m.outs, TK.Rect(inner.x, inner.y, inner.width, min(list_h, n)), buf)
+        # Les noms des colonnes, puis la liste : le rôle (sortie, casque), la sortie, ce qu'il faut en savoir.
+        TK.set_string!(buf, inner.x, inner.y, first("  RÔLE     SORTIE", inner.width), TK.Style(fg = _ui().n))
+        _picker_render_list!(m.outs, TK.Rect(inner.x, inner.y + 1, inner.width, min(list_h - 1, n)), buf)
     end
     y = inner.y + inner.height - 4
     lines = Tuple{String,Symbol}[]

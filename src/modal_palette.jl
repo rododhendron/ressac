@@ -43,7 +43,7 @@ function _palette_items(m::RessacApp)
     # Toutes les commandes réellement enregistrées, pas une liste tenue à
     # la main : la palette ne peut pas dériver du registre.
     for name in _all_ex_verbs()
-        push!(out, _PaletteItem(:cmd, ":" * name, "", mm -> _handle_ex_command!(mm, name)))
+        push!(out, _PaletteItem(:cmd, ":" * name, _command_doc(name), mm -> _handle_ex_command!(mm, name)))
     end
     for (reg, what) in ((_SAMPLE_REGISTRY, "sample"), (_INSTRUMENT_REGISTRY, "instrument"),
                         (_SYNTH_REGISTRY, "synth"))
@@ -93,9 +93,11 @@ pour `width` colonnes : icône, libellé, complément à droite.
 """
 function _palette_sync!(m::RessacApp, width::Int = 80)
     items = _palette_items(m)
-    lw = max(1, width - 26)
-    rows = [TK.ListItem(rpad(first("$(get(_PALETTE_ICON, it.kind, "·")) $(it.label)", lw), lw) *
-                        first(isempty(it.detail) ? get(_PALETTE_LABEL, it.kind, "") : it.detail, 23),
+    # Le nom dans une colonne étroite, ce qu'il fait dans tout le reste.
+    lw = clamp(width ÷ 4, 16, 26)
+    dw = max(1, width - lw - 2)
+    rows = [TK.ListItem(rpad(first("$(get(_PALETTE_ICON, it.kind, "·")) $(it.label)", lw), lw) * " " *
+                        first(isempty(it.detail) ? get(_PALETTE_LABEL, it.kind, "") : it.detail, dw),
                         it.kind === :cmd ? TK.tstyle(:text) : TK.tstyle(:text))
             for it in items]
     _picker_set!(m.palette, rows, items)

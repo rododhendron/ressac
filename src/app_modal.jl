@@ -534,14 +534,50 @@ function _help_spans(kind::Symbol, keys::String, label::String)
 end
 
 function _render_help_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
-    lines = _help_entries(m)
+    entries = _help_entries(m)
+    # Sur un écran large, l'aide se lit en colonnes (jusqu'à trois) : on en
+    # voit trois fois plus d'un coup d'œil. Les touches de défilement
+    # avancent dans la même liste ; la bande dit où l'on en est.
+    box_w = clamp(150, 40, max(40, area.width - 4))
+    ncol = clamp((box_w - 2) ÷ 46, 1, 3)
+    max_h = max(4, area.height - 6)
     inner = _render_modal_block!(buf, area;
         title = "AIDE",
         title_right = _modal_hint_text(m, :modal_help),
-        w_max = 100,
-        h_target = min(length(lines) + 2, area.height - 4))
-    TK.set_content!(m.modal_view, [_help_spans(kind, keys, label) for (kind, keys, label) in _help_entries(m)])
+        w_max = ncol > 1 ? 150 : 100,
+        h_target = min(cld(length(entries), ncol) + 4, max_h + 2))
+    lines = [_help_spans(kind, keys, label) for (kind, keys, label) in entries]
+    TK.set_content!(m.modal_view, lines)        # la liste reste la source du défilement
+    if ncol == 1
+        TK.render(m.modal_view, inner, buf)
+        return
+    end
+    # La liste est rendue d'abord : c'est elle qui tient la molette et la
+    # barre de défilement (sa dernière colonne). Les colonnes la recouvrent.
     TK.render(m.modal_view, inner, buf)
+    _clear_rect!(buf, TK.Rect(inner.x, inner.y, inner.width - 1, inner.height))
+    n = length(entries)
+    start = clamp(m.modal_view.offset + 1, 1, max(1, n))
+    colw = (inner.width - 1) ÷ ncol
+    col = 1; y = 0; last_shown = start - 1
+    for i in start:n
+        kind = entries[i][1]
+        # Une colonne finie, ou un titre qui resterait seul en bas : colonne suivante.
+        if y >= inner.height || (kind in (:title, :group) && y >= inner.height - 2)
+            col += 1; y = 0
+            col > ncol && break
+        end
+        last_shown = i
+        (y == 0 && isempty(lines[i])) && continue      # pas de ligne vide en tête de colonne
+        _md_draw_line!(buf, inner.x + (col - 1) * colw, inner.y + y, lines[i], colw - 2)
+        y += 1
+    end
+    # Où l'on en est, à droite de la bande de titre.
+    if start > 1 || last_shown < n
+        ui = _ui()
+        note = "$(start)–$(last_shown) sur $(n) · j k défilent"
+        TK.set_string!(buf, inner.x + inner.width - textwidth(note), inner.y - 1, note, TK.Style(fg = ui.n, bg = ui.s3))
+    end
     return
 end
 

@@ -253,6 +253,30 @@ the grid is taller than the pane. No-op if the picker is inactive.
 """
 function render_picker!(cl::CommandLine, area::TK.Rect, buf::TK.Buffer)
     completion_active(cl) || return
-    _render_candidate_grid!(buf, area, cl.completion_candidates, cl.completion_idx; min_cell = 18)
+    cands = cl.completion_candidates
+    docs = String[_command_doc(c) for c in cands]
+    if all(isempty, docs)
+        _render_candidate_grid!(buf, area, cands, cl.completion_idx; min_cell = 18)
+        return
+    end
+    # Des commandes : une par ligne, avec ce qu'elle fait. La fenêtre suit le choix.
+    ui = _ui()
+    n = length(cands)
+    h = area.height
+    first_row = clamp(cl.completion_idx - h ÷ 2, 1, max(1, n - h + 1))
+    nw = min(maximum(textwidth, cands) + 3, area.width ÷ 3)
+    _clear_rect!(buf, area)
+    for (k, i) in enumerate(first_row:min(n, first_row + h - 1))
+        y = area.y + k - 1
+        cur = i == cl.completion_idx
+        if cur
+            for x in area.x:(area.x + area.width - 1)
+                _tint_cell!(buf, x, y, ui.s3)
+            end
+        end
+        TK.set_string!(buf, area.x + 1, y, first(":" * lstrip(cands[i], ':'), nw - 1),
+                       TK.Style(fg = cur ? ui.o : ui.tx, bold = cur))
+        TK.set_string!(buf, area.x + 1 + nw, y, first(docs[i], max(0, area.width - nw - 2)), TK.Style(fg = ui.d))
+    end
     return
 end

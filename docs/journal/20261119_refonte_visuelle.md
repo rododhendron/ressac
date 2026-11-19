@@ -80,8 +80,9 @@ teintée — d'où `_clear_rect!`, qui écrit les cellules directement.
 - Une pane de lecture du côté des patterns (wiki, fiche, journal) montre
   d'abord ses propres touches dans la ligne d'état.
 
-## Reste à faire
-
-- Les descriptions des commandes dans la palette et dans la complétion de `:`
-  (il n'y a pas encore de texte d'une ligne par commande).
-- La fenêtre d'aide `?` en colonnes par intention, comme le menu Espace.
+- **Une ligne par commande** (`app_command_docs.jl`) : la palette et la
+  complétion de `:` disent ce que fait chaque commande ; un test échoue si
+  une commande n'a pas la sienne.
+- **L'aide `?`** se lit en colonnes (jusqu'à trois) sur un écran large ; les
+  touches de défilement avancent dans la même liste.
+- **La fenêtre des sorties** nomme ses colonnes ; le casque y est en violet.
