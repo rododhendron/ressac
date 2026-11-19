@@ -131,3 +131,16 @@ gain par événement de SuperDirt.
   « samples ». La complétion dans `:s nom` et `"nom"` le trouve aussi.
 - **Suppression** : supprime le dossier sous `plugins/user-samples/` et
   redémarre. Pas de `:unimport` pour l'instant.
+
+## Le mode d'emploi d'un plugin, dans le wiki
+
+Un plugin peut apporter ses propres pages. Ajoute à son `plugin.toml` :
+
+```toml
+[wiki]
+dir = "wiki"
+```
+
+Chaque `*.md` de `plugins/<nom-du-plugin>/wiki/` devient une page du wiki,
+rangée après celles de Ressac (son titre est son premier `# Titre`). La
+palette `Ctrl-p` les trouve comme les autres.

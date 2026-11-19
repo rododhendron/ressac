@@ -488,6 +488,35 @@ end
 
 register_section_handler!(:snippets, _handle_snippets)
 
+# Les dossiers de pages de wiki apportés par les plugins : (plugin, dossier),
+# dans l'ordre de chargement. Le wiki les lit après ses propres pages.
+const _PLUGIN_WIKI_DIRS = Tuple{String,String}[]
+
+"""
+    _handle_wiki(plugin_dir, data, plugin_name)
+
+Section `[wiki]` d'un plugin.toml : les `*.md` de `<plugin_dir>/<dir>`
+(par défaut `wiki`) deviennent des pages du wiki, rangées après celles de
+Ressac. Un plugin qui apporte des sons peut ainsi apporter leur mode
+d'emploi. Recharger le plugin ne duplique rien.
+
+```toml
+[wiki]
+dir = "wiki"
+```
+"""
+function _handle_wiki(plugin_dir, data, plugin_name)
+    data isa AbstractDict || (data = Dict{String,Any}())
+    dir_rel = String(get(data, "dir", "wiki"))
+    dir = abspath(isabspath(dir_rel) ? dir_rel : joinpath(plugin_dir, dir_rel))
+    isdir(dir) || return nothing
+    filter!(e -> e[1] != String(plugin_name), _PLUGIN_WIKI_DIRS)
+    push!(_PLUGIN_WIKI_DIRS, (String(plugin_name), dir))
+    return nothing
+end
+
+register_section_handler!(:wiki, _handle_wiki)
+
 """
     _handle_scales(plugin_dir, data, plugin_name)
 

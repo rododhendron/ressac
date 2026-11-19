@@ -352,3 +352,30 @@ using Ressac
         end
     end
 end
+
+@testset "[wiki] — un plugin apporte ses pages au wiki" begin
+    saved = copy(Ressac._PLUGIN_WIKI_DIRS)
+    d = mktempdir()
+    try
+        mkpath(joinpath(d, "wiki"))
+        write(joinpath(d, "wiki", "01-mode-d-emploi.md"), "# Mes sons de pluie\n\nUn mot sur la pluie.\n")
+        write(joinpath(d, "wiki", "notes.txt"), "pas une page")
+        h = Ressac.get_section_handler(:wiki)
+        @test h !== nothing
+        base = length(Ressac._load_wiki_pages())
+        h(d, Dict{String,Any}(), "pluie")
+        pages = Ressac._load_wiki_pages()
+        @test length(pages) == base + 1                       # le .txt n'est pas une page
+        @test pages[end].title == "Mes sons de pluie" && pages[end].filename == "pluie/01-mode-d-emploi.md"
+        @test any(l -> occursin("Un mot sur la pluie", l), pages[end].lines)
+        # Les pages de Ressac restent devant.
+        base == 0 || @test pages[1].filename == "01-intro.md"
+        # Recharger le plugin ne duplique rien ; un dossier absent ne casse rien.
+        h(d, Dict{String,Any}("dir" => "wiki"), "pluie")
+        @test length(Ressac._load_wiki_pages()) == base + 1
+        h(d, Dict{String,Any}("dir" => "absent"), "autre")
+        @test length(Ressac._load_wiki_pages()) == base + 1
+    finally
+        empty!(Ressac._PLUGIN_WIKI_DIRS); append!(Ressac._PLUGIN_WIKI_DIRS, saved)
+    end
+end

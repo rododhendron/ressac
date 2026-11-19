@@ -223,7 +223,7 @@ end
 # liste — celle d'un handler de plugin — vient après, par ordre alphabétique.
 # (L'ordre était celui du hachage du Dict : le même à chaque fois par
 # chance, pas par contrat.)
-const _SECTION_ORDER = ["julia", "samples", "scales", "instruments", "synths", "synthdefs", "snippets", "docs"]
+const _SECTION_ORDER = ["julia", "samples", "scales", "instruments", "synths", "synthdefs", "snippets", "docs", "wiki"]
 
 function _ordered_sections(names)
     rank(n) = something(findfirst(==(n), _SECTION_ORDER), length(_SECTION_ORDER) + 1)
