@@ -42,12 +42,12 @@ const _SW_SRC = "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 
             parts = Ressac._synth_workspace_parts(app)
             @test parts !== nothing
             (ep, sdoc) = parts
-            @test sdoc.mode === :doc
+            @test sdoc.mode === :explain                 # un son s'ouvre sur son explication
             @test Ressac._focused_role(app) === :synth
             scr = _swscreen(app, tb, frame)
             @test occursin("SYNTH · sketch", scr)
             @test occursin("PATTERNS", scr)                                 # les patterns restent à gauche
-            @test occursin("DOC ✦ ◂ [doc] · explication · graphe ▸", scr)
+            @test occursin("DOC ✦ ◂ doc · [explication] · graphe ▸", scr)
             @test !occursin("STUDIO", scr) && !occursin("SCULPT", scr)      # plus de studio : le texte est le son
             @test sdoc.genome !== nothing && sdoc.synced_name == "sketch"   # le starter se relit
 

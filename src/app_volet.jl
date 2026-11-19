@@ -177,6 +177,32 @@ function _fiche_fit_width!(m::RessacApp)
     return
 end
 
+# Un son sur un écran assez large : son texte et sa DOC côte à côte, les
+# patterns réduits à une colonne. Plus étroit, la DOC passe sous le texte.
+# (Au-delà de `_VOLET_WIDE_COLS`, le son a déjà sa colonne entre les
+# patterns et la fiche : rien à faire ici.)
+const _SON_SIDE_COLS = 165
+const _SON_SIDE_SHARE = 0.72
+
+function _son_fit_width!(m::RessacApp)
+    (m.volet === :son && m._last_ws_area !== nothing) || return
+    node = get(m.volets, :son, nothing)
+    (node isa Container && length(node.children) == 2) || return
+    ws = current_workspace(m.workspaces)
+    ws === nothing && return
+    root = ws.tree
+    side = m._last_ws_area.w >= _SON_SIDE_COLS && !_screen_is_wide(m)
+    want_dir = side ? :h : :v
+    node.direction === want_dir || (node.direction = want_dir; node.ratios = [0.62, 0.38])
+    (root isa Container && length(root.children) == 2 && root.children[2] === node) || return
+    cur = root.ratios[2]
+    auto = (_VOLET_SHARE[:son], _SON_SIDE_SHARE)
+    any(a -> isapprox(cur, a; atol = 1e-6), auto) || return      # redimensionné à la main : on n'y touche pas
+    want = side ? _SON_SIDE_SHARE : _VOLET_SHARE[:son]
+    isapprox(cur, want; atol = 1e-6) || (root.ratios = [1 - want, want])
+    return
+end
+
 # Quand la fenêtre passe la largeur seuil, le son gagne ou perd sa colonne.
 function _volet_follow_width!(m::RessacApp)
     m.volet === :son || return

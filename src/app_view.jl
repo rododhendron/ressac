@@ -357,6 +357,7 @@ function _view!(m::RessacApp, f::TK.Frame)
         m._last_ws_area = ws_nt
         _volet_follow_width!(m)       # le son gagne sa colonne sur un grand écran
         _fiche_fit_width!(m)          # la fiche : une colonne de lecture, pas un tiers
+        _son_fit_width!(m)            # un son : texte et DOC côte à côte si l'écran le permet
         ws = current_workspace(m.workspaces)
         if ws !== nothing
             # Un changement de focus dézoome (comme tmux).
@@ -875,26 +876,55 @@ function _render_whichkey!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         end
     end
     isempty(entries) && return
-    n = length(entries)
     p = _ui()
+    # Les suites rangées en colonnes titrées (le menu Espace des patterns),
+    # ou d'un seul tenant pour les autres préfixes.
+    groups = Pair{String,Vector{Tuple{String,String}}}[]
+    if kind === :leader && any(((sc, _),) -> sc === :leader, layers)
+        left = copy(entries)
+        for (title, keys) in _LEADER_COLUMNS
+            got = Tuple{String,String}[]
+            for c in keys
+                i = findfirst(e -> e[1] == string(c), left)
+                i === nothing || push!(got, popat!(left, i))
+            end
+            isempty(got) || push!(groups, title => got)
+        end
+        isempty(left) || push!(groups, "AUTRES" => left)
+    else
+        push!(groups, "" => entries)
+    end
     kw = maximum(textwidth(k) for (k, _) in entries)
-    cw = min(maximum(textwidth(l) for (_, l) in entries) + kw + 5, 40)
-    ncol = max(1, min((area.width - 4) ÷ cw, cld(n, 4)))
-    nrow = cld(n, ncol)
-    h = min(area.height - 1, nrow + 3)
+    cw = min(maximum(textwidth(l) for (_, l) in entries) + kw + 5, 30)
+    maxcols = max(1, (area.width - 4) ÷ cw)
+    titled = any(g -> !isempty(g.first), groups)
+    # Autant de lignes qu'il en faut pour que tout tienne en largeur.
+    nrow = 4
+    while sum(cld(length(g.second), nrow) for g in groups) > maxcols && nrow < area.height - 5
+        nrow += 1
+    end
+    h = min(area.height - 1, nrow + 3 + (titled ? 1 : 0))
     h < 3 && return
     rect = TK.Rect(area.x, area.y + area.height - h, area.width, h)
     _clear_rect!(buf, rect)
     _surface!(rect, p.s2)
     _band!(buf, rect.x, rect.y, rect.width, prefix == "Space" ? "ESPACE" : "$prefix + …";
            right = "une touche choisit · Échap ne fait rien", focus = p.o, bg = p.s3)
-    for (i, (k, l)) in enumerate(entries)
-        col, row = divrem(i - 1, nrow)
-        y = rect.y + 2 + row
-        y >= rect.y + rect.height && continue
+    col = 0
+    y0 = rect.y + 2 + (titled ? 1 : 0)
+    for (title, items) in groups
         x = rect.x + 2 + col * cw
-        TK.set_string!(buf, x, y, rpad(k, kw), TK.Style(fg = p.o, bold = true))
-        TK.set_string!(buf, x + kw + 2, y, first(l, max(0, cw - kw - 4)), TK.Style(fg = p.tx))
+        titled && TK.set_string!(buf, x, rect.y + 2, first(title, cw - 1), TK.Style(fg = p.n))
+        for (i, (k, l)) in enumerate(items)
+            c, row = divrem(i - 1, nrow)
+            y = y0 + row
+            y >= rect.y + rect.height && continue
+            xx = x + c * cw
+            xx + kw + 2 >= rect.x + rect.width && continue
+            TK.set_string!(buf, xx, y, rpad(k, kw), TK.Style(fg = p.o, bold = true))
+            TK.set_string!(buf, xx + kw + 2, y, first(l, max(0, cw - kw - 4)), TK.Style(fg = p.tx))
+        end
+        col += cld(length(items), nrow)
     end
     return
 end

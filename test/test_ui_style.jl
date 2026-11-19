@@ -102,3 +102,47 @@ end
         end
     end
 end
+
+@testset "un son — texte et DOC côte à côte quand l'écran le permet, la chaîne en tableau" begin
+    old = pwd(); d = mktempdir(); mkpath(joinpath(d, "plugins", "user-synths")); cd(d)
+    try
+        (app, _) = _new_app()
+        draw(w) = (tb = Tachikoma.TestBackend(w, 44);
+                   f = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, w, 44), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[]);
+                   Tachikoma.view(app, f); join((Tachikoma.row_text(tb, y) for y in 1:44), "\n"))
+        draw(140)
+        _exec_ex_command!(app, "synth essai")
+        (ep, sdoc) = Ressac._synth_workspace_parts(app)
+        Tachikoma.set_text!(ep.tabs[ep.current_tab].code_editor,
+                            "@synth :essai (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)\n")
+        node = app.volets[:son]
+        draw(140); draw(140)
+        @test node.direction === :v                              # étroit : la DOC sous le texte
+        scr = (draw(180); draw(180))
+        @test node.direction === :h                              # plus large : côte à côte
+        # La DOC s'ouvre sur l'explication, qui commence par la chaîne en tableau.
+        @test sdoc.mode === :explain
+        @test occursin("CHAÎNE", scr) && occursin("MAILLON", scr) && occursin("RÉGLAGE", scr)
+        spans = Ressac.chain_table_spans(sdoc.genome, 60; impacts = Dict(id => 0.5 for id in keys(sdoc.genome.nodes)))
+        txt = [join(sp.content for sp in l) for l in spans]
+        @test any(l -> occursin("RLPF", l) && occursin("▮▮▮▮▮", l) && occursin("0.5", l), txt)
+        # Un maillon qui ne s'entend pas est marqué.
+        dead = Ressac.chain_table_spans(sdoc.genome, 60; impacts = Dict(id => 0.001 for id in keys(sdoc.genome.nodes)))
+        @test any(l -> occursin("✂", l) && occursin("inaudible", l), [join(sp.content for sp in l) for l in dead])
+    finally
+        cd(old)
+    end
+end
+
+@testset "le menu Espace est rangé par intention" begin
+    _with_live_app() do app, frame
+        _key!(app, ' ')
+        buf = _ui_draw(app, frame)
+        rows = _ui_rows(buf)
+        y = findfirst(r -> occursin("ÉCRIRE", r), rows)
+        @test y !== nothing && occursin("TRANSFORMER LA LIGNE", rows[y]) && occursin("OUVRIR", rows[y]) && occursin("FAIRE", rows[y])
+        # Toutes les touches du menu sont dans une colonne : rien ne tombe dans « AUTRES ».
+        @test !any(r -> occursin("AUTRES", r), rows)
+        _key!(app, :escape)
+    end
+end

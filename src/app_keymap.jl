@@ -222,6 +222,11 @@ const _LEADER_FR = Dict{Char,String}(
     'b' => "▸ sons (samples, instruments, synths)", 'L' => "▸ sons rangés (réserve)",
     'I' => "▸ recettes (réserve)", 'P' => "▸ motifs rangés (réserve)", 'k' => "ranger la ligne @dN dans la réserve", 'o' => "boucle : frapper un motif, de la longueur qu'on veut", 'V' => "▸ variations du bloc", 'w' => "▸ wiki", '?' => "▸ aide",
 )
+# Le menu Espace rangé par intention : ce qu'on y cherche, pas l'ordre des
+# déclarations. Une touche absente d'ici tombe dans « AUTRES ».
+const _LEADER_COLUMNS = ("ÉCRIRE" => "dnScERJ", "TRANSFORMER LA LIGNE" => "glhprfsvemDa",
+                         "OUVRIR" => "bLPIVw?", "FAIRE" => "ko")
+
 for (c, _) in _LEADER_LABELS
     label = get(_LEADER_FR, c, String([c]))
     if haskey(_LEADER_ACTIONS, c)

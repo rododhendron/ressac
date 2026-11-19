@@ -58,12 +58,19 @@ teintée — d'où `_clear_rect!`, qui écrit les cellules directement.
 - **Le menu Espace** : un panneau en bas, sur toute la largeur, qui n'éteint
   pas le code.
 
+- **Un son** : entre 165 et 200 colonnes, son texte et sa DOC sont côte à côte et les
+  patterns se réduisent à une colonne ; plus étroit, la DOC repasse sous le
+  texte. La DOC s'ouvre sur l'explication, qui commence par la **chaîne en
+  tableau** (`chain_table_spans`) : un maillon par ligne dans l'ordre du
+  signal, les modulateurs en retrait avec le réglage qu'ils animent, et —
+  après `P` — une jauge de ce que chacun change à l'oreille.
+- **Le menu Espace** est rangé par intention (`_LEADER_COLUMNS`) : écrire,
+  transformer la ligne, ouvrir, faire.
+- **L'explorateur** : des tuiles sur fond, celle du curseur en orangé.
+
 ## Reste à faire
 
-- L'écran d'un son en trois colonnes (patterns éteints · texte · DOC) et la
-  chaîne en tableau sous le texte (un maillon par ligne, son réglage, la
-  jauge de ce qu'il change).
-- Le menu Espace rangé par intention (écrire · transformer · ouvrir · faire).
-- Les fenêtres à table (réserve, mixer, sorties) : colonnes nommées, aperçu
-  sur la grille.
-- L'explorateur : tuiles sur fond plutôt que cadres.
+- Les fenêtres à table (réserve, mixer, sorties, palette) : colonnes nommées,
+  aperçu d'un motif sur la grille, plus de filets internes.
+- Le titre de la DOC d'un son (`DOC ✦ ◂ doc · [explication] · graphe ▸`) en
+  vrais onglets.

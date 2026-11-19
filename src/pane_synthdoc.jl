@@ -36,8 +36,9 @@ const _SYNTHDOC_MODES = (:doc, :explain, :graph)
 _synthdoc_label(mode::Symbol) = mode === :doc ? "doc" : mode === :explain ? "explication" : "graphe"
 
 function _synthdoc_pane_ctor(args::AbstractDict)
-    mode = Symbol(String(get(args, "mode", "doc")))
-    mode in _SYNTHDOC_MODES || (mode = :doc)
+    # Un son s'ouvre sur son explication : ce qu'il fait, et sa chaîne.
+    mode = Symbol(String(get(args, "mode", "explain")))
+    mode in _SYNTHDOC_MODES || (mode = :explain)
     return SynthDocPane(mode, DocPane(String(get(args, "name", "")), 0, true),
                         _scrollpane(), String[], 0,
                         _scrollpane(), nothing, Int[], 0, 0,
@@ -146,6 +147,53 @@ function _explain_spans(lines::Vector{String}, width::Int)
     return out
 end
 
+"""
+    chain_table_spans(g, width; hints, impacts) -> Vector{Vector{Span}}
+
+La chaîne du son en tableau, un maillon par ligne dans l'ordre du signal :
+son numéro, son nom (un modulateur est en retrait, avec le réglage qu'il
+anime), ses réglages, et — une fois mesuré (`P`) — une jauge de ce qu'il
+change à l'oreille. `✂` marque ce qui ne s'entend pas.
+"""
+function chain_table_spans(g::Genome, width::Int; hints = Dict{Int,String}(), impacts = Dict{Int,Float64}())
+    ui = _ui()
+    boxes = graph_boxes(g; hints = hints, impacts = impacts)
+    out = Vector{TK.Span}[]
+    measured = !isempty(impacts)
+    push!(out, _md_band("CHAÎNE", "$(length(boxes)) maillon$(length(boxes) == 1 ? "" : "s")" *
+                                  (measured ? " · mesurée" : " · P mesure"), width))
+    push!(out, TK.Span[])
+    isempty(boxes) && return out
+    namew = clamp(maximum(textwidth(replace(b.label, " ✂" => "")) + 2 * b.depth + (isempty(b.edge) ? 0 : textwidth(b.edge) + 2) for b in boxes), 8, 26)
+    subw = clamp(maximum(textwidth(b.sub) for b in boxes), 8, 16)
+    push!(out, TK.Span[TK.Span("    #  " * rpad("MAILLON", namew + 2) * rpad("RÉGLAGE", subw + 2) * (measured ? "CE QU'IL CHANGE" : ""),
+                               TK.Style(fg = ui.n))])
+    for b in boxes
+        imp = get(impacts, b.id, nothing)
+        dead = haskey(hints, b.id) || (imp !== nothing && imp < 0.02)
+        name = replace(b.label, " ✂" => "")
+        label = "  "^b.depth * (b.depth > 0 ? "└ " : "") * name * (isempty(b.edge) ? "" : " →" * b.edge)
+        label = textwidth(label) > namew + 2 ? first(label, namew + 1) * "…" : label
+        line = TK.Span[TK.Span(dead ? "  ✂ " : "    ", TK.Style(fg = ui.r)),
+                       TK.Span(rpad(string(b.id), 3), TK.Style(fg = ui.n)),
+                       TK.Span(rpad(label, namew + 2), TK.Style(fg = dead ? ui.n : b.depth == 0 ? ui.tx : ui.d, bold = b.depth == 0 && !dead)),
+                       TK.Span(rpad(b.sub, subw + 2), TK.Style(fg = ui.y))]
+        if imp !== nothing
+            k = clamp(round(Int, imp * 10), 0, 10)
+            (k == 0 && imp >= 0.02) && (k = 1)
+            push!(line, TK.Span("▮"^k, TK.Style(fg = dead ? ui.n : ui.d)))
+            push!(line, TK.Span("▮"^(10 - k), TK.Style(fg = ui.x)))
+            push!(line, TK.Span("  " * string(round(imp; digits = 3)), TK.Style(fg = dead ? ui.r : ui.tx)))
+            dead && push!(line, TK.Span("  inaudible", TK.Style(fg = ui.r)))
+        elseif haskey(hints, b.id)
+            push!(line, TK.Span(last(split(hints[b.id], " — "; limit = 2)), TK.Style(fg = ui.r)))
+        end
+        push!(out, line)
+    end
+    push!(out, TK.Span[])
+    return out
+end
+
 # ── Le graphe ────────────────────────────────────────────────────────
 _synthdoc_graph(p::SynthDocPane) = p.mode === :graph
 _synthdoc_not_graph(p::SynthDocPane) = p.mode !== :graph
@@ -222,7 +270,9 @@ function render!(p::SynthDocPane, area, buf)
         if p.explain_w != w
             lines = isempty(p.explain_lines) ?
                 ["(pas d'explication : le texte ne se relit pas en @synth)"] : p.explain_lines
-            TK.set_content!(p.explain, _explain_spans(lines, w))
+            table = p.genome === nothing ? Vector{TK.Span}[] :
+                    chain_table_spans(p.genome, w; hints = p.hints, impacts = p.impacts)
+            TK.set_content!(p.explain, vcat(table, _explain_spans(lines, w)))
             p.explain_w = w
         end
         TK.render(p.explain, inner, buf)

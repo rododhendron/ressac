@@ -123,8 +123,9 @@ Décidée le 2026-11-19 sur maquettes. Le système et ce qui reste : `docs/journ
 - [x] V3 — La grille du cycle : temps alternés, pistes nommées, tête de lecture pleine hauteur, notes en chiffres.
 - [x] V4 — La fiche en colonne de lecture, avec ses bandes LIGNE et EN JEU.
 - [x] V5 — Les fenêtres recouvrent et éteignent le reste ; le menu Espace en panneau.
-- [ ] V6 — L'écran d'un son en trois colonnes, la chaîne en tableau sous le texte.
-- [ ] V7 — Le menu Espace rangé par intention ; les fenêtres à table (réserve, mixer, sorties) ; l'explorateur sans cadres.
+- [x] V6 — L'écran d'un son : texte et DOC côte à côte entre 165 et 200 colonnes (au-delà, la fiche garde sa colonne), la chaîne en tableau en tête de l'explication.
+- [x] V7 — Le menu Espace rangé par intention ; l'explorateur en tuiles sans cadres.
+- [ ] V8 — Les fenêtres à table (réserve, mixer, sorties, palette) : colonnes nommées, aperçu d'un motif sur la grille, plus de filets internes.
 
 ## Fonctionnalités (ancien `TODO.txt` et wiki)
 

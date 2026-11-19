@@ -227,18 +227,18 @@ function title(p::SynthExplorerPane)
     return "explorer:$(p.seed_name) g$(p.pop.generation)"
 end
 
-# Draw one candidate as a boxed card: header (n° + ♥/✗ + cluster dot),
-# mini-schema, key params, ready state. Border + cluster dot tinted by
-# cluster; the focused card uses a bold accent border.
+# Draw one candidate as a tile: header (n° + ♥/✗ + cluster dot),
+# mini-schema, key params, ready state. The cluster dot is tinted by
+# cluster; the focused tile has the accent background.
 function _render_candidate_card!(p::SynthExplorerPane, c::Candidate, idx::Int,
                                  cid::Int, focused::Bool, r::TK.Rect, buf::TK.Buffer)
-    border = focused ? TK.tstyle(:accent, bold = true) : _cluster_style(cid)
-    TK.set_string!(buf, r.x, r.y, "┌" * "─"^(r.width - 2) * "┐", border)
-    for y in 1:(r.height - 2)
-        TK.set_string!(buf, r.x, r.y + y, "│", border)
-        TK.set_string!(buf, r.x + r.width - 1, r.y + y, "│", border)
+    # Une tuile : un fond, pas un cadre. Celle du curseur a le fond orangé de
+    # « maintenant » ; la famille se lit à la couleur de sa pastille ●A.
+    ui = _ui()
+    tile = TK.Cell(' ', TK.Style(bg = focused ? _ui_tint(ui.o, 0.16) : ui.s1), "")
+    for y in r.y:(r.y + r.height - 1), x in r.x:(r.x + r.width - 1)
+        TK.in_bounds(buf, x, y) && (buf.content[TK.buf_index(buf, x, y)] = tile)
     end
-    TK.set_string!(buf, r.x, r.y + r.height - 1, "└" * "─"^(r.width - 2) * "┘", border)
     ix = r.x + 1
     iw = r.width - 2
     mark = c.weight > 0 ? "♥"^Int(min(c.weight, 3)) :
