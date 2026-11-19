@@ -47,7 +47,7 @@ const _SW_SRC = "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 
             scr = _swscreen(app, tb, frame)
             @test occursin("SYNTH · sketch", scr)
             @test occursin("PATTERNS", scr)                                 # les patterns restent à gauche
-            @test occursin("DOC ✦ ◂ doc · [explication] · graphe ▸", scr)
+            @test occursin("doc   explication   graphe", scr)
             @test !occursin("STUDIO", scr) && !occursin("SCULPT", scr)      # plus de studio : le texte est le son
             @test sdoc.genome !== nothing && sdoc.synced_name == "sketch"   # le starter se relit
 
@@ -115,7 +115,7 @@ end
     _swex(app, "explain")
     @test sdoc.mode === :explain && Ressac._focused_pane_impl(app) === sdoc
     scr = _swscreen(app, tb, frame)
-    @test occursin("DOC ✦ ◂ doc · [explication] · graphe ▸", scr) && occursin("source", scr)
+    @test occursin("doc   explication   graphe", scr) && occursin("source", scr)
     _swkey(app, :right)
     @test sdoc.mode === :graph
     _swkey(app, :right)
@@ -201,7 +201,7 @@ end
         _swkey(app, 'Y')
         @test sdoc.mode === :graph
         scr = _swscreen(app, tb, frame)
-        @test occursin("DOC ✦ ◂ doc · explication · [graphe] ▸", scr)
+        @test occursin("doc   explication   graphe", scr)
         @test occursin("◉ out", scr) && occursin("RLPF", scr)
         @test !isempty(sdoc.graph_ids)
         # dans la DOC, h / l passent d'une boîte à l'autre

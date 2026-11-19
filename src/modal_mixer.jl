@@ -161,7 +161,7 @@ function _render_mixer_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
     # vumètres par-dessus la colonne ACTIVITÉ : trois zones et crête,
     # ce qu'une cellule de texte ne sait pas dire.
     dt = m.mixer_table
-    TK.render(dt, TK.Rect(inner.x, inner.y, inner.width, inner.height - 1), buf)
+    _datatable_render!(dt, TK.Rect(inner.x, inner.y, inner.width, inner.height - 1), buf)
     for (i, slot) in enumerate(slots)
         xy = _datatable_cell_xy(dt, i, 2)
         xy === nothing && continue

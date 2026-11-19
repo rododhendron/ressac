@@ -661,6 +661,11 @@ insertion, pane focalisée (+ global), éditeur (rôle + éditeur + global).
 # arrivant dans une pane), puis ceux de la pane, puis le global.
 function _keybar_layers(m::RessacApp)
     pairs, prefix = _visible_layers(m)
+    # Une pane de lecture du côté des patterns (wiki, fiche, journal) montre
+    # d'abord ses propres touches : celles des patterns, on les connaît.
+    pane = _focused_pane_impl(m)
+    (m.modal === :none && pane !== nothing && !(pane isa EditorPane) && _workspace_mode(m) === :play) &&
+        return pairs, prefix
     i = findfirst(((sc, _),) -> scope_layer(sc) === :mode, pairs)
     i === nothing || i == 1 || (p = pairs[i]; deleteat!(pairs, i); pushfirst!(pairs, p))
     return pairs, prefix

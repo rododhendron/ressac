@@ -204,7 +204,7 @@ end
             @test occursin("@synth :candidat_1", Tachikoma.text(ep.tabs[ep.current_tab].code_editor))
             @test sdoc.mode === :explain && sdoc.genome !== nothing && !isempty(sdoc.explain_lines)
             scr = _bscreen(app, tb, frame)
-            @test occursin("SYNTH · candidat_1", scr) && occursin("[explication]", scr)
+            @test occursin("SYNTH · candidat_1", scr) && occursin("explication", scr) && occursin("CHAÎNE", scr)
             @test !occursin("STUDIO", scr)
             # M de nouveau sur le même candidat : le même onglet, pas un de plus
             ntabs = length(ep.tabs)

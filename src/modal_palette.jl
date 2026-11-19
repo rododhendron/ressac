@@ -18,9 +18,11 @@ struct _PaletteItem
 end
 
 const _PALETTE_ICON = Dict{Symbol,String}(
-    :cmd => ":", :sound => "♪", :func => "ƒ", :pattern => "▣", :recipe => "◈", :wiki => "?",
+    :cmd => ":", :sound => "♪", :mine => "♪", :func => "ƒ", :pattern => "▣", :recipe => "◈", :wiki => "?",
 )
+const _PALETTE_ORDER = (:mine, :pattern, :sound, :cmd, :func, :recipe, :wiki)
 const _PALETTE_LABEL = Dict{Symbol,String}(
+    :mine => "ton son",
     :cmd => "commande", :sound => "son", :func => "fonction",
     :pattern => "pattern rangé", :recipe => "recette", :wiki => "wiki",
 )
@@ -45,9 +47,10 @@ function _palette_items(m::RessacApp)
     end
     for (reg, what) in ((_SAMPLE_REGISTRY, "sample"), (_INSTRUMENT_REGISTRY, "instrument"),
                         (_SYNTH_REGISTRY, "synth"))
-        for k in keys(reg)
+        for (k, info) in reg
             nm = String(k)
-            push!(out, _PaletteItem(:sound, nm, what, mm -> _palette_insert!(mm, nm)))
+            mine = what == "synth" && hasproperty(info, :plugin) && String(info.plugin) == "user-synths"
+            push!(out, _PaletteItem(mine ? :mine : :sound, nm, mine ? "ton son" : what, mm -> _palette_insert!(mm, nm)))
         end
     end
     for name in _COMBINATOR_NAMES
@@ -73,8 +76,12 @@ function _palette_items(m::RessacApp)
     isempty(q) || (out = [it for it in out if _fuzzy_score(q, it.label) !== nothing])
     # `_fuzzy_score` : plus bas = plus serré. À score égal, le plus court
     # d'abord — taper « rev » doit proposer rev avant reverse-machin.
-    sort!(out; by = it -> (something(_fuzzy_score(q, it.label), 10^6),
-                           length(it.label), it.label))
+    # Ce qui correspond le mieux d'abord ; à égalité (et sans saisie), par
+    # nature — tes sons, tes motifs, puis les sons, les commandes, les
+    # fonctions — et dans chaque nature le plus joué en tête.
+    rank(it) = something(findfirst(==(it.kind), _PALETTE_ORDER), length(_PALETTE_ORDER) + 1)
+    sort!(out; by = it -> (something(_fuzzy_score(q, it.label), 10^6), rank(it),
+                           -_played_count(lstrip(it.label, ':')), length(it.label), it.label))
     return out
 end
 

@@ -254,9 +254,21 @@ _synthdoc_view(p::SynthDocPane) = p.mode === :doc ? p.doc.pane : p.mode === :exp
 
 function render!(p::SynthDocPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
-    tabs = join((m === p.mode ? "[$(_synthdoc_label(m))]" : _synthdoc_label(m) for m in _SYNTHDOC_MODES), " · ")
-    head = "DOC ✦ ◂ $tabs ▸" * (p.mode === :doc && !isempty(p.doc.name) ? " · $(p.doc.name)" : "")
-    _render_pane_block_simple!(rect, head, buf)
+    # La bande de titre porte les trois vues en onglets : celle qu'on
+    # regarde en orange souligné (← → pour en changer).
+    _render_pane_block_simple!(rect, "DOC", buf)
+    ui = _ui()
+    x = rect.x + 6
+    for mode in _SYNTHDOC_MODES
+        lab = _synthdoc_label(mode)
+        x + textwidth(lab) >= rect.x + rect.width && break
+        on = mode === p.mode
+        TK.set_string!(buf, x, rect.y, lab, TK.Style(fg = on ? ui.o : ui.d, bg = ui.s2, bold = on, underline = on))
+        x += textwidth(lab) + 3
+    end
+    if p.mode === :doc && !isempty(p.doc.name) && x + textwidth(p.doc.name) + 3 < rect.x + rect.width
+        TK.set_string!(buf, x, rect.y, "· " * p.doc.name, TK.Style(fg = ui.b, bg = ui.s2))
+    end
     inner = _inner_rect_simple(rect)
     (inner.height < 1 || inner.width < 4) && return
     w = max(8, inner.width - 1)

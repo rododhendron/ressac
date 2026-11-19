@@ -146,3 +146,33 @@ end
         _key!(app, :escape)
     end
 end
+
+@testset "les fenêtres à table : pas de filets, un aperçu sur la grille, la palette par nature" begin
+    _with_live_app() do app, frame
+        _set_buffer!(app, "@d1 p\"bd bd bd bd\"\n@d2 n(\"0 3 7 12\") |> s(\"superpiano\")\n")
+        _key!(app, 'E')
+        # Une ligne évaluée « pour voir » rend son pattern sans rien lancer ni rien changer.
+        before = length(Ressac.pattern_snapshot(app.scheduler))
+        pat = Ressac._pattern_of_line("@d9 n(\"0 12\") |> s(\"superpiano\")")
+        @test pat isa Ressac.Pattern
+        @test length(Ressac.pattern_snapshot(app.scheduler)) == before
+        @test Ressac._ROUTE_CAPTURE[] === nothing
+        @test Ressac._pattern_of_line("@d9 pas_une_fonction(") === nothing
+        @test String(Ressac._code_lane("@d9 n(\"0 12\") |> s(\"superpiano\")", 24)) == "0           12          "
+        # Le mixer : une table sans filets, la ligne choisie sur son fond.
+        _exec_ex_command!(app, "mixer")
+        buf = _ui_draw(app, frame)
+        (mx, my) = _ui_find(buf, "MIXER")
+        (sx, sy) = _ui_find(buf, "SLOT")
+        @test !any(c -> c in ('│', '─', '┼'), _ui_rows(buf)[sy][sx:min(end, sx + 60)])
+        @test _ui_cellat(buf, sx, sy + 2).style.bg == Ressac._ui().s3
+        _key!(app, :escape)
+        # La palette, sans rien taper : par nature, les commandes avant les fonctions.
+        Ressac._open_palette!(app)
+        items = Ressac._palette_items(app)
+        kinds = [it.kind for it in items]
+        @test findfirst(==(:cmd), kinds) < findfirst(==(:func), kinds)
+        @test issorted([something(findfirst(==(k), Ressac._PALETTE_ORDER), 99) for k in kinds])
+        _key!(app, :escape)
+    end
+end

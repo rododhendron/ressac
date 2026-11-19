@@ -61,6 +61,28 @@ xfade_pattern(old::Nothing, new, t0::Rational{Int64}, dur::Int) = _fade_gain(new
 xfade_pattern(old, new, t0::Rational{Int64}, dur::Int) =
     overlay(_fade_gain(old, t0, dur, false), _fade_gain(new, t0, dur, true))
 
+const _ROUTE_CAPTURE = Ref{Union{Nothing,Vector{Pattern}}}(nothing)
+
+"""
+    _pattern_of_line(code) -> Union{Nothing,Pattern}
+
+Le pattern qu'une ligne `@dN …` lancerait, sans la lancer : la ligne est
+évaluée telle quelle, et `_route_to_slot!` nous rend son pattern au lieu de
+le donner au scheduler. `nothing` si elle ne s'évalue pas.
+"""
+function _pattern_of_line(code::AbstractString)
+    got = Pattern[]
+    _ROUTE_CAPTURE[] = got
+    try
+        Core.eval(Main, Meta.parse(String(code)))
+    catch
+        return nothing
+    finally
+        _ROUTE_CAPTURE[] = nothing
+    end
+    return isempty(got) ? nothing : got[end]
+end
+
 """
     _route_to_slot!(slot::Symbol, p::Pattern)
 
@@ -68,6 +90,10 @@ Install `p` at `slot` either immediately or at +N cycles, depending on
 `_EVAL_MODE[]`. Called by the `@d1`..`@d64` macros.
 """
 function _route_to_slot!(slot::Symbol, p::Pattern)
+    # Une ligne évaluée « pour voir » (l'aperçu d'un motif rangé) : son
+    # pattern est rendu à qui le demande, rien n'est lancé.
+    cap = _ROUTE_CAPTURE[]
+    cap === nothing || (push!(cap, p); return nothing)
     sched = _check_live()
     # Hors de la grille (Entrée, la boucle) : le cycle 0 du pattern commence
     # à `phase`, et ce qui tombe avant le curseur du scheduler part tout de

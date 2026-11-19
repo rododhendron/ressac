@@ -55,6 +55,11 @@ function _search_render!(input::TK.TextInput, rect::TK.Rect, buf::TK.Buffer;
     (rect.height < 1 || rect.width < 4) && return
     rw = textwidth(right_text)
     w = max(1, rect.width - rw - (rw > 0 ? 1 : 0))
+    # Le champ : une ligne sur le fond des lignes choisies, sans cadre.
+    _clear_rect!(buf, rect)
+    for x in rect.x:(rect.x + rect.width - 1)
+        _tint_cell!(buf, x, rect.y, _ui().s3)
+    end
     if !input.focused && isempty(TK.text(input)) && !isempty(hint)
         TK.set_string!(buf, rect.x, rect.y, first(rpad(hint, w), w), TK.tstyle(:text_dim))
     else
@@ -140,8 +145,41 @@ function _picker_render_input!(pk::Picker, rect::TK.Rect, buf::TK.Buffer;
 end
 
 # La liste dans `rect` (marqueur, surbrillance, barre).
-_picker_render_list!(pk::Picker, rect::TK.Rect, buf::TK.Buffer) =
-    ((rect.height < 1 || rect.width < 3) || TK.render(pk.list, rect, buf); nothing)
+function _picker_render_list!(pk::Picker, rect::TK.Rect, buf::TK.Buffer)
+    (rect.height < 1 || rect.width < 3) && return
+    TK.render(pk.list, rect, buf)
+    _selected_row_tint!(buf, rect, pk.list.selected - pk.list.offset)
+    return
+end
+
+# La ligne choisie d'une liste : le fond des lignes choisies, sur toute sa largeur.
+function _selected_row_tint!(buf::TK.Buffer, rect::TK.Rect, row::Int)
+    (1 <= row <= rect.height) || return
+    y = rect.y + row - 1
+    for x in rect.x:(rect.x + rect.width - 1)
+        _tint_cell!(buf, x, y, _ui().s3)
+    end
+    return
+end
+
+"""
+    _datatable_render!(dt, rect, buf)
+
+Une table sans filets : l'en-tête en discret, les colonnes séparées par
+leur alignement, la ligne choisie sur son fond. (Le widget de Tachikoma
+trace des `│` et un `─` sous l'en-tête : on les efface après coup.)
+"""
+function _datatable_render!(dt::TK.DataTable, rect::TK.Rect, buf::TK.Buffer)
+    TK.render(dt, rect, buf)
+    for y in rect.y:(rect.y + rect.height - 1), x in rect.x:(rect.x + rect.width - 1)
+        TK.in_bounds(buf, x, y) || continue
+        i = TK.buf_index(buf, x, y)
+        buf.content[i].char in ('│', '─', '┼', '┬', '┴', '├', '┤') && (buf.content[i] = TK.Cell(' ', TK.Style(), ""))
+    end
+    xy = dt.selected >= 1 ? _datatable_cell_xy(dt, dt.selected, 1) : nothing
+    xy === nothing || _selected_row_tint!(buf, rect, xy[2] - rect.y + 1)
+    return
+end
 
 """
     _picker_render!(pk, inner, buf; right_text = "", hint = "")
@@ -219,14 +257,20 @@ end
 """
     _render_tabs!(buf, rect, labels, active)
 
-Une rangée d'onglets (les catégories d'une modale) : le `TabBar` de
-Tachikoma, sans cadre, l'onglet actif en accent.
+Une rangée d'onglets (les catégories d'une modale) : l'onglet actif en
+orange souligné, les autres en secondaire.
 """
 function _render_tabs!(buf::TK.Buffer, rect::TK.Rect, labels::Vector{String}, active::Int)
     (rect.width < 4 || rect.height < 1 || isempty(labels)) && return
-    bar = TK.TabBar(labels; active = clamp(active, 1, length(labels)),
-                    tab_style = TK.TabBarStyle(decoration = TK.PlainTabs(), separator = " · "))
-    TK.render(bar, rect, buf)
+    p = _ui()
+    act = clamp(active, 1, length(labels))
+    x = rect.x
+    for (i, l) in enumerate(labels)
+        i > 1 && (x + 3 <= rect.x + rect.width && TK.set_string!(buf, x, rect.y, " · ", TK.Style(fg = p.x)); x += 3)
+        x + textwidth(l) > rect.x + rect.width && break
+        TK.set_string!(buf, x, rect.y, l, i == act ? TK.Style(fg = p.o, bold = true, underline = true) : TK.Style(fg = p.d))
+        x += textwidth(l)
+    end
     return
 end
 

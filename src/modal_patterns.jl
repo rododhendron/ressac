@@ -58,7 +58,7 @@ function _render_patterns_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         title = "RÉSERVE",
         title_right = _modal_hint_text(m, :modal_patterns),
         w_max = 110,
-        h_target = max(14, min(area.height - 4, n + 9)))
+        h_target = max(18, min(area.height - 4, n + 12)))
     inner.width < 24 && return
     inner = _reserve_frame!(m, buf, inner)
     list_w = max(18, min(30, inner.width ÷ 3))
@@ -94,6 +94,39 @@ function _render_patterns_modal!(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         row >= body_h && break
         _md_draw_line!(buf, code_x, body_y + row, _md_code_line(String(line), code_w), code_w)
         row += 1
+    end
+    # Sous le code, le motif sur la grille du cycle : ce qu'il joue, avant de l'entendre.
+    w = code_w >= _LANE_WIDE ? _LANE_WIDE : code_w >= _LANE_NARROW ? _LANE_NARROW : 0
+    cells = w == 0 ? nothing : _code_lane(cur.code, w)
+    if cells !== nothing && row + 3 <= body_h
+        ui = _ui()
+        beat = w ÷ 4
+        y = body_y + row + 1
+        for k in 0:(w - 1)
+            ch, sty = k % beat == 0 ? (Char('1' + k ÷ beat), TK.Style(fg = ui.tx, bold = true)) :
+                      k % (beat >= 12 ? 3 : 2) == 0 ? ('·', TK.Style(fg = ui.n)) : (' ', TK.Style())
+            TK.set_char!(buf, code_x + k, y, ch, sty)
+            hit = cells[k + 1] != ' '
+            TK.set_char!(buf, code_x + k, y + 1, hit ? cells[k + 1] : '·',
+                         TK.Style(fg = hit ? ui.o : ui.x, bg = iseven(k ÷ beat) ? ui.s3 : TK.NoColor(), bold = hit))
+        end
+    end
+end
+
+# La piste d'un cycle d'un motif rangé, à partir de son texte : la ligne est
+# évaluée pour voir (`_pattern_of_line`) — rien n'est lancé — et gardée en mémoire.
+const _CODE_LANES = Dict{Tuple{UInt,Int},Union{Nothing,Vector{Char}}}()
+
+function _code_lane(code::AbstractString, w::Int)
+    get!(_CODE_LANES, (hash(code), w)) do
+        try
+            pat = _pattern_of_line(code)
+            pat === nothing && return nothing
+            evs = Base.invokelatest(pat, Rational{Int64}(0), Rational{Int64}(1))
+            _lane_digits!(_lane_cells(evs, 0, w), evs, 0)
+        catch
+            nothing
+        end
     end
 end
 

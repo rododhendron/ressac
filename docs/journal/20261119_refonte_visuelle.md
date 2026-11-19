@@ -68,9 +68,20 @@ teintée — d'où `_clear_rect!`, qui écrit les cellules directement.
   transformer la ligne, ouvrir, faire.
 - **L'explorateur** : des tuiles sur fond, celle du curseur en orangé.
 
+- **Les fenêtres** (`tk_picker.jl`) : le champ de recherche et la ligne
+  choisie ont le fond des lignes choisies ; les onglets marquent l'actif en
+  orange souligné ; la table du mixer n'a plus de filets
+  (`_datatable_render!` les efface après le widget). Dans la réserve, un
+  motif rangé se voit sur la grille du cycle avant qu'on l'écoute : sa ligne
+  est évaluée « pour voir » (`_pattern_of_line`), sans rien lancer.
+- **La palette** sans saisie est rangée par nature (tes sons, tes motifs, les
+  sons, les commandes, les fonctions), le plus joué en tête de chacune.
+- **La DOC d'un son** a ses trois vues en onglets dans sa bande de titre.
+- Une pane de lecture du côté des patterns (wiki, fiche, journal) montre
+  d'abord ses propres touches dans la ligne d'état.
+
 ## Reste à faire
 
-- Les fenêtres à table (réserve, mixer, sorties, palette) : colonnes nommées,
-  aperçu d'un motif sur la grille, plus de filets internes.
-- Le titre de la DOC d'un son (`DOC ✦ ◂ doc · [explication] · graphe ▸`) en
-  vrais onglets.
+- Les descriptions des commandes dans la palette et dans la complétion de `:`
+  (il n'y a pas encore de texte d'une ligne par commande).
+- La fenêtre d'aide `?` en colonnes par intention, comme le menu Espace.
