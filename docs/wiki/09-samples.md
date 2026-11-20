@@ -99,7 +99,7 @@ plugins/
   dirt/                       # les Dirt-Samples embarqués (bd, sn, hh, …)
   superdirt-synths/           # synthdefs SC (super808, supersaw, …)
   starter-instruments/        # chaînes préréglées comme :kicklourd, :sub
-  user-synths/                # tes synthdefs sauvés par :w (.scd ou .jl)
+  user-synths/                # tes sons rangés par :save (.jl)
   user-samples/               # ce que :import remplit
     mykick/
       mykick_0.wav

@@ -56,7 +56,7 @@ end
     @test app.modal === :help
 end
 
-@testset "help — depuis une pane synth, la section synth vient en premier" begin
+@testset "help — le curseur dans un bloc @synth, la section du son vient en premier" begin
     app, tb, frame = _help_app()
     _hex(app, "synth kick")
     @test Ressac._focused_role(app) === :synth
@@ -137,21 +137,30 @@ function _bottom_bar(app, tb, frame)
     i === nothing ? "" : rows[i - 1]
 end
 
-@testset "keybar — suit le focus : patterns, synth, explorer, log" begin
+@testset "keybar — suit le curseur et le focus : patterns, son, DOC du son, explorer" begin
     app, tb, frame = _help_app()
     bar = _bottom_bar(app, tb, frame)
     @test occursin("? aide", bar)
     @test occursin("e évaluer", bar)
     @test occursin("Space snippet", bar)
-    _hex(app, "synth kick")                                  # :synth emmène dans DESIGN
+    @test !occursin("T entendre", bar)
+    _hex(app, "synth kick")                                  # le curseur arrive dans le bloc @synth : touches du son
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("SON · kick", bar)                        # la ligne d'état dit où est le curseur
+    @test occursin("e évaluer", bar) && occursin("T entendre", bar) && occursin("D drone", bar)
+    @test !occursin("Space snippet", bar)
+    @test !occursin("Tab patterns", bar)                     # plus de bascule patterns ⟷ synth
+    _hex(app, "son")                                         # sa DOC, à droite : toujours les touches du son
     bar = _bottom_bar(app, tb, frame)
     @test occursin("T entendre", bar)
-    @test !occursin("Tab patterns", bar)                     # DESIGN : pas de pane patterns
-    _hex(app, "son")
+    _hex(app, "back")                                        # la fiche revient, le clavier au texte
     bar = _bottom_bar(app, tb, frame)
-    @test occursin("T entendre", bar)
-    _hex(app, "back")
-    @test !occursin("e évaluer", bar)
+    @test occursin("SON · kick", bar) && occursin("T entendre", bar)
+    ed = Ressac._patterns_editor(app)                        # le curseur sort du bloc : touches des patterns
+    ed.cursor_row = 1; ed.cursor_col = 0
+    @test Ressac._focused_role(app) === :patterns
+    bar = _bottom_bar(app, tb, frame)
+    @test occursin("Space snippet", bar) && !occursin("T entendre", bar)
     app2, tb2, frame2 = _help_app()
     _hex(app2, "vsplit explorer")
     bar = _bottom_bar(app2, tb2, frame2)
@@ -211,7 +220,7 @@ end
 
 @testset "whichkey — g et Ctrl-w : après le délai seulement" begin
     app, tb, frame = _help_app()
-    _hex(app, "synth kick"); _hex(app, "synth snare")           # deux synths → g t disponible
+    _hex(app, "synth kick")                                     # dans un son : g w / g x s'ajoutent à ceux de vim
     _hkey(app, 'g')
     @test Ressac._active_editor(app).pending_key == 'g'
     scr = _screen(app, tb, frame)
@@ -219,10 +228,11 @@ end
     app.prefix_since = time() - 1.0
     scr = _screen(app, tb, frame)
     @test occursin("g + …", scr)
-    @test occursin("synth suivant", scr)
+    @test occursin("w  ouvrir le wiki, à droite", scr) && occursin("x  ouvrir l'explorateur", scr)
     @test occursin("début / fin du buffer", scr)
-    _hkey(app, 't')                                             # g t : consomme le préfixe
-    @test Ressac._active_editor(app).pending_key === nothing
+    _hkey(app, 'w')                                             # g w : consomme le préfixe
+    @test Ressac._patterns_editor(app).pending_key === nothing
+    @test app.volet === :wiki
     @test !occursin("g + …", _screen(app, tb, frame))
     Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w'))
     @test !occursin("Ctrl-w + …", _screen(app, tb, frame))

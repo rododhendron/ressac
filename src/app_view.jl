@@ -335,7 +335,7 @@ function _view!(m::RessacApp, f::TK.Frame)
     _explore_slot_tick!(m)            # l'explorateur ouvert sur un slot : le candidat joue dans le pattern
     _audio_tick!(m)                   # SuperCollider vient de répondre : rebrancher les sorties choisies
     _update_live_doc!(m)
-    _synth_workspace_sync!(m)         # la DOC d'un son relit son texte
+    _sound_doc_sync!(m)               # la DOC d'un son relit son texte
     _tutorial_tick!(m)                # le tutoriel avance quand l'étape est faite (après la synchro : il lit le texte)
     buf = f.buffer
 
@@ -358,7 +358,6 @@ function _view!(m::RessacApp, f::TK.Frame)
         m._last_ws_area = ws_nt
         _volet_follow_width!(m)       # le son gagne sa colonne sur un grand écran
         _fiche_fit_width!(m)          # la fiche : une colonne de lecture, pas un tiers
-        _son_fit_width!(m)            # un son : texte et DOC côte à côte si l'écran le permet
         ws = current_workspace(m.workspaces)
         if ws !== nothing
             # Un changement de focus dézoome (comme tmux).
@@ -505,7 +504,7 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         n = length(m.tap_events)
         add!(" $label ", _chip(p.y)); add!(" $(n) hit$(n == 1 ? "" : "s")   ", on(p.y))
     end
-    if m.test_note !== nothing && _synth_pane_open(m)
+    if m.test_note !== nothing && _current_sound(m) !== nothing
         add!("♪ T=$(_note_name(m.test_note))   ", on(p.o; bold = true))
     end
     if m.piano_active
@@ -556,11 +555,6 @@ function _render_status_bar(m::RessacApp, area::TK.Rect, buf::TK.Buffer)
         put!(" ", sty); put!(" ", on(p.tx))
     end
     tab(_session_label(m), fb !== nothing && fb.role === :patterns)
-    syn = _all_synth_buffers(m)
-    cur = _current_synth_tab(m)
-    for (_, b) in syn
-        tab("♬ " * b.name, fb === b || (fb === nothing && cur === b))
-    end
 
     # La droite se pose depuis le bord ; elle cède devant la gauche.
     rw = sum(textwidth(t) for (t, _) in right; init = 0)
@@ -606,7 +600,8 @@ function _surface_label(m::RessacApp)
     if pane isa EditorPane
         b = _focused_buffer(m)
         b === nothing && return "ÉDITEUR"
-        return b.role === :patterns ? "PATTERNS" : "SON · $(b.name)"
+        snd = _sound_under_cursor(m)
+        return snd === nothing ? "PATTERNS" : "SON · $(snd.name)"
     end
     ps = pane_scope(pane)
     return get(_PANE_LABELS_FR, ps, uppercase(String(ps)))
@@ -667,6 +662,9 @@ function _keybar_layers(m::RessacApp)
     pane = _focused_pane_impl(m)
     (m.modal === :none && pane !== nothing && !(pane isa EditorPane) && _workspace_mode(m) === :play) &&
         return pairs, prefix
+    # Dans le texte d'un son, ses gestes d'abord (évaluer, l'atelier), puis
+    # ceux du mode (entendre, tenir).
+    (m.modal === :none && pane isa EditorPane && _focused_role(m) === :synth) && return pairs, prefix
     i = findfirst(((sc, _),) -> scope_layer(sc) === :mode, pairs)
     i === nothing || i == 1 || (p = pairs[i]; deleteat!(pairs, i); pushfirst!(pairs, p))
     return pairs, prefix

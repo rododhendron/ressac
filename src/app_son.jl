@@ -1,63 +1,29 @@
 # src/app_son.jl
-# Le volet d'un son : son texte, et dessous sa DOC. Un seul son derrière les
-# deux — la DOC relit le texte dès qu'il change (hors frappe) et en tire
-# l'explication et le graphe. Ouvrir un autre son ajoute un onglet au texte.
+# La DOC d'un son (fiche du mot · explication · graphe) : elle s'ouvre à
+# droite, relit le bloc `@synth` du curseur dès qu'il change (hors frappe)
+# et en tire l'explication et le graphe. Le texte, lui, reste à gauche.
+
+# La DOC du son, si elle est à l'écran.
+_sound_doc(m::RessacApp) = _find_pane(m, SynthDocPane)
 
 """
-    _synth_workspace_parts(m) -> (editor, doc) | nothing
+    _sound_doc_sync!(m)
 
-La pane qui porte les textes de sons et sa DOC, dans l'écran courant.
-`nothing` quand aucun son n'est ouvert ; `doc` peut manquer (`nothing`).
+À chaque image : la DOC relit le texte du son du curseur quand il a changé
+et qu'on n'est pas en train de taper.
 """
-function _synth_workspace_parts(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return nothing
-    ep = nothing; sdoc = nothing
-    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
-        if tab isa EditorPane && ep === nothing && any(b -> b.role === :synth, tab.tabs)
-            ep = tab
-        elseif tab isa SynthDocPane && sdoc === nothing
-            sdoc = tab
-        end
-    end
-    ep === nothing && return nothing
-    return (ep, sdoc)
-end
-
-# Le son courant de la pane texte (onglet courant).
-function _synth_workspace_tab(ep::EditorPane)
-    1 <= ep.current_tab <= length(ep.tabs) || return nothing
-    tab = ep.tabs[ep.current_tab]
-    tab.role === :synth ? tab : nothing
-end
-
-# La pane texte des sons, pour y ajouter un onglet.
-function _synth_workspace_editor(m::RessacApp)
-    parts = _synth_workspace_parts(m)
-    parts === nothing ? nothing : parts[1]
-end
-
-"""
-    _synth_workspace_sync!(m)
-
-À chaque image : la DOC relit le texte du son quand il a changé et qu'on
-n'est pas en train de taper.
-"""
-function _synth_workspace_sync!(m::RessacApp)
-    parts = _synth_workspace_parts(m)
-    parts === nothing && return
-    (ep, sdoc) = parts
+function _sound_doc_sync!(m::RessacApp)
+    sdoc = _sound_doc(m)
     sdoc === nothing && return
-    tab = _synth_workspace_tab(ep)
-    tab === nothing && return
-    ed = tab.code_editor
-    ed.mode === :normal || return
-    text = TK.text(ed)
+    snd = _current_sound(m)
+    snd === nothing && return
+    snd.code_editor.mode === :normal || return
+    text = _sound_text(snd)
     h = hash(text)
-    (h == sdoc.synced_hash && tab.name == sdoc.synced_name) && return
+    (h == sdoc.synced_hash && snd.name == sdoc.synced_name) && return
     _synthdoc_set_genome!(sdoc, _genome_from_any(text))
     sdoc.synced_hash = h
-    sdoc.synced_name = tab.name
+    sdoc.synced_name = snd.name
     return
 end
 
@@ -70,7 +36,7 @@ function _drain_explorer_sculpt!(m::RessacApp)
     name = replace(strip(replace(label, r"\s*#\s*" => "_")), r"[^\w]" => "_")
     g = deserialize_genome(gser)
     _insert_sound_block!(m, name, _explorer_export_text(g, name)) &&
-        _push_app_log!(m, "[INFO] $(label) est dans le texte, sous le nom « $name » — e le fait entendre, s(\"$name\") le joue, :keep le range")
+        _push_app_log!(m, "[INFO] $(label) est dans le texte, sous le nom « $name » — e le fait entendre, s(\"$name\") le joue, :save le range")
     return true
 end
 
@@ -80,9 +46,10 @@ _design_use_in_pattern!(m::RessacApp) = _use_current_synth_in_pattern!(m)
 
 # `P` : mesurer ce que chaque étape du son change — l'explication le dit.
 function _design_measure_impacts!(m::RessacApp)
-    _synth_workspace_sync!(m)
-    parts = _synth_workspace_parts(m)
-    sdoc = parts === nothing ? nothing : parts[2]
+    _current_sound(m) === nothing && (_push_app_log!(m, "[INFO] élagage : pose le curseur sur un son (@synth)"); return)
+    _open_volet!(m, :son; focus = false)
+    _sound_doc_sync!(m)
+    sdoc = _sound_doc(m)
     if sdoc === nothing || sdoc.genome === nothing
         _push_app_log!(m, "[INFO] élagage : il faut un @synth qui se relit")
         return
@@ -96,16 +63,16 @@ end
 # K / X / Y : la DOC sur la fiche du mot, l'explication, le graphe — et
 # devant, si une autre pane (la MODULATION) la cachait.
 function _design_doc_mode!(m::RessacApp, mode::Symbol)
-    parts = _synth_workspace_parts(m)
-    if parts === nothing || parts[2] === nothing
-        _push_app_log!(m, "[INFO] pas de DOC à l'écran — :son la remet")
-        return
-    end
-    _synth_workspace_sync!(m)
-    parts[2].mode = mode
+    _current_sound(m) === nothing && (_push_app_log!(m, "[INFO] la DOC d'un son : pose le curseur sur un bloc @synth"); return)
+    # Elle s'ouvre à droite ; le clavier reste dans le texte.
+    _sound_doc(m) === nothing && _open_volet!(m, :son; focus = false)
+    sdoc = _sound_doc(m)
+    sdoc === nothing && return
+    _sound_doc_sync!(m)
+    sdoc.mode = mode
     ws = current_workspace(m.workspaces)
     for leaf in _all_leaves(ws.tree)
-        i = findfirst(t -> t === parts[2], leaf.tabs)
+        i = findfirst(t -> t === sdoc, leaf.tabs)
         i === nothing || (leaf.current_tab = i)
     end
     return
@@ -153,8 +120,8 @@ end
 # `:prune [seuil]` — retire du son ce qui ne s'y entend pas (0.02 par défaut).
 function _prune_command!(m::RessacApp, arg::AbstractString)
     thr = isempty(strip(arg)) ? 0.02 : something(tryparse(Float64, strip(arg)), 0.02)
-    _current_synth_tab(m) === nothing &&
-        (_push_app_log!(m, "[WARN] :prune — ouvre d'abord un son (gs sur son nom, :synth <nom>)"); return)
+    _current_sound(m) === nothing &&
+        (_push_app_log!(m, "[WARN] :prune — pose le curseur sur un son (gs sur son nom l'amène dans le texte)"); return)
     return _prune_synth_buffer!(m, thr)
 end
 
@@ -167,10 +134,10 @@ est sous `thr` ; le bloc `@synth` est réécrit (forme canonique, le reste
 du fichier intact). Le journal dit ce qui est parti.
 """
 function _prune_synth_buffer!(m::RessacApp, thr::Real)
-    tab = _current_synth_tab(m)
+    tab = _current_sound(m)
     tab === nothing && return
     ed = tab.code_editor
-    text = TK.text(ed)
+    text = _sound_text(tab)
     # Élaguer réécrit le texte depuis son graphe, qui ne sait pas dire
     # « le même signal » : un `shared` y redeviendrait deux signaux.
     occursin(r"\bshared\(", text) &&
@@ -181,7 +148,7 @@ function _prune_synth_buffer!(m::RessacApp, thr::Real)
     # 1. Ce que la structure désigne : immédiat.
     removed = static_prune!(g)
     if !isempty(removed)
-        _edit_text!(ed, replace_synth_block(text, render_dsl(g, Symbol(tab.name))); col = 0)
+        _sound_write!(tab, replace_synth_block(text, render_dsl(g, Symbol(tab.name))); col = 0)
         _push_app_log!(m, "[INFO] :prune — $(length(removed)) nœud$(plural(length(removed))) retiré$(plural(length(removed))) d'après la structure ($(join(("#$id" for id in removed), " "))) · mesure en cours…")
     else
         _push_app_log!(m, "[INFO] :prune — rien de suspect dans la structure · mesure en cours…")
@@ -189,48 +156,34 @@ function _prune_synth_buffer!(m::RessacApp, thr::Real)
     # 2. Ce que la mesure désigne : un rendu sclang hors-ligne, en fond (il
     #    prend des secondes — on continue à jouer). Le résultat n'est
     #    appliqué que si le texte est encore celui qu'on a mesuré.
-    after_static = TK.text(ed)
+    after_static = _sound_text(tab)
     measured_g = _copy_genome(g)
     _background!(() -> measure_impacts(measured_g)) do imps, err
         if err !== nothing
             _push_app_log!(m, "[INFO] :prune — mesure indisponible : $(first(sprint(showerror, err), 80))" *
-                              (isempty(removed) ? "" : " — T pour écouter, :w pour sauver"))
+                              (isempty(removed) ? "" : " — T pour écouter, :save pour ranger"))
             return
         end
-        if TK.text(ed) != after_static
+        if _sound_text(tab) != after_static
             _push_app_log!(m, "[WARN] :prune — le texte a changé pendant la mesure : rien de plus n'est retiré, relance :prune")
             return
         end
         measured = prune!(g, imps; threshold = thr)
         if isempty(measured)
             _push_app_log!(m, isempty(removed) ? "[INFO] :prune — rien sous $thr, tout s'entend" :
-                                                 "[INFO] :prune — rien de plus sous $thr — T pour écouter, :w pour sauver")
+                                                 "[INFO] :prune — rien de plus sous $thr — T pour écouter, :save pour ranger")
             return
         end
-        _edit_text!(ed, replace_synth_block(after_static, render_dsl(g, Symbol(tab.name))); col = 0)
-        _push_app_log!(m, "[INFO] :prune — $(length(measured)) nœud$(plural(length(measured))) inaudible$(plural(length(measured))) retiré$(plural(length(measured))) ($(join(("#$id" for id in measured), " "))) — T pour écouter, :w pour sauver")
+        _sound_write!(tab, replace_synth_block(after_static, render_dsl(g, Symbol(tab.name))); col = 0)
+        _push_app_log!(m, "[INFO] :prune — $(length(measured)) nœud$(plural(length(measured))) inaudible$(plural(length(measured))) retiré$(plural(length(measured))) ($(join(("#$id" for id in measured), " "))) — T pour écouter, :save pour ranger")
     end
     return
 end
 
-# ── :todsl — un SynthDef SC brut devient du DSL ──────────────────────
+# ── :todsl ───────────────────────────────────────────────────────────
+# Tout son s'écrit en DSL : un `.scd` laissé dans la réserve est converti
+# quand on l'amène dans le texte (`gs`, `:synth nom`). `:todsl <nom>` le dit.
 function _todsl_command!(m::RessacApp)
-    tab = _current_synth_tab(m)
-    tab === nothing && (_push_app_log!(m, "[ERROR] :todsl — ouvre d'abord un synth (:synth <nom>)"); return)
-    ed = tab.code_editor
-    text = TK.text(ed)
-    if !_is_raw_synthdef(text)
-        _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » est déjà en DSL")
-        return
-    end
-    (r, why) = synthdef_to_dsl_reason(text)
-    if r === nothing
-        _push_app_log!(m, "[ERROR] :todsl — « $(tab.name) » n'est pas converti, le texte reste tel quel : $why")
-        return
-    end
-    (_, dsl) = r
-    header = "# converti depuis SuperCollider par :todsl — T teste, :w sauve en .jl, u annule\n\n"
-    _edit_text!(ed, header * _align_dsl_synth_name(dsl, tab.name); row = 3, col = 0)
-    _push_app_log!(m, "[INFO] :todsl — « $(tab.name) » en DSL : T teste, :w sauve en .jl (u annule)")
+    _push_app_log!(m, "[INFO] :todsl — un son en SuperCollider est converti quand on l'ouvre : :synth <nom> (ou gs sur son nom)")
     return
 end

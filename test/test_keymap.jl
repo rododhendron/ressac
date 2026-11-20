@@ -200,6 +200,6 @@ end
     @test findfirst(==(:waveform), d) < findfirst(==(:leader_synth), d) < findfirst(==(:modal_lib), d)   # panes, puis transitoires, puis modales
     md = Ressac.keys_wiki_markdown()
     @test occursin("## PATTERNS\n", md) && occursin("## SON\n", md) && occursin("## EXPLORATEUR\n", md) && occursin("## Partout\n", md)
-    @test findfirst("### SON — depuis le texte ou sa DOC", md)[1] < findfirst("### Vue d'onde", md)[1]
+    @test findfirst("### SON — le curseur dans un bloc @synth, ou dans sa DOC", md)[1] < findfirst("### Vue d'onde", md)[1]
     @test findfirst("## Partout", md)[1] < findfirst("### Éditeur (patterns et synth)", md)[1]
 end

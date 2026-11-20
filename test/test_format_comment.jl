@@ -85,17 +85,26 @@ include(joinpath(@__DIR__, "helpers.jl"))
         end
     end
 
-    @testset ":format met en forme le son ouvert, d'où qu'on soit" begin
+    @testset ":format met en forme le son du curseur, et lui seul" begin
         app, _ = _new_app()
-        Ressac._active_editor(app).mode = :normal
+        _set_buffer!(app, "@d1 p\"bd  bd\"")
         _exec_ex_command!(app, "synth fmtest")
-        ed = Ressac._active_editor(app)
-        Ressac._edit_text!(ed, "@synth :fmtest (freq=220) begin\n  saw(:freq) |>\n  rlpf(800.123456, 0.3)\nend")
-        Ressac._focus_patterns!(app)
-        _exec_ex_command!(app, "format")                                  # depuis les patterns : le son s'ouvre
-        @test app.volet === :son
-        @test Tachikoma.text(ed) == "@synth :fmtest (freq=220) begin\n  saw(:freq)\n  |> rlpf(800.123, 0.3)\nend"
+        snd = Ressac._current_sound(app)
+        @test snd !== nothing && snd.name == "fmtest"
+        @test Ressac._sound_write!(snd, "@synth :fmtest (freq=220) begin\n  saw(:freq) |>\n  rlpf(800.123456, 0.3)\nend")
+        ed = Ressac._patterns_editor(app)
+        _exec_ex_command!(app, "format")
+        @test Ressac._sound_text(snd) == "@synth :fmtest (freq=220) begin\n  saw(:freq)\n  |> rlpf(800.123, 0.3)\nend"
+        @test Tachikoma.text(ed) == "@d1 p\"bd  bd\"\n\n" * Ressac._sound_text(snd)     # le pattern n'est pas touché
+        @test Ressac._sound_block_at(ed.lines, ed.cursor_row) !== nothing                # le curseur reste dans le son
         @test any(l -> occursin("rien à changer", l), _cmd_logs(app, "format"))
+        _key!(app, 'u')                                                   # un seul u annule la mise en forme
+        @test occursin("rlpf(800.123456, 0.3)", Ressac._sound_text(snd))
+        # Hors d'un son, :format ne touche à rien et le dit.
+        ed.cursor_row = 1
+        before = Tachikoma.text(ed)
+        @test any(l -> occursin("[ERROR] :format", l), _cmd_logs(app, "format"))
+        @test Tachikoma.text(ed) == before
     end
 end
 

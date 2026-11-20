@@ -76,7 +76,7 @@ function _midi_note!(m::RessacApp, num::Int)
         # Le piano joue `octave × 12 + demi-ton` : on lui donne le demi-ton
         # qui tombe sur cette note, il l'enregistre comme les siennes.
         _piano_play!(m, num - m.piano_octave * 12)
-    elseif _synth_pane_open(m)
+    elseif _current_sound(m) !== nothing
         m.test_note = num
         _test_current_synth!(m)
     elseif !_MIDI_HINTED[]

@@ -105,12 +105,12 @@ end
 
 
 
-@testset "écran de départ — les patterns aux deux tiers, la fiche qui suit à droite" begin
+@testset "écran de départ — les patterns à gauche, la fiche qui suit à droite" begin
     app, tb, frame = _nv_app(; w = 130, h = 30)
     ws = Ressac.current_workspace(app.workspaces)
     # l'arbre : patterns | fiche
     @test ws.tree isa Ressac.Container && ws.tree.direction === :h
-    @test ws.tree.ratios ≈ [0.66, 0.34]
+    @test ws.tree.ratios ≈ [0.58, 0.42]                     # la fiche : une colonne de lecture
     left, right = ws.tree.children
     @test left isa Ressac.PaneLeaf && left.tabs[1] isa Ressac.EditorPane
     docp = right.tabs[1]

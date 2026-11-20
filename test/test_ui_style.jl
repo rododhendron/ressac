@@ -103,7 +103,7 @@ end
     end
 end
 
-@testset "un son — texte et DOC côte à côte quand l'écran le permet, la chaîne en tableau" begin
+@testset "un son — sa DOC à droite du texte, la chaîne en tableau" begin
     old = pwd(); d = mktempdir(); mkpath(joinpath(d, "plugins", "user-synths")); cd(d)
     try
         (app, _) = _new_app()
@@ -112,14 +112,19 @@ end
                    Tachikoma.view(app, f); join((Tachikoma.row_text(tb, y) for y in 1:44), "\n"))
         draw(140)
         _exec_ex_command!(app, "synth essai")
-        (ep, sdoc) = Ressac._synth_workspace_parts(app)
-        Tachikoma.set_text!(ep.tabs[ep.current_tab].code_editor,
-                            "@synth :essai (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)\n")
+        Ressac._sound_write!(Ressac._current_sound(app),
+                             "@synth :essai (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(2)")
+        _exec_ex_command!(app, "son")
+        sdoc = Ressac._sound_doc(app)
         node = app.volets[:son]
-        draw(140); draw(140)
-        @test node.direction === :v                              # étroit : la DOC sous le texte
+        scr = (draw(140); draw(140))
+        # Le volet ne porte que la DOC : le texte du son est à gauche, parmi les patterns.
+        @test node isa Ressac.PaneLeaf && only(node.tabs) === sdoc
+        @test occursin("@synth :essai", Tachikoma.text(Ressac._patterns_editor(app)))
+        root = Ressac.current_workspace(app.workspaces).tree
+        @test root.children[2] === node && root.ratios ≈ [0.58, 0.42]
         scr = (draw(180); draw(180))
-        @test node.direction === :h                              # plus large : côte à côte
+        @test root.children[2] === node && root.ratios ≈ [0.58, 0.42]   # plus large : rien ne se réarrange
         # La DOC s'ouvre sur l'explication, qui commence par la chaîne en tableau.
         @test sdoc.mode === :explain
         @test occursin("CHAÎNE", scr) && occursin("MAILLON", scr) && occursin("RÉGLAGE", scr)

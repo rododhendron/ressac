@@ -51,7 +51,7 @@ Le thème par défaut se règle dans `ressac.toml`, `[ui] theme = ...`.
 
 ## Accélération de T maintenu
 
-Maintenir `t` / `T` / `Espace` sur une pane synth rejoue le synth de
+Maintenir `t` / `T`, le curseur dans un son, le rejoue de
 plus en plus vite. Intervalle initial = `t_hold_initial_ms` (250 ms),
 chaque tir multiplie par `t_hold_accel` (0.85) jusqu'à `t_hold_min_ms`
 (60 ms). Donc ~4 tirs/s qui montent à ~17 tirs/s en deux secondes.

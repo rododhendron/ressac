@@ -147,11 +147,11 @@ Partagé par le modal :lib et par `:synth <nom>` / `gs`.
 function _instantiate_synth_entry!(m::RessacApp, entry::_SynthLibEntry)
     # User-saved synths: don't deep-copy, just open the existing file.
     if entry.category == "user"
-        _open_synth_tab!(m, entry.name)
+        _open_sound!(m, entry.name)
         return
     end
     path, final_name = _write_library_synth(entry)
-    _open_synth_tab!(m, final_name)
+    _open_sound!(m, final_name)
     _push_app_log!(m, "[INFO] librairie : $final_name créé depuis « $(entry.name) »")
 end
 
@@ -234,6 +234,6 @@ bind!(:modal_lib, "Space", "écouter"; group = :audio, action = _preview_synth_f
 bind!(:modal_lib, "/", "chercher"; short = "chercher", group = :nav, action = m -> _picker_search!(m.synthlib, true))
 _bind_reserve_tabs!(:modal_lib)
 mixin_list_nav!(:modal_lib, (m, key) -> _picker_nav!(m.synthlib, key); before = _synthlib_sync!)
-bind!(:modal_lib, "Enter", "ouvrir dans une pane synth"; short = "ouvrir", group = :file,
+bind!(:modal_lib, "Enter", "l'écrire dans le texte"; short = "ouvrir", group = :file,
       action = _instantiate_synth_from_library!)
 _bind_modal_common!(:modal_lib; nav = false)

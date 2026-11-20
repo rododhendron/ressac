@@ -89,7 +89,8 @@ src/
                              qu'on échange à droite (fiche, wiki, son, explorateur)
   slot_state.jl / app_slots.jl  les blocs @dN du texte et l'état de chaque ligne
   slot_marks.jl              signes de marge, ligne éclairée, piste d'un cycle
-  app_son.jl                 le volet d'un son : son texte ⟷ sa DOC, élagage, :todsl
+  app_sound.jl               un son vit dans le texte : bloc @synth, :save
+  app_son.jl                 la DOC d'un son (à droite), élagage
   atelier.jl / editor_links.jl  travailler un son dans son texte : maillons (objet
                              texte m), propositions qui s'entendent, préfixe &
   app_explore_slot.jl        gx : les candidats de l'explorateur joués dans un slot
@@ -240,7 +241,7 @@ Deux chemins sortants, tous deux en UDP vers localhost:57120 :
 Plus quelques canaux annexes :
 
 ```
-/ressac/evalAndPlay      T dans la pane synth — envoie le source SC et
+/ressac/evalAndPlay      T dans un son — envoie le source SC et
                          instancie une voix pour écoute.
 /ressac/freeByName       mute d'un slot — libère les voix du SynthDef.
 /ressac/panic            ! / :panic / :hush — s.freeAll côté SC.

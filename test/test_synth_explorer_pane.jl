@@ -309,7 +309,11 @@ end
         Ressac._EXPLORER_EXPORT_REQUEST[] = ("expsynth", "@synth :expsynth saw(:freq)")
         @test Ressac._drain_explorer_export!(app) == true
         @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing
-        @test Ressac._focused_role(app) === :patterns
+        # Le clavier est dans le texte, le curseur sur le bloc du son : les touches sont celles du son.
+        @test Ressac._focused_buffer(app) !== nothing && Ressac._focused_role(app) === :synth
+        snd = Ressac._current_sound(app)
+        @test snd !== nothing && snd.name == "expsynth"
+        @test Ressac._sound_text(snd) == "@synth :expsynth saw(:freq)"
         @test occursin("@synth :expsynth saw(:freq)", Tachikoma.text(Ressac._patterns_editor(app)))
     end
 end
@@ -336,7 +340,7 @@ end
         @test pane.pop.generation == 1
     end
 
-    @testset "export e flows update!→drain→new editor tab" begin
+    @testset "export e : update!→drain→un bloc @synth dans le texte principal" begin
         Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
         app, _ = _new_app()
         Ressac.cmd_vsplit!(app.workspaces, "explorer",
@@ -356,15 +360,16 @@ end
         Tachikoma.update!(app, Tachikoma.KeyEvent(:enter))
         # la requête a été drainée par le routeur de touches
         @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing
+        # Pas de pane d'édition de plus : le son est un bloc du texte, le curseur dessus.
         ws2 = Ressac.current_workspace(app.workspaces)
-        found = false
-        for lf in Ressac._collect_panes!(Ressac.PaneImpl[], ws2.tree)
-            lf isa Ressac.EditorPane || continue
-            for t in lf.tabs
-                occursin("fromupd", Tachikoma.text(t.code_editor)) && (found = true)
-            end
-        end
-        @test found
+        @test count(p -> p isa Ressac.EditorPane,
+                    Ressac._collect_panes!(Ressac.PaneImpl[], ws2.tree)) == n_editors_before
+        snd = Ressac._current_sound(app)
+        @test snd !== nothing && snd.name == "fromupd"
+        @test snd.code_editor === Ressac._patterns_editor(app)
+        @test startswith(Ressac._sound_text(snd), "@synth :fromupd")
+        @test !occursin("ressac-genome", Tachikoma.text(snd.code_editor))   # la ligne du génome n'entre pas dans le texte
+        @test Ressac._focused_role(app) === :synth                          # le clavier est revenu au texte
     end
 end
 

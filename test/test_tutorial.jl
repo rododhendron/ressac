@@ -70,27 +70,35 @@ _tscreen(app, tb, frame) = (Tachikoma.view(app, frame); join((Tachikoma.row_text
         dir = mktempdir(); mkpath(joinpath(dir, "plugins", "user-synths")); oldwd = pwd(); cd(dir)
         empty!(Ressac._DRONES)
         try
-            _tex(app, "son"); _tscreen(app, tb, frame)
-            @test app.volet === :son
+            # Le son arrive dans le texte, parmi les patterns : le curseur dans son bloc, on est dans le SON.
+            @test occursin(":synth", Ressac._TUTO_STEPS[13].body)            # l'étape nomme le geste qui la fait avancer
+            _tex(app, "synth sketch"); _tscreen(app, tb, frame)
+            snd = Ressac._current_sound(app)
+            @test snd !== nothing && snd.name == "sketch"
             q = Ressac._find_pane(app, Ressac.TutorialPane)
             @test q === p && q.step == 14                                    # la même pane : elle est restée à côté des patterns
-            @test Ressac._focused_role(app) === :synth                       # le focus est resté au texte
+            @test Ressac._focused_role(app) === :synth                       # le clavier est dans le texte, sur le bloc @synth
             @test occursin("Le son,", _tscreen(app, tb, frame))
             _tk(app, 'T'); _tscreen(app, tb, frame); @test q.step == 15
-            (ep, sdoc) = Ressac._synth_workspace_parts(app)
-            ed = ep.tabs[ep.current_tab].code_editor
-            Tachikoma.set_text!(ed, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)\n"); ed.mode = :normal
+            ed = snd.code_editor
+            @test ed === Ressac._patterns_editor(app)
+            @test Ressac._sound_write!(snd, "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 0.3)"); ed.mode = :normal
             _tscreen(app, tb, frame); @test q.step == 16
             _tk(app, 'j'); _tk(app, 'k')
             _tscreen(app, tb, frame); @test q.step == 16                      # se promener ne suffit pas
-            ed.cursor_row = 1; ed.cursor_col = first(findfirst("800", String(ed.lines[1]))) - 1
+            row = Ressac._sound_rows(snd)[1]
+            ed.cursor_row = row; ed.cursor_col = first(findfirst("800", String(ed.lines[row]))) - 1
             _tk(app, '+'); _tscreen(app, tb, frame)                           # l'atelier : tirer un nombre sur place
-            @test !occursin("rlpf(800,", Tachikoma.text(ed)) && q.step == 17
+            @test !occursin("rlpf(800,", Ressac._sound_text(snd)) && q.step == 17
             _tk(app, 'Y'); _tscreen(app, tb, frame); @test q.step == 18
+            sdoc = Ressac._sound_doc(app)                                     # la DOC s'ouvre à droite, sur le graphe, sans prendre le clavier
+            @test app.volet === :son && sdoc !== nothing && sdoc.mode === :graph
+            @test Ressac._focused_role(app) === :synth
             _tk(app, 'D'); _tscreen(app, tb, frame); @test Ressac.drone_running(:sketch) && q.step == 18
             _tk(app, 'D'); _tscreen(app, tb, frame); @test q.step == 19
             _tk(app, 'U'); _tscreen(app, tb, frame)
-            @test Ressac._focused_role(app) === :patterns && p.step == 20   # le clavier est revenu aux patterns
+            @test Ressac._focused_role(app) === :patterns && p.step == 20   # le curseur est sur le @dN qui joue le son
+            @test occursin(r"@d\d+ p\"sketch\*4\"", Tachikoma.text(ed)) && isfile(joinpath("plugins", "user-synths", "sketch.jl"))
             @test occursin("Et ensuite", _tscreen(app, tb, frame)) && !p.finished
         finally
             cd(oldwd); Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds; empty!(Ressac._DRONES)

@@ -97,13 +97,25 @@ _reload_core_pane_kinds() = _restore_globals!(Ressac._PANE_KINDS)
         @test occursin("PATTERNS", Tachikoma.row_text(tb, 1))
     end
 
-    @testset "render! draws SON title for :synth role" begin
+    @testset "render! draws SON title when the cursor is in a @synth block" begin
         ep = Ressac._pane_new(:editor, Dict{String,Any}(
-            "buffer_role" => "synth", "name" => "wob1"))
-        tb = Tachikoma.TestBackend(40, 10)
-        Ressac.render!(ep, Tachikoma.Rect(1, 1, 40, 10), tb.buf)
-        @test occursin("SON", Tachikoma.row_text(tb, 1))
-        @test occursin("wob1", Tachikoma.row_text(tb, 1))
+            "buffer_role" => "patterns", "name" => "main"))
+        ed = ep.tabs[1].code_editor
+        Tachikoma.set_text!(ed, "@d1 p\"bd\"\n\n@synth :wob1 (freq=220) saw(:freq)\n    |> rlpf(800, 0.3)")
+        tb = Tachikoma.TestBackend(60, 10)
+        for row in (3, 4)                                    # anywhere in the block
+            ed.cursor_row = row
+            Tachikoma.reset!(tb.buf)
+            Ressac.render!(ep, Tachikoma.Rect(1, 1, 60, 10), tb.buf)
+            @test occursin("SON", Tachikoma.row_text(tb, 1))
+            @test occursin("wob1", Tachikoma.row_text(tb, 1))
+            @test !occursin("PATTERNS", Tachikoma.row_text(tb, 1))
+        end
+        ed.cursor_row = 1                                    # back on a pattern line
+        Tachikoma.reset!(tb.buf)
+        Ressac.render!(ep, Tachikoma.Rect(1, 1, 60, 10), tb.buf)
+        @test occursin("PATTERNS", Tachikoma.row_text(tb, 1))
+        @test !occursin("wob1", Tachikoma.row_text(tb, 1))
     end
 
     @testset "handle_key! delegates all keys to the TK.CodeEditor" begin

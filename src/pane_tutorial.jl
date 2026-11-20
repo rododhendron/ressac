@@ -39,9 +39,8 @@ _tuto_muted(m) = length(_APP_MUTED_PATTERNS) + length(collect(eachmatch(r"(?m)^\
 # (un nouvel objet pattern) depuis l'entrée dans l'étape.
 # Où le joueur travaille : le contexte de la pane focalisée (app_modes.jl).
 _tuto_ws(m) = (mode = _workspace_mode(m); mode === :design ? "DESIGN" : mode === :explore ? "EXPLORE" : "PLAY")
-_tuto_design_parts(m) = _synth_workspace_parts(m)
-_tuto_doc_mode(m) = (parts = _tuto_design_parts(m); (parts === nothing || parts[2] === nothing) ? :none : parts[2].mode)
-_tuto_synth_name(m) = (t = _current_synth_tab(m); t === nothing ? "" : t.name)
+_tuto_doc_mode(m) = (d = _sound_doc(m); d === nothing ? :none : d.mode)
+_tuto_synth_name(m) = (t = _current_sound(m); t === nothing ? "" : t.name)
 
 function _tuto_snapshot!(m, p::TutorialPane)
     p.snapshot = Dict{Symbol,Any}(k => v for (k, v) in m.scheduler.patterns)
@@ -180,17 +179,18 @@ const _TUTO_STEPS = _TutoStep[
         Tu sais écrire, jouer, changer, couper, contrôler et arrêter.
         Deuxième chapitre : **fabriquer un son**.
 
-        Tape `:son`. Le texte d'un son s'ouvre à droite ; les patterns
-        restent à gauche et continuent de jouer.
+        Tape `:synth sketch`. Un son s'écrit dans le texte, sous tes
+        patterns : un bloc `@synth`. Le curseur est dedans — la ligne d'état
+        dit **SON** — et les patterns continuent de jouer.
         """,
         (m, p) -> _tuto_ws(m) == "DESIGN"),
-    _TutoStep("Le son, à côté des patterns",
+    _TutoStep("Le son, parmi les patterns",
         """
-        À droite, le **texte** du synth : c'est le son lui-même, il n'y a
-        rien d'autre à régler ailleurs. Dessous, sa **DOC**.
+        Ce bloc **est** le son : il n'y a rien d'autre à régler ailleurs.
+        Tant que le curseur y est, les touches sont celles du son ; sur
+        une ligne de pattern, elles redeviennent celles des patterns.
 
-        Appuie sur `T` : tu l'entends. `T` marche depuis le texte comme
-        depuis la DOC.
+        Le curseur dans le bloc, appuie sur `T` : tu l'entends.
         """,
         (m, p) -> m.last_t_fire > get(p.snapshot, :t_fire, 0.0),
         (m, p) -> (p.snapshot[:t_fire] = m.last_t_fire),
@@ -224,7 +224,8 @@ const _TUTO_STEPS = _TutoStep[
         (m, p) -> (p.snapshot[:text] = _tuto_text(m)), "DESIGN"),
     _TutoStep("La DOC raconte le son",
         """
-        La DOC a trois vues. `K` la met sur la **fiche** du mot
+        La DOC du son s'ouvre à droite ; le clavier reste dans le texte.
+        Elle a trois vues. `K` la met sur la **fiche** du mot
         sous le curseur, `X` sur l'**explication** du son (ce que fait chaque
         étape, ce qui ne s'entend pas), `Y` sur son **graphe** câblé.
 
@@ -235,7 +236,7 @@ const _TUTO_STEPS = _TutoStep[
     _TutoStep("Tenir le son",
         """
         `D` tient le son en **drone** : il ne s'arrête plus, et la
-        **MODULATION** passe devant, sous le texte, avec ses arguments. `j` / `k` en choisissent
+        **MODULATION** passe devant, à droite, avec ses arguments. `j` / `k` en choisissent
         un, `l` / `h` le modulent pendant que ça sonne.
 
         Appuie sur `D`, joue avec, puis `D` à nouveau pour relâcher.
@@ -244,9 +245,8 @@ const _TUTO_STEPS = _TutoStep[
         (m, p) -> (p.snapshot[:droned] = false), "DESIGN"),
     _TutoStep("Vers les patterns",
         """
-        `U` sauve ce son sous son nom et pose une ligne `@dN p"sketch*4"`
-        dans les patterns, à gauche, prête à jouer : on fabrique à droite,
-        on joue à gauche.
+        `U` range ce son sous son nom (comme `:save`) et écrit une ligne
+        `@dN p"sketch*4"` au bout du texte, prête à jouer.
 
         Appuie sur `U`.
         """,

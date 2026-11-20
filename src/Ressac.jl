@@ -621,7 +621,7 @@ end
         _APP_SCOPE_TYPE[] = :off
 
         # Synth pane open + render with split.
-        _open_synth_tab!(app, "warm_synth")
+        _open_sound!(app, "warm_synth")
         Tachikoma.view(app, frame)
         # Tab cycle.
         app.completion_idx = 0

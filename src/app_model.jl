@@ -209,8 +209,8 @@ end
     pending_atelier::Bool = false
     atelier::Union{Nothing,AtelierState} = nothing
     at_pk::Picker = _picker()
-    # Un son à redéfinir quand la main s'arrête de tirer un nombre : (onglet, échéance).
-    redefine::Union{Nothing,Tuple{EditorBuffer,Float64}} = nothing
+    # Un son à redéfinir quand la main s'arrête de tirer un nombre : (le son, échéance).
+    redefine::Union{Nothing,Tuple{Sound,Float64}} = nothing
     # L'explorateur ouvert sur un slot (app_explore_slot.jl) : le slot et son
     # pattern d'origine, l'essai qui joue à sa place, et le candidat entendu.
     explore_slot::Union{Nothing,Tuple{Symbol,Pattern}} = nothing
@@ -446,64 +446,15 @@ end
 """
     _focused_role(m) -> Symbol
 
-`:patterns` / `:synth` for an editor pane, `:other` for a non-editor
-pane (log / doc / scope / tuning) or no focus. Replaces the old
-`m.focus` field — the workspace tree is now authoritative.
+Sur quoi est le clavier : `:patterns` dans le texte principal, `:synth`
+quand le curseur y est dans un bloc `@synth` (un son), `:other` ailleurs
+(journal, doc, explorateur…). C'est ce qui fait suivre le mode au curseur.
 """
 function _focused_role(m::RessacApp)
     buf = _focused_buffer(m)
-    buf === nothing ? :other : buf.role
-end
-
-"""
-    _all_synth_buffers(m) -> Vector{Tuple{PaneLeaf, EditorBuffer}}
-
-Every synth-role editor buffer in the active workspace, paired with
-its containing leaf (for focus / close operations). Order follows
-the tree's leaf iteration so `:tabnext` cycling is stable.
-"""
-function _all_synth_buffers(m::RessacApp)
-    out = Tuple{PaneLeaf, EditorBuffer}[]
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return out
-    for leaf in _all_leaves(ws.tree)
-        for tab in leaf.tabs
-            if tab isa EditorPane
-                for b in tab.tabs
-                    b.role === :synth && push!(out, (leaf, b))
-                end
-            end
-        end
-    end
-    return out
-end
-
-# A synth pane is open when at least one synth-role buffer exists.
-_synth_pane_open(m::RessacApp) = !isempty(_all_synth_buffers(m))
-
-"""
-    _current_synth_tab(m) -> Union{EditorBuffer, Nothing}
-
-The focused synth buffer if the focused pane is synth-role;
-otherwise the first synth buffer found in the tree (so `:test` /
-`:w` still target *a* synth when focus drifted). `nothing` when no
-synth pane is open.
-"""
-function _current_synth_tab(m::RessacApp)
-    buf = _focused_buffer(m)
-    (buf !== nothing && buf.role === :synth) && return buf
-    # Le focus est ailleurs (doc, modulation) : l'onglet courant
-    # de la pane texte, pas son premier onglet.
-    ws = current_workspace(m.workspaces)
-    if ws !== nothing
-        for leaf in _all_leaves(ws.tree), tab in leaf.tabs
-            tab isa EditorPane && 1 <= tab.current_tab <= length(tab.tabs) || continue
-            b = tab.tabs[tab.current_tab]
-            b.role === :synth && return b
-        end
-    end
-    syn = _all_synth_buffers(m)
-    isempty(syn) ? nothing : syn[1][2]
+    buf === nothing && return :other
+    ed = buf.code_editor
+    return _sound_block_at(ed.lines, ed.cursor_row) === nothing ? :patterns : :synth
 end
 
 """

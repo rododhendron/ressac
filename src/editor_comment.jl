@@ -92,32 +92,14 @@ function _paragraph_rows(ed::TK.CodeEditor, row::Int)
     return (a, b)
 end
 
-# `:format` — la mise en forme du son ouvert, annulable d'un `u`.
+# `:format` — la mise en forme du son du curseur, annulable d'un `u`.
 function _format_current_synth!(m::RessacApp)
-    # Dans le texte principal : le bloc `@synth` du curseur, et lui seul.
-    hit = _sound_under_cursor(m)
-    if hit !== nothing
-        (ed, sb) = hit
-        old = _sound_text(ed, sb)
-        new = String(rstrip(format_synth_text(old), '\n'))
-        new == old && (_push_app_log!(m, "[INFO] :format — rien à changer"); return)
-        lines = [String(l) for l in ed.lines]
-        splice!(lines, sb.row:sb.last_row, split(new, '\n'))
-        _edit_text!(ed, join(lines, '\n'); row = sb.row, col = 0)
-        _push_app_log!(m, "[INFO] :format — un maillon par ligne, nombres raccourcis (u annule)")
-        return
-    end
-    tab = _current_synth_tab(m)
-    tab === nothing && (_push_app_log!(m, "[ERROR] :format — ouvre d'abord un son (:synth <nom>)"); return)
-    ed = tab.code_editor
-    old = TK.text(ed)
-    new = format_synth_text(old)
-    if new == old
-        _push_app_log!(m, "[INFO] :format — rien à changer")
-        return
-    end
-    row, col = ed.cursor_row, ed.cursor_col
-    _edit_text!(ed, new; row = min(row, count(==('\n'), new) + 1), col = col)
+    snd = _current_sound(m)
+    snd === nothing && (_push_app_log!(m, "[ERROR] :format — pose le curseur sur un son (un bloc @synth)"); return)
+    old = _sound_text(snd)
+    new = String(rstrip(format_synth_text(old), '\n'))
+    new == old && (_push_app_log!(m, "[INFO] :format — rien à changer"); return)
+    _sound_write!(snd, new; row = 1, col = 0)
     _push_app_log!(m, "[INFO] :format — un maillon par ligne, nombres raccourcis (u annule)")
     return
 end

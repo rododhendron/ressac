@@ -1,7 +1,7 @@
 include(joinpath(@__DIR__, "helpers.jl"))
 # Ce que l'usage a fait remonter (TODO.txt du 2026-11-20) : Tab et les touches
 # maintenues en insertion, Échap, l'étendue des blocs, `:format` et l'atelier
-# sur une chaîne en une ligne, `:e!` dans un son, les fiches du langage des
+# sur une chaîne en une ligne, `:e!` le curseur dans un son, les fiches du langage des
 # sons, les sources à état et l'interface, le drone et son enveloppe.
 using Test
 using Ressac
@@ -116,23 +116,26 @@ end
     end
 end
 
-@testset ":e / :e! dans un son relisent ce son" begin
+@testset ":e / :e! dans un son relisent la session, pas un fichier de son" begin
     old = pwd(); d = mktempdir(); mkpath(joinpath(d, "plugins", "user-synths")); cd(d)
     try
         (app, draw) = _tf_app()
         _tf_ex(app, "synth essai"); draw()
         ed = Ressac._active_editor(app)
+        @test Ressac._focused_role(app) === :synth
         _tf_ex(app, "e!")
-        @test occursin("n'a pas encore été écrit", app.logs[end])
-        _tf_ex(app, "w"); draw()
+        @test occursin("n'a pas de nom", app.logs[end])            # rien à relire encore
+        _tf_ex(app, "w brouillons"); draw()
+        @test !isfile(joinpath(d, "plugins", "user-synths", "essai.jl"))   # :w écrit la session, pas le son
         saved = Tachikoma.text(ed)
-        Tachikoma.set_text!(ed, saved * "# brouillon\n")
+        @test occursin("@synth :essai", saved) && read(Ressac._session_path("brouillons"), String) == saved
+        snd = Ressac._current_sound(app)
+        Ressac._sound_write!(snd, Ressac._sound_text(snd) * " |> tanh_drive(2)")
+        @test Ressac._focused_role(app) === :synth
         _tf_ex(app, "e")
-        @test occursin(":e!", app.logs[end]) && occursin("brouillon", Tachikoma.text(ed))   # refuse sans !
+        @test occursin(":e!", app.logs[end]) && occursin("tanh_drive", Tachikoma.text(ed))   # refuse sans !
         _tf_ex(app, "e!")
-        @test Tachikoma.text(ed) == saved
-        _tf_key(app, 'u')
-        @test occursin("brouillon", Tachikoma.text(ed))            # u rend le texte d'avant
+        @test Tachikoma.text(Ressac._patterns_editor(app)) == saved
     finally
         cd(old)
     end

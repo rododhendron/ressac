@@ -68,15 +68,33 @@ end
         @test !Ressac._session_dirty(app)
     end
 
-    @testset ":w sauve la session depuis les patterns, le son depuis son volet" begin
+    @testset ":w écrit toujours la session, sons compris ; :save range le son dans la réserve" begin
         app, _ = _ss_app()
+        reserve = joinpath(pwd(), "plugins", "user-synths", "wsess.jl")
+        rm(reserve; force = true)
         _ss_type!(app, "@d1 p\"bd\"")
         _exec_ex_command!(app, "w maison")
-        _exec_ex_command!(app, "synth wsess")
-        Ressac._edit_text!(Ressac._active_editor(app), "@synth :wsess (freq=220) saw(:freq)\n")
-        _exec_ex_command!(app, "w")
-        @test isfile(joinpath(pwd(), "plugins", "user-synths", "wsess.jl"))
-        @test Ressac.list_sessions() == ["maison"]                 # pas une session de plus
+        _exec_ex_command!(app, "synth wsess")                      # le son arrive dans le texte, le curseur dessus
+        snd = Ressac._current_sound(app)
+        @test snd !== nothing && snd.name == "wsess"
+        @test Ressac._session_dirty(app)
+        logs = _cmd_logs(app, "w")
+        @test !isfile(reserve)                                     # :w ne range pas le son
+        @test read(Ressac._session_path("maison"), String) == _ss_text(app)
+        @test occursin("@synth :wsess", read(Ressac._session_path("maison"), String))
+        @test any(l -> occursin("wsess", l) && occursin(":save", l), logs)   # et dit comment le ranger
+        @test Ressac.list_sessions() == ["maison"] && !Ressac._session_dirty(app)
+        _exec_ex_command!(app, "w wsess")                          # un nom : celui d'une session, pas d'un son
+        @test Ressac.list_sessions() == ["maison", "wsess"] && !isfile(reserve)
+        _exec_ex_command!(app, "save")
+        @test read(reserve, String) == Ressac._sound_text(snd) * "\n"
+        @test Ressac.list_sessions() == ["maison", "wsess"]        # pas une session de plus
+        # :e! relit la session, même le curseur dans un son.
+        Ressac._sound_write!(snd, "@synth :wsess (freq=220) saw(:freq)")
+        @test Ressac._current_sound(app) !== nothing && Ressac._session_dirty(app)
+        _exec_ex_command!(app, "e!")
+        @test _ss_text(app) == read(Ressac._session_path("wsess"), String)
+        @test occursin("sin_osc(:freq)", _ss_text(app)) && !Ressac._session_dirty(app)
     end
 
     @testset "d'un lancement à l'autre : le nom de la session, et si elle était sauvée" begin

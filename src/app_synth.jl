@@ -1,94 +1,48 @@
 # src/app_synth.jl
-# Panes synth : ouvrir (librairie/user/starter), fermer, cycler, sauver,
-# tester (T avec accélération), aligner le nom du synthdef ; bascule de
-# focus patterns ⟷ synth.
-
-"""
-    _swap_focus!(m)
-
-Toggle workspace focus between the patterns pane and a synth pane.
-From patterns → focus the first synth pane (if any). From a synth
-pane → focus the patterns pane. Bound to Tab in normal mode.
-"""
-function _swap_focus!(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return
-    if _focused_role(m) === :synth
-        # Back to the patterns pane.
-        for leaf in _all_leaves(ws.tree)
-            for tab in leaf.tabs
-                if tab isa EditorPane && !isempty(tab.tabs) &&
-                   tab.tabs[tab.current_tab].role === :patterns
-                    ws.focused_pane = leaf.id
-                    return
-                end
-            end
-        end
-    else
-        # Into the first synth pane.
-        syn = _all_synth_buffers(m)
-        isempty(syn) || (ws.focused_pane = syn[1][1].id)
-    end
-end
+# Les gestes d'un son : l'amener dans le texte (librairie, fichier, point de
+# départ), l'entendre (T avec accélération), sa note d'audition, et les
+# ponts son ⟷ patterns.
 
 """
     _STARTER_DSL(name)
 
-Default body for a fresh sandbox / unnamed synth tab in DSL mode.
+Le point de départ d'un son neuf.
 """
-_STARTER_DSL(name) = """
-# T = tester  ·  D = drone (moduler en direct)  ·  :w <nom> = sauver sous  ·  U = utiliser dans un pattern  ·  :dsl = guide du DSL
-
-@synth :$(name) (freq=220, sustain=0.5) sin_osc(:freq)
-"""
+_STARTER_DSL(name) = "@synth :$(name) (freq=220, sustain=0.5) sin_osc(:freq)"
 
 """
     _open_sandbox_synth!(m)
 
-Open a fresh synth tab with a randomised name (`sketch_<id>`) and
-the starter template — no manual naming needed. The user iterates
-in the tab; `:w realname` later renames it onto disk via the
-existing save-as path.
+Un son neuf dans le texte, sous un nom de brouillon (`sketch_<id>`) ;
+`:save <nom>` lui en donne un vrai.
 """
 function _open_sandbox_synth!(m::RessacApp)
-    # 3-char base36 id, e.g. "sketch_a7p". Cheap, collision-resistant
-    # enough for interactive use; if it ever does collide
-    # _open_synth_tab! switches to the existing tab which is also fine.
     chars = "abcdefghijklmnopqrstuvwxyz0123456789"
     id = String([chars[rand(1:length(chars))] for _ in 1:3])
     name = "sketch_$(id)"
-    _open_synth_tab!(m, name)
-    _push_app_log!(m, "[INFO] synth bac à sable « $name » — :w <nom> pour le sauver sous un vrai nom")
+    _open_sound!(m, name)
+    _push_app_log!(m, "[INFO] son brouillon « $name » — :save <nom> le range sous un vrai nom")
 end
 
 """
-    _open_synth_tab!(m, name)
+    _open_sound!(m, name)
 
-If a synth pane for `name` is already open in the workspace, focus
-it. Otherwise vsplit a new synth-role EditorPane, load the source
-(DSL `.jl` preferred, else raw `.scd`, else starter template), and
-focus it. Synths are plain workspace panes now — no separate tab
-list.
+Amène le son `name` dans le texte principal et pose le curseur dessus. S'il
+y est déjà, on y va. Sinon son texte vient du fichier `.jl` de la réserve,
+d'un `.scd` laissé là (converti), d'une recette de la librairie (copiée),
+ou du point de départ — et se pose sous le bloc du curseur.
 """
-function _open_synth_tab!(m::RessacApp, name::AbstractString)
+function _open_sound!(m::RessacApp, name::AbstractString)
     name = String(name)
-    _open_volet!(m, :son)
-    ws = current_workspace(m.workspaces)
-    # Already open → focus its leaf.
-    if ws !== nothing
-        for leaf in _all_leaves(ws.tree), pane in leaf.tabs
-            pane isa EditorPane || continue
-            i = findfirst(b -> b.role === :synth && b.name == name, pane.tabs)
-            i === nothing && continue
-            pane.current_tab = i
-            ws.focused_pane = leaf.id
-            _push_app_log!(m, "[INFO] synth « $name » focalisé")
-            return
-        end
+    ed = _patterns_editor!(m)
+    ed === nothing && return
+    _focus_patterns!(m)
+    here = _sound_block_named(ed.lines, name)
+    if here !== nothing
+        ed.cursor_row = here.row; ed.cursor_col = 0; ed.mode = :normal
+        _push_app_log!(m, "[INFO] son « $name » : il est dans le texte, le curseur y est")
+        return
     end
-    # Le texte : le `.jl` s'il existe ; sinon un `.scd` laissé là, converti en
-    # DSL à l'ouverture (tout son s'édite en DSL) ; sinon une recette de la
-    # librairie, copiée ; sinon le point de départ.
     dsl_path = _app_synth_path(name; mode = :dsl)
     sc_path  = _app_synth_path(name; mode = :sc)
     if !isfile(dsl_path) && !isfile(sc_path)
@@ -104,158 +58,18 @@ function _open_synth_tab!(m::RessacApp, name::AbstractString)
             _push_app_log!(m, "[ERROR] « $name » est en SuperCollider et ne se convertit pas en entier : $why")
             return
         end
-        origin = "converti depuis $(name).scd (:w le range en .jl)"
-        "# converti depuis $(name).scd\n\n" * _align_dsl_synth_name(dsl, name)
+        origin = "converti depuis $(name).scd (:save le range en .jl)"
+        _align_dsl_synth_name(dsl, name)
     else
+        origin = "neuf"
         _STARTER_DSL(name)
     end
-    wsed = _synth_workspace_editor(m)
-    if wsed !== nothing
-        # Un onglet de plus dans le texte du volet ; la DOC
-        # suit (synchronisation au rendu).
-        eb = EditorBuffer(; role = :synth, name = name, content = src)
-        push!(wsed.tabs, eb)
-        wsed.current_tab = length(wsed.tabs)
-        _focus_pane!(m, wsed)
-    else
-        pane = _place_pane!(m, :editor, Dict{String,Any}(
-            "buffer_role" => "synth",
-            "name"        => name,
-        ))
-        pane isa EditorPane || return
-        eb = pane.tabs[1]
-        _load_text!(eb.code_editor, src)
-    end
-    eb.code_editor.mode = :normal
-    eb.code_editor.focused = true
-    _push_app_log!(m, "[INFO] synth « $name » $origin — T teste, :w sauve, U l'utilise dans un pattern")
-end
-
-
-"""
-    _close_active_synth_tab!(m)
-
-Close the focused synth pane (or the first synth pane if focus
-drifted off one). No-op when no synth pane is open.
-"""
-function _close_active_synth_tab!(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return
-    buf = _focused_buffer(m)
-    leaf_id = if buf !== nothing && buf.role === :synth
-        # Focused leaf is a synth — close it.
-        ws.focused_pane
-    else
-        syn = _all_synth_buffers(m)
-        isempty(syn) && return
-        syn[1][1].id
-    end
-    leaf = _find_leaf_by_id(ws.tree, leaf_id)
-    pane = (leaf isa PaneLeaf && !isempty(leaf.tabs)) ? leaf.tabs[leaf.current_tab] : nothing
-    if pane isa EditorPane && 1 <= pane.current_tab <= length(pane.tabs) &&
-       (length(pane.tabs) > 1 || _synth_workspace_editor(m) === pane)
-        # Plusieurs onglets : on ferme le courant, la pane reste. Dans le
-        # workspace synth, le dernier onglet laisse place à un sketch neuf
-        # pour que la forme du workspace tienne.
-        cur = pane.tabs[pane.current_tab]
-        name = cur.name
-        deleteat!(pane.tabs, pane.current_tab)
-        if isempty(pane.tabs)
-            fresh = EditorBuffer(; role = :synth, name = "sketch", content = _STARTER_DSL("sketch"))
-            fresh.code_editor.mode = :normal
-            push!(pane.tabs, fresh)
-        end
-        pane.current_tab = clamp(pane.current_tab, 1, length(pane.tabs))
-        pane.tabs[pane.current_tab].code_editor.focused = true
-        _drone_release_buffer!(m, name)
-        _push_app_log!(m, "[INFO] synth « $name » fermé")
+    if !occursin(r"(?m)^\s*@synth\s+:\w+", src)
+        _push_app_log!(m, "[ERROR] « $name » : son fichier n'a pas de bloc `@synth :nom …` à écrire dans le texte")
         return
     end
-    name = (b = _leaf_synth_name(m, leaf_id)) === nothing ? "?" : b
-    ws.focused_pane = leaf_id
-    cmd_close!(m.workspaces)
-    _drone_release_buffer!(m, name)
-    _push_app_log!(m, "[INFO] synth « $name » fermé")
-end
-
-_leaf_synth_name(m::RessacApp, leaf_id::Int) = begin
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return nothing
-    leaf = _find_leaf_by_id(ws.tree, leaf_id)
-    (leaf isa PaneLeaf && !isempty(leaf.tabs)) || return nothing
-    pane = leaf.tabs[1]
-    (pane isa EditorPane && !isempty(pane.tabs)) || return nothing
-    pane.tabs[1].name
-end
-
-"""
-    _cycle_synth_tab!(m; dir=+1)
-
-Focus the next (`dir=+1`) / previous (`dir=-1`) synth pane in the
-workspace. No-op when fewer than two synth panes are open.
-"""
-function _cycle_synth_tab!(m::RessacApp; dir::Int = +1)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return
-    # Des onglets dans une même pane : on tourne dedans.
-    wsed = _synth_workspace_editor(m)
-    if wsed !== nothing && length(wsed.tabs) > 1
-        wsed.current_tab = mod1(wsed.current_tab + dir, length(wsed.tabs))
-        wsed.tabs[wsed.current_tab].code_editor.focused = true
-        _focus_pane!(m, wsed)
-        return
-    end
-    syn = _all_synth_buffers(m)
-    length(syn) <= 1 && return
-    cur = findfirst(((leaf, _),) -> leaf.id == ws.focused_pane, syn)
-    cur = cur === nothing ? 1 : cur
-    nxt = mod(cur + dir - 1, length(syn)) + 1
-    ws.focused_pane = syn[nxt][1].id
-end
-
-function _list_synth_tabs!(m::RessacApp)
-    syn = _all_synth_buffers(m)
-    if isempty(syn)
-        _push_app_log!(m, "[INFO] aucune pane synth ouverte")
-        return
-    end
-    ws = current_workspace(m.workspaces)
-    for (leaf, buf) in syn
-        marker = (ws !== nothing && leaf.id == ws.focused_pane) ? "▶" : " "
-        _push_app_log!(m, "  $marker $(buf.name)")
-    end
-end
-
-"""
-    _save_current_synth!(m; new_name=nothing)
-
-Range le texte du son dans `plugins/user-synths/<nom>.jl`. Avec
-`new_name`, sous ce nom-là, et l'éditeur passe sur la nouvelle identité
-(le `@synth :ancien` est réécrit). Un texte resté en SuperCollider n'est
-pas rangé : `:todsl` d'abord.
-"""
-function _save_current_synth!(m::RessacApp; new_name::Union{Nothing,AbstractString}=nothing)
-    _synth_pane_open(m) || (_push_app_log!(m, "[ERROR] :w — aucun synth ouvert"); return)
-    tab = _current_synth_tab(m)
-    text = TK.text(tab.code_editor)
-    if _is_raw_synthdef(text)
-        _push_app_log!(m, "[ERROR] :w — ce texte est du SuperCollider ; :todsl le convertit, puis :w le range")
-        return
-    end
-    name = new_name === nothing ? tab.name : String(new_name)
-    dir = joinpath(_project_dir(), "plugins", "user-synths")
-    isdir(dir) || mkpath(dir)
-    text = _align_dsl_synth_name(text, name)
-    new_name === nothing && _edit_text!(tab.code_editor, text)
-    path = _app_synth_path(name; mode = :dsl)
-    write(path, text)
-    register_synth!(SynthEntry(Symbol(name), "user-synths",
-        Dict{String,Any}("description" => "live-edited synth",
-                         "tags" => ["user", "dsl"],
-                         "params" => _dsl_params_from_text(text))); update = true)
-    _push_app_log!(m, "[INFO] synth sauvé → $path")
-    new_name === nothing || _open_synth_tab!(m, name)
-    return
+    _insert_sound_block!(m, name, src)
+    _push_app_log!(m, "[INFO] son « $name » $origin — T l'entend, o / & le travaillent, :save le range")
 end
 
 """
@@ -298,36 +112,36 @@ Reload the synth source on the SC side and fire a preview note via
 is registered before the play fires.
 """
 function _test_current_synth!(m::RessacApp; raw::Bool = false)
-    _synth_pane_open(m) || return
     sched = _LIVE_SCHEDULER[]
     sched === nothing && return
-    tab = _current_synth_tab(m)
-    # Le synth tourne en drone : T le réévalue (nouveau nœud, mêmes réglages).
+    tab = _current_sound(m)
+    tab === nothing && return
+    # Le son tourne en drone : T le réévalue (nouveau nœud, mêmes réglages).
     if _editor_drone(m) !== nothing
         _drone_launch!(m, tab)
         return
     end
-    _audition_synth_text!(m, tab, TK.text(tab.code_editor))
+    _audition_synth_text!(m, tab, _sound_text(tab))
     return
 end
 
 """
     _audition_synth_text!(m, tab, src; what = "T — test de") -> Bool
 
-Fait entendre le texte `src` comme le son de l'onglet `tab` : c'est `T`, et
+Fait entendre le texte `src` comme le son `tab` : c'est `T`, et
 c'est aussi l'essai d'un maillon dans l'atelier (le texte essayé n'est pas
 encore dans le buffer). Vrai si le son est parti.
 
-Le nom du @synth est celui de l'onglet ; le texte s'évalue dans SynthDSL
+Le nom du @synth est celui du son ; le texte s'évalue dans SynthDSL
 (saw, sin_osc, rlpf… y sont des UGens, pas les signaux de patterns du même
 nom), en entier. Le @synth compile en SC et envoie lui-même à
 /ressac/evalAndPlay.
 """
-function _audition_synth_text!(m::RessacApp, tab::EditorBuffer, src::AbstractString;
+function _audition_synth_text!(m::RessacApp, tab::Sound, src::AbstractString;
                                what::AbstractString = "T — test de")
     _LIVE_SCHEDULER[] === nothing && return false
     if _is_raw_synthdef(src)
-        _push_app_log!(m, "[INFO] ce texte est du SuperCollider — :todsl le convertit en DSL, puis T le joue")
+        _push_app_log!(m, "[INFO] ce texte est du SuperCollider : un son s'écrit en DSL (@synth …)")
         return false
     end
     extra = _audition_args(m, tab, src)
@@ -359,8 +173,8 @@ les métadonnées) ou `nothing` ; `sustain` dit si la durée est pilotable.
 Lu dans le texte du buffer (pas besoin d'avoir sauvé), complété par le
 registre pour `pitch`.
 """
-function _synth_pitch_info(tab::EditorBuffer)
-    src = TK.text(tab.code_editor)
+function _synth_pitch_info(tab::Sound)
+    src = _sound_text(tab)
     params = _dsl_params_from_text(src)
     entry = synth_info(Symbol(tab.name))
     explicit = entry === nothing ? nothing : get(entry.metadata, "pitch", nothing)
@@ -370,7 +184,7 @@ function _synth_pitch_info(tab::EditorBuffer)
 end
 
 # Suffixe du titre de la pane : « hauteur freq · durée sustain » / « sans hauteur ».
-function _synth_title_suffix(tab::EditorBuffer)
+function _synth_title_suffix(tab::Sound)
     info = _synth_pitch_info(tab)
     h = info.pitch === nothing ? "sans hauteur" : "hauteur $(info.pitch)"
     d = info.sustain ? " · durée sustain" : ""
@@ -382,7 +196,7 @@ const _NOTE_NAMES = ("c", "cs", "d", "ds", "e", "f", "fs", "g", "gs", "a", "as",
 _note_name(n::Int) = _NOTE_NAMES[mod(n, 12) + 1] * string(5 + fld(n, 12))
 
 # Paires clé/valeur pour jouer le synth du buffer à la note d'audition.
-function _audition_args(m::RessacApp, tab::EditorBuffer, src::AbstractString)
+function _audition_args(m::RessacApp, tab::Sound, src::AbstractString)
     m.test_note === nothing && return Any[]
     info = _synth_pitch_info(tab)
     info.pitch === nothing && return Any[]
@@ -506,20 +320,8 @@ function _goto_synth_under_cursor!(m::RessacApp)
         _push_app_log!(m, "[WARN] gs — « $w » n'est pas un synth connu (fichier user-synths, librairie ou synth enregistré)")
         return
     end
-    _open_volet!(m, :son)
-    _open_synth_tab!(m, w)
+    _open_sound!(m, w)
     return
-end
-
-# Y a-t-il une pane patterns dans le workspace courant ?
-function _patterns_pane_present(m::RessacApp)
-    ws = current_workspace(m.workspaces)
-    ws === nothing && return false
-    for leaf in _all_leaves(ws.tree), tab in leaf.tabs
-        tab isa EditorPane && 1 <= tab.current_tab <= length(tab.tabs) &&
-            tab.tabs[tab.current_tab].role === :patterns && return true
-    end
-    return false
 end
 
 # L'éditeur patterns du workspace courant (le crée si besoin).
@@ -569,11 +371,11 @@ function _use_synth_in_pattern!(m::RessacApp, name::AbstractString)
     return
 end
 
-# U depuis une pane synth : sauve (:w) puis utilise.
+# U sur un son : il est rangé (:save), puis un slot le joue.
 function _use_current_synth_in_pattern!(m::RessacApp)
-    tab = _current_synth_tab(m)
-    tab === nothing && (_push_app_log!(m, "[ERROR] U — pas de synth ouvert"); return)
-    _save_current_synth!(m)
+    tab = _current_sound(m)
+    tab === nothing && (_push_app_log!(m, "[ERROR] U — le curseur n'est pas sur un son"); return)
+    _save_sound!(m, tab) || return
     _use_synth_in_pattern!(m, tab.name)
     return
 end

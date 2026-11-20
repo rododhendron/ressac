@@ -112,7 +112,7 @@ function _sccode_import!(m::RessacApp, id::AbstractString; title::AbstractString
                                    Dict{String,Any}("description" => "importé de sccode",
                                                     "tags" => ["sccode"],
                                                     "params" => _dsl_params_from_text(text))); update = true)
-        _open_synth_tab!(m, final_name)
+        _open_sound!(m, final_name)
         _push_app_log!(m, "[INFO] sccode/$(id) → plugins/user-synths/$(final_name).jl")
         then === nothing || then(final_name)
     end

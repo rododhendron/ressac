@@ -31,41 +31,46 @@ function _prscreen(app, tb, frame)
 end
 _prmouse(app, x, y, btn, act) = Tachikoma.update!(app, Tachikoma.MouseEvent(x, y, btn, act, false, false, false))
 _prpane(app) = (Ressac._PANE_MODE.active = false; Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')))
+# Trois panes : les patterns à gauche ; à droite la DOC du son, et le
+# journal scindé dessous.
+_pr_son_et_journal!(app) = (_prex(app, "son"); _prex(app, "hsplit log"))
 
 @testset "redimensionner — mode pane < > - + = r" begin
     oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _pr_app()
-        _prex(app, "son")
+        _pr_son_et_journal!(app)
         _prscreen(app, tb, frame)
         ws = Ressac.current_workspace(app.workspaces)
         root = ws.tree
-        @test root isa Ressac.Container && root.direction === :h && root.ratios == [0.5, 0.5]
+        @test root isa Ressac.Container && root.direction === :h && root.ratios ≈ [0.58, 0.42]
         side = root.children[2]
         @test side isa Ressac.Container && side.direction === :v
-        @test side.ratios ≈ [0.62, 0.38]
-        # le texte du son est focalisé (colonne de droite) : > l'élargit, < le rétrécit
+        @test side.ratios ≈ [0.5, 0.5]
+        sdoc = Ressac._sound_doc(app)
+        log = Ressac._find_pane(app, Ressac.LogPane)
+        # la DOC du son est focalisée (colonne de droite, en haut) : > l'élargit, < la rétrécit
+        Ressac._focus_pane!(app, sdoc)
         _prpane(app); _prkey(app, '>')
-        @test root.ratios ≈ [0.45, 0.55]
+        @test root.ratios ≈ [0.53, 0.47]
         @test Ressac._PANE_MODE.active                       # le mode pane reste actif
         _prkey(app, '<'); _prkey(app, '<')
-        @test root.ratios ≈ [0.55, 0.45]
-        # + le grandit en hauteur, aux dépens de la feuille du dessous
+        @test root.ratios ≈ [0.63, 0.37]
+        # + la grandit en hauteur, aux dépens de la feuille du dessous
         _prkey(app, '+')
-        @test root.ratios ≈ [0.55, 0.45] && side.ratios ≈ [0.67, 0.33]
+        @test root.ratios ≈ [0.63, 0.37] && side.ratios ≈ [0.55, 0.45]
         _prkey(app, '-')
-        @test side.ratios ≈ [0.62, 0.38]
+        @test side.ratios ≈ [0.5, 0.5]
         _prkey(app, :escape)
-        # la DOC (sous le texte) : + la grandit, - la réduit ; > joue sur la colonne
-        (_, sdoc) = Ressac._synth_workspace_parts(app)
-        Ressac._focus_pane!(app, sdoc)
+        # le journal (sous la DOC) : + le grandit, - le réduit ; > joue sur la colonne
+        Ressac._focus_pane!(app, log)
         _prpane(app); _prkey(app, '+')
-        @test side.ratios ≈ [0.57, 0.43]
+        @test side.ratios ≈ [0.45, 0.55]
         _prkey(app, '-'); _prkey(app, '-')
-        @test side.ratios ≈ [0.67, 0.33]
+        @test side.ratios ≈ [0.55, 0.45]
         _prkey(app, '>')
-        @test root.ratios ≈ [0.5, 0.5]
+        @test root.ratios ≈ [0.58, 0.42]
         # bornes : jamais moins de 10 %
         for _ in 1:30; _prkey(app, '+'); end
         @test side.ratios ≈ [0.1, 0.9]
@@ -95,7 +100,7 @@ end
     Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0], 44100); Ressac._WAVE_SYNC[] = true
     try
         app, tb, frame = _pr_app()
-        _prex(app, "son")
+        _pr_son_et_journal!(app)
         _prscreen(app, tb, frame)
         ws = Ressac.current_workspace(app.workspaces)
         root = ws.tree
@@ -117,18 +122,21 @@ end
         @test collect(Tachikoma.row_text(tb, y))[b.pos] == '┃'            # la bordure s'allume
         _prmouse(app, b.pos + 7, y, Tachikoma.mouse_left, Tachikoma.mouse_drag)
         _prmouse(app, b.pos + 14, y, Tachikoma.mouse_left, Tachikoma.mouse_drag)
-        @test root.ratios ≈ [0.6, 0.4]
+        @test root.ratios ≈ [0.68, 0.32]
         _prmouse(app, b.pos + 14, y, Tachikoma.mouse_left, Tachikoma.mouse_release)
         @test app.resize_drag === nothing
         _prscreen(app, tb, frame)
         @test collect(Tachikoma.row_text(tb, y))[b.pos] != '┃'
-        # la frontière entre le texte du son et sa DOC
-        bv = only(x for x in bs if x.dir === :v)
+        # la frontière entre la DOC du son et le journal
+        # (relue : la colonne de droite vient de bouger)
+        bv = only(x for x in Ressac._boundaries(root, app._last_ws_area) if x.dir === :v)
         x = bv.lo + 3
-        _prmouse(app, x, bv.pos, Tachikoma.mouse_left, Tachikoma.mouse_press)
-        _prmouse(app, x, bv.pos + 4, Tachikoma.mouse_left, Tachikoma.mouse_drag)
         side = root.children[2]
-        @test side.ratios[1] > 0.5
+        @test side.ratios ≈ [0.5, 0.5]
+        _prmouse(app, x, bv.pos, Tachikoma.mouse_left, Tachikoma.mouse_press)
+        @test app.resize_drag !== nothing
+        _prmouse(app, x, bv.pos + 4, Tachikoma.mouse_left, Tachikoma.mouse_drag)
+        @test side.ratios[1] > 0.55 && sum(side.ratios) ≈ 1
         _prmouse(app, x, bv.pos + 4, Tachikoma.mouse_left, Tachikoma.mouse_release)
         # ailleurs, un clic gauche ne saisit rien
         _prmouse(app, 10, 10, Tachikoma.mouse_left, Tachikoma.mouse_press)

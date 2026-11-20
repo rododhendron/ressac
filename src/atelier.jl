@@ -81,9 +81,9 @@ Ouvre l'atelier sur le maillon du curseur du son courant. `action` :
 `:after` (`o`), `:before` (`O`) ou `:replace` (`cim`).
 """
 function _atelier_open!(m::RessacApp, action::Symbol)
-    tab = _current_synth_tab(m)
-    if tab === nothing || _focused_role(m) !== :synth
-        _push_app_log!(m, "[INFO] l'atelier travaille le texte d'un son — gs sur son nom l'ouvre")
+    tab = _sound_under_cursor(m)
+    if tab === nothing
+        _push_app_log!(m, "[INFO] l'atelier travaille le texte d'un son — gs sur son nom l'amène dans le texte")
         return false
     end
     ed = tab.code_editor
@@ -185,8 +185,8 @@ function _atelier_hear!(m::RessacApp; force::Bool = false)
     item === nothing && return
     (!force && st.heard == item.code) && return
     st.heard = item.code
-    (lines, _, _) = _atelier_text(st, item)
-    _audition_synth_text!(m, st.tab, join(lines, '\n'); what = "essai · $(item.name) dans")
+    (lines, row, _) = _atelier_text(st, item)
+    _audition_synth_text!(m, st.tab, _sound_text_in(lines, row); what = "essai · $(item.name) dans")
     return
 end
 
@@ -216,7 +216,7 @@ function _atelier_cancel!(m::RessacApp)
     m.modal = :none
     m.atelier = nothing
     (st === nothing || isempty(st.heard)) && return
-    _audition_synth_text!(m, st.tab, join(st.base, '\n'); what = "retour à")
+    _audition_synth_text!(m, st.tab, _sound_text_in(st.base, st.row); what = "retour à")
     return
 end
 
@@ -288,13 +288,15 @@ function _atelier_prefix_engine!(m::RessacApp, evt::TK.KeyEvent)
     return false
 end
 
-# Le texte du son est-il un bloc `begin … end` (où une ligne nommée peut s'écrire) ?
-function _synth_block_rows(lines::Vector{String})
-    a = findfirst(l -> occursin(r"^\s*@synth\b", l) && occursin(r"\b(begin|do\s+\w+)\s*$", SynthDSL._split_code_comment(l)[1]), lines)
-    a === nothing && return nothing
-    b = findnext(l -> occursin(r"^\s*end\b", l), lines, a + 1)
+# Le son qui contient `row` est-il un bloc `begin … end` (où une ligne nommée
+# peut s'écrire) ? Rend ses lignes d'en-tête et de fin.
+function _synth_block_rows(lines::AbstractVector, row::Int)
+    b = _sound_block_at(lines, row)
     b === nothing && return nothing
-    return (a, b)
+    head = SynthDSL._split_code_comment(String(lines[b.row]))[1]
+    (occursin(r"\b(begin|do\s+\w+)\s*$", head) && b.last_row > b.row &&
+     occursin(r"^\s*end\b", String(lines[b.last_row]))) || return nothing
+    return (b.row, b.last_row)
 end
 
 # Un nom libre dans le texte : `mod`, `mod2`, `mod3`…
@@ -309,8 +311,8 @@ end
 # Le nombre sous le curseur du son courant — (onglet, éditeur, (premier
 # caractère, dernier caractère, texte)) — ou `nothing` (avec le message).
 function _atelier_number(m::RessacApp, what::AbstractString)
-    tab = _current_synth_tab(m)
-    (tab === nothing || _focused_role(m) !== :synth) &&
+    tab = _sound_under_cursor(m)
+    tab === nothing &&
         (_push_app_log!(m, "[INFO] & $what — dans le texte d'un son, le curseur sur un nombre"); return nothing)
     ed = tab.code_editor
     hit = _number_at(ed, ed.cursor_row, ed.cursor_col)
@@ -332,14 +334,14 @@ function _atelier_modulate!(m::RessacApp)
     r === nothing && return
     (tab, ed, (c1, c2, txt)) = r
     lines = [String(l) for l in ed.lines]
-    block = _synth_block_rows(lines)
+    block = _synth_block_rows(lines, ed.cursor_row)
     if block === nothing
         _push_app_log!(m, "[INFO] & m — le son doit s'écrire dans un `begin … end` pour y nommer une ligne")
         return
     end
     v = parse(Float64, txt)
     v == 0 && (_push_app_log!(m, "[INFO] & m — un nombre nul n'a pas d'« autour » : change-le d'abord"); return)
-    name = _free_name(join(lines, '\n'), "mod")
+    name = _free_name(_sound_text(tab), "mod")
     (lo, hi) = minmax(v * 0.7, v * 1.3)
     row = ed.cursor_row
     chars = collect(lines[row])
@@ -404,14 +406,15 @@ function _atelier_to_argument!(m::RessacApp)
     r === nothing && return
     (tab, ed, (c1, c2, txt)) = r
     lines = [String(l) for l in ed.lines]
-    head = findfirst(l -> occursin(r"^\s*@synth\s+:\w+\s*\(", l), lines)
+    here = _sound_block_at(lines, ed.cursor_row)
+    head = (here !== nothing && occursin(r"^\s*@synth\s+:\w+\s*\(", lines[here.row])) ? here.row : nothing
     head === nothing && (_push_app_log!(m, "[INFO] & k — pas d'en-tête `@synth :nom (…)` où déclarer l'argument"); return)
     row = ed.cursor_row
     row == head && (_push_app_log!(m, "[INFO] & k — c'est déjà un argument du son"); return)
     chars = collect(lines[row])
     base = _slot_name_at(chars, c1)
     isempty(base) && (base = "k")
-    name = _free_name(join(lines, '\n'), base)
+    name = _free_name(_sound_text(tab), base)
     lines[row] = String(vcat(chars[1:(c1 - 1)], collect(":" * name), chars[(c2 + 1):end]))
     # L'en-tête : `@synth :nom (a=1, b=2)` → `(a=1, b=2, nom=valeur)`.
     hl = lines[head]
@@ -433,11 +436,11 @@ end
 pour savoir ce que chaque étape apporte.
 """
 function _atelier_solo!(m::RessacApp)
-    tab = _current_synth_tab(m)
-    (tab === nothing || _focused_role(m) !== :synth) && return
+    tab = _sound_under_cursor(m)
+    tab === nothing && return
     ed = tab.code_editor
     lines = [String(l) for l in ed.lines]
-    block = _synth_block_rows(lines)
+    block = _synth_block_rows(lines, ed.cursor_row)
     link = _link_at(ed)
     if block === nothing || link === nothing || !link.linewise || !(block[1] < ed.cursor_row < block[2])
         _push_app_log!(m, "[INFO] & s — sur un maillon d'un son écrit un par ligne, dans un `begin … end`")
@@ -452,7 +455,7 @@ function _atelier_solo!(m::RessacApp)
         heard[r] = "# " * heard[r]
         cut += 1
     end
-    _audition_synth_text!(m, tab, join(heard, '\n');
+    _audition_synth_text!(m, tab, _sound_text_in(heard, ed.cursor_row);
                           what = cut == 0 ? "tout" : "jusqu'à $(link.name) ($(cut) maillon$(cut == 1 ? "" : "s") en moins) :")
     return
 end
@@ -460,27 +463,24 @@ end
 """
     _atelier_fork!(m)
 
-`& b` — bifurquer : une copie du son sous un nouveau nom, dans un onglet à
-côté. Pour changer un son sans toucher aux slots qui jouent l'original.
+`& b` — bifurquer : une copie du son sous un nouveau nom, écrite juste
+dessous. Pour changer un son sans toucher aux slots qui jouent l'original.
 """
 function _atelier_fork!(m::RessacApp)
-    tab = _current_synth_tab(m)
+    tab = _sound_under_cursor(m)
     tab === nothing && return
-    wsed = _synth_workspace_editor(m)
-    wsed === nothing && return
-    existing = Set{String}(b.name for b in wsed.tabs)
+    ed = tab.code_editor
     base = replace(tab.name, r"\d+$" => "")
     k = 2
     name = "$base$k"
-    while name in existing || isfile(_app_synth_path(name; mode = :dsl))
+    while _sound_block_named(ed.lines, name) !== nothing || isfile(_app_synth_path(name; mode = :dsl))
         k += 1; name = "$base$k"
     end
-    text = _align_dsl_synth_name(TK.text(tab.code_editor), name)
-    push!(wsed.tabs, EditorBuffer(; role = :synth, name = name, content = text))
-    wsed.current_tab = length(wsed.tabs)
-    wsed.tabs[end].code_editor.mode = :normal
-    _focus_pane!(m, wsed)
-    _push_app_log!(m, "[INFO] « $name » : une copie de $(tab.name), à part — :w la range, U l'envoie dans un pattern")
+    r = _sound_rows(tab)
+    r === nothing && return
+    ed.cursor_row = r[2]                        # la copie se pose sous l'original
+    _insert_sound_block!(m, name, _align_dsl_synth_name(_sound_text(tab), name))
+    _push_app_log!(m, "[INFO] « $name » : une copie de $(tab.name), juste dessous — :save la range, U l'envoie dans un pattern")
     return
 end
 
@@ -546,9 +546,9 @@ function _after_nudge!(m::RessacApp, ed::TK.CodeEditor, row::Int, slot_before::U
         end
         return
     end
-    tab = _current_synth_tab(m)
-    (tab !== nothing && tab.code_editor === ed) || return
-    m.redefine = (tab, time() + _REDEFINE_DELAY)
+    b = _sound_block_at(ed.lines, row)
+    (b !== nothing && ed === _patterns_editor(m)) || return
+    m.redefine = (Sound(b.name, ed), time() + _REDEFINE_DELAY)
     return
 end
 
@@ -557,7 +557,7 @@ end
 
 Redéfinit le son de `tab` avec le texte `src`, sans jouer de note.
 """
-function _define_synth_text!(m::RessacApp, tab::EditorBuffer, src::AbstractString)
+function _define_synth_text!(m::RessacApp, tab::Sound, src::AbstractString)
     (_LIVE_SCHEDULER[] === nothing || _is_raw_synthdef(src)) && return false
     was = _INSTALLING_SYNTH[]
     _INSTALLING_SYNTH[] = true
@@ -580,7 +580,7 @@ function _redefine_tick!(m::RessacApp)
     if drone_get(_drone_id(tab)) !== nothing
         _drone_launch!(m, tab)       # le drone tenu : nouveau nœud, mêmes réglages
     else
-        _define_synth_text!(m, tab, TK.text(tab.code_editor))
+        _define_synth_text!(m, tab, _sound_text(tab))
     end
     return
 end

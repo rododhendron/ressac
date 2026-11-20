@@ -67,9 +67,11 @@ end
 function render!(p::EditorPane, area, buf)
     1 <= p.current_tab <= length(p.tabs) || return
     tab = p.tabs[p.current_tab]
-    title_str = tab.role === :synth ?
-        "SON · $(tab.name) · $(_synth_title_suffix(tab))" :
-        "PATTERNS"
+    # Le titre suit le curseur : dans un bloc `@synth`, c'est ce son.
+    ed = tab.code_editor
+    here = _sound_block_at(ed.lines, ed.cursor_row)
+    title_str = here === nothing ? "PATTERNS" :
+        "SON · $(here.name) · $(_synth_title_suffix(Sound(here.name, ed)))"
     rect = TK.Rect(area.x, area.y, area.width, area.height)
     _render_pane_block_simple!(rect, title_str, buf)
     inner = _inner_rect_simple(rect)

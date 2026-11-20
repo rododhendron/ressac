@@ -197,7 +197,7 @@ function _drain_explorer_export!(m::RessacApp)
     name, dsl = req
     # Le candidat s'écrit dans le texte principal, parmi les patterns.
     _insert_sound_block!(m, name, dsl) &&
-        _push_app_log!(m, "[INFO] « $name » est dans le texte — e le fait entendre, s(\"$name\") le joue, :keep le range")
+        _push_app_log!(m, "[INFO] « $name » est dans le texte — e le fait entendre, s(\"$name\") le joue, :save le range")
     return true
 end
 

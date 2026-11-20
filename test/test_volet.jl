@@ -15,46 +15,70 @@ _vl_rows(tb, h = 40) = [Tachikoma.row_text(tb, y) for y in 1:h]
 
 @testset "écran unique" begin
 
-    @testset "sur un écran ordinaire, le son remplace la fiche" begin
+    @testset "sur un écran ordinaire, la DOC du son remplace la fiche" begin
         app, tb, frame = _vl_app(140)
         @test Ressac.DocPane in _vl_panes(app)
         _exec_ex_command!(app, "son"); Tachikoma.view(app, frame)
         @test !(Ressac.DocPane in _vl_panes(app))
-        @test Ressac._focused_role(app) === :synth
+        @test Ressac.SynthDocPane in _vl_panes(app)
+        @test count(==(Ressac.EditorPane), _vl_panes(app)) == 1   # le texte n'est qu'à gauche
+        @test Ressac._focused_pane_impl(app) === Ressac._sound_doc(app)
     end
 
-    @testset "sur un grand écran, le son s'ouvre entre les patterns et la fiche" begin
+    @testset "K dans un son ouvre sa DOC à droite sans prendre le clavier" begin
+        app, tb, frame = _vl_app(140)
+        ed = _set_buffer!(app, "@d1 p\"bd\"\n\n@synth :vol (freq=220) saw(:freq)"; row = 3)
+        @test Ressac._sound_doc(app) === nothing
+        _key!(app, 'K'); Tachikoma.view(app, frame)
+        @test app.volet === :son && Ressac._sound_doc(app) !== nothing
+        @test !(Ressac.DocPane in _vl_panes(app))
+        @test Ressac._active_editor(app) === ed && Ressac._focused_role(app) === :synth
+        @test Ressac._sound_doc(app).synced_name == "vol"         # elle a lu le son du curseur
+    end
+
+    @testset "sur un grand écran, la DOC du son s'ouvre entre les patterns et la fiche" begin
         app, tb, frame = _vl_app(Ressac._VOLET_WIDE_COLS + 20)
         _exec_ex_command!(app, "son"); Tachikoma.view(app, frame)
         @test Ressac.DocPane in _vl_panes(app)                 # la fiche est toujours là
         root = Ressac.current_workspace(app.workspaces).tree
         @test root.children[1] === Ressac._patterns_leaf(Ressac.current_workspace(app.workspaces))
-        @test root.children[2] isa Ressac.Container && root.children[2].direction === :h   # son | fiche
-        @test Ressac._focused_role(app) === :synth
-        # Le fermer rend toute la colonne à la fiche.
+        @test root.children[2] isa Ressac.Container && root.children[2].direction === :h   # DOC du son | fiche
+        @test Ressac._focused_pane_impl(app) === Ressac._sound_doc(app)
+        # La fermer rend toute la colonne à la fiche.
         _exec_ex_command!(app, "back"); Tachikoma.view(app, frame)
         @test Ressac.current_workspace(app.workspaces).tree.children[2] isa Ressac.PaneLeaf
+        # :close est le même geste.
+        _exec_ex_command!(app, "son"); Tachikoma.view(app, frame)
+        _exec_ex_command!(app, "close"); Tachikoma.view(app, frame)
+        @test app.volet === :fiche && Ressac._sound_doc(app) === nothing
+        @test Ressac._focused_role(app) === :patterns
     end
 
-    @testset "la fenêtre change de taille : le son suit" begin
+    @testset "la fenêtre change de taille : la DOC du son suit" begin
         app, tb, frame = _vl_app(140)
         _exec_ex_command!(app, "son"); Tachikoma.view(app, frame)
-        ed = Ressac._active_editor(app)
+        sdoc = Ressac._sound_doc(app)
+        @test Ressac._focused_pane_impl(app) === sdoc
         wide_tb = Tachikoma.TestBackend(230, 40)
         wide = Tachikoma.Frame(wide_tb.buf, Tachikoma.Rect(1, 1, 230, 40), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
         Tachikoma.view(app, wide); Tachikoma.view(app, wide)
         @test Ressac.DocPane in _vl_panes(app)
-        @test Ressac._active_editor(app) === ed                  # le clavier n'a pas bougé
+        @test Ressac._focused_pane_impl(app) === sdoc            # le clavier n'a pas bougé
         Tachikoma.view(app, frame); Tachikoma.view(app, frame)
         @test !(Ressac.DocPane in _vl_panes(app))
-        @test Ressac._active_editor(app) === ed
+        @test Ressac._focused_pane_impl(app) === sdoc
     end
 
-    @testset "une commande qui parle d'un son l'ouvre à droite" begin
+    @testset "une commande qui parle du son du curseur ouvre sa DOC à droite" begin
         app, tb, frame = _vl_app(140)
         @test app.volet === :fiche
+        # Hors d'un son, :explain n'a rien à expliquer : il le dit, le volet ne bouge pas.
         _exec_ex_command!(app, "explain")
-        @test app.volet === :son
+        @test app.volet === :fiche && app.modal === :explain
+        _key!(app, :escape)
+        _set_buffer!(app, "@d1 p\"bd\"\n\n@synth :vol (freq=220) saw(:freq)"; row = 3)
+        _exec_ex_command!(app, "explain")
+        @test app.volet === :son && Ressac._sound_doc(app).mode === :explain
         # Une commande de patterns, elle, ne touche pas au volet.
         _exec_ex_command!(app, "back")
         _exec_ex_command!(app, "mixer")

@@ -141,7 +141,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `g s` | ouvrir le son sous le curseur, à droite |
+| `g s` | amener dans le texte le son nommé sous le curseur |
 | `g w` | ouvrir le wiki, à droite |
 | `g x` | ouvrir l'explorateur de sons |
 
@@ -422,7 +422,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 ## SON
 
-### SON — depuis le texte ou sa DOC
+### SON — le curseur dans un bloc @synth, ou dans sa DOC
 
 **Jouer / écouter**
 
@@ -441,7 +441,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `U` | utiliser dans un pattern (sauve + @dN à gauche) |
+| `U` | utiliser dans un pattern (le range, puis écrit un @dN qui le joue) |
 
 **Structure**
 
@@ -547,7 +547,14 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `]` | graphe : défiler → |
 | `[` | graphe : défiler ← |
 
-### Pane synth (texte)
+### Dans un son (un bloc @synth du texte)
+
+**Évaluer**
+
+| Touche | Action |
+|---|---|
+| `e` | évaluer le son : il est défini, et s'entend une fois |
+| `E` | tout évaluer |
 
 **Structure**
 
@@ -562,8 +569,8 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `g t` | synth suivant |
-| `g T` | synth précédent |
+| `g w` | ouvrir le wiki, à droite |
+| `g x` | ouvrir l'explorateur de sons |
 
 ### & + … (atelier, dans un son)
 
@@ -627,6 +634,12 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 | `Space g` | amplitude |
 | `Space S` | sécurité |
 | `Space u` | UGen sans wrapper |
+
+**Fichiers**
+
+| Touche | Action |
+|---|---|
+| `Space W` | ▸ ranger ce son (:save) |
 
 **Aide**
 
@@ -732,7 +745,7 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `Enter` | ouvrir dans une pane synth |
+| `Enter` | l'écrire dans le texte |
 
 **Aide**
 
@@ -1007,24 +1020,6 @@ Lecture d'une carte :
 
 ### Éditeur (patterns et synth)
 
-**Naviguer**
-
-| Touche | Action |
-|---|---|
-| `Tab` | basculer patterns ⟷ synth |
-| `PgDn` | page suivante |
-| `PgUp` | page précédente |
-| `Ctrl-d / PgDn` | demi-page suivante |
-| `Ctrl-u / PgUp` | demi-page précédente |
-| `h / j / k / l` | déplacer le curseur (ou flèches) |
-| `w / b / e` | mot suivant / précédent / fin de mot |
-| `f / F / t / T` | aller au caractère (f dessus, t avant, majuscule = à gauche) |
-| `;` | refaire la recherche de caractère |
-| `,` | refaire la recherche de caractère, à l'envers |
-| `W / B / E` | MOT (séparé par des espaces) |
-| `0 / $` | début / fin de ligne |
-| `g g / G` | début / fin du buffer |
-
 **Éditer**
 
 | Touche | Action |
@@ -1048,6 +1043,23 @@ Lecture d'une carte :
 |---|---|
 | `v` | sélection visuelle (caractères) |
 | `V` | sélection visuelle (lignes) |
+
+**Naviguer**
+
+| Touche | Action |
+|---|---|
+| `PgDn` | page suivante |
+| `PgUp` | page précédente |
+| `Ctrl-d / PgDn` | demi-page suivante |
+| `Ctrl-u / PgUp` | demi-page précédente |
+| `h / j / k / l` | déplacer le curseur (ou flèches) |
+| `w / b / e` | mot suivant / précédent / fin de mot |
+| `f / F / t / T` | aller au caractère (f dessus, t avant, majuscule = à gauche) |
+| `;` | refaire la recherche de caractère |
+| `,` | refaire la recherche de caractère, à l'envers |
+| `W / B / E` | MOT (séparé par des espaces) |
+| `0 / $` | début / fin de ligne |
+| `g g / G` | début / fin du buffer |
 
 ### Mode pane (Ctrl-w, reste actif)
 

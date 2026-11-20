@@ -113,18 +113,15 @@ _register_regex!(r"^xfade\s+(\d+)$", (m, mt) -> _set_transition!(m, :xfade, max(
 
 # ── Synth tabs ───────────────────────────────────────────────────────
 _register_literal!(m -> _open_sandbox_synth!(m),     "synth", "scratch", "sandbox")
-# `:back` : retour à PLAY (DESIGN reste tel quel, ses onglets aussi).
-_register_literal!(m -> _close_volet!(m), "back", "fiche")
-_register_literal!(m -> _close_active_synth_tab!(m), "close")
-_register_literal!(m -> _list_synth_tabs!(m),        "tabs")
-_register_literal!(m -> _cycle_synth_tab!(m; dir=+1),  "tabnext", "tabn")
-_register_literal!(m -> _cycle_synth_tab!(m; dir=-1),  "tabprev", "tabp")
+# `:back` : la fiche revient à droite, le clavier dans le texte.
+_register_literal!(m -> _close_volet!(m), "back", "fiche", "close")
 _register_regex!(r"^synth\s+(\w+)$",
-    (m, mt) -> _open_synth_tab!(m, mt.captures[1]))
+    (m, mt) -> _open_sound!(m, mt.captures[1]))
 
 # ── Save / sessions — context-sensitive on focus ─────────────────────
-# `:w` sauve ce qui a le clavier : le son dans le volet, la session à gauche.
-_register_literal!(m -> _write_focused!(m, ""),     "w", "save-synth")
+# `:w` écrit la session (le texte, sons compris). Un son se range dans la
+# réserve par `:save` (ou `Espace W`), le curseur dessus.
+_register_literal!(m -> _write_focused!(m, ""),     "w")
 _register_regex!(r"^w\s+(\S+)$", (m, mt) -> _write_focused!(m, mt.captures[1]))
 # Les sessions, avec les verbes de vim (app_sessions.jl).
 _register_literal!(m -> _reload_focused!(m),               "e")
@@ -305,10 +302,7 @@ function _tuning_sb!(m::RessacApp, depth_str)
 end
 
 # ── Test ────────────────────────────────────────────────────────────
-_register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m),
-                   "test", "t")
-_register_literal!(m -> _synth_pane_open(m) && _test_current_synth!(m; raw=true),
-                   "test-raw")
+_register_literal!(m -> _test_current_synth!(m), "test", "t")
 
 # ── Audio input → reservoir bridge ─────────────────────────────────
 _register_regex!(r"^audio-in\s+start$",
@@ -429,19 +423,8 @@ _register_literal!(m -> (m.calm = !m.calm;
     "calme", "calm")
 # Patterns rangés — verbes distincts de :save / :load, qui appartiennent
 # déjà aux sessions (un workspace entier, pas un bloc).
-# Sur un bloc `@synth`, `:keep` range le SON (sous son nom, ou sous celui
-# qu'on donne) ; sur un bloc `@dN`, le pattern.
-_register_literal!(m -> begin
-        hit = _sound_under_cursor(m)
-        hit === nothing ? _push_app_log!(m,
-            "[INFO] :keep <nom> [étiquettes…] — range le bloc @dN sous le curseur (:recall le rappelle) ; sur un @synth, :keep range le son") :
-            _keep_sound_block!(m, hit...)
-    end, "keep")
-_register_regex!(r"^keep\s+(.+)$", (m, mt) -> begin
-        hit = _sound_under_cursor(m)
-        hit === nothing ? _save_pattern_cmd!(m, mt.captures[1]) :
-            _keep_sound_block!(m, hit...; new_name = first(split(mt.captures[1])))
-    end)
+_register_literal!(m -> _save_under_cursor!(m), "save", "keep")
+_register_regex!(r"^(?:save|keep)\s+(.+)$", (m, mt) -> _save_under_cursor!(m, mt.captures[1]))
 _register_literal!(m -> _push_app_log!(m,
         "[INFO] :recall <nom> [slot] — recharge un pattern rangé (Espace P pour la liste)"),
     "recall")
@@ -566,23 +549,20 @@ _register_regex!(r"^starter\s+([\w.-]+)$",
 # le buffer focalisé. Résultat dans un modal scrollable.
 function _explain_command!(m::RessacApp, name::AbstractString)
     nm = strip(String(name))
-    parts = _synth_workspace_parts(m)
-    if isempty(nm) && parts !== nothing && parts[2] !== nothing
+    if isempty(nm) && _current_sound(m) !== nothing
         _design_doc_mode!(m, :explain)
-        _focus_pane!(m, parts[2])
+        sdoc = _sound_doc(m)
+        sdoc === nothing || _focus_pane!(m, sdoc)
         return
     end
     lines = if isempty(nm)
-        ed = _active_editor(m)
-        (g, why) = ed === nothing ? (nothing, "pas d'éditeur") : parse_dsl_synth(TK.text(ed))
-        g === nothing ? ["(buffer courant : ne se relit pas en synth DSL — $why)"] :
-                        vcat(explain_genome(g), prune_report_lines(g))
+        ["(pose le curseur sur un son — un bloc @synth — ou donne un nom : :explain <nom>)"]
     else
         path = joinpath(_project_dir(), "plugins", "user-synths", "$nm.jl")
         g = isfile(path) ? genome_from_dsl(read(path, String)) : nothing
         g === nothing ? explain_synth_file(path) : vcat(explain_genome(g), prune_report_lines(g))
     end
-    m.explain_lines = vcat(["EXPLAIN · $(isempty(nm) ? "buffer courant" : nm)", ""], lines)
+    m.explain_lines = vcat(["EXPLAIN · $(isempty(nm) ? "?" : nm)", ""], lines)
     _open_modal!(m, :explain)
     return
 end
@@ -739,53 +719,30 @@ _register_special!(
 # Small named helpers — kept out of the inline lambdas above so they
 # stay readable + greppable. Each takes (m, mt::RegexMatch).
 
-# Ce que `:w` sauve suit le clavier : du côté d'un son (son texte, sa DOC,
-# sa MODULATION) c'est le synth ; du côté des patterns, la session.
-_saves_synth(m::RessacApp) = _workspace_mode(m) === :design && _current_synth_tab(m) !== nothing
-
+# `:w` écrit la session — le texte entier, sons compris. Ranger un son dans
+# la réserve (`plugins/user-synths`) est un autre geste : `:save`.
 function _write_focused!(m::RessacApp, name::AbstractString)
-    if _saves_synth(m)
-        isempty(name) ? _save_current_synth!(m) : _save_current_synth!(m; new_name = name)
-    else
-        _session_write!(m, name)
-        # Le curseur sur un son : la session est écrite, pas le son.
-        hit = _sound_under_cursor(m)
-        hit === nothing || _push_app_log!(m, "[INFO] le son « $(hit[2].name) » est écrit avec la session — :keep le range aussi dans la réserve des sons")
-    end
+    _session_write!(m, name)
+    snd = _sound_under_cursor(m)
+    snd === nothing || _push_app_log!(m, "[INFO] le son « $(snd.name) » est écrit avec la session — :save (Espace W) le range aussi dans la réserve des sons")
 end
-# `:e` / `:e!` — le pendant de `:w` : dans le texte d'un son, c'est ce son
-# qu'on relit du disque ; ailleurs, la session.
-_reload_focused!(m::RessacApp; force::Bool = false) =
-    _saves_synth(m) ? _reload_current_synth!(m; force) : _session_reload!(m; force)
+# `:e` / `:e!` — relire la session.
+_reload_focused!(m::RessacApp; force::Bool = false) = _session_reload!(m; force)
 
-"""
-    _reload_current_synth!(m; force = false) -> Bool
-
-Relit du disque le son ouvert. Sans `!`, refuse de laisser des changements
-qui ne sont pas écrits. `u` rend le texte d'avant.
-"""
-function _reload_current_synth!(m::RessacApp; force::Bool = false)
-    tab = _current_synth_tab(m)
-    tab === nothing && return false
-    path = _app_synth_path(tab.name; mode = :dsl)
-    if !isfile(path)
-        _push_app_log!(m, "[INFO] :e — « $(tab.name) » n'a pas encore été écrit (:w l'écrit)")
-        return false
+# `:save` (et `:keep`) : ranger ce qui est sous le curseur. Sur un son, le
+# son (sous son nom, ou sous celui qu'on donne) ; sur un bloc `@dN`, le
+# pattern, sous le nom donné.
+function _save_under_cursor!(m::RessacApp, arg::AbstractString = "")
+    arg = strip(String(arg))
+    snd = _sound_under_cursor(m)
+    if snd !== nothing
+        isempty(arg) ? _save_sound!(m, snd) : _save_sound!(m, snd; new_name = first(split(arg)))
+    elseif isempty(arg)
+        _push_app_log!(m, "[INFO] :save <nom> [étiquettes…] — range le bloc @dN sous le curseur (:recall le rappelle) ; sur un @synth, :save range le son")
+    else
+        _save_pattern_cmd!(m, arg)
     end
-    disk = read(path, String)
-    ed = tab.code_editor
-    if TK.text(ed) == disk
-        _push_app_log!(m, "[INFO] :e — « $(tab.name) » est déjà tel qu'il est écrit")
-        return true
-    end
-    if !force
-        _push_app_log!(m, "[WARN] « $(tab.name) » a changé depuis qu'il est écrit — :w d'abord, ou :e! pour laisser ces changements")
-        return false
-    end
-    _edit_text!(ed, disk; row = 1, col = 0)
-    ed.mode = :normal
-    _push_app_log!(m, "[INFO] « $(tab.name) » relu du disque (u rend le texte d'avant)")
-    return true
+    return
 end
 
 function _theme_switch(m::RessacApp, mt::RegexMatch)

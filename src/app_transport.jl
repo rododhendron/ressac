@@ -71,14 +71,14 @@ One-shot WAV export of the currently-open synth. Sequence:
 Runs the timing on an `@async` Task so the UI stays interactive.
 """
 function _export_current_synth!(m::RessacApp; duration::Float64 = 4.0, pre_roll::Float64 = 0.3)
-    _synth_pane_open(m) ||
-        (_push_app_log!(m, "[ERROR] export : ouvre d'abord un synth (:synth <nom>)"); return)
+    _current_sound(m) === nothing &&
+        (_push_app_log!(m, "[ERROR] export : pose le curseur sur un son (:synth <nom> l'amène dans le texte)"); return)
     sched = _LIVE_SCHEDULER[]
     sched === nothing &&
         (_push_app_log!(m, "[ERROR] export : pas de session live"); return)
     m.recording &&
         (_push_app_log!(m, "[WARN] export : arrête d'abord le :rec en cours"); return)
-    tab = _current_synth_tab(m)
+    tab = _current_sound(m)
     dir = joinpath(_project_dir(), "recordings")
     isdir(dir) || mkpath(dir)
     ts = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")

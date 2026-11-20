@@ -41,10 +41,9 @@ _drmsgs(mock) = [Ressac.decode_message(b) for b in mock.sent]
 _drlast(mock, addr) = (ms = filter(m -> m.address == addr, _drmsgs(mock)); isempty(ms) ? nothing : ms[end])
 _drpairs(m, from) = Dict(Symbol(m.args[i]) => m.args[i + 1] for i in from:2:length(m.args) - 1)
 # Focalise la (première) pane synth — `_find_pane(EditorPane)` rendrait PATTERNS.
+# Le clavier revient dans le texte (le curseur y est resté, dans le son).
 function _dr_focus_synth!(app)
-    syn = Ressac._all_synth_buffers(app)
-    isempty(syn) && return
-    Ressac.current_workspace(app.workspaces).focused_pane = syn[1][1].id
+    Ressac._focus_patterns!(app)
     Ressac._active_editor(app).mode = :normal
 end
 
@@ -139,7 +138,7 @@ end
     end
 end
 
-@testset "drone — D / T dans l'éditeur, pane MODULATION" begin
+@testset "drone — D / T dans le bloc d'un son, pane MODULATION" begin
     mktempdir() do dir
         mkpath(joinpath(dir, "plugins", "user-synths"))
         cd(dir) do
@@ -148,10 +147,10 @@ end
             Ressac._LIVE_SCHEDULER[] = app.scheduler
             empty!(Ressac._DRONES)
             try
-                Ressac._open_synth_tab!(app, "dronetest")
-                tab = Ressac._current_synth_tab(app)
-                Tachikoma.set_text!(tab.code_editor, _DR_SRC)
-                tab.code_editor.mode = :normal
+                Ressac._open_sound!(app, "dronetest")
+                snd = Ressac._current_sound(app)
+                @test Ressac._sound_write!(snd, _DR_SRC)
+                @test Ressac._focused_role(app) === :synth
 
                 # D : rien n'est joué en one-shot, le drone démarre avec les défauts
                 empty!(mock.sent)
@@ -166,7 +165,7 @@ end
                 @test d !== nothing && d.origin === :editor && d.names == [:freq, :sustain, :gain, :cutoff, :release]
                 @test occursin("drone dronetest ▶", app.logs[end])
 
-                # la pane MODULATION est ouverte, le focus est resté sur l'éditeur
+                # la pane MODULATION est ouverte, le clavier est resté dans le texte, sur le son
                 p = Ressac._find_pane(app, Ressac.DronePane)
                 @test p isa Ressac.DronePane
                 @test Ressac._focused_role(app) === :synth
@@ -216,7 +215,7 @@ end
                 _drkey(app, 'h')
                 @test isapprox(d.values[:gain], 0.5 - 1 / 24)
 
-                # T depuis la pane synth garde les réglages
+                # T depuis le texte du son garde les réglages
                 _dr_focus_synth!(app)
                 _drkey(app, 'T')
                 d = Ressac.drone_get(:dronetest)
@@ -233,7 +232,7 @@ end
                 @test occursin("(aucun drone)", scr)
 
                 # une erreur de DSL ne lance rien
-                Tachikoma.set_text!(tab.code_editor, "@synth :dronetest (freq=220) saw(:freq) |> rlpf(")
+                @test Ressac._sound_write!(snd, "@synth :dronetest (freq=220) saw(:freq) |> rlpf(")
                 empty!(mock.sent)
                 _drkey(app, 'D')
                 @test _drlast(mock, "/ressac/drone/start") === nothing
@@ -241,7 +240,7 @@ end
                 @test Ressac._DRONE_CAPTURE[] === nothing
 
                 # x dans la pane relâche, X relâche tout ; hush et panic aussi
-                Tachikoma.set_text!(tab.code_editor, _DR_SRC)
+                @test Ressac._sound_write!(snd, _DR_SRC)
                 _drkey(app, 'D')
                 @test Ressac.drone_running(:dronetest)
                 Ressac._focus_pane!(app, p)
@@ -255,17 +254,57 @@ end
                 _drkey(app, '!')
                 @test isempty(Ressac.drone_list())
 
-                # fermer la pane synth relâche son drone
+                # le drone est celui du son du curseur : un autre son, un autre drone
                 _drkey(app, 'D')
                 @test Ressac.drone_running(:dronetest)
-                Ressac._close_active_synth_tab!(app)
-                @test !Ressac.drone_running(:dronetest)
+                Ressac._open_sound!(app, "dronedeux")
+                @test Ressac._editor_drone(app) === nothing
+                _drkey(app, 'D')
+                @test Ressac.drone_running(:dronedeux) && Ressac.drone_running(:dronetest)
+                @test Ressac._editor_drone(app).id === :dronedeux
+                Ressac._open_sound!(app, "dronetest")
+                @test Ressac._editor_drone(app).id === :dronetest
+                empty!(mock.sent)
+                _drkey(app, 'D')
                 @test _drlast(mock, "/ressac/drone/stop").args == Any["dronetest"]
+                @test !Ressac.drone_running(:dronetest) && Ressac.drone_running(:dronedeux)
             finally
                 Ressac._LIVE_SCHEDULER[] = old
                 empty!(Ressac._DRONES)
             end
         end
+    end
+end
+
+@testset "drone — avec la DOC du son à droite, MODULATION s'y range en onglet" begin
+    app, tb, frame, mock = _dr_app()
+    old = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    empty!(Ressac._DRONES)
+    try
+        Ressac._build_screen!(app)                           # l'écran entier : le texte, et un volet à droite
+        Ressac._active_editor(app).mode = :normal
+        Ressac._open_sound!(app, "dronetest")
+        @test Ressac._sound_write!(Ressac._current_sound(app), _DR_SRC)
+        _drkey(app, 'X')                                     # la DOC du son, à droite ; le clavier reste dans le texte
+        sdoc = Ressac._sound_doc(app)
+        @test app.volet === :son && sdoc !== nothing && Ressac._focused_role(app) === :synth
+        nleaves = length(collect(Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree)))
+        _drkey(app, 'D')
+        @test Ressac.drone_running(:dronetest)
+        p = Ressac._find_pane(app, Ressac.DronePane)
+        leaf = only(l for l in Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree) if any(t -> t === sdoc, l.tabs))
+        @test p isa Ressac.DronePane && any(t -> t === p, leaf.tabs)      # un onglet à côté de la DOC, pas une pane de plus
+        @test leaf.tabs[leaf.current_tab] === p                           # et elle passe devant
+        @test length(collect(Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree))) == nleaves
+        @test Ressac._focused_role(app) === :synth                        # le clavier n'a pas bougé
+        @test occursin("MODULATION", _drscreen(app, tb, frame))
+        # X ramène la DOC devant
+        _drkey(app, 'X')
+        @test leaf.tabs[leaf.current_tab] === sdoc && sdoc.mode === :explain
+    finally
+        Ressac._LIVE_SCHEDULER[] = old
+        empty!(Ressac._DRONES)
     end
 end
 

@@ -72,7 +72,7 @@ hauteur). Quand un rôle est actif :
 |---|---|
 | `Entrée` | ouvert sur un slot (voir plus bas) : **adopte** le candidat dans la ligne |
 | `M` | écrit le candidat dans le texte principal (`@synth :candidat_N …`), sous le bloc du curseur |
-| `e` | pareil, sous le nom que tu donnes — puis `e` sur le bloc le fait entendre, `:keep` le range |
+| `e` | pareil, sous le nom que tu donnes — puis `e` sur le bloc le fait entendre, `:save` le range |
 | `w` | le sauve comme synth dans `plugins/user-synths/` |
 | `s` | le sauve comme **graine** dans `plugins/synth-seeds/`, pour repartir de lui |
 | `y` | copie le DSL |

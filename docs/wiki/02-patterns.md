@@ -313,7 +313,7 @@ Un bloc qui sonne bien se range sous un nom, et se rappelle sur
 n'importe quel slot :
 
 ```
-:keep jersey kick        range le bloc @dN sous le curseur, étiqueté « kick »
+:save jersey kick        range le bloc @dN sous le curseur, étiqueté « kick » (:keep aussi)
 :recall jersey           le remet sur son slot d'origine et l'évalue
 :recall jersey 5         le remet sur d5
 Espace P                 la liste : / cherche, Entrée charge, 1-9 choisit le slot, x supprime
@@ -324,10 +324,10 @@ texte par pattern avec ses étiquettes en en-tête : éditable à la main,
 copiable d'une machine à l'autre. Rappeler sur un slot déjà occupé
 remplace son bloc ; sinon le bloc est ajouté en fin de buffer.
 
-Sur un bloc `@synth`, `:keep` range le **son** (voir « Un son dans le
+Sur un bloc `@synth`, `:save` range le **son** (voir « Un son dans le
 texte » dans le guide du DSL), pas un pattern.
 
-`:keep` prend le bloc entier, lignes `|>` comprises. C'est le pendant,
+`:save` prend le bloc entier, lignes `|>` comprises. C'est le pendant,
 côté rythme, de la librairie de synths : on essaie beaucoup, on garde ce
 qui marche, on le retrouve vite.
 

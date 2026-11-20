@@ -319,9 +319,9 @@ end
         try
             _exec_ex_command!(app, "synth expdsl")
             Tachikoma.view(app, frame)
-            tab = Ressac._current_synth_tab(app)
-            @test tab !== nothing
-            Tachikoma.set_text!(tab.code_editor, "@synth :expdsl (freq=220, sustain=0.2) saw(:freq) |> low_pass(900)\n")
+            snd = Ressac._current_sound(app)
+            @test snd !== nothing && snd.name == "expdsl"
+            @test Ressac._sound_write!(snd, "@synth :expdsl (freq=220, sustain=0.2) saw(:freq) |> low_pass(900)")
             empty!(app.scheduler.osc.sent)
             Ressac._export_current_synth!(app; duration = 0.02, pre_roll = 0.0)
             @test app.recording
@@ -330,9 +330,9 @@ end
             addrs = [m.address for m in sent]
             @test addrs[1] == "/ressac/recStart" && addrs[end] == "/ressac/recStop"
             play = only(m for m in sent if m.address == "/ressac/evalAndPlay")
-            # Du SuperCollider compilé, pas le texte Julia du buffer.
+            # Du SuperCollider compilé, pas le texte Julia du bloc — et le son seul, pas les patterns autour.
             @test occursin("SynthDef(\\expdsl", String(play.args[2])) && occursin("LPF.ar(Saw.ar(freq), 900)", String(play.args[2]))
-            @test !occursin("@synth", String(play.args[2]))
+            @test !occursin("@synth", String(play.args[2])) && !occursin("@d1", String(play.args[2]))
             @test endswith(String(sent[1].args[1]), ".wav") && startswith(String(sent[1].args[1]), pwd())
         finally
             Ressac._LIVE_SCHEDULER[] = nothing
@@ -348,7 +348,7 @@ end
         (r, why) = Ressac.synthdef_to_dsl_reason("SynthDef(\\foo, { |out=0, freq=440| Out.ar(out, Saw.ar(freq) * amp); })")
         @test r === nothing && occursin("identifiant inconnu « amp »", why)
         @test occursin("reconnaissable", last(Ressac.synthdef_to_dsl_reason("pas du SC")))
-        # Dans l'app : :prune ne touche pas au texte et dit pourquoi ; :todsl aussi.
+        # Dans l'app : :prune ne touche pas au texte et dit pourquoi ; :todsl renvoie à :synth <nom>.
         oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
         Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
         app, frame = _new_app()
@@ -356,17 +356,18 @@ end
         try
             _exec_ex_command!(app, "synth pourquoi")
             Tachikoma.view(app, frame)
-            tab = Ressac._current_synth_tab(app)
-            text = "@synth :pourquoi (freq=220) saw(:freq) * SynthDSL.Sig(\"amp\")\n"
-            Tachikoma.set_text!(tab.code_editor, text)
+            snd = Ressac._current_sound(app)
+            @test snd !== nothing && snd.name == "pourquoi"
+            ed = snd.code_editor
+            text = "@synth :pourquoi (freq=220) saw(:freq) * SynthDSL.Sig(\"amp\")"
+            @test Ressac._sound_write!(snd, text)
+            whole = Tachikoma.text(ed)
             logs = _cmd_logs(app, "prune")
             @test any(l -> occursin(":prune — le buffer ne se relit pas en entier", l) && occursin("« amp »", l), logs)
-            @test Tachikoma.text(tab.code_editor) == rstrip(text, '\n') || Tachikoma.text(tab.code_editor) == text
-            sc = "SynthDef(\\pourquoi, { |out=0, freq=440| Out.ar(out, Saw.ar(freq) * amp); })"
-            Tachikoma.set_text!(tab.code_editor, sc)
+            @test Ressac._sound_text(Ressac._current_sound(app)) == text && Tachikoma.text(ed) == whole
             logs = _cmd_logs(app, "todsl")
-            @test any(l -> occursin(":todsl — « pourquoi » n'est pas converti", l) && occursin("« amp »", l), logs)
-            @test Tachikoma.text(tab.code_editor) == sc
+            @test any(l -> occursin(":todsl", l) && occursin(":synth <nom>", l), logs)
+            @test Tachikoma.text(ed) == whole
         finally
             Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
         end
@@ -447,43 +448,32 @@ end
         @test !Ressac._is_raw_synthdef("// SynthDef(\\a, …) en commentaire SC")
     end
 
-    @testset "un .scd laissé dans user-synths s'ouvre converti, :w le range en .jl" begin
+    @testset "un .scd laissé dans user-synths arrive converti dans le texte, :save le range en .jl" begin
         app, frame = _new_app()
         Ressac._active_editor(app).mode = :normal
         dir = joinpath(pwd(), "plugins", "user-synths"); mkpath(dir)
         write(joinpath(dir, "vieux.scd"), sc)
         _exec_ex_command!(app, "synth vieux")
-        tab = Ressac._current_synth_tab(app)
-        text = Tachikoma.text(tab.code_editor)
-        @test tab.name == "vieux" && occursin("@synth :vieux", text) && !occursin("SynthDef(", text)
-        _exec_ex_command!(app, "w")
+        snd = Ressac._current_sound(app)
+        @test snd !== nothing && snd.name == "vieux"
+        ed = snd.code_editor
+        @test startswith(Ressac._sound_text(snd), "@synth :vieux") && occursin("env_perc(", Ressac._sound_text(snd))
+        @test !occursin("SynthDef(", Tachikoma.text(ed))
+        # :w écrit la session, pas le son ; :save le range.
+        _exec_ex_command!(app, "w sessvieux")
+        @test !isfile(joinpath(dir, "vieux.jl"))
+        _exec_ex_command!(app, "save")
         @test isfile(joinpath(dir, "vieux.jl")) && isfile(joinpath(dir, "vieux.scd"))   # l'archive n'est pas touchée
+        @test read(joinpath(dir, "vieux.jl"), String) == Ressac._sound_text(snd) * "\n"
         # La librairie ne liste plus que le .jl.
         @test count(e -> e.name == "vieux", Ressac._synthlib_all_entries()) == 1
         @test only(e for e in Ressac._synthlib_all_entries() if e.name == "vieux").mode === :dsl
-        # Un .scd illisible : on le dit, rien ne s'ouvre à moitié.
+        # Un .scd illisible : on le dit, rien ne s'écrit à moitié.
         write(joinpath(dir, "casse.scd"), replace(sc, "vieux" => "casse", "Saw.ar(freq)" => "Saw.ar(inconnu)"))
+        whole = Tachikoma.text(ed)
         logs = _cmd_logs(app, "synth casse")
         @test any(l -> occursin("ne se convertit pas en entier", l) && occursin("inconnu", l), logs)
-        @test Ressac._current_synth_tab(app).name == "vieux"
-    end
-
-    @testset "du SuperCollider collé dans l'éditeur : T et :w renvoient à :todsl" begin
-        _with_live_app() do app, frame
-            Ressac._active_editor(app).mode = :normal
-            _exec_ex_command!(app, "synth colle")
-            tab = Ressac._current_synth_tab(app)
-            Tachikoma.set_text!(tab.code_editor, replace(sc, "vieux" => "colle"))
-            empty!(app.scheduler.osc.sent)
-            _key!(app, 'T')
-            @test isempty(app.scheduler.osc.sent) && occursin(":todsl", app.logs[end])
-            @test any(l -> occursin(":todsl", l), _cmd_logs(app, "w"))
-            @test !isfile(joinpath(pwd(), "plugins", "user-synths", "colle.jl"))
-            _exec_ex_command!(app, "todsl")
-            @test occursin("@synth :colle", Tachikoma.text(tab.code_editor))
-            _exec_ex_command!(app, "w")
-            @test isfile(joinpath(pwd(), "plugins", "user-synths", "colle.jl"))
-        end
+        @test Tachikoma.text(ed) == whole && Ressac._current_sound(app).name == "vieux"
     end
 end
 

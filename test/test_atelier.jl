@@ -8,15 +8,17 @@ const _AT_SRC = """
   |> tanh_drive(2)
 end"""
 
-# Une app avec le son `wob` ouvert, le curseur sur la ligne `row`.
-function _at_app(f; row::Int = 3, col::Int = 6, text::AbstractString = _AT_SRC)
+# Une app dont le texte principal est le son `wob`, le curseur sur la ligne
+# `row`. Avec `before`, le son est précédé de ce texte (des patterns) et
+# `row` compte toujours depuis la première ligne du son.
+function _at_app(f; row::Int = 3, col::Int = 6, text::AbstractString = _AT_SRC, before::AbstractString = "")
     _with_live_app() do app, frame
         Ressac._active_editor(app).mode = :normal
         _exec_ex_command!(app, "synth wob")
-        tab = Ressac._current_synth_tab(app)
-        ed = tab.code_editor
-        Ressac._load_text!(ed, text)
-        ed.cursor_row = row; ed.cursor_col = col; ed.mode = :normal
+        ed = Ressac._patterns_editor(app)
+        Ressac._load_text!(ed, before * text)
+        ed.cursor_row = count(==('\n'), before) + row; ed.cursor_col = col; ed.mode = :normal
+        @assert Ressac._current_sound(app) !== nothing && Ressac._focused_role(app) === :synth
         empty!(app.scheduler.osc.sent)
         f(app, ed, frame)
     end
@@ -54,15 +56,14 @@ _at_last_sc(app) = (ms = [m for m in _at_sent(app) if m.address == "/ressac/eval
             ed.cursor_row = 4
             _key!(app, 'p')
             @test String(ed.lines[5]) == "  |> rlpf(900, 0.3)"                    # copié sous tanh_drive
-            # Le maillon copié vaut dans les autres textes : ici, les patterns.
-            @test String(Ressac._patterns_editor(app).yank_buffer[1]) == "  |> rlpf(900, 0.3)"
+            @test String(ed.yank_buffer[1]) == "  |> rlpf(900, 0.3)"
         end
     end
 
     @testset "sur une ligne à plusieurs maillons, dam prend le maillon et son pipe" begin
-        _at_app(; row = 1, col = 16, text = "saw(:freq) |> rlpf(900, 0.3) |> tanh_drive(2)") do app, ed, _
+        _at_app(; row = 1, col = 39, text = "@synth :wob (freq=110) saw(:freq) |> rlpf(900, 0.3) |> tanh_drive(2)") do app, ed, _
             _type!(app, "dam")
-            @test Tachikoma.text(ed) == "saw(:freq) |> tanh_drive(2)"
+            @test Tachikoma.text(ed) == "@synth :wob (freq=110) saw(:freq) |> tanh_drive(2)"
         end
     end
 
@@ -186,12 +187,41 @@ _at_last_sc(app) = (ms = [m for m in _at_sent(app) if m.address == "/ressac/eval
         end
     end
 
-    @testset "& b : bifurquer — une copie du son, à part" begin
+    @testset "& b : bifurquer — une copie du son, juste dessous" begin
         _at_app() do app, ed, _
             _key!(app, '&'); _key!(app, 'b')
-            tab = Ressac._current_synth_tab(app)
-            @test tab.name == "wob2" && occursin("@synth :wob2", Tachikoma.text(tab.code_editor))
-            @test Tachikoma.text(ed) == _AT_SRC                                  # l'original est intact
+            snd = Ressac._current_sound(app)                                     # le curseur est sur la copie
+            @test snd.name == "wob2" && Ressac._sound_text(snd) == replace(_AT_SRC, ":wob" => ":wob2")
+            @test Tachikoma.text(ed) == _AT_SRC * "\n\n" * replace(_AT_SRC, ":wob" => ":wob2")   # l'original est intact
+            @test ed.cursor_row == 7 && Ressac._focused_role(app) === :synth
+            _key!(app, 'u')
+            @test Tachikoma.text(ed) == _AT_SRC                                  # un seul u l'enlève
+        end
+    end
+
+    @testset "le son parmi les patterns : les gestes visent son bloc, pas le reste du texte" begin
+        pats = "@d1 p\"bd*4\" |> gain(0.8)\n@d2 s(\"wob\")\n\n"
+        _at_app(; before = pats) do app, ed, _
+            snd = Ressac._current_sound(app)
+            @test Ressac._sound_rows(snd) == (4, 8) && Ressac._sound_text(snd) == _AT_SRC
+            _type!(app, "dam")
+            @test Tachikoma.text(ed) == pats * "@synth :wob (freq=110, sustain=0.5) begin\n  saw(:freq)\n  |> tanh_drive(2)\nend"
+            _key!(app, 'u')
+            @test Tachikoma.text(ed) == pats * _AT_SRC
+            ed.cursor_row = 6; ed.cursor_col = 6
+            _key!(app, 'o')
+            @test app.modal === :atelier && app.atelier.action === :after
+            _type!(app, "free"); _key!(app, :down); _key!(app, :up)
+            sc = _at_last_sc(app)
+            @test occursin(r"FreeVerb\.ar\(RLPF\.ar\(", sc)                     # l'essai est le son seul, pas les patterns
+            _key!(app, :enter)
+            @test startswith(String(ed.lines[7]), "  |> free_verb(") && String(ed.lines[8]) == "  |> tanh_drive(2)"
+            @test startswith(Tachikoma.text(ed), pats)
+            # Sur une ligne de pattern, o est celui de vim : pas d'atelier hors d'un son.
+            ed.cursor_row = 1; ed.cursor_col = 0
+            @test Ressac._focused_role(app) === :patterns
+            _key!(app, 'o')
+            @test app.modal === :none && ed.mode === :insert
         end
     end
 
@@ -265,7 +295,7 @@ end
             @test any(m -> occursin("RLPF.ar(Saw.ar(freq), 902", String(m.args[1])), sent)
             # Un texte en cours de frappe, invalide, ne casse rien.
             Ressac._load_text!(ed, "@synth :wob (freq=110) saw(:freq) |> rlpf(900,")
-            @test !Ressac._define_synth_text!(app, Ressac._current_synth_tab(app), Tachikoma.text(ed))
+            @test !Ressac._define_synth_text!(app, Ressac.Sound("wob", ed), Tachikoma.text(ed))
         end
     end
 end

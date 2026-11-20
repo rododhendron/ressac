@@ -67,12 +67,6 @@ bind!(:global, "-", "réservoir : plus lent"; group = :view, hint = false, when 
 
 # ── :editor — commun aux panes patterns et synth (mode normal) ─────
 scope!(:editor, "Éditeur (patterns et synth)"; layer = :pane)
-# Tab n'a de sens que si les DEUX panes existent dans le workspace courant
-# (dans DESIGN, sans pane patterns, il ne ferait rien).
-_km_can_swap(m::RessacApp) = _km_normal_ed(m) && _synth_pane_open(m) &&
-    _patterns_pane_present(m)
-bind!(:editor, "Tab", "basculer patterns ⟷ synth"; short = "patterns⟷synth", group = :nav,
-      when = _km_can_swap, action = _swap_focus!)
 bind!(:editor, ".", "répéter la dernière édition"; group = :edit, hint = false,
       when = _km_normal_ed, action = m -> _vim_replay!(m, _km_ed(m)))
 bind!(:editor, "v", "sélection visuelle (caractères)"; group = :select, hint = false,
@@ -140,7 +134,7 @@ bind!(:mode_play, "K", "la fiche du mot sous le curseur (DOC)"; short = "fiche",
 bind!(:mode_play, "Space", "snippet…"; group = :edit, when = _km_normal,
       action = m -> (m.pending_leader = true))
 
-scope!(:mode_design, "SON — depuis le texte ou sa DOC"; layer = :mode, modes = (:design,))
+scope!(:mode_design, "SON — le curseur dans un bloc @synth, ou dans sa DOC"; layer = :mode, modes = (:design,))
 bind!(:mode_design, ["T", "t"], "entendre le son (maintenir = rafale)"; short = "entendre", group = :audio,
       repeat = true, when = _km_normal,
       action = (m, evt) -> _fire_t_with_accel!(m; held = evt.action === TK.key_repeat))
@@ -148,7 +142,7 @@ bind!(:mode_design, "D", "drone : tenir le son / le relâcher"; short = "drone",
       when = _km_normal, action = _drone_toggle!)
 bind!(:mode_design, "Space", "maillon DSL…"; group = :edit, when = _km_normal,
       action = m -> (m.pending_leader = true))
-bind!(:mode_design, "U", "utiliser dans un pattern (sauve + @dN à gauche)"; short = "→ pattern",
+bind!(:mode_design, "U", "utiliser dans un pattern (le range, puis écrit un @dN qui le joue)"; short = "→ pattern",
       group = :file, when = _km_normal, action = _design_use_in_pattern!)
 bind!(:mode_design, "P", "élagage : mesurer ce que chaque étape change (:prune retire le reste)"; short = "élagage", group = :structure,
       when = _km_normal, action = _design_measure_impacts!)
@@ -179,7 +173,7 @@ bind!(:patterns, "H", "pattern : décaler le token ←"; group = :edit, hint = f
       action = m -> _pat_shift!(m, _km_ed(m), -1))
 bind!(:patterns, "X", "pattern : silence le token (~)"; group = :edit, hint = false, when = _km_in_pattern,
       action = m -> _pat_silence!(m, _km_ed(m)))
-bind!(:patterns, "g s", "ouvrir le son sous le curseur, à droite"; short = "son", group = :nav,
+bind!(:patterns, "g s", "amener dans le texte le son nommé sous le curseur"; short = "son", group = :nav,
       when = _km_patterns, action = _goto_synth_under_cursor!)
 bind!(:patterns, "g w", "ouvrir le wiki, à droite"; short = "wiki", group = :nav,
       when = _km_patterns, action = m -> _open_wiki!(m))
@@ -189,11 +183,15 @@ bind!(:mode_explore, "Enter", "adopter ce candidat : le slot le joue, il est ran
       when = m -> m.explore_slot !== nothing, action = _explore_slot_adopt!)
 
 # ── :synth ─────────────────────────────────────────────────────────
-scope!(:synth, "Pane synth (texte)"; layer = :pane, modes = (:design,))
+scope!(:synth, "Dans un son (un bloc @synth du texte)"; layer = :pane, modes = (:design,))
 # L'atelier (atelier.jl) : sur un maillon, `o` / `O` proposent ce qui peut
 # suivre ou précéder — et le font entendre. Ailleurs, ce sont ceux de vim.
 _km_on_link(m::RessacApp) = _focused_role(m) === :synth && _km_normal_ed(m) &&
     (l = _link_at(_km_ed(m)); l !== nothing && _in_synth_chain(_km_ed(m)))
+bind!(:synth, "e", "évaluer le son : il est défini, et s'entend une fois"; short = "évaluer", group = :eval,
+      when = _km_synth, action = _eval_current_line!)
+bind!(:synth, "E", "tout évaluer"; group = :eval, hint = false, when = _km_synth,
+      action = m -> _eval_pattern_blocks!(m, :all))
 bind!(:synth, "o", "atelier : un maillon après (il s'entend avant d'être gardé)"; short = "maillon après",
       group = :structure, when = _km_on_link, action = m -> _atelier_open!(m, :after))
 bind!(:synth, "O", "atelier : un maillon avant"; group = :structure, hint = false,
@@ -202,12 +200,10 @@ bind!(:synth, "&", "atelier : faire bouger un nombre, en faire un argument, éco
       short = "atelier…", group = :structure, when = _km_normal_ed, action = m -> (m.pending_atelier = true))
 bind!(:synth, ["d a m", "y a m", "c i m"], "maillon : retirer · copier · remplacer (objet texte m)";
       group = :structure, hint = false)
-bind!(:synth, "g t", "synth suivant"; group = :nav, hint = false,
-      when = m -> _km_synth(m) && length(_all_synth_buffers(m)) > 1,
-      action = m -> _cycle_synth_tab!(m; dir = +1))
-bind!(:synth, "g T", "synth précédent"; group = :nav, hint = false,
-      when = m -> _km_synth(m) && length(_all_synth_buffers(m)) > 1,
-      action = m -> _cycle_synth_tab!(m; dir = -1))
+bind!(:synth, "g w", "ouvrir le wiki, à droite"; group = :nav, hint = false,
+      when = _km_synth, action = m -> _open_wiki!(m))
+bind!(:synth, "g x", "ouvrir l'explorateur de sons"; group = :nav, hint = false,
+      when = _km_synth, action = m -> _explore_slot_open!(m))
 
 # ── :leader — Space + touche (pane patterns) ───────────────────────
 scope!(:leader, "Space + …"; layer = :transient, modes = (:play,))
@@ -345,6 +341,8 @@ for (c, tpl, label) in _LEADER_SYNTH
     bind!(:leader_synth, "Space $c", label; group = :edit, short = label,
           action = m -> _expand_snippet!(m, _km_ed(m), tpl))
 end
+bind!(:leader_synth, "Space W", "▸ ranger ce son (:save)"; group = :file, short = "ranger le son",
+      action = m -> _save_under_cursor!(m))
 bind!(:leader_synth, "Space ?", "▸ aide"; group = :help, action = _open_help!)
 
 # ── Scopes documentaires (dispatch explicite dans app_input.jl) ────

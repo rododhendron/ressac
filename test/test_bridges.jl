@@ -1,6 +1,6 @@
 include(joinpath(@__DIR__, "helpers.jl"))
-# Ponts son ⟷ patterns : workspaces PLAY / DESIGN / EXPLORE, gs, U,
-# :synth <nom> depuis la librairie, U, export et M de l'explorateur.
+# Ponts son ⟷ patterns : le mode suit le curseur (PLAY / DESIGN / EXPLORE),
+# gs et :synth <nom> amènent un son dans le texte, U, export et M de l'explorateur.
 using Test
 using Ressac
 import Tachikoma
@@ -26,6 +26,10 @@ function _bscreen(app, tb, frame)
     Tachikoma.reset!(tb.buf); Tachikoma.view(app, frame)
     join((Tachikoma.row_text(tb, y) for y in 1:40), "\n")
 end
+# Le son sur lequel on travaille, et son texte.
+_bsound(app) = Ressac._current_sound(app)
+_bsound_text(app) = Ressac._sound_text(Ressac._current_sound(app))
+_bwhole(app) = Tachikoma.text(Ressac._patterns_editor(app))
 # Sandbox : les ponts écrivent dans plugins/user-synths → on travaille
 # dans un répertoire temporaire (pwd() est la racine des chemins).
 function _in_sandbox(f)
@@ -47,11 +51,12 @@ end
     @test Ressac._focused_role(app) === :patterns
     scr = _bscreen(app, tb, frame)
     @test occursin("PATTERNS", scr) && !occursin("DESIGN", scr) && !occursin("EXPLORE", scr)
-    patterns = Tachikoma.text(Ressac._patterns_editor(app))
+    patterns = _bwhole(app)
+    # :son — la DOC d'un son, à droite ; elle n'écrit rien dans le texte.
     _bex(app, "son")
     @test _bws(app) == "DESIGN" && app.volet === :son
-    @test Ressac._focused_role(app) === :synth               # sketch synth pré-rempli
-    @test occursin("@synth :sketch", Tachikoma.text(Ressac._active_editor(app)))
+    @test Ressac._focused_pane_impl(app) isa Ressac.SynthDocPane
+    @test Ressac._sound_doc(app) !== nothing && _bwhole(app) == patterns
     @test occursin("PATTERNS", _bscreen(app, tb, frame))     # les patterns restent à l'écran
     _bex(app, "explore")
     @test _bws(app) == "EXPLORE"
@@ -59,61 +64,97 @@ end
     @test occursin("EXPLORER", _bscreen(app, tb, frame))
     _bex(app, "back")
     @test _bws(app) == "PLAY" && app.volet === :fiche && app.zoom_leaf == 0
-    @test Tachikoma.text(Ressac._patterns_editor(app)) == patterns
-    # Un volet déjà ouvert est gardé : le son retrouve son texte.
-    _bex(app, "son")
-    Tachikoma.set_text!(Ressac._active_editor(app), "@synth :sketch (freq=220) saw(:freq)")
+    @test _bwhole(app) == patterns
+    # Le mode suit le curseur : dans un bloc @synth on travaille un son, ailleurs les patterns.
+    ed = Ressac._patterns_editor(app)
+    ed.cursor_row = findfirst(l -> startswith(String(l), "@d1"), ed.lines)
+    Ressac._open_sound!(app, "essai")
+    @test _bws(app) == "DESIGN" && Ressac._focused_role(app) === :synth && app.volet === :fiche
+    @test _bsound(app).name == "essai" && _bsound_text(app) == "@synth :essai (freq=220, sustain=0.5) sin_osc(:freq)"
+    @test occursin("SON · essai", _bscreen(app, tb, frame))
+    row = ed.cursor_row
+    ed.cursor_row = 1
+    @test _bws(app) == "PLAY" && Ressac._focused_role(app) === :patterns && _bsound(app) === nothing
+    @test !occursin("SON · essai", _bscreen(app, tb, frame))
+    ed.cursor_row = row
+    # Changer de volet ne touche pas au texte ; :close est :back.
+    with_sound = _bwhole(app)
     _bex(app, "wiki"); @test app.volet === :wiki
-    _bex(app, "son")
-    @test occursin("saw(:freq)", Tachikoma.text(Ressac._active_editor(app)))
+    _bex(app, "son");  @test app.volet === :son
+    _bex(app, "close"); @test app.volet === :fiche
+    @test _bwhole(app) == with_sound && Ressac._focused_role(app) === :synth
     # :q ferme le volet, puis seulement quitte.
+    _bex(app, "wiki")
     _bex(app, "q"); @test app.volet === :fiche && !app.quit
-    @test Ressac._focused_role(app) === :patterns
+    @test Ressac._focused_buffer(app) !== nothing            # le clavier est revenu dans le texte
+    @test _bwhole(app) == with_sound
 end
 
-@testset ":synth <nom> ouvre la recette de librairie (copie éditable), pas un starter vide" begin
+@testset ":synth <nom> écrit la recette de librairie dans le texte (copie éditable), pas un starter vide" begin
     _in_sandbox() do
         app, tb, frame = _br_app()
+        patterns = _bwhole(app)
         _bex(app, "synth kick")
         @test Ressac._focused_role(app) === :synth
-        txt = Tachikoma.text(Ressac._active_editor(app))
+        @test _bsound(app).name == "kick"
+        txt = _bsound_text(app)
         @test occursin("env_perc", txt)                        # la recette, pas sin_osc(:freq) seul
-        @test occursin("@synth :kick", txt)
+        @test startswith(txt, "@synth :kick")
+        @test !occursin("ressac-genome", _bwhole(app))         # la ligne du génome reste dans le fichier
         @test isfile(joinpath(pwd(), "plugins", "user-synths", "kick.jl"))
-        # un nom inconnu garde le starter
+        for l in split(rstrip(patterns), '\n')                 # rien de ce qui était écrit n'est perdu
+            @test occursin(l, _bwhole(app))
+        end
+        # un nom inconnu garde le starter ; il se pose sous le son du curseur
         _bex(app, "synth zorglub")
-        @test occursin("@synth :zorglub", Tachikoma.text(Ressac._active_editor(app)))
-        @test !occursin("env_perc", Tachikoma.text(Ressac._active_editor(app)))
+        @test _bsound_text(app) == "@synth :zorglub (freq=220, sustain=0.5) sin_osc(:freq)"
+        ed = Ressac._patterns_editor(app)
+        kick = Ressac._sound_block_named(ed.lines, "kick"); zorg = Ressac._sound_block_named(ed.lines, "zorglub")
+        @test kick !== nothing && zorg.row == kick.last_row + 2 && isempty(strip(String(ed.lines[kick.last_row + 1])))
+        # un son déjà dans le texte : on y va, sans le réécrire
+        whole = _bwhole(app)
+        _bex(app, "synth kick")
+        @test _bwhole(app) == whole && ed.cursor_row == kick.row && _bsound(app).name == "kick"
+        # :synth seul : un brouillon sketch_xxx
+        _bex(app, "synth")
+        @test occursin(r"^sketch_\w{3}$", _bsound(app).name) && occursin("sin_osc(:freq)", _bsound_text(app))
     end
 end
 
-@testset "gs — ouvre le synth sous le curseur dans DESIGN ; mot inconnu → message" begin
+@testset "gs — amène le synth sous le curseur dans le texte ; mot inconnu → message" begin
     _in_sandbox() do
         app, tb, frame = _br_app()
         ed = Ressac._active_editor(app)
-        Tachikoma.set_text!(ed, "@d1 p\"kick*4\"\n@d2 p\"zorglub\"")
+        Tachikoma.set_text!(ed, "@d1 p\"kick*4\"\n@d2 p\"pasunson\"")
         ed.cursor_row = 1; ed.cursor_col = 8                  # sur « kick »
         _bkey(app, 'g'); _bkey(app, 's')
         @test _bws(app) == "DESIGN"
         @test Ressac._focused_role(app) === :synth
-        @test Ressac._current_synth_tab(app).name == "kick"
-        @test occursin("env_perc", Tachikoma.text(Ressac._active_editor(app)))
-        # retour, mot inconnu
-        _bex(app, "back")
-        ed = Ressac._active_editor(app)
-        ed.cursor_row = 2; ed.cursor_col = 8                  # sur « zorglub »
-        n0 = length(app.logs)
+        @test _bsound(app).name == "kick"
+        @test occursin("env_perc", _bsound_text(app))
+        lines = [String(l) for l in ed.lines]
+        k = findfirst(l -> startswith(l, "@synth :kick"), lines)
+        @test lines[1:2] == ["@d1 p\"kick*4\"", ""] && ed.cursor_row == k      # sous le bloc du curseur, curseur sur le @synth
+        @test all(l -> isempty(l) || startswith(l, "#"), lines[3:(k - 1)])    # l'en-tête de la recette vient avec
+        @test lines[end] == "@d2 p\"pasunson\"" && isempty(strip(lines[end - 1]))
+        # gs de nouveau sur le même nom : le même bloc, pas un de plus
+        ed.cursor_row = 1; ed.cursor_col = 8
         _bkey(app, 'g'); _bkey(app, 's')
-        @test _bws(app) == "PLAY"
+        @test ed.cursor_row == k && [String(l) for l in ed.lines] == lines
+        # mot inconnu
+        ed.cursor_row = length(ed.lines); ed.cursor_col = 8   # sur « pasunson »
+        whole = _bwhole(app)
+        _bkey(app, 'g'); _bkey(app, 's')
+        @test _bws(app) == "PLAY" && _bwhole(app) == whole
         @test occursin("pas un synth connu", app.logs[end])
     end
 end
 
-@testset "U — depuis une pane synth : sauve, puis @dN p\"nom*4\" dans PLAY" begin
+@testset "U — dans un son : il est rangé, puis @dN p\"nom*4\" au bout du texte" begin
     _in_sandbox() do
         app, tb, frame = _br_app()
         _bex(app, "synth kick")
-        @test _bws(app) == "DESIGN"                            # :synth vit dans DESIGN (pont)
+        @test _bws(app) == "DESIGN"                            # le curseur est dans le son
         _bkey(app, 'U')
         @test _bws(app) == "PLAY"
         @test Ressac._focused_role(app) === :patterns
@@ -121,33 +162,40 @@ end
         txt = Tachikoma.text(ed)
         @test occursin("@d4 p\"kick*4\"", txt)                # @d1..3 pris par le buffer de démarrage
         @test strip(ed.lines[ed.cursor_row] |> String) == "@d4 p\"kick*4\""
+        @test ed.cursor_row == findlast(l -> !isempty(strip(String(l))), ed.lines)   # au bout du texte
         @test haskey(Ressac._SYNTH_REGISTRY, :kick)             # enregistré → jouable
         @test occursin("ajouté", app.logs[end])
-        # depuis DESIGN aussi (l'onglet courant : kick)
-        _bex(app, "son")
+        # hors d'un son, U ne pose rien
+        _bkey(app, 'U')
+        @test Tachikoma.text(ed) == txt
+        # de retour dans le son, U pose le slot suivant
+        Ressac._open_sound!(app, "kick")
         _bkey(app, 'U')
         @test _bws(app) == "PLAY"
         @test occursin("@d5 p\"kick*4\"", Tachikoma.text(Ressac._active_editor(app)))
     end
 end
 
-@testset "U depuis le son — sauve et pose un @dN dans les patterns ; Ctrl-w c ferme le volet" begin
+@testset "U depuis la DOC du son — range le son et pose un @dN ; Ctrl-w c ferme le volet" begin
     _in_sandbox() do
         app, tb, frame = _br_app()
-        _bex(app, "synth zorglub")                             # starter une-ligne, dans le volet
+        _bex(app, "synth zorglub")                             # starter une-ligne, dans le texte
         @test _bws(app) == "DESIGN" && Ressac._focused_role(app) === :synth
+        @test !isfile(joinpath(pwd(), "plugins", "user-synths", "zorglub.jl"))   # écrit dans le texte, pas encore rangé
+        _bex(app, "son")
+        sdoc = Ressac._sound_doc(app)
+        @test app.volet === :son && Ressac._focused_pane_impl(app) === sdoc
         Tachikoma.update!(app, Tachikoma.KeyEvent(:ctrl, 'w')); _bkey(app, 'c'); _bkey(app, :escape)
         Ressac._PANE_MODE.active = false
         @test app.volet === :fiche                             # Ctrl-w c ferme le volet
-        _bex(app, "synth zorglub")                             # l'onglet zorglub redevient courant
-        @test Ressac._focused_role(app) === :synth
+        @test Ressac._focused_role(app) === :synth             # le clavier est revenu sur le son
         # depuis la DOC aussi, U envoie le son dans un pattern
-        (_, sdoc) = Ressac._synth_workspace_parts(app)
-        Ressac._focus_pane!(app, sdoc)
+        _bex(app, "son")
+        @test Ressac._focused_pane_impl(app) === Ressac._sound_doc(app) && _bsound(app).name == "zorglub"
         _bkey(app, 'U')
         @test _bws(app) == "PLAY"
         @test occursin("p\"zorglub*4\"", Tachikoma.text(Ressac._active_editor(app)))
-        @test isfile(joinpath(pwd(), "plugins", "user-synths", "zorglub.jl"))
+        @test occursin("@synth :zorglub", read(joinpath(pwd(), "plugins", "user-synths", "zorglub.jl"), String))
     end
 end
 
@@ -158,9 +206,9 @@ end
     @test p isa Ressac.SynthExplorerPane
     _bkey(app, 'e')                                            # nommage
     foreach(c -> _bkey(app, c), "cand"); _bkey(app, :enter)
-    @test _bws(app) == "PLAY"
-    @test Ressac._focused_role(app) === :patterns
-    @test occursin("@synth :cand", Tachikoma.text(Ressac._active_editor(app)))
+    @test _bws(app) == "DESIGN" && Ressac._focused_role(app) === :synth   # le clavier est dans le texte, sur le son
+    @test _bsound(app).name == "cand" && startswith(_bsound_text(app), "@synth :cand")
+    @test !occursin("ressac-genome", _bwhole(app))
     _bex(app, "explore")
     @test Ressac._focused_pane_impl(app) isa Ressac.SynthExplorerPane   # l'explorer est toujours là
 end
@@ -200,8 +248,8 @@ end
             ed.cursor_row = 1
             _bex(app, "explore")
             _bkey(app, 'M')
-            @test Ressac._focused_role(app) === :patterns            # le clavier est dans le texte, sur le son
-            @test _bws(app) == "PLAY" && app.volet !== :son           # plus de volet pour le texte d'un son
+            @test Ressac._focused_role(app) === :synth               # le clavier est dans le texte, sur le son
+            @test _bws(app) == "DESIGN" && app.volet !== :son         # plus de volet pour le texte d'un son
             lines = [String(l) for l in ed.lines]
             @test lines[1:3] == ["@d1 p\"bd sn\"", "  |> gain(0.8)", ""]   # posé SOUS le bloc du curseur, pas dedans
             @test startswith(lines[4], "@synth :candidat_1") && ed.cursor_row == 4
@@ -209,14 +257,16 @@ end
             @test !occursin("ressac-genome", Tachikoma.text(ed))     # la ligne du génome n'encombre pas le texte
             @test Ressac.synth_info(:candidat_1) !== nothing         # défini : s("candidat_1") le joue
             hit = Ressac._sound_under_cursor(app)
-            @test hit !== nothing && hit[2].name == "candidat_1" && hit[2].row == 4
+            @test hit !== nothing && hit.name == "candidat_1" && Ressac._sound_rows(hit)[1] == 4
             # M de nouveau sur le même candidat : le même bloc, pas un de plus
             _bex(app, "explore"); _bkey(app, 'M')
             @test count(l -> startswith(String(l), "@synth :candidat_1"), ed.lines) == 1
-            # :w écrit la session et dit que le son, lui, n'est pas rangé
+            # :w <nom> écrit la session (le son avec) et dit que le son, lui, n'est pas dans la réserve
             dir = joinpath(pwd(), "plugins", "user-synths")
-            _bex(app, "w")
-            @test !isfile(joinpath(dir, "candidat_1.jl")) && any(l -> occursin(":keep le range", l), app.logs)
+            _bex(app, "w brouillon")
+            @test !isfile(joinpath(dir, "candidat_1.jl")) && !isfile(joinpath(dir, "brouillon.jl"))
+            @test app.session_name == "brouillon" && read(Ressac._session_path("brouillon"), String) == Tachikoma.text(ed)
+            @test occursin("candidat_1", app.logs[end]) && occursin(":save", app.logs[end])
             # :keep le range sous son nom ; :keep <nom> sous un autre, et le bloc prend ce nom
             _bex(app, "keep")
             @test occursin("@synth :candidat_1", read(joinpath(dir, "candidat_1.jl"), String))
@@ -226,9 +276,16 @@ end
             @test Ressac.synth_info(:scusave) !== nothing
             _bex(app, "keep pas-un-nom")
             @test !isfile(joinpath(dir, "pas-un-nom.jl")) && occursin("n'est pas un nom de son", app.logs[end])
-            # sur un @dN, :keep range toujours le pattern
+            # Espace W range aussi le son du curseur
+            rm(joinpath(dir, "scusave.jl"))
+            _bkey(app, ' '); _bkey(app, 'W')
+            @test occursin("@synth :scusave", read(joinpath(dir, "scusave.jl"), String))
+            # sur un @dN, :keep <nom> range toujours le pattern, pas un son
             ed.cursor_row = 1
             @test Ressac._sound_under_cursor(app) === nothing
+            _bex(app, "keep monpat")
+            @test !isfile(joinpath(dir, "monpat.jl"))
+            @test Ressac.load_pattern("monpat").code == "@d1 p\"bd sn\" |> gain(0.8)"
             # K sur un mot du son : la fiche du langage des sons
             Tachikoma.set_text!(ed, "@synth :essai (freq=220) begin\n    saw(:freq)\n    |> rlpf(900, 0.3)\nend\n@d1 p\"bd\"")
             ed.cursor_row = 2; ed.cursor_col = 5
@@ -249,7 +306,7 @@ end
 end
 
 # ── Régressions : layout restauré, onglet courant 0, défilement maintenu ──
-@testset "layout — l'écran sauvé avec un son ouvert se restaure, et le volet s'échange encore" begin
+@testset "layout — l'écran sauvé avec la DOC d'un son se restaure, et le volet s'échange encore" begin
     app, tb, frame = _br_app()
     _bex(app, "son")
     path = joinpath(mktempdir(), "layout.toml")
@@ -263,18 +320,19 @@ end
         @test 1 <= leaf.current_tab <= length(leaf.tabs)
     end
     @test app2.volet === :son                                # reconnu à ce qu'il contient
+    @test Ressac._sound_doc(app2) !== nothing
     Ressac._active_editor(app2).mode = :normal
     _bex(app2, "back")
     @test app2.volet === :fiche && Ressac._focused_role(app2) === :patterns
     _bex(app2, "son")
-    @test Ressac._focused_role(app2) === :synth
+    @test app2.volet === :son && Ressac._focused_pane_impl(app2) isa Ressac.SynthDocPane
     @test (Tachikoma.view(app2, frame2); true)
     # un clic dans la pane, puis rendu : pas de BoundsError
     Tachikoma.update!(app2, Tachikoma.MouseEvent(60, 10, Tachikoma.mouse_left, Tachikoma.mouse_press, false, false, false))
     @test (Tachikoma.view(app2, frame2); true)
 end
 
-@testset "layout — une disposition d'avant (trois workspaces) est reprise pour ce qu'elle contient" begin
+@testset "layout — une disposition d'avant (trois workspaces, un éditeur de son) est reprise pour son texte de patterns" begin
     wm = Ressac.WorkspaceManager()
     for (name, role, text) in (("PLAY", "patterns", "@d1 p\"bd sn\""), ("DESIGN", "synth", "@synth :vieux (freq=110) saw(:freq)"))
         Ressac.create_workspace!(wm, name)
@@ -288,8 +346,28 @@ end
     Ressac._ensure_default_workspace!(app)
     @test length(app.workspaces.workspaces) == 1
     @test Tachikoma.text(Ressac._patterns_editor(app)) == "@d1 p\"bd sn\""
+    # L'éditeur de son d'avant n'est pas repris : un seul texte, celui des patterns.
+    editors = [t for l in Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree) for t in l.tabs if t isa Ressac.EditorPane]
+    @test length(editors) == 1 && all(b -> b.role === :patterns, only(editors).tabs)
+    @test app.volet === :fiche
     Ressac._open_volet!(app, :son)
-    @test occursin(":vieux", Tachikoma.text(Ressac._active_editor(app)))
+    @test Ressac._focused_pane_impl(app) isa Ressac.SynthDocPane
+end
+
+# Un seul workspace, mais une pane d'édition de son à côté des patterns
+# (l'écran unique d'avant « le son dans le texte ») : rebâti lui aussi.
+@testset "layout — une pane d'édition de son à côté des patterns n'est pas restaurée" begin
+    app, tb, frame = _br_app()
+    ws = Ressac.current_workspace(app.workspaces)
+    patterns = _bwhole(app)
+    old = Ressac._pane_new(:editor, Dict{String,Any}("buffer_role" => "synth", "name" => "vieux"))
+    Tachikoma.set_text!(old.tabs[1].code_editor, "@synth :vieux (freq=110) saw(:freq)")
+    push!(Ressac._find_leaf_by_id(ws.tree, ws.focused_pane).tabs, old)
+    Ressac._ensure_default_workspace!(app)
+    editors = [t for l in Ressac._all_leaves(Ressac.current_workspace(app.workspaces).tree) for t in l.tabs if t isa Ressac.EditorPane]
+    @test length(editors) == 1 && all(b -> b.role === :patterns, only(editors).tabs)
+    @test _bwhole(app) == patterns && app.volet === :fiche
+    @test (Tachikoma.view(app, frame); true)
 end
 
 @testset "garde — une pane sans onglet courant valide ne fait pas planter le rendu" begin

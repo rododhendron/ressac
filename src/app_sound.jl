@@ -1,10 +1,12 @@
 # src/app_sound.jl
-# Un son écrit dans le texte principal : un bloc `@synth :nom …` parmi les
-# patterns. C'est là qu'un son arrive (depuis l'explorateur), là qu'on le
-# retouche et qu'on l'évalue (`e`), et de là qu'on le range (`:keep`).
+# Un son vit dans le texte principal : un bloc `@synth :nom …` parmi les
+# patterns. Il n'y a pas d'autre endroit où il s'écrit — ni volet, ni onglet.
+# C'est là qu'il arrive (`gs`, `:synth nom`, la librairie, l'explorateur),
+# là qu'on le travaille (le mode suit le curseur : dans un bloc `@synth`,
+# les touches sont celles du son), et de là qu'on le range (`:save`).
 #
 # L'étendue du bloc est celle de `_logical_block_range` — la même que pour
-# `e` : ce que `:keep` range est exactement ce que `e` évalue.
+# `e` : ce que `:save` range est exactement ce que `e` évalue.
 
 const _SOUND_HEAD_RX = r"^\s*@synth\s+:(\w+)"
 
@@ -37,20 +39,74 @@ function _sound_block_named(lines::AbstractVector, name::AbstractString)
     return nothing
 end
 
-"""
-    _sound_under_cursor(m) -> (editor, SoundBlock) | nothing
-
-Le son sous le curseur, quand le clavier est dans le texte principal.
-"""
-function _sound_under_cursor(m::RessacApp)
-    buf = _focused_buffer(m)
-    (buf === nothing || buf.role !== :patterns) && return nothing
-    ed = buf.code_editor
-    sb = _sound_block_at(ed.lines, ed.cursor_row)
-    return sb === nothing ? nothing : (ed, sb)
+# Le texte du bloc `@synth` qui contient `row`, dans des lignes qui ne sont
+# pas (encore) celles de l'éditeur — l'essai d'un maillon, par exemple.
+function _sound_text_in(lines::AbstractVector, row::Int)
+    b = _sound_block_at(lines, row)
+    b === nothing && return ""
+    return join((String(l) for l in lines[b.row:b.last_row]), '\n')
 end
 
-_sound_text(ed, sb::SoundBlock) = join((String(l) for l in ed.lines[sb.row:sb.last_row]), '\n')
+"""
+    _current_sound(m) -> Sound | nothing
+
+Le son sur lequel on travaille : le bloc `@synth` où est le curseur du
+texte principal — que le clavier y soit, ou dans une pane à côté (la DOC,
+la MODULATION).
+"""
+function _current_sound(m::RessacApp)
+    ed = _patterns_editor(m)
+    ed === nothing && return nothing
+    b = _sound_block_at(ed.lines, ed.cursor_row)
+    return b === nothing ? nothing : Sound(b.name, ed)
+end
+
+# Le même, seulement quand le clavier est dans le texte.
+function _sound_under_cursor(m::RessacApp)
+    _focused_buffer(m) === nothing && return nothing
+    return _current_sound(m)
+end
+
+"""
+    _sound_rows(s) -> (first, last) | nothing
+
+Les lignes du son dans son éditeur, maintenant : le bloc du curseur s'il
+porte ce nom, sinon le premier bloc de ce nom. `nothing` s'il a disparu.
+"""
+function _sound_rows(s::Sound)
+    lines = s.code_editor.lines
+    here = _sound_block_at(lines, s.code_editor.cursor_row)
+    (here !== nothing && here.name == s.name) && return (here.row, here.last_row)
+    b = _sound_block_named(lines, s.name)
+    return b === nothing ? nothing : (b.row, b.last_row)
+end
+
+function _sound_text(s::Sound)
+    r = _sound_rows(s)
+    r === nothing && return ""
+    return join((String(l) for l in s.code_editor.lines[r[1]:r[2]]), '\n')
+end
+
+"""
+    _sound_write!(s, text; row = nothing, col = nothing) -> Bool
+
+Remplace le texte du son (un seul `u` l'annule). `row` est une ligne du
+son, comptée depuis sa première ; sans elle, le curseur reste où il est
+(ramené dans le bloc s'il en sortait).
+"""
+function _sound_write!(s::Sound, text::AbstractString; row::Union{Nothing,Int} = nothing,
+                       col::Union{Nothing,Int} = nothing)
+    r = _sound_rows(s)
+    r === nothing && return false
+    ed = s.code_editor
+    block = split(String(rstrip(text, '\n')), '\n')
+    lines = [String(l) for l in ed.lines]
+    splice!(lines, r[1]:r[2], block)
+    last = r[1] + length(block) - 1
+    at = row === nothing ? clamp(ed.cursor_row, r[1], last) : clamp(r[1] + row - 1, r[1], last)
+    _edit_text!(ed, join(lines, '\n'); row = at, col = col)
+    return true
+end
 
 # Ce qu'on écrit dans le texte : le son, sans la ligne du génome embarqué
 # (un millier de caractères que personne ne lit ; le texte suffit à le relire).
@@ -87,20 +143,23 @@ function _insert_sound_block!(m::RessacApp, name::AbstractString, text::Abstract
     ed === nothing && return false
     _focus_patterns!(m)
     block = split(_align_dsl_synth_name(_sound_text_for_editor(text), name), '\n')
+    head = something(findfirst(l -> occursin(_SOUND_HEAD_RX, l), block), 1)
     lines = [String(l) for l in ed.lines]
     old = _sound_block_named(lines, name)
     if old !== nothing
-        splice!(lines, old.row:old.last_row, block)
+        # Le bloc seul est remplacé : les commentaires du fichier n'y entrent pas.
+        splice!(lines, old.row:old.last_row, block[head:end])
         row = old.row
     else
         at = clamp(ed.cursor_row, 1, length(lines))
         after = isempty(strip(lines[at])) ? at - 1 : _logical_block_range(lines, at)[2]
+        lead = after >= 1 && !isempty(strip(lines[after]))
         piece = String[]
-        (after >= 1 && !isempty(strip(lines[after]))) && push!(piece, "")
+        lead && push!(piece, "")
         append!(piece, block)
         (after < length(lines) && !isempty(strip(lines[after + 1]))) && push!(piece, "")
-        row = after + 1 + ((after >= 1 && !isempty(strip(lines[after]))) ? 1 : 0)
         splice!(lines, (after + 1):after, piece)
+        row = after + (lead ? 1 : 0) + head
     end
     _edit_text!(ed, join(lines, '\n'); row = row, col = 0)
     ed.mode = :normal
@@ -115,24 +174,21 @@ function _insert_sound_block!(m::RessacApp, name::AbstractString, text::Abstract
 end
 
 """
-    _keep_sound_block!(m, ed, sb; new_name = nothing) -> Bool
+    _save_sound!(m, s; new_name = nothing) -> Bool
 
-`:keep` sur un bloc `@synth` : le son est rangé dans
+`:save` (ou `Espace W`) sur un son : il est rangé dans
 `plugins/user-synths/<nom>.jl`. Avec `new_name`, sous ce nom-là, et le bloc
 du texte prend ce nom.
 """
-function _keep_sound_block!(m::RessacApp, ed, sb::SoundBlock; new_name::Union{Nothing,AbstractString} = nothing)
-    name = new_name === nothing ? sb.name : String(new_name)
+function _save_sound!(m::RessacApp, s::Sound; new_name::Union{Nothing,AbstractString} = nothing)
+    name = new_name === nothing ? s.name : String(new_name)
     if !occursin(r"^[A-Za-z_]\w*$", name)
-        _push_app_log!(m, "[ERROR] :keep — « $name » n'est pas un nom de son (lettres, chiffres, _)")
+        _push_app_log!(m, "[ERROR] :save — « $name » n'est pas un nom de son (lettres, chiffres, _)")
         return false
     end
-    text = _align_dsl_synth_name(_sound_text(ed, sb), name)
-    if name != sb.name
-        lines = [String(l) for l in ed.lines]
-        splice!(lines, sb.row:sb.last_row, split(text, '\n'))
-        _edit_text!(ed, join(lines, '\n'))
-    end
+    text = _align_dsl_synth_name(_sound_text(s), name)
+    isempty(text) && return false
+    name == s.name || _sound_write!(s, text)
     path = _app_synth_path(name; mode = :dsl)
     existed = isfile(path)
     mkpath(dirname(path))

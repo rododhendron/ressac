@@ -36,12 +36,14 @@ end
     try
         (app, _) = _new_app()
         _exec_ex_command!(app, "synth pluie")
-        (ep, _) = Ressac._synth_workspace_parts(app)
-        ed = ep.tabs[ep.current_tab].code_editor
-        src = "@synth :pluie (sustain=2) begin\n    b = shared(white())\n    (b |> low_pass(400)) + (b |> high_pass(4000))\nend\n"
-        Tachikoma.set_text!(ed, src)
+        snd = Ressac._current_sound(app)
+        @test snd !== nothing && snd.name == "pluie"
+        src = "@synth :pluie (sustain=2) begin\n    b = shared(white())\n    (b |> low_pass(400)) + (b |> high_pass(4000))\nend"
+        @test Ressac._sound_write!(snd, src)
+        whole = Tachikoma.text(snd.code_editor)
         _exec_ex_command!(app, "prune")
-        @test Tachikoma.text(ed) == src
+        @test Ressac._sound_text(snd) == src
+        @test Tachikoma.text(snd.code_editor) == whole
         @test any(l -> occursin("signal partagé", l), app.logs)
     finally
         cd(old)

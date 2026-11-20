@@ -4,11 +4,11 @@
 # vivant ; D de nouveau le relâche. Les fermetures, hush et panic
 # relâchent ce qu'il faut.
 
-_drone_id(tab::EditorBuffer) = Symbol(tab.name)
+_drone_id(tab::Sound) = Symbol(tab.name)
 
 # Le drone du buffer synth focalisé, s'il tourne (lancé par l'éditeur).
 function _editor_drone(m::RessacApp)
-    tab = _current_synth_tab(m)
+    tab = _current_sound(m)
     tab === nothing && return nothing
     d = drone_get(_drone_id(tab))
     (d !== nothing && d.origin === :editor) ? d : nothing
@@ -17,11 +17,11 @@ end
 """
     _drone_toggle!(m)
 
-`D` dans une pane synth : lance le synth en drone, ou le relâche s'il
+`D` dans un son : lance le son en drone, ou le relâche s'il
 tourne déjà.
 """
 function _drone_toggle!(m::RessacApp)
-    tab = _current_synth_tab(m)
+    tab = _current_sound(m)
     tab === nothing && return
     d = drone_get(_drone_id(tab))
     if d !== nothing
@@ -40,16 +40,12 @@ end
 le nœud avec les valeurs déjà réglées si le drone tournait, ou les
 défauts du synth. Ouvre la pane MODULATION si elle manque.
 """
-function _drone_launch!(m::RessacApp, tab::EditorBuffer)
+function _drone_launch!(m::RessacApp, tab::Sound)
     if _LIVE_SCHEDULER[] === nothing
         _push_app_log!(m, "[ERROR] drone : pas de serveur SuperCollider")
         return
     end
-    if _is_raw_synthdef(TK.text(tab.code_editor))
-        _push_app_log!(m, "[INFO] ce texte est du SuperCollider — :todsl le convertit, puis D le tient")
-        return
-    end
-    src = _align_dsl_synth_name(TK.text(tab.code_editor), tab.name)
+    src = _sound_text(tab)
     cap = Any[]
     _DRONE_CAPTURE[] = cap
     try
@@ -91,8 +87,8 @@ end
 function _drone_pane!(m::RessacApp)
     p = _find_pane(m, DronePane)
     p !== nothing && return p
-    # Dans le volet du son, elle se range en onglet sous le texte, à côté de
-    # la DOC, et passe devant ; le clavier ne bouge pas.
+    # Avec la DOC du son à droite, elle s'y range en onglet et passe
+    # devant ; le clavier ne bouge pas.
     son = get(m.volets, :son, nothing)
     if son !== nothing && m.volet === :son
         for leaf in _all_leaves(son)
@@ -109,12 +105,3 @@ function _drone_pane!(m::RessacApp)
     ed_pane isa PaneImpl && _focus_pane!(m, ed_pane)
     return p
 end
-
-# Relâche le drone d'un buffer synth qu'on ferme.
-function _drone_release_buffer!(m::RessacApp, name::AbstractString)
-    d = drone_get(Symbol(name))
-    (d === nothing || d.origin !== :editor) && return
-    drone_stop!(d.id)
-    _push_app_log!(m, "[INFO] drone $(d.id) relâché avec sa pane")
-end
-

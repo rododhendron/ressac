@@ -74,7 +74,7 @@ end
     @test_throws ArgumentError retarget_pattern("@d1 p\"bd\"", 0)
 end
 
-@testset ":save / :load / Espace P dans la TUI" begin
+@testset ":save (:keep) / :recall / Espace P dans la TUI" begin
     mktempdir() do dir
         cd(dir) do
             app, tb, frame = _pl_app()
@@ -84,15 +84,18 @@ end
                 ed = Ressac._active_editor(app)
                 Tachikoma.set_text!(ed, "@d1 p\"bd(3,8)\"\n  |> gain(0.9)\n\n@d2 p\"hh*8\"")
                 ed.cursor_row = 1; ed.cursor_col = 0
-                _plex(app, "keep jersey kick")
+                _plex(app, "save jersey kick")
                 e = load_pattern("jersey")
                 @test e !== nothing
                 @test e.code == "@d1 p\"bd(3,8)\" |> gain(0.9)"    # le bloc entier, recollé
                 @test e.tags == ["kick"]
                 @test occursin("rangé", app.logs[end])
-                # :save sans nom explique, ne range rien
-                _plex(app, "keep")
-                @test occursin(":keep <nom>", app.logs[end])
+                # sur un bloc @dN, :save (ou :keep) sans nom explique, ne range rien
+                for verb in ("save", "keep")
+                    _plex(app, verb)
+                    @test occursin(":save <nom>", app.logs[end]) && occursin("@dN", app.logs[end])
+                end
+                @test [x.name for x in list_patterns()] == ["jersey"]
                 # recharge sur un autre slot : le bloc est ajouté
                 _plex(app, "recall jersey 5")
                 txt = Tachikoma.text(ed)

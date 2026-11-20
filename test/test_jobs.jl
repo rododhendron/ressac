@@ -125,19 +125,21 @@ include(joinpath(@__DIR__, "helpers.jl"))
         try
             _exec_ex_command!(app, "synth fondprune")
             Tachikoma.view(app, frame)
-            tab = Ressac._current_synth_tab(app)
-            text = "@synth :fondprune (freq=220) saw(:freq) |> low_pass(900) |> tanh_drive(1)\n"
-            Ressac._edit_text!(tab.code_editor, text)
+            snd = Ressac._current_sound(app)
+            @test snd !== nothing && snd.name == "fondprune"
+            ed = snd.code_editor
+            @test Ressac._sound_write!(snd, "@synth :fondprune (freq=220) saw(:freq) |> low_pass(900) |> tanh_drive(1)")
             _exec_ex_command!(app, "prune")
             @test Ressac._jobs_busy()                                # la mesure tourne, la commande a rendu la main
             @test any(l -> occursin("mesure en cours", l), app.logs)
             # Le joueur retouche le texte pendant la mesure : son résultat ne s'applique pas.
-            Ressac._edit_text!(tab.code_editor, replace(Tachikoma.text(tab.code_editor), "900" => "1200"))
-            edited = Tachikoma.text(tab.code_editor)
+            @test Ressac._sound_write!(snd, replace(Ressac._sound_text(snd), "900" => "1200"))
+            edited = Tachikoma.text(ed)
+            @test occursin("low_pass(1200)", Ressac._sound_text(Ressac._current_sound(app)))
             put!(gate, nothing)
             @test timedwait(() -> Ressac._JOBS_PENDING[] == 0, 10.0) === :ok
             Tachikoma.view(app, frame)
-            @test Tachikoma.text(tab.code_editor) == edited
+            @test Tachikoma.text(ed) == edited
             @test any(l -> occursin("le texte a changé pendant la mesure", l), app.logs)
         finally
             Ressac._JOBS_INLINE[] = true

@@ -3,6 +3,16 @@
 # définis avant le modèle de l'app, qui en porte l'état.
 
 """
+Un son écrit dans le texte principal : un bloc `@synth :nom …`. On le
+désigne par son nom et par l'éditeur qui le porte ; ses lignes se
+retrouvent à l'usage (`_sound_rows`), parce que le texte bouge autour.
+"""
+struct Sound
+    name::String
+    code_editor::TK.CodeEditor
+end
+
+"""
 Un maillon d'une ligne, en colonnes de caractères (1 = premier caractère).
 `inner` : son texte ; `around` : avec son `|>` ; `linewise` : il occupe la
 ligne à lui seul ; `piped` : un `|>` le précède sur sa ligne ; `name` : la
@@ -33,7 +43,7 @@ Un essai en cours : le texte tel qu'il était, la ligne visée, ce qu'on y
 fait (`:after`, `:before`, `:replace`), et le maillon visé s'il y en a un.
 """
 mutable struct AtelierState
-    tab::EditorBuffer
+    tab::Sound
     base::Vector{String}
     row::Int
     action::Symbol

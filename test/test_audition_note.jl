@@ -1,5 +1,5 @@
 include(joinpath(@__DIR__, "helpers.jl"))
-# Note d'audition (`:note`, T) et affichage de la hauteur dans le titre du pane synth.
+# Note d'audition (`:note`, T) et affichage de la hauteur dans le titre du texte, quand le curseur est dans un son.
 using Test
 using Ressac
 using Tachikoma
@@ -34,7 +34,7 @@ function _anscreen(app, tb, frame)
 end
 _anlast(mock) = Ressac.decode_message(mock.sent[end])
 
-@testset "note d'audition — :note, T et titre du pane" begin
+@testset "note d'audition — :note, T et titre du texte sur un son" begin
     mktempdir() do dir
         mkpath(joinpath(dir, "plugins", "user-synths"))
         cd(dir) do
@@ -42,7 +42,7 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
             old = Ressac._LIVE_SCHEDULER[]
             Ressac._LIVE_SCHEDULER[] = app.scheduler
             try
-                # :note sans synth ouvert : juste un réglage
+                # :note hors d'un son : juste un réglage
                 @test app.test_note === nothing
                 _anex(app, "note c4")
                 @test app.test_note == -12
@@ -54,10 +54,11 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
                 _anex(app, "note off")
                 @test app.test_note === nothing
 
-                # pane synth DSL avec freq + sustain
-                Ressac._open_synth_tab!(app, "auditest")
-                tab = Ressac._current_synth_tab(app)
-                Tachikoma.set_text!(tab.code_editor,
+                # un son dans le texte, avec freq + sustain ; le curseur est dessus
+                Ressac._open_sound!(app, "auditest")
+                tab = Ressac._current_sound(app)
+                @test tab !== nothing && tab.name == "auditest"
+                @test Ressac._sound_write!(tab,
                     "@synth :auditest (freq=220, sustain=0.3, cutoff=800) saw(:freq) |> rlpf(:cutoff, 0.3)")
                 info = Ressac._synth_pitch_info(tab)
                 @test info.pitch === :freq && info.sustain
@@ -76,6 +77,16 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
                 _anex(app, "note c4")
                 scr = _anscreen(app, tb, frame)
                 @test occursin("♪ T=c4", scr)
+                # hors du son, le titre redevient celui des patterns et T est celui de vim (T<car>) : rien ne part
+                ed = tab.code_editor
+                row = ed.cursor_row
+                ed.cursor_row = 1
+                scr = _anscreen(app, tb, frame)
+                @test occursin("PATTERNS", scr) && !occursin("SON · auditest", scr)
+                empty!(mock.sent)
+                _ankey(app, 'T'); _ankey(app, 'x')
+                @test isempty(mock.sent)
+                ed.cursor_row = row
                 empty!(mock.sent)
                 _ankey(app, 'T')
                 m1 = _anlast(mock)
@@ -84,14 +95,12 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
                 @test occursin("note c4", app.logs[end])
 
                 # le DSL ajoute toujours freq / sustain : un @synth répond à n
-                Tachikoma.set_text!(tab.code_editor, "@synth :auditest (amp=0.5) white() |> env_perc(0.01, 0.1)")
+                @test Ressac._sound_write!(tab, "@synth :auditest (amp=0.5) white() |> env_perc(0.01, 0.1)")
                 @test Ressac._synth_title_suffix(tab) == "hauteur freq · durée sustain"
-                # un texte resté en SuperCollider ne part pas : T dit de le convertir
-                Tachikoma.set_text!(tab.code_editor, "SynthDef(\\auditest, { |out = 0, amp = 0.5| Out.ar(out, WhiteNoise.ar * amp) }).add;")
+                # un texte en SuperCollider ne s'auditionne pas : rien ne part, le journal dit pourquoi
                 empty!(mock.sent)
-                _ankey(app, 'T')
-                @test isempty(mock.sent) && occursin(":todsl", app.logs[end])
-                Tachikoma.set_text!(tab.code_editor, "@synth :auditest (amp=0.5) white() |> env_perc(0.01, 0.1)")
+                @test !Ressac._audition_synth_text!(app, tab, "SynthDef(\\auditest, { |out = 0, amp = 0.5| Out.ar(out, WhiteNoise.ar * amp) }).add;")
+                @test isempty(mock.sent) && occursin("SuperCollider", app.logs[end])
 
                 # pitch déclaré dans le registre : midinote
                 delete!(Ressac._SYNTH_REGISTRY, :auditest)      # T l'a enregistré en user-dsl

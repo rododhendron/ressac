@@ -112,21 +112,26 @@ end
         ex(cmd) = (Tachikoma.update!(app, Tachikoma.KeyEvent(':')); foreach(c -> Tachikoma.update!(app, Tachikoma.KeyEvent(c)), cmd); Tachikoma.update!(app, Tachikoma.KeyEvent(:enter)))
         Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0], 44100)
         ex("synth truc")
-        tab = Ressac._current_synth_tab(app)
+        snd = Ressac._current_sound(app)
+        @test snd !== nothing && snd.name == "truc"
+        ed = snd.code_editor
+        # Le texte entier, curseur sur la ligne `row` (dans le son).
+        settext(t, row) = (Tachikoma.set_text!(ed, t); ed.cursor_row = row; ed.cursor_col = 0; ed.mode = :normal)
         src = "# mon synth\n@synth :truc (freq=220, sustain=0.5) begin\n" *
               "    a = saw(:freq) |> rlpf(800, 0.3) |> tanh_drive(1) |> fold2(1) |> fold2(1)\n" *
               "    a + ugen(:Saw, 0.0)\nend\n\n# note finale\n"
-        Tachikoma.set_text!(tab.code_editor, src)
-        # :explain sur le buffer : l'onglet explication de la DOC (DESIGN), avec ÉLAGAGE et ses indices
+        settext(src, 3)
+        # :explain sur le son du curseur : l'onglet explication de la DOC, avec ÉLAGAGE et ses indices
         ex("explain")
-        parts = Ressac._synth_workspace_parts(app)
-        @test parts !== nothing && parts[2].mode === :explain
-        lines = parts[2].explain_lines
+        sdoc = Ressac._sound_doc(app)
+        @test sdoc !== nothing && sdoc.mode === :explain
+        @test Ressac._focused_pane_impl(app) === sdoc
+        lines = sdoc.explain_lines
         @test any(l -> occursin("ÉLAGAGE", l), lines) && any(l -> occursin("fréquence 0", l), lines)
-        Ressac._focus_pane!(app, parts[1])
+        Ressac._focus_patterns!(app)
         # :prune réécrit le bloc, garde les commentaires autour
         ex("prune")
-        txt = Tachikoma.text(tab.code_editor)
+        txt = Tachikoma.text(ed)
         @test startswith(txt, "# mon synth\n@synth :truc") && occursin("# note finale", txt)
         @test count("fold2", txt) == 1 || !occursin("Fold2", txt) || count("Fold2", txt) <= 1
         @test !occursin("ugen(:Saw, 0.0)", txt)
@@ -140,13 +145,17 @@ end
         @test Ressac.replace_synth_block("x = 1\n", "@synth :y (freq=1) saw(:freq)") == "x = 1\n"
         # sans mesure disponible, les indices statiques suffisent
         Ressac._PRUNE_ANALYZE[] = gs -> error("nrt: sclang introuvable")
-        Tachikoma.set_text!(tab.code_editor, src)
+        settext(src, 3)
         ex("prune")
-        @test !occursin("ugen(:Saw, 0.0)", Tachikoma.text(tab.code_editor)) && occursin("mesure indisponible", app.logs[end])
+        @test !occursin("ugen(:Saw, 0.0)", Tachikoma.text(ed)) && occursin("mesure indisponible", app.logs[end])
+        @test startswith(Tachikoma.text(ed), "# mon synth\n@synth :truc") && occursin("# note finale", Tachikoma.text(ed))
         # rien à retirer : le journal le dit, le texte ne bouge pas
         clean = "@synth :truc (freq=220) saw(:freq) |> rlpf(800, 0.3)\n"
-        Tachikoma.set_text!(tab.code_editor, clean); ex("prune")
-        @test Tachikoma.text(tab.code_editor) == clean && occursin("rien", app.logs[end])
+        settext(clean, 1); ex("prune")
+        @test Tachikoma.text(ed) == clean && occursin("rien", app.logs[end])
+        # hors d'un son : :prune demande d'y poser le curseur, et ne touche à rien
+        settext("@d1 p\"bd\"\n\n" * clean, 1); ex("prune")
+        @test Tachikoma.text(ed) == "@d1 p\"bd\"\n\n" * clean && occursin("[WARN] :prune — pose le curseur sur un son", app.logs[end])
     finally
         cd(oldwd); Ressac._PRUNE_ANALYZE[] = old_an; Ressac._WAVE_RENDER[] = old_wr
     end

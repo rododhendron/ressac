@@ -33,19 +33,27 @@ que `T`.
 
 ## Un son dans le texte
 
-Un `@synth` s'écrit dans le texte principal, parmi les patterns. C'est là
-qu'arrive un candidat de l'explorateur (`M`, ou `e` pour lui donner un nom).
-Le curseur sur son bloc :
+Un son s'écrit dans le texte principal, parmi les patterns : un bloc
+`@synth :nom …`. Il n'y a pas d'autre endroit. `gs` sur son nom, `:synth
+nom`, la librairie (`:lib`) ou l'explorateur (`M`, `e`) l'y amènent, sous
+le bloc du curseur ; s'il y est déjà, le curseur y va.
+
+Dès que le curseur est dans le bloc, les touches sont celles du son — le
+titre et la ligne d'état le disent (`SON · nom`) :
 
 ```
 e                 l'évalue : il est défini, et il s'entend une fois
-K                 la fiche du mot, dans le langage des sons (saw = l'oscillateur)
+T                 l'entend (maintenir = rafale)      D   le tient en drone
+o  O  cim  dam    l'atelier : un maillon après, avant, remplacé, retiré
+&                 le reste de l'atelier (voir plus bas)
+K  X  Y           sa DOC, à droite : la fiche du mot, l'explication, le graphe
+Espace            les maillons du DSL ; Espace W range le son
 :format           un maillon par ligne, ce bloc seulement
-:keep             le range dans plugins/user-synths/<nom>.jl
-:keep autre_nom   le range sous un autre nom ; le bloc prend ce nom
+:save             le range dans plugins/user-synths/<nom>.jl
+:save autre_nom   le range sous un autre nom ; le bloc prend ce nom
 ```
 
-`:w` écrit la session, donc le texte du son avec elle ; `:keep` le met en
+`:w` écrit la session, donc le texte du son avec elle ; `:save` le met en
 plus dans la réserve des sons, où les autres sessions le trouvent.
 
 ## Paramètres explicites
@@ -365,11 +373,11 @@ synth (une copie éditable de la recette — modifie et `T` pour entendre).
 
 ## Depuis un SynthDef SuperCollider
 
-Un synth écrit à la main en SuperCollider (`.scd`) s'ouvre à droite des
-patterns comme un autre ; `:todsl` le réécrit en DSL : les arguments deviennent
-les paramètres du `@synth`, chaque `var` est remplacée par son
-expression, le signal envoyé à `Out.ar` devient la chaîne de pipes.
-`T` teste, `:w` sauve en `.jl`, `u` annule.
+Un synth écrit à la main en SuperCollider (`.scd`) et laissé dans
+`plugins/user-synths` est réécrit en DSL quand on l'amène dans le texte
+(`:synth nom`, `gs`) : les arguments deviennent les paramètres du `@synth`,
+chaque `var` est remplacée par son expression, le signal envoyé à `Out.ar`
+devient la chaîne de pipes. `T` teste, `:save` le range en `.jl`, `u` annule.
 
 Dans un synth, `Espace` puis une lettre insère un maillon du DSL en bout
 de chaîne : `s` saw, `o` sin_osc, `l` rlpf, `e` env_perc, `t` tanh_drive,
@@ -393,7 +401,7 @@ Chaque ligne est alors un maillon qu'on manipule comme une ligne :
   tout droit. `gcc` de nouveau le remet. (`gcj` / `gck` avec la ligne
   voisine, `gcap` tout le paragraphe.)
 - `dd` le retire, `yy` puis `p` le déplace ou le copie dans un autre son.
-- `:format` remet en forme le son ouvert : un maillon par ligne, pipes en
+- `:format` remet en forme le son du curseur : un maillon par ligne, pipes en
   tête, nombres à trois décimales au plus. `u` annule. (`o` sur une chaîne
   écrite en une ligne la met d'abord en forme, puis ouvre l'atelier.)
 - `K` sur un mot donne sa fiche **du langage des sons** : ce qu'on écrit
@@ -401,10 +409,9 @@ Chaque ligne est alors un maillon qu'on manipule comme une ligne :
   SuperCollider pour mémoire. Le signal arrive par le `|>` : ce n'est pas un
   argument qu'on écrit.
 
-Tout son s'édite en DSL. Un `.scd` laissé dans `plugins/user-synths` s'ouvre
-converti (`:w` le range en `.jl`) ; s'il ne se convertit pas en entier,
-Ressac le dit et ne l'ouvre pas à moitié. Du SuperCollider collé dans un
-son : `:todsl`.
+Tout son s'édite en DSL. Un `.scd` laissé dans `plugins/user-synths` arrive
+converti (`:save` le range en `.jl`) ; s'il ne se convertit pas en entier,
+Ressac le dit et ne l'écrit pas à moitié.
 
 ## L'atelier : travailler un son dans son texte
 
@@ -440,14 +447,15 @@ proposition à l'autre et **chacune s'entend** dans le son, avant d'être
 | `& m` | fait **bouger** le nombre sous le curseur : un LFO, sur une ligne nommée |
 | `& k` | fait du nombre un **argument** du son, réglable depuis un pattern |
 | `& s` | fait entendre le son **jusqu'à ce maillon** |
-| `& b` | **bifurque** : une copie du son, à part, pour essayer sans risque |
+| `& b` | **bifurque** : une copie du son sous un autre nom, écrite juste dessous |
 | `& o` `& O` `& r` `& d` | les mêmes que `o` `O` `cim` `dam` |
 | `& ?` | la fiche du maillon |
 
 ## La DOC d'un son
 
-Sous le texte, la **DOC** relit le son dès qu'il change (hors frappe) et
-le montre de trois façons — `←` `→` dans la DOC, ou depuis le texte :
+À droite, la **DOC** relit le son du curseur dès qu'il change (hors
+frappe) et le montre de trois façons — `←` `→` dans la DOC, ou depuis le
+texte (le clavier y reste) :
 
 - `K` la **fiche** du mot sous le curseur ;
 - `X` l'**explication** : la chaîne de la sortie vers la matière, le rôle
@@ -460,9 +468,7 @@ le montre de trois façons — `←` `→` dans la DOC, ou depuis le texte :
 `P` mesure ce que chaque étape change au son (rendu hors-ligne, quelques
 secondes) ; l'explication le range du plus faible au plus fort.
 
-`:w` sauve, `U` envoie le son dans un pattern. `M` sur un candidat de
-l'explorateur l'amène ici : son texte en onglet, la DOC sur son
-explication.
+`:save` range le son, `U` le range puis écrit un `@dN` qui le joue.
 
 ## Inspecter sans jouer
 
@@ -473,17 +479,17 @@ synth_source(:foo, saw(:freq); params=(freq=440,))
 
 ## Comprendre et élaguer un synth
 
-`:explain` (ou `:explain nom`) décrit le son du buffer : la chaîne de
+`:explain` (ou `:explain nom`) décrit le son du curseur : la chaîne de
 la sortie vers la matière, le rôle de chaque nœud, pourquoi ça sonne
 comme ça, et une section ÉLAGAGE qui pointe ce qui ne s'entend pas
 (nœud hors de la chaîne, saturation redondante, source à 0 Hz…).
 
-`:prune` dans la pane synth retire ces nœuds, puis — si `sclang`
+`:prune`, le curseur sur le son, retire ces nœuds, puis — si `sclang`
 répond — ceux dont l'impact mesuré est sous 0,02 (`:prune 0.05` pour
 élargir) : le son est rendu hors-ligne sans chaque nœud et comparé au
 complet. Le bloc `@synth` est réécrit sous sa forme canonique
-(`n1 = …`), le reste du fichier reste intact ; `T` pour écouter, `:w`
-pour sauver. `P` mesure sans rien retirer : l'explication liste alors
+(`n1 = …`), le reste du texte reste intact ; `T` pour écouter, `:save`
+pour ranger. `P` mesure sans rien retirer : l'explication liste alors
 l'impact de chaque étape, et `dam` sur une ligne retire ce maillon-là.
 
 

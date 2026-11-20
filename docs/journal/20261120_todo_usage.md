@@ -64,3 +64,30 @@ en a été fait, ce qui reste ouvert.
   sur le bloc du curseur si cette direction est la bonne.
 - **Maquettes de la visualisation dans l'éditeur** : rouleau, roue, dans la
   ligne, signal — https://claude.ai/artifact/GawwcREwB56kGBnxDTKV8v
+
+## Le 21 : un seul texte
+
+Décision de Rodolphe : tout passe dans le pane principal (« sur un petit
+écran, plusieurs panes, on ne lit plus rien »).
+
+- **Il n'y a plus de texte de son à droite.** Un son est un bloc `@synth`
+  du texte (`app_sound.jl` : `Sound` = nom + éditeur, ses lignes se
+  retrouvent à l'usage). `gs`, `:synth nom`, la librairie, l'explorateur
+  l'y amènent. Disparus : les onglets de sons, `Tab` patterns ⟷ synth,
+  `gt` / `gT`, `:tabs`, `:test-raw`, la conversion `:todsl` sur place.
+- **Le mode suit le curseur** : dans un bloc `@synth`, `_focused_role` dit
+  `:synth`, donc le mode est SON et les touches sont celles du son (`e`
+  évalue, `T`, `D`, `o` / `&`, `K` `X` `Y`). Le titre et la ligne d'état
+  disent `SON · nom`.
+- **`:save`** (alias `:keep`, et `Espace W` dans un son) range ce qui est
+  sous le curseur : le son, ou le pattern d'un bloc `@dN`. `:w` et `:e`
+  ne parlent plus que de la session.
+- **Le volet `:son`** n'est plus que la DOC du son (fiche, explication,
+  graphe, et la MODULATION en onglet) ; elle s'ouvre sans prendre le
+  clavier. La fiche est plus large (62 colonnes, 42 % au plus).
+- Une disposition sauvée d'avant, avec une pane d'édition de son, n'est
+  pas reprise : l'écran est rebâti autour du texte.
+- Reste : un drone tenu sur un son dont on supprime le bloc continue
+  jusqu'à `!` ou `x` dans la MODULATION. La visualisation dans l'éditeur
+  (choix : elle suit le curseur ; piste des pixels derrière le texte,
+  `TK.render_rgba!` avec `z = -1` dans kitty) n'est pas commencée.

@@ -152,8 +152,6 @@ function _handle_ex_command!(m::RessacApp, cmd::AbstractString)
 end
 
 function _dispatch_ex_command!(m::RessacApp, s::String)
-    # 0. Une commande qui parle d'un son l'ouvre d'abord à droite.
-    _open_son_for_command!(m, s)
     # 1. Literal exact-match (O(1))
     h = get(_LITERAL_DISPATCH, s, nothing)
     h !== nothing && (h(m); return)

@@ -83,7 +83,7 @@ journal donne l'essentiel.
 
 ## « La librairie ne charge pas mon fichier »
 
-1. **Le fichier est dans `plugins/user-synths/` ?** C'est là que `:w`
+1. **Le fichier est dans `plugins/user-synths/` ?** C'est là que `:save`
    écrit et que `:lib` lit.
 
 2. **L'extension correspond au mode ?** `.jl` = DSL, `.scd` = SC brut.

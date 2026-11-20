@@ -9,20 +9,25 @@ du son à travers SuperDirt.
 
 ## L'écran
 
-Un seul écran. **Les patterns sont à gauche et y restent** ; à droite, un
-**volet** qu'on échange sans rien perdre de ce qui y était ouvert :
+Un seul écran, et **un seul texte** : les patterns et les sons s'y écrivent
+ensemble, à gauche. À droite, un **volet** qui accompagne, et qu'on échange
+sans rien perdre de ce qui y était ouvert :
 
 | Volet | Pour l'ouvrir | Ce qu'il montre |
 |---|---|---|
 | la fiche | par défaut, `:back` | la doc de ce qui est sous le curseur, et ce que fait la ligne `@dN` où il se trouve |
 | le wiki | `gw`, `:wiki` | cette documentation, à côté du travail ; `Tab` désigne un exemple `@dN` de la page, `Entrée` le pose dans tes patterns |
-| un son | `gs` sur son nom, `:synth nom`, `:son` | le texte du synth — c'est là qu'on le travaille ; dessous, sa DOC |
+| la DOC d'un son | `K` `X` `Y` dans un son, `:son` | la fiche du mot, l'explication du son, son graphe — le texte du son, lui, est dans le texte principal |
 | l'explorateur | `gx`, `:explorer` | l'explorateur génétique de sons, par-dessus |
 
 `:q` ferme le volet et rend le clavier aux patterns ; `:q` de nouveau
 quitte. Les patterns continuent de jouer quel que soit le volet. Sur un
-grand écran (200 colonnes et plus), le son s'ouvre entre les patterns et
-la fiche au lieu de la remplacer.
+grand écran (200 colonnes et plus), la DOC d'un son s'ouvre entre le texte
+et la fiche au lieu de la remplacer.
+
+Un **son** est un bloc `@synth :nom …` du texte. `gs` sur son nom, ou
+`:synth nom`, l'y amène ; dès que le curseur est dedans, les touches sont
+celles du son (voir plus bas, et `03-synth-dsl`).
 
 Chaque ligne `@dN` dit ce qu'elle fait, sur la ligne elle-même : un signe
 dans la marge, un fond qui s'allume au coup, et à droite du texte sa piste
@@ -75,25 +80,26 @@ Le clavier est en couches : une touche descend les couches actives —
 transitoire (saisie, leader, mode pane…), modale, pane focalisée,
 **contexte**, partout — jusqu'à la première qui la connaît.
 
-Le contexte est ce que porte la pane qui a le clavier :
+Le contexte suit le curseur :
 
 - **les patterns** (le texte, la fiche, le wiki, le journal) : `e` évalue
   la ligne (`Entrée` : tout de suite, hors de la grille), `E` tous les blocs, `m` coupe, `K` montre la fiche, `Espace`
   ouvre les snippets — d'où qu'on soit de ce côté-là ;
-- **un son** (son texte, sa DOC) : `T` l'entend, `D` le tient
+- **un son** (le curseur dans un bloc `@synth`, ou dans sa DOC) : `e`
+  l'évalue, `T` l'entend, `D` le tient
   en drone, `Espace` ouvre les maillons du DSL, `U` l'envoie dans un
   pattern, `P` mesure l'élagage, `K` `X` `Y` mettent la DOC sur la fiche,
   l'explication, le graphe ;
 - **l'explorateur** : `T` et `D` sur le candidat.
 
 Les commandes, elles, valent partout ; celles qui parlent d'un son
-(`:explain`, `:prune`, `:todsl`…) l'ouvrent d'abord à droite. `?` puis
+(`:explain`, `:prune`, `:format`, `:save`…) visent celui du curseur. `?` puis
 `Tab` liste toutes les touches du contexte. `:reset` refait l'écran à neuf
 en gardant le texte des patterns.
 
-Les ponts : depuis un pattern, `gs` ouvre le son sous le curseur ; depuis
-un son, `U` pose `@dN p"nom*4"` dans les patterns ; depuis l'explorateur,
-`M` et `e` amènent un candidat dans le volet du son.
+Les ponts : depuis un pattern, `gs` amène dans le texte le son nommé sous
+le curseur ; depuis un son, `U` écrit un `@dN p"nom*4"` qui le joue ;
+depuis l'explorateur, `M` et `e` écrivent un candidat dans le texte.
 
 ## Se repérer
 
@@ -130,8 +136,11 @@ insertion, après un Espace-leader, dans un modal…).
 - `:import chemin/vers/sample.wav` — ajoute ton audio au registre
 - `:mixer` — vu-mètres par slot, mute / solo / gain
 - `:w nom` / `:e nom` / `:enew` — ranger la session, en ouvrir une autre,
-  repartir d'une vierge (voir `05-cookbook`). Dans le texte d'un son, `:w`
-  écrit ce son et `:e!` le relit du disque (`u` rend le texte d'avant)
+  repartir d'une vierge (voir `05-cookbook`). La session, c'est le texte
+  entier, sons compris
+- `:save` (ou `Espace W`), le curseur sur un son — le range dans la réserve
+  des sons, où les autres sessions le trouvent ; `:save nom` sur un bloc
+  `@dN` range le pattern
 - `:log` — déplie / replie le journal (1, 3, 10 lignes, replié)
 - `println(x)` / `@show x` dans une ligne évaluée (ou dans un pattern qui
   joue) s'écrivent dans le journal, précédés de `›` — pour déboguer

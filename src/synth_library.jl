@@ -44,7 +44,7 @@ function _dsl_entry(name::String, category::String, description::String,
     indented = "  " * replace(strip(dsl_text), "\n" => "\n  ")
     body = """
         # $(description)
-        # T = test  ·  :w <name> = save as  ·  :dsl = cookbook
+        # T = entendre  ·  :save = ranger  ·  :dsl = le guide
 
         @synth :$(name)$(params_str)$(opts_str) begin
         $(indented)

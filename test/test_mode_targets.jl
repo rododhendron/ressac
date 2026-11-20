@@ -1,6 +1,7 @@
 include(joinpath(@__DIR__, "helpers.jl"))
-# La cible d'un geste : les patterns pour e / E / m d'où qu'on soit ; ce qui a
-# le clavier pour :w — roadmap U6, U7, puis l'écran unique (E2.1).
+# La cible d'un geste : les patterns pour e / E / m d'où qu'on soit ; la
+# session pour :w, le son du curseur pour :save — roadmap U6, U7, puis
+# l'écran unique (E2.1) et le son dans le texte.
 
 # Une app en PLAY avec ses patterns et, à côté, une pane journal focalisée.
 function _mt_app(text)
@@ -51,7 +52,7 @@ end
         @test !app.quit
     end
 
-    @testset ":w sauve ce qui a le clavier — le son dans le volet, la session à gauche" begin
+    @testset ":w écrit la session, d'où qu'on soit ; :save et Espace W rangent le son du curseur" begin
         oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
         Ressac._WAVE_RENDER[] = g -> (Float32[0.0f0, 0.1f0, 0.0f0], 44100); Ressac._WAVE_SYNC[] = true
         try
@@ -59,27 +60,52 @@ end
             Ressac._active_editor(app).mode = :normal
             _exec_ex_command!(app, "synth wmode")
             Tachikoma.view(app, frame)
-            tab = Ressac._current_synth_tab(app)
-            Ressac._edit_text!(tab.code_editor, "@synth :wmode (freq=220) saw(:freq) |> low_pass(700)\n")
+            snd = Ressac._current_sound(app)
+            @test snd !== nothing && snd.name == "wmode"
+            @test Ressac._sound_write!(snd, "@synth :wmode (freq=220) saw(:freq) |> low_pass(700)")
+            ed = Ressac._patterns_editor(app)
             synth_path = joinpath(pwd(), "plugins", "user-synths", "wmode.jl")
-            session_path = joinpath(pwd(), "sessions", "_last.txt")
-            rm(session_path; force = true)
-            # Sur chaque pane du volet (texte, DOC), :w sauve le son.
-            ws = Ressac.current_workspace(app.workspaces)
-            for leaf in Ressac._all_leaves(app.volet_shown), i in eachindex(leaf.tabs)
-                ws.focused_pane = leaf.id; leaf.current_tab = i
+            session_path = joinpath(pwd(), "sessions", "wsess.txt")
+            rm(synth_path; force = true); rm(session_path; force = true)
+            # Le curseur dans le son, le clavier dans le texte puis dans sa DOC :
+            # :w écrit la session (le texte entier, son compris), jamais le fichier du son.
+            _exec_ex_command!(app, "son")
+            Tachikoma.view(app, frame)
+            sdoc = Ressac._sound_doc(app)
+            @test sdoc !== nothing
+            for focus! in (a -> Ressac._focus_patterns!(a), a -> Ressac._focus_pane!(a, sdoc))
+                focus!(app)
                 Tachikoma.view(app, frame)
-                rm(synth_path; force = true)
+                rm(session_path; force = true)
                 @test Ressac._workspace_mode(app) === :design
-                _exec_ex_command!(app, "w")
-                @test isfile(synth_path) && occursin("low_pass(700", read(synth_path, String))
-                @test !isfile(session_path)                               # pas une « session »
+                _exec_ex_command!(app, "w wsess")
+                @test isfile(session_path) && read(session_path, String) == Tachikoma.text(ed)
+                @test occursin("low_pass(700)", read(session_path, String))
+                @test !isfile(synth_path)
             end
-            # Le clavier aux patterns : :w ne touche plus au son.
+            @test app.session_name == "wsess"
+            # :save range le son sous son nom ; les patterns autour n'y vont pas.
             Ressac._focus_patterns!(app)
+            _exec_ex_command!(app, "save")
+            @test isfile(synth_path)
+            @test read(synth_path, String) == "@synth :wmode (freq=220) saw(:freq) |> low_pass(700)\n"
+            # Espace W : le même geste.
             rm(synth_path; force = true)
+            _key!(app, ' '); _key!(app, 'W')
+            @test isfile(synth_path) && occursin("low_pass(700)", read(synth_path, String))
+            # :save autre_nom : rangé sous ce nom, et le bloc du texte le prend.
+            other_path = joinpath(pwd(), "plugins", "user-synths", "wautre.jl")
+            rm(other_path; force = true)
+            _exec_ex_command!(app, "save wautre")
+            @test read(other_path, String) == "@synth :wautre (freq=220) saw(:freq) |> low_pass(700)\n"
+            @test Ressac._current_sound(app).name == "wautre"
+            @test !occursin(":wmode", Tachikoma.text(ed))
+            # Le curseur hors du son : :w n'écrit toujours que la session.
+            rm(other_path; force = true); rm(session_path; force = true)
+            ed.cursor_row = 1; ed.cursor_col = 0
+            @test Ressac._current_sound(app) === nothing
             _exec_ex_command!(app, "w")
-            @test !isfile(synth_path)
+            @test isfile(session_path) && !isfile(other_path)
         finally
             Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
         end
