@@ -61,25 +61,26 @@ _og_starts(p, a, b) = [ev.start for ev in p(Rational{Int64}(a), Rational{Int64}(
             @test 33 // 10 <= starts[1] < 34 // 10                      # le cycle 0 commence à la frappe
             @test starts[2] - starts[1] == 1 // 2                       # le motif, lui, n'a pas bougé
             @test length(sched.osc.sent) > n0                           # et sa première note est partie
-            @test :d1 in app.slot_offgrid && Ressac._slot_line(app, :d1).offgrid
+            @test haskey(app.slot_offgrid, :d1) && Ressac._slot_line(app, :d1).offgrid
             @test any(l -> occursin("d1 lancé maintenant, hors de la grille", l), app.logs)
             @test any(l -> occursin("hors de la grille", l[1]), Ressac._slot_summary(app, Ressac._slot_line(app, :d1)))
             # e : de nouveau sur la grille
             _key!(app, 'e')
-            @test !(:d1 in app.slot_offgrid)
+            @test !haskey(app.slot_offgrid, :d1)
             @test _og_starts(Ressac.pattern_get(sched, :d1), 3, 4) == [3 // 1, 7 // 2]
-            # m / m sur un slot lancé par Entrée : il repart de la frappe, pas
-            # de la grille (sinon son cycle 0 est déjà passé).
-            _key!(app, :enter); @test :d1 in app.slot_offgrid
+            # m / m sur un slot lancé par Entrée : il revient calé sur la frappe
+            # d'ORIGINE (cycle 3,3), ni sur la grille ni sur l'instant du démute.
+            _key!(app, :enter); @test haskey(app.slot_offgrid, :d1)
+            before = app.slot_offgrid[:d1]
             _key!(app, 'm')
             @test Ressac.pattern_get(sched, :d1) === nothing
             sched.t_start = time() - 6.3 / sched.cps
             sched.last_end_cycles = (time() - sched.t_start) * sched.cps + 0.5
-            n1 = length(sched.osc.sent)
             _key!(app, 'm')
             again = _og_starts(Ressac.pattern_get(sched, :d1), 6, 8)
-            @test 63 // 10 <= again[1] < 64 // 10 && :d1 in app.slot_offgrid
-            @test length(sched.osc.sent) > n1                           # il s'entend tout de suite
+            origin = app.slot_offgrid[:d1]
+            @test origin == before                                      # la frappe d'origine, pas celle du démute
+            @test !isempty(again) && all(t -> isinteger((t - origin) * 2), again)   # « bd sn » : des demi-cycles depuis l'origine
             _key!(app, 'e')
             # Entrée sur une ligne qui n'est pas un slot : comme e
             Ressac._patterns_editor(app).cursor_row = 2
@@ -87,7 +88,7 @@ _og_starts(p, a, b) = [ev.start for ev in p(Rational{Int64}(a), Rational{Int64}(
             @test Core.eval(Main, :x) == 3 && occursin("éval ⇒ 3", app.logs[end])
             # E recale tout
             Ressac._patterns_editor(app).cursor_row = 1
-            _key!(app, :enter); @test :d1 in app.slot_offgrid
+            _key!(app, :enter); @test haskey(app.slot_offgrid, :d1)
             _key!(app, 'E'); @test isempty(app.slot_offgrid)
         end
     end
@@ -117,7 +118,7 @@ _og_starts(p, a, b) = [ev.start for ev in p(Rational{Int64}(a), Rational{Int64}(
                 @test _buffer_text(app) == "@d1 :bd |> frappes(0.25, 0.5; cycles = 1.5)"
                 pat = Ressac.pattern_get(sched, :d1)
                 @test _og_starts(pat, 5, 8) == [21 // 4, 11 // 2, 27 // 4, 7 // 1]   # 5 + 0,25 · 5 + 0,5 · puis un tour plus loin
-                @test :d1 in app.slot_offgrid
+                @test haskey(app.slot_offgrid, :d1)
                 @test Ressac._slot_line(app, :d1).state === :playing
 
                 # ré-enregistrer sur la même ligne remplace la boucle

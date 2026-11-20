@@ -167,7 +167,7 @@ end
     # erreur, gardée tant que le bloc est le texte fautif.
     slot_evaluated::Dict{Symbol,String}  = Dict{Symbol,String}()
     slot_errors::Dict{Symbol,SlotError}  = Dict{Symbol,SlotError}()
-    slot_offgrid::Set{Symbol}            = Set{Symbol}()
+    slot_offgrid::Dict{Symbol,Rational{Int64}} = Dict{Symbol,Rational{Int64}}()
     slot_scan::Tuple{UInt64,Vector{SlotBlock}} = (UInt64(0), SlotBlock[])
     slot_density::Dict{Symbol,Tuple{Int,UInt64,Int}} = Dict{Symbol,Tuple{Int,UInt64,Int}}()
     # sccode browser state (only meaningful when modal === :sccode).

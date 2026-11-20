@@ -31,6 +31,23 @@ Remplit `freq=220, sustain=0.5, gain=0.5`, ajoute une enveloppe
 DirtPan. Le SC compilé part vers SuperCollider par le même chemin OSC
 que `T`.
 
+## Un son dans le texte
+
+Un `@synth` s'écrit dans le texte principal, parmi les patterns. C'est là
+qu'arrive un candidat de l'explorateur (`M`, ou `e` pour lui donner un nom).
+Le curseur sur son bloc :
+
+```
+e                 l'évalue : il est défini, et il s'entend une fois
+K                 la fiche du mot, dans le langage des sons (saw = l'oscillateur)
+:format           un maillon par ligne, ce bloc seulement
+:keep             le range dans plugins/user-synths/<nom>.jl
+:keep autre_nom   le range sous un autre nom ; le bloc prend ce nom
+```
+
+`:w` écrit la session, donc le texte du son avec elle ; `:keep` le met en
+plus dans la réserve des sons, où les autres sessions le trouvent.
+
 ## Paramètres explicites
 
 ```julia

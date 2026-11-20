@@ -195,8 +195,9 @@ function _drain_explorer_export!(m::RessacApp)
     req === nothing && return false
     _EXPLORER_EXPORT_REQUEST[] = nothing
     name, dsl = req
-    # Le candidat s'édite dans DESIGN (l'explorer reste dans EXPLORE).
-    _open_synth_text_in_design!(m, name, dsl)
+    # Le candidat s'écrit dans le texte principal, parmi les patterns.
+    _insert_sound_block!(m, name, dsl) &&
+        _push_app_log!(m, "[INFO] « $name » est dans le texte — e le fait entendre, s(\"$name\") le joue, :keep le range")
     return true
 end
 

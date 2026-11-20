@@ -804,6 +804,25 @@ function _push_app_log!(m::RessacApp, line::AbstractString)
     length(m.logs) > 200 && popfirst!(m.logs)
 end
 
+# ── Ce que le code du joueur imprime ─────────────────────────────────
+# Pendant que l'écran est tenu, la sortie standard est une pipe (Tachikoma
+# la détourne pour qu'un `println` ne salisse pas l'affichage). Ce qui y
+# passe — `println`, `@show`, `display` depuis une ligne évaluée ou depuis
+# un pattern qui joue — arrive ici par morceaux et s'écrit dans le journal,
+# une ligne par ligne imprimée, précédée de « › ».
+const _OUTPUT_PREFIX = "› "
+const _OUTPUT_PENDING = Ref("")
+
+function _capture_output!(m::RessacApp, chunk::AbstractString)
+    data = _OUTPUT_PENDING[] * replace(String(chunk), "\r\n" => "\n")
+    parts = split(data, '\n')
+    _OUTPUT_PENDING[] = String(parts[end])       # la ligne pas encore finie
+    for l in parts[1:end-1]
+        isempty(strip(l)) || _push_app_log!(m, _OUTPUT_PREFIX * l)
+    end
+    return nothing
+end
+
 function _split_log_count(line::AbstractString)
     mt = match(r"^(.*?)\s+×(\d+)$", line)
     mt === nothing && return (String(line), 1)

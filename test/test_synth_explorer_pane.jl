@@ -301,7 +301,7 @@ end
         Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
     end
 
-    @testset "_drain_explorer_export! opens an editor tab with the DSL" begin
+    @testset "_drain_explorer_export! écrit le son dans le texte principal" begin
         mock = MockOSCClient()
         sched = Ressac.Scheduler(mock; cps = 0.5)
         app = Ressac.RessacApp(; scheduler = sched)
@@ -309,16 +309,8 @@ end
         Ressac._EXPLORER_EXPORT_REQUEST[] = ("expsynth", "@synth :expsynth saw(:freq)")
         @test Ressac._drain_explorer_export!(app) == true
         @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing
-        ws = Ressac.current_workspace(app.workspaces)
-        found = false
-        for leaf in Ressac._collect_panes!(Ressac.PaneImpl[], ws.tree)
-            if leaf isa Ressac.EditorPane
-                for t in leaf.tabs
-                    occursin("expsynth", Tachikoma.text(t.code_editor)) && (found = true)
-                end
-            end
-        end
-        @test found
+        @test Ressac._focused_role(app) === :patterns
+        @test occursin("@synth :expsynth saw(:freq)", Tachikoma.text(Ressac._patterns_editor(app)))
     end
 end
 

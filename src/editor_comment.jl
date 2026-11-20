@@ -94,6 +94,19 @@ end
 
 # `:format` — la mise en forme du son ouvert, annulable d'un `u`.
 function _format_current_synth!(m::RessacApp)
+    # Dans le texte principal : le bloc `@synth` du curseur, et lui seul.
+    hit = _sound_under_cursor(m)
+    if hit !== nothing
+        (ed, sb) = hit
+        old = _sound_text(ed, sb)
+        new = String(rstrip(format_synth_text(old), '\n'))
+        new == old && (_push_app_log!(m, "[INFO] :format — rien à changer"); return)
+        lines = [String(l) for l in ed.lines]
+        splice!(lines, sb.row:sb.last_row, split(new, '\n'))
+        _edit_text!(ed, join(lines, '\n'); row = sb.row, col = 0)
+        _push_app_log!(m, "[INFO] :format — un maillon par ligne, nombres raccourcis (u annule)")
+        return
+    end
     tab = _current_synth_tab(m)
     tab === nothing && (_push_app_log!(m, "[ERROR] :format — ouvre d'abord un son (:synth <nom>)"); return)
     ed = tab.code_editor

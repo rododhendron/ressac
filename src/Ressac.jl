@@ -145,6 +145,7 @@ include("atelier.jl")            # o / O / cim qui s'entendent, et & (bouger, ar
 include("app_scope.jl")          # :scope + rendu des vues
 include("app_synth.jl")          # panes synth : ouvrir/fermer/sauver/tester
 include("app_drone.jl")          # D : drone depuis l'éditeur, pane MODULATION
+include("app_sound.jl")          # un son dans le texte principal : bloc @synth, :keep
 include("app_son.jl")            # le volet d'un son : texte ⟷ DOC, élagage, :todsl
 include("app_transport.jl")      # rec / export / panic / hush
 include("app_ex_registry.jl")    # commandes ex : tables, enregistrement, dispatch, historique

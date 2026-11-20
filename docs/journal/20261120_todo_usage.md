@@ -48,3 +48,19 @@ en a été fait, ce qui reste ouvert.
   vrai *readout* appris n'existe pas : les routes lisent l'état directement.
 - Moduler un son en direct passe par ses arguments (`D`, pane MODULATION,
   ou `set(:arg, …)` depuis un pattern sur un slot `drone()`).
+
+## Suite, le soir même
+
+- **Démute d'un slot lancé par `Entrée`** : il revient calé sur la frappe
+  d'origine (son cycle 0 n'a pas bougé), pas sur l'instant du démute.
+  `slot_offgrid` garde la phase de chaque slot hors grille.
+- **`println` / `@show`** : la sortie standard, que Tachikoma détourne
+  pendant que l'écran est tenu, s'écrit dans le journal (lignes `›`).
+- **Un son vit dans le texte principal** (`app_sound.jl`) : `M` / `e` de
+  l'explorateur et `e` d'une onde y écrivent un bloc `@synth` ; `:keep`
+  sur ce bloc range le son, `:format` et `K` y travaillent. Le volet du
+  son (texte + DOC) existe encore pour `gs` / `:synth` ; l'atelier, `T`,
+  `D`, l'explication et le graphe ne connaissent encore que lui — à porter
+  sur le bloc du curseur si cette direction est la bonne.
+- **Maquettes de la visualisation dans l'éditeur** : rouleau, roue, dans la
+  ligne, signal — https://claude.ai/artifact/GawwcREwB56kGBnxDTKV8v

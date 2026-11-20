@@ -1422,7 +1422,7 @@ end
         @test !("sculpt" in Ressac._command_completion_candidates(app, ""))
     end
 
-    @testset "e dans une onde ouvre son son dans l'éditeur ; :w le range" begin
+    @testset "e dans une onde écrit son son dans le texte principal ; :keep le range" begin
         old = Ressac._WAVE_RENDER[]
         Ressac._WAVE_RENDER[] = (g -> (Float32[0.0f0, 0.1f0], 44100))
         Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
@@ -1437,10 +1437,9 @@ end
             @test (Tachikoma.view(app, frame); true)
             Tachikoma.update!(app, Tachikoma.KeyEvent('e'))
             @test Ressac._EXPLORER_EXPORT_REQUEST[] === nothing        # export drainé
-            @test app.volet === :son
-            @test Ressac._focused_role(app) === :synth
+            @test Ressac._focused_role(app) === :patterns             # le son est dans le texte principal
             @test occursin("@synth :mybass", Tachikoma.text(Ressac._active_editor(app)))
-            _exec_ex_command!(app, "w scusave")
+            _exec_ex_command!(app, "keep scusave")
             @test isfile(path) && occursin("@synth :scusave", read(path, String))
         finally
             Ressac._WAVE_RENDER[] = old

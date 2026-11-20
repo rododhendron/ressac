@@ -63,10 +63,16 @@ function _toggle_mute_current_line!(m::RessacApp)
         # Re-eval so the slot comes back live — `_eval_current_line!`
         # uses the same block detection, so multi-line blocks evaluate
         # correctly from any cursor row inside them. Un slot lancé par
-        # `Entrée` (hors de la grille) repart de la même façon : de la
-        # frappe, tout de suite — sinon son cycle 0 est déjà passé et un
-        # son long ne revient qu'à la barre suivante, ou jamais.
-        slot in m.slot_offgrid ? _eval_current_line_now!(m) : _eval_current_line!(m)
+        # `Entrée` (hors de la grille) revient là où il était : son cycle 0
+        # reste à la frappe d'origine, pas à celle du démute — il retombe
+        # en place avec ce qui a continué de jouer.
+        origin = get(m.slot_offgrid, slot, nothing)
+        sched = _LIVE_SCHEDULER[]
+        if origin === nothing || sched === nothing
+            _eval_current_line!(m)
+        else
+            _eval_current_line!(m; phase = (origin, Float64(_phase_at(sched))))
+        end
     else
         _push_app_log!(m, "[WARN] m : le bloc sous le curseur n'est pas un slot @dN")
     end
@@ -399,12 +405,11 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
     isempty(strip(lines[row])) && return
     (start_row, end_row) = _logical_block_range(lines, row)
     block = _join_logical_block(lines[start_row:end_row])
-    _push_app_log!(m, "evaluing current line $(block)")
     slot = _slot_of_src(block)
     try
         ex = Meta.parse(block)
         result = _with_slot_phase(() -> Core.eval(Main, ex), slot === nothing ? nothing : phase)
-        slot === nothing || _slot_evaluated!(m, slot, block; offgrid = phase !== nothing)
+        slot === nothing || _slot_evaluated!(m, slot, block; phase = phase)
         rstr = sprint(io -> show(IOContext(io, :limit=>true, :displaysize=>(1, 60)), result))
         _push_app_log!(m, (slot !== nothing && phase !== nothing) ?
             "[INFO] $slot lancé maintenant, hors de la grille — e le recale" : "[INFO] éval ⇒ $rstr")

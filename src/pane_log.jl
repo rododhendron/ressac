@@ -36,6 +36,8 @@ function _log_spans(logs::AbstractVector{<:AbstractString})
             (TK.tstyle(:accent, dim = true), TK.tstyle(:accent, dim = true), SubString(line, 6))
         elseif startswith(line, "[INFO]")
             (TK.tstyle(:text_dim), TK.tstyle(:text), SubString(line, 7))
+        elseif startswith(line, _OUTPUT_PREFIX)      # ce que le code a imprimé (println, @show)
+            (TK.tstyle(:accent), TK.tstyle(:text), SubString(line, 1))
         else
             (TK.tstyle(:text_dim), TK.tstyle(:text_dim), SubString(line, 1))
         end

@@ -362,8 +362,13 @@ const _SOUND_VERBS = Set(["explain", "todsl", "to-dsl", "sc2dsl", "prune", "test
                           "export", "export-synth", "tabs", "tabnext", "tabn", "tabprev", "tabp",
                           "scratch", "sandbox", "format", "fmt"])
 
+const _INLINE_SOUND_VERBS = Set(["format", "fmt"])
+
 function _open_son_for_command!(m::RessacApp, cmd::AbstractString)
     verb = String(first(split(strip(cmd), ' '; limit = 2)))
     (verb in _SOUND_VERBS && _workspace_mode(m) !== :design) || return false
+    # Le curseur sur un `@synth` du texte principal : ces commandes-là le
+    # travaillent sur place.
+    (verb in _INLINE_SOUND_VERBS && _sound_under_cursor(m) !== nothing) && return false
     return _open_volet!(m, :son)
 end

@@ -429,10 +429,19 @@ _register_literal!(m -> (m.calm = !m.calm;
     "calme", "calm")
 # Patterns rangés — verbes distincts de :save / :load, qui appartiennent
 # déjà aux sessions (un workspace entier, pas un bloc).
-_register_literal!(m -> _push_app_log!(m,
-        "[INFO] :keep <nom> [étiquettes…] — range le bloc @dN sous le curseur (:recall le rappelle)"),
-    "keep")
-_register_regex!(r"^keep\s+(.+)$", (m, mt) -> _save_pattern_cmd!(m, mt.captures[1]))
+# Sur un bloc `@synth`, `:keep` range le SON (sous son nom, ou sous celui
+# qu'on donne) ; sur un bloc `@dN`, le pattern.
+_register_literal!(m -> begin
+        hit = _sound_under_cursor(m)
+        hit === nothing ? _push_app_log!(m,
+            "[INFO] :keep <nom> [étiquettes…] — range le bloc @dN sous le curseur (:recall le rappelle) ; sur un @synth, :keep range le son") :
+            _keep_sound_block!(m, hit...)
+    end, "keep")
+_register_regex!(r"^keep\s+(.+)$", (m, mt) -> begin
+        hit = _sound_under_cursor(m)
+        hit === nothing ? _save_pattern_cmd!(m, mt.captures[1]) :
+            _keep_sound_block!(m, hit...; new_name = first(split(mt.captures[1])))
+    end)
 _register_literal!(m -> _push_app_log!(m,
         "[INFO] :recall <nom> [slot] — recharge un pattern rangé (Espace P pour la liste)"),
     "recall")
@@ -739,6 +748,9 @@ function _write_focused!(m::RessacApp, name::AbstractString)
         isempty(name) ? _save_current_synth!(m) : _save_current_synth!(m; new_name = name)
     else
         _session_write!(m, name)
+        # Le curseur sur un son : la session est écrite, pas le son.
+        hit = _sound_under_cursor(m)
+        hit === nothing || _push_app_log!(m, "[INFO] le son « $(hit[2].name) » est écrit avec la session — :keep le range aussi dans la réserve des sons")
     end
 end
 # `:e` / `:e!` — le pendant de `:w` : dans le texte d'un son, c'est ce son

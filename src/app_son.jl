@@ -61,34 +61,7 @@ function _synth_workspace_sync!(m::RessacApp)
     return
 end
 
-"""
-    _open_synth_text_in_design!(m, name, text) -> Bool
-
-Ouvre `text` comme le son `name` dans le volet : un onglet de plus dans le
-texte (ou le même, remplacé, s'il porte déjà ce nom). Les ponts de
-l'explorateur (`e`, `M`).
-"""
-function _open_synth_text_in_design!(m::RessacApp, name::AbstractString, text::AbstractString)
-    _open_volet!(m, :son)
-    wsed = _synth_workspace_editor(m)
-    wsed === nothing && return false
-    i = findfirst(b -> b.role === :synth && b.name == name, wsed.tabs)
-    if i === nothing
-        push!(wsed.tabs, EditorBuffer(; role = :synth, name = name, content = text))
-        i = length(wsed.tabs)
-    else
-        _edit_text!(wsed.tabs[i].code_editor, text)
-    end
-    wsed.current_tab = i
-    wsed.tabs[i].code_editor.mode = :normal
-    wsed.tabs[i].code_editor.focused = true
-    _focus_pane!(m, wsed)
-    _synth_workspace_sync!(m)
-    return true
-end
-
-# `M` dans l'explorateur : le candidat s'ouvre dans le volet du son, la DOC
-# sur son explication.
+# `M` dans l'explorateur : le candidat s'écrit dans le texte principal.
 function _drain_explorer_sculpt!(m::RessacApp)
     req = _EXPLORER_SCULPT_REQUEST[]
     req === nothing && return false
@@ -96,10 +69,8 @@ function _drain_explorer_sculpt!(m::RessacApp)
     gser, label = req
     name = replace(strip(replace(label, r"\s*#\s*" => "_")), r"[^\w]" => "_")
     g = deserialize_genome(gser)
-    _open_synth_text_in_design!(m, name, _explorer_export_text(g, name))
-    parts = _synth_workspace_parts(m)
-    (parts === nothing || parts[2] === nothing) || (parts[2].mode = :explain)
-    _push_app_log!(m, "[INFO] $(label) ouvert à droite — o / cim / & le travaillent, :w le range, U l'envoie dans un pattern")
+    _insert_sound_block!(m, name, _explorer_export_text(g, name)) &&
+        _push_app_log!(m, "[INFO] $(label) est dans le texte, sous le nom « $name » — e le fait entendre, s(\"$name\") le joue, :keep le range")
     return true
 end
 

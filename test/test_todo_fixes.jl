@@ -239,4 +239,15 @@ end
     k('x'); @test !Ressac.completion_active(cl)
 end
 
+@testset "println / @show : ce que le code imprime arrive dans le journal" begin
+    (app, _) = _tf_app()
+    Ressac._OUTPUT_PENDING[] = ""
+    Ressac._capture_output!(app, "x = 3\ndeux li")              # la pipe rend des morceaux, pas des lignes
+    @test app.logs[end] == "› x = 3"
+    Ressac._capture_output!(app, "gnes\r\n\n")
+    @test app.logs[end] == "› deux lignes" && count(l -> startswith(l, "› "), app.logs) == 2
+    spans = Ressac._log_spans(app.logs)
+    @test spans[end][2].content == "› deux lignes"
+end
+
 end

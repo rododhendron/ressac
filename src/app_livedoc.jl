@@ -80,7 +80,7 @@ function _doc_target_under_cursor(m::RessacApp)
     encl = _enclosing_call(chars, col)
     # Dans le texte d'un son, un mot du langage des sons d'abord : `saw` y
     # est l'oscillateur, pas le signal 0..1 des patterns.
-    if _focused_role(m) === :synth
+    if _focused_role(m) === :synth || _sound_under_cursor(m) !== nothing
         for w in (word, encl)
             (!isempty(w) && _dsl_doc(String(w)) !== nothing) && return _DSL_PREFIX * String(w)
         end

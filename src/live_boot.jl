@@ -123,7 +123,7 @@ function live(; host::AbstractString = "127.0.0.1",
     _request_alternate_keys()
     cfg.hover && _request_mouse_motion()
     try
-        Tachikoma.app(app; fps=cfg.fps)
+        Tachikoma.app(app; fps=cfg.fps, on_stdout = chunk -> _capture_output!(app, chunk))
     finally
         cfg.hover && _release_mouse_motion()
         # Persist the workspace layout so the next launch restores the

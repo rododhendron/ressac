@@ -151,16 +151,16 @@ end
     end
 end
 
-@testset "explorer — e (export) ouvre le candidat dans DESIGN" begin
+@testset "explorer — e (export) écrit le candidat dans le texte principal" begin
     app, tb, frame = _br_app()
     _bex(app, "explore")
     p = Ressac._focused_pane_impl(app)
     @test p isa Ressac.SynthExplorerPane
     _bkey(app, 'e')                                            # nommage
     foreach(c -> _bkey(app, c), "cand"); _bkey(app, :enter)
-    @test _bws(app) == "DESIGN"
-    @test Ressac._focused_role(app) === :synth
-    @test occursin("@synth", Tachikoma.text(Ressac._active_editor(app)))
+    @test _bws(app) == "PLAY"
+    @test Ressac._focused_role(app) === :patterns
+    @test occursin("@synth :cand", Tachikoma.text(Ressac._active_editor(app)))
     _bex(app, "explore")
     @test Ressac._focused_pane_impl(app) isa Ressac.SynthExplorerPane   # l'explorer est toujours là
 end
@@ -191,33 +191,57 @@ end
     _bex(app, "zoom"); @test app.zoom_leaf == 0
 end
 
-@testset "M depuis l'explorateur — le candidat s'ouvre à droite, la DOC sur son explication ; :w le range" begin
+@testset "M depuis l'explorateur — le candidat s'écrit dans le texte principal ; :keep le range" begin
     _in_sandbox() do
         try
             app, tb, frame = _br_app()
+            ed = Ressac._patterns_editor(app)
+            Tachikoma.set_text!(ed, "@d1 p\"bd sn\"\n  |> gain(0.8)\n@d2 p\"hh*4\"")
+            ed.cursor_row = 1
             _bex(app, "explore")
             _bkey(app, 'M')
-            @test _bws(app) == "DESIGN" && app.volet === :son
-            @test Ressac._focused_role(app) === :synth               # le clavier est dans le texte : c'est là qu'on travaille
-            (ep, sdoc) = Ressac._synth_workspace_parts(app)
-            @test ep.tabs[ep.current_tab].name == "candidat_1"
-            @test occursin("@synth :candidat_1", Tachikoma.text(ep.tabs[ep.current_tab].code_editor))
-            @test sdoc.mode === :explain && sdoc.genome !== nothing && !isempty(sdoc.explain_lines)
-            scr = _bscreen(app, tb, frame)
-            @test occursin("SON · candidat_1", scr) && occursin("explication", scr) && occursin("CHAÎNE", scr)
-            @test !occursin("STUDIO", scr)
-            # M de nouveau sur le même candidat : le même onglet, pas un de plus
-            ntabs = length(ep.tabs)
+            @test Ressac._focused_role(app) === :patterns            # le clavier est dans le texte, sur le son
+            @test _bws(app) == "PLAY" && app.volet !== :son           # plus de volet pour le texte d'un son
+            lines = [String(l) for l in ed.lines]
+            @test lines[1:3] == ["@d1 p\"bd sn\"", "  |> gain(0.8)", ""]   # posé SOUS le bloc du curseur, pas dedans
+            @test startswith(lines[4], "@synth :candidat_1") && ed.cursor_row == 4
+            @test lines[end] == "@d2 p\"hh*4\"" && isempty(strip(lines[end - 1]))
+            @test !occursin("ressac-genome", Tachikoma.text(ed))     # la ligne du génome n'encombre pas le texte
+            @test Ressac.synth_info(:candidat_1) !== nothing         # défini : s("candidat_1") le joue
+            hit = Ressac._sound_under_cursor(app)
+            @test hit !== nothing && hit[2].name == "candidat_1" && hit[2].row == 4
+            # M de nouveau sur le même candidat : le même bloc, pas un de plus
             _bex(app, "explore"); _bkey(app, 'M')
-            @test length(Ressac._synth_workspace_parts(app)[1].tabs) == ntabs
-            # :w <nom> range le son
-            _bex(app, "w scusave")
-            path = joinpath(pwd(), "plugins", "user-synths", "scusave.jl")
-            @test isfile(path) && occursin("@synth :scusave", read(path, String))
-            # ? donne l'aide du son
-            _bkey(app, '?')
-            @test app.modal === :help
-            _bkey(app, :escape)
+            @test count(l -> startswith(String(l), "@synth :candidat_1"), ed.lines) == 1
+            # :w écrit la session et dit que le son, lui, n'est pas rangé
+            dir = joinpath(pwd(), "plugins", "user-synths")
+            _bex(app, "w")
+            @test !isfile(joinpath(dir, "candidat_1.jl")) && any(l -> occursin(":keep le range", l), app.logs)
+            # :keep le range sous son nom ; :keep <nom> sous un autre, et le bloc prend ce nom
+            _bex(app, "keep")
+            @test occursin("@synth :candidat_1", read(joinpath(dir, "candidat_1.jl"), String))
+            _bex(app, "keep scusave")
+            @test occursin("@synth :scusave", read(joinpath(dir, "scusave.jl"), String))
+            @test any(l -> startswith(String(l), "@synth :scusave"), ed.lines)
+            @test Ressac.synth_info(:scusave) !== nothing
+            _bex(app, "keep pas-un-nom")
+            @test !isfile(joinpath(dir, "pas-un-nom.jl")) && occursin("n'est pas un nom de son", app.logs[end])
+            # sur un @dN, :keep range toujours le pattern
+            ed.cursor_row = 1
+            @test Ressac._sound_under_cursor(app) === nothing
+            # K sur un mot du son : la fiche du langage des sons
+            Tachikoma.set_text!(ed, "@synth :essai (freq=220) begin\n    saw(:freq)\n    |> rlpf(900, 0.3)\nend\n@d1 p\"bd\"")
+            ed.cursor_row = 2; ed.cursor_col = 5
+            @test Ressac._doc_target_under_cursor(app) == "dsl:saw"
+            ed.cursor_row = 5; ed.cursor_col = 5
+            @test !startswith(Ressac._doc_target_under_cursor(app), "dsl:")
+            # :format ne touche que le bloc du son
+            Tachikoma.set_text!(ed, "@d1 p\"bd\" |> gain(0.8) |> pan(0.2)\n\n@synth :essai (freq=220) saw(:freq) |> rlpf(900, 0.3) |> safe()")
+            ed.cursor_row = 3
+            _bex(app, "format")
+            lines = [String(l) for l in ed.lines]
+            @test lines[1] == "@d1 p\"bd\" |> gain(0.8) |> pan(0.2)"
+            @test length(lines) > 3 && any(l -> startswith(lstrip(l), "|> rlpf"), lines)
         finally
             Ressac._EXPLORER_EXPORT_REQUEST[] = nothing
         end

@@ -42,7 +42,7 @@ function _slot_lines(m::RessacApp)
         sounding = st === :playing || st === :modified
         push!(out, SlotLine(b.slot, b.row, b.last_row, st,
                             sounding && _slot_held(b.slot),
-                            sounding && b.slot in m.slot_offgrid,
+                            sounding && haskey(m.slot_offgrid, b.slot),
                             sounding ? _slot_onsets(m, b.slot, pat, cyc) : 0,
                             st === :error ? err : nothing))
     end
@@ -91,9 +91,11 @@ end
 # ── Ce que l'évaluation consigne ─────────────────────────────────────
 
 # Le bloc a été évalué : c'est lui qui joue désormais.
-function _slot_evaluated!(m::RessacApp, slot::Symbol, src::AbstractString; offgrid::Bool = false)
+# `phase` : où commence son cycle 0 s'il a été lancé hors de la grille
+# (`Entrée`, la boucle) — gardé pour que le démute le remette au même endroit.
+function _slot_evaluated!(m::RessacApp, slot::Symbol, src::AbstractString; phase = nothing)
     m.slot_evaluated[slot] = String(src)
-    offgrid ? push!(m.slot_offgrid, slot) : delete!(m.slot_offgrid, slot)
+    phase === nothing ? delete!(m.slot_offgrid, slot) : (m.slot_offgrid[slot] = phase[1])
     delete!(m.slot_errors, slot)
     _note_played!(src)
     return nothing
@@ -128,7 +130,7 @@ function _eval_slot_block!(m::RessacApp, slot::Symbol, src::AbstractString; phas
     try
         ex = Meta.parse(src)
         _with_slot_phase(() -> Core.eval(Main, ex), phase)
-        _slot_evaluated!(m, slot, src; offgrid = phase !== nothing)
+        _slot_evaluated!(m, slot, src; phase = phase)
         return true
     catch e
         hint = _humanize_eval_error(e, src)

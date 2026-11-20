@@ -1041,8 +1041,8 @@ bind!(:explorer, "u", "rôle d'usage suivant"; short = "rôle", group = :select,
 bind!(:explorer, "H", "récolte NRT (top-k du rôle)"; short = "récolte", group = :select, action = _explorer_harvest!)
 bind!(:explorer, "B", "tune (réglage fin) ⟷ brew (rebrassage)"; short = "tune/brew", group = :structure,
       action = p -> (p.mode = p.mode === :tune ? :brew : :tune))
-bind!(:explorer, "M", "ouvrir le candidat à droite, avec son explication"; short = "ouvrir", group = :file, action = _explorer_sculpt_focus!)
-bind!(:explorer, "e", "exporter dans l'éditeur…"; short = "éditeur…", group = :file,
+bind!(:explorer, "M", "écrire le candidat dans le texte, parmi les patterns"; short = "→ texte", group = :file, action = _explorer_sculpt_focus!)
+bind!(:explorer, "e", "écrire le candidat dans le texte, sous un nom…"; short = "→ texte…", group = :file,
       action = p -> (p.naming = :export; p.name_buf = ""))
 bind!(:explorer, "w", "sauver comme synth…"; short = "synth…", group = :file,
       action = p -> (p.naming = :synth; p.name_buf = ""))

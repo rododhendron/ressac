@@ -831,8 +831,8 @@ Une touche descend les couches actives — transitoire (saisie, leader, mode pan
 
 | Touche | Action |
 |---|---|
-| `M` | ouvrir le candidat à droite, avec son explication |
-| `e` | exporter dans l'éditeur… |
+| `M` | écrire le candidat dans le texte, parmi les patterns |
+| `e` | écrire le candidat dans le texte, sous un nom… |
 | `w` | sauver comme synth… |
 | `s` | sauver comme graine… |
 | `y` | copier le DSL |

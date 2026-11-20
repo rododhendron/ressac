@@ -133,6 +133,8 @@ insertion, après un Espace-leader, dans un modal…).
   repartir d'une vierge (voir `05-cookbook`). Dans le texte d'un son, `:w`
   écrit ce son et `:e!` le relit du disque (`u` rend le texte d'avant)
 - `:log` — déplie / replie le journal (1, 3, 10 lignes, replié)
+- `println(x)` / `@show x` dans une ligne évaluée (ou dans un pattern qui
+  joue) s'écrivent dans le journal, précédés de `›` — pour déboguer
 - `:wiki` — cette documentation
 
 ## Pour aller plus loin
