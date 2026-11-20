@@ -184,6 +184,7 @@ skipping string literals and `#` comments. Used by
 mid-block line on its own would parse as `:error` (which is what
 happens for the tail of a multi-line array literal, e.g.
 `     collect(37:48), collect(49:60)],`).
+And begin/end ?
 """
 function _delim_depth(s::AbstractString)
     depth = 0
@@ -215,6 +216,8 @@ function _delim_depth(s::AbstractString)
         end
         i = nextind(s, i)
     end
+    depth = occursin("begin", s) ? depth += 1 : depth
+    depth = occursin("end", s) ? depth -= 1 : depth
     depth
 end
 
@@ -271,4 +274,3 @@ function _logical_block_range(lines::AbstractVector, row::Int)
     end
     return (start_row, end_row)
 end
-

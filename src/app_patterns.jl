@@ -388,6 +388,7 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
     isempty(strip(lines[row])) && return
     (start_row, end_row) = _logical_block_range(lines, row)
     block = _join_logical_block(lines[start_row:end_row])
+    _push_app_log!(m, "evaluing current line $(block)")
     slot = _slot_of_src(block)
     try
         ex = Meta.parse(block)

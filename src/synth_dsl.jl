@@ -1252,6 +1252,7 @@ macro synth(args...)
         Expr(:call, GlobalRef(@__MODULE__, :_sc_name_from_source), source_file) :
         Expr(:call, GlobalRef(@__MODULE__, :_sc_name_for_aliased),
              source_file, alias_expr)
+
     play_fn = GlobalRef(@__MODULE__, :play_synth)
     call = if opts === nothing
         :($play_fn($name_expr, $body; params = $params, alias = $alias_expr))

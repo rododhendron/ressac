@@ -1,0 +1,32 @@
+bugs:
+mute and unmute don't replay the sound when triggered by now
+tab en insert devrait insérer espace width en nombre d'espace
+on devrait pouvoir répéter une touche en mode insertion (déplacement et suppression par exemple)
+saw existe pas, pourquoi j'ai des functions dans la doc qui n'existent pas ? tests ?
+mute un synth wesh
+new line |> broken
+drone enleve pas l'enveloppe, enfin bizarre quoi
+maillon par ligne fonctionne pas, on peut pas ouvrir l'atelier, @synth inutilisable
+sur le rlpf par exemple, j'ai la doc du SC mais pas la doc de la fonction dans la macro, et du coup les args matchent pas pourquoi ? 
+live synth modulation ? ou obligé de passer par args ? 
+aussi comment je tape les caractères spéciaux genre sigma ? tau ? pour adex par exemple
+connexion de plusieurs reservoirs entre eux ? gestion du readout ?
+J'ai des erreurs concurrency vector change size sur le reservoir en slot. (Vector cannot be resized concurrently)
+Oscillator into drive reservoir
+aussi le reservoir est super long à computer et freeze à la premiere éval à chaque fois
+:e! ?? ça a pas l'air de marcher
+
+Je vois du code sur SynthExplorerPane mais ça existe plus si ?
+aussi escape ne quitte plus l'editeur stp.
+pb du code: non maintenable, très complexe de trouver le chemin de l'event e sur l'erreur de parsing...
+aussi galère de sélectionner des trucs, genre themes, autocomplete dans commande, il faut pouvoir se déplacer librement dedans
+
+visiblement on utilise pas du tout les mêmes functions de code pour gérer les mêmes codes blocks etc... Il me semble y avoir beaucoup de duplication de code.
+genre on a plusieurs fonctions qui calculent le logical_block_range...
+
+Bon je parle tout seul mais pour la macro c'est fix, j'ai fix depth avec begin et end.
+
+Aussi je comprends pas je croyais qu'on avait plus de pane synth pourtant mon son depuis l'explorer part dans synth
+
+Au niveau de la visualisation, on pourrait faire un peu comme strudel avec le pitchwheel notamment.
+Peut être on peut mettre toute la visualisation dans l'éditeur directement en vrai ça me semble pas si mal comme idée.
