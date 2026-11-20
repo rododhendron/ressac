@@ -279,8 +279,9 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     # En mode visuel, la sélection tient lieu de ligne du curseur : deux fonds
     # de même valeur l'un sur l'autre ne se distinguent pas.
     if body.y <= cursor_y <= bottom && ed.mode === :normal && !m.visual_active
+        cx = _cursor_cell_x(ed, body)
         for x in signs_x:right
-            _tint_cell!(buf, x, cursor_y, cursor_bg)
+            x == cx || _tint_cell!(buf, x, cursor_y, cursor_bg)     # la cellule du curseur garde son orange
         end
     end
 
@@ -360,6 +361,14 @@ _error_text(e::SlotError) =
 
 _fit(s::AbstractString, room::Int) = textwidth(s) <= room ? String(s) : first(s, max(room - 1, 0)) * "…"
 
+# La colonne d'écran du curseur de `ed`, dont le texte (numéros compris)
+# occupe `body`. Teinter la ligne du curseur ne doit pas repeindre cette
+# cellule : son fond orange EST le curseur.
+function _cursor_cell_x(ed::TK.CodeEditor, body::TK.Rect)
+    gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0
+    return body.x + gw + ed.cursor_col - ed.h_scroll
+end
+
 # La ligne du curseur d'un éditeur qui n'est pas celui des patterns (le
 # texte d'un son) : le même fond orangé, pour que l'œil la retrouve.
 function _render_cursor_line!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf::TK.Buffer)
@@ -370,8 +379,9 @@ function _render_cursor_line!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf
     y = body.y + (ed.cursor_row - 1 - ed.scroll_offset)
     body.y <= y < body.y + body.height || return
     bg = _ui_tint(_ui().o, 0.15)
+    cx = _cursor_cell_x(ed, body)
     for x in body.x:(body.x + body.width - 1)
-        _tint_cell!(buf, x, y, bg)
+        x == cx || _tint_cell!(buf, x, y, bg)
     end
     return
 end

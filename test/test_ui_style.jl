@@ -197,3 +197,20 @@ end
         @test cur.style.bg != sel.style.bg
     end
 end
+
+@testset "mode normal — le curseur se voit sur sa ligne teintée" begin
+    (app, _) = _new_app()
+    tb = Tachikoma.TestBackend(120, 36)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 120, 36), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    ed = Ressac._active_editor(app)
+    Tachikoma.set_text!(ed, "abcdef xyz\nsecond\n")
+    ed.cursor_row = 2; ed.cursor_col = 3
+    buf = _ui_draw(app, frame)
+    (x, y) = _ui_find(buf, "second")
+    line_bg = Ressac._ui_tint(Ressac._ui().o, 0.15)
+    cur = _ui_cellat(buf, x + 3, y)
+    @test _ui_cellat(buf, x + 1, y).style.bg == line_bg      # la ligne : une teinte
+    @test cur.char == 'o' && cur.style.bg != line_bg         # le curseur : pas avalé par elle
+    lum(c) = (c = Tachikoma.to_rgb(c); 0.3c.r + 0.6c.g + 0.1c.b)
+    @test lum(cur.style.bg) > lum(line_bg) + 60              # et nettement plus clair
+end
