@@ -175,79 +175,109 @@ function _join_logical_block(rows)
     return String(take!(out))
 end
 
+# Les mots qui ouvrent un bloc que `end` ferme.
+const _BLOCK_OPENERS = Set(["begin", "do", "function", "macro", "let", "if", "for", "while",
+                            "try", "quote", "struct", "module", "baremodule"])
+
+"""
+    _depth_scan(s, brackets = 0) -> (brackets, blocks)
+
+Ce que la ligne `s` ouvre sans le fermer : `brackets` pour `(`, `[`, `{`,
+`blocks` pour les mots qui attendent un `end` (`begin`, `do`, `function`…).
+Les chaînes et les commentaires sont sautés. `brackets` en entrée est la
+profondeur de crochets déjà ouverte par les lignes d'avant : dedans, les
+mots ne comptent pas (`a[end]`, `[x for x in xs]` n'ouvrent rien). Un mot
+ne compte que s'il est un mot entier : `blend`, `send` et `:end` ne ferment
+rien.
+"""
+function _depth_scan(s::AbstractString, brackets::Int = 0)
+    blocks = 0
+    in_str = false
+    i = firstindex(s)
+    n = lastindex(s)
+    prev = ' '
+    while i <= n
+        c = s[i]
+        if in_str
+            if c == '\\' && i < n
+                i = nextind(s, i)  # skip escaped char
+            elseif c == '"'
+                in_str = false
+            end
+        elseif c == '#'
+            break
+        elseif c == '"'
+            in_str = true
+        elseif c == '(' || c == '[' || c == '{'
+            brackets += 1
+        elseif c == ')' || c == ']' || c == '}'
+            brackets -= 1
+        elseif (isletter(c) || c == '_') && !(isletter(prev) || isdigit(prev) || prev in ('_', '!', ':', '.', '@'))
+            j = i
+            while j < n && (k = nextind(s, j); isletter(s[k]) || isdigit(s[k]) || s[k] in ('_', '!'))
+                j = k
+            end
+            if brackets <= 0
+                word = SubString(s, i, j)
+                word in _BLOCK_OPENERS ? (blocks += 1) : word == "end" ? (blocks -= 1) : nothing
+            end
+            prev = s[j]
+            i = nextind(s, j)
+            continue
+        end
+        prev = c
+        i = nextind(s, i)
+    end
+    return (brackets, blocks)
+end
+
 """
     _delim_depth(s) -> Int
 
-Net depth of unclosed `(`, `[`, `{` minus matching closers in `s`,
-skipping string literals and `#` comments. Used by
-`_logical_block_range` to detect multi-line expressions even when a
-mid-block line on its own would parse as `:error` (which is what
-happens for the tail of a multi-line array literal, e.g.
-`     collect(37:48), collect(49:60)],`).
-And begin/end ?
+Ce que `s` laisse ouvert en tout : crochets et blocs (`_depth_scan`).
 """
-function _delim_depth(s::AbstractString)
-    depth = 0
-    in_str = false
-    str_char = ' '
-    in_cmt = false
-    i = firstindex(s)
-    n = lastindex(s)
-    while i <= n
-        c = s[i]
-        if in_cmt
-            c == '\n' && (in_cmt = false)
-        elseif in_str
-            if c == '\\' && i < n
-                i = nextind(s, i)  # skip escaped char
-            elseif c == str_char
-                in_str = false
-            end
-        else
-            if c == '#'
-                in_cmt = true
-            elseif c == '"'
-                in_str = true; str_char = '"'
-            elseif c == '(' || c == '[' || c == '{'
-                depth += 1
-            elseif c == ')' || c == ']' || c == '}'
-                depth -= 1
-            end
-        end
-        i = nextind(s, i)
-    end
-    depth = occursin("begin", s) ? depth += 1 : depth
-    depth = occursin("end", s) ? depth -= 1 : depth
-    depth
-end
+_delim_depth(s::AbstractString) = sum(_depth_scan(s))
+
+# La ligne finit-elle sur un `|>` qui attend sa suite ?
+_ends_with_pipe(s::AbstractString) = endswith(rstrip(SynthDSL._split_code_comment(String(s))[1]), "|>")
 
 """
     _logical_block_range(lines, row) -> (start_row, end_row)
 
-Find the range of lines that form a single logical Julia expression
-containing `row`. Walks UP through `|>` continuations and any lines
-that leave an open bracket / paren / brace; walks DOWN until those
-brackets all close AND the gathered text parses (or we hit EOF).
-Comment prefixes (`# ` / `#`) are stripped first so muted blocks have
-the same range as their active twin.
+Les lignes qui forment, avec `row`, une seule expression : on remonte tant
+que la ligne commence par `|>`, que la précédente finit par `|>`, ou qu'un
+crochet ou un bloc (`begin … end`, `do … end`) ouvert plus haut n'est pas
+fermé ; on descend jusqu'à ce que tout soit fermé et que le texte se lise.
+Les préfixes de commentaire (`# `) sont retirés d'abord : un bloc coupé a
+la même étendue que son jumeau actif. C'est LA fonction qui dit où
+commence et finit un bloc — `e`, `m`, `gc`, les slots, les variations.
 """
 function _logical_block_range(lines::AbstractVector, row::Int)
     1 <= row <= length(lines) || return (row, row)
     _strip_cmt(s) = replace(String(s), r"^\s*#+\s*" => "")
 
-    # depths[i] = net delim depth at the START of line i (1-based).
-    # Walking up while depths[i] > 0 means "still inside an unclosed
-    # bracket from a previous line" — i.e. line i is a continuation.
+    # depths[i] : ce qui est ouvert au DÉBUT de la ligne i. Une ligne `@dN`
+    # en première colonne commence toujours un bloc : la profondeur y
+    # repart de zéro, pour qu'une faute plus haut dans le texte (un `end`
+    # en trop, une parenthèse oubliée) ne décale pas tout ce qui suit.
     stripped = _strip_cmt.(lines)
     depths = zeros(Int, length(lines) + 1)
+    br = 0; bl = 0
     for i in 1:length(lines)
-        depths[i + 1] = depths[i] + _delim_depth(stripped[i])
+        if occursin(_SLOT_HEAD_RX, stripped[i]) && !isspace(first(String(lines[i])))
+            br = 0; bl = 0
+            depths[i] = 0
+        end
+        (br, dbl) = _depth_scan(stripped[i], br)
+        bl += dbl
+        (br < 0 || bl < 0) && (br = max(br, 0); bl = max(bl, 0))    # un fermant de trop n'ouvre rien
+        depths[i + 1] = br + bl
     end
 
     start_row = row
     while start_row > 1
         cur = stripped[start_row]
-        if startswith(lstrip(cur), "|>") || depths[start_row] > 0
+        if startswith(lstrip(cur), "|>") || depths[start_row] > 0 || _ends_with_pipe(stripped[start_row - 1])
             start_row -= 1
         else
             break

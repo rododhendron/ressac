@@ -283,7 +283,7 @@ Donc `:cb |> n("0 3 7")` prend trois variantes de cowbell, alors que
 
 Un synth utilisateur ne reçoit la note que s'il déclare un paramètre de
 hauteur (`freq` en général). Le titre de sa pane le dit :
-`SYNTH · monsynth · hauteur freq · durée sustain`. Sans `sustain`
+`SON · monsynth · hauteur freq · durée sustain`. Sans `sustain`
 déclaré, sa note ne s'arrête jamais toute seule — c'est ce qui laisse
 une voix suspendue après un `:mute`.
 

@@ -597,7 +597,7 @@ const _MODAL_LABELS_FR = Dict{Symbol,String}(
     _surface_label(m) -> String
 
 Nom de la surface focalisée pour la status line : le modal ouvert, la
-pane éditeur (PATTERNS / SYNTH · nom) ou la pane (EXPLORER, ONDE…).
+pane éditeur (PATTERNS / SON · nom) ou la pane (EXPLORER, ONDE…).
 """
 function _surface_label(m::RessacApp)
     m.modal !== :none && return get(_MODAL_LABELS_FR, modal_scope(m), uppercase(String(m.modal)))
@@ -606,7 +606,7 @@ function _surface_label(m::RessacApp)
     if pane isa EditorPane
         b = _focused_buffer(m)
         b === nothing && return "ÉDITEUR"
-        return b.role === :patterns ? "PATTERNS" : "SYNTH · $(b.name)"
+        return b.role === :patterns ? "PATTERNS" : "SON · $(b.name)"
     end
     ps = pane_scope(pane)
     return get(_PANE_LABELS_FR, ps, uppercase(String(ps)))

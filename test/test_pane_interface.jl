@@ -97,12 +97,12 @@ _reload_core_pane_kinds() = _restore_globals!(Ressac._PANE_KINDS)
         @test occursin("PATTERNS", Tachikoma.row_text(tb, 1))
     end
 
-    @testset "render! draws SYNTH title for :synth role" begin
+    @testset "render! draws SON title for :synth role" begin
         ep = Ressac._pane_new(:editor, Dict{String,Any}(
             "buffer_role" => "synth", "name" => "wob1"))
         tb = Tachikoma.TestBackend(40, 10)
         Ressac.render!(ep, Tachikoma.Rect(1, 1, 40, 10), tb.buf)
-        @test occursin("SYNTH", Tachikoma.row_text(tb, 1))
+        @test occursin("SON", Tachikoma.row_text(tb, 1))
         @test occursin("wob1", Tachikoma.row_text(tb, 1))
     end
 

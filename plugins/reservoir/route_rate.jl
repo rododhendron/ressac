@@ -132,7 +132,9 @@ function rate_voice(r;
     bin_counts = zeros(Int, n_voices)
     events_by_cycle = Dict{Int, Vector{Event{ControlMap}}}()
 
-    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+    # Une source à état : une question à la fois, et l'interface (`preview`)
+    # ne la fait pas avancer — voir `Ressac.stateful_pattern`.
+    Ressac.stateful_pattern(ControlMap, (s::Rational, e::Rational, preview::Bool) -> begin
         sched = Ressac._LIVE_SCHEDULER[]
         raw_target = if sched === nothing
             ceil(Int, Float64(e) * spc)
@@ -146,7 +148,7 @@ function rate_voice(r;
 
         cps = sched === nothing ? 0.5 : sched.cps
 
-        while total_steps[] < target_total
+        while !preview && total_steps[] < target_total
             c = total_steps[] ÷ spc
             s_in_c = (total_steps[] % spc) + 1
             frame = min(frames_per_cycle - 1,
@@ -214,7 +216,7 @@ function rate_voice(r;
         c_start = floor(Int, Float64(s))
         c_end = max(c_start, ceil(Int, Float64(e)) - 1)
         for k in collect(keys(events_by_cycle))
-            k < c_start && delete!(events_by_cycle, k)
+            (!preview && k < c_start) && delete!(events_by_cycle, k)
         end
         result = Event{ControlMap}[]
         for c in c_start:c_end

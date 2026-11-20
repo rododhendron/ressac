@@ -164,7 +164,7 @@ function _lane_for(m::RessacApp, slot::Symbol, pat, cyc::Int, width::Int)
     c = get(m.lane_cache, slot, nothing)
     (c !== nothing && c[1] == key) && return c[2]
     cells = try
-        evs = Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+        evs = preview_query(pat, cyc, cyc + 1)
         _lane_digits!(_lane_cells(evs, cyc, width), evs, cyc)
     catch
         fill(' ', width)

@@ -30,7 +30,7 @@ include(joinpath(@__DIR__, "helpers.jl"))
         out = Ressac.format_synth_text(src)
         @test occursin("ugen(:AllpassC, 400.0, 5.035, 5.075e-3)", out)
         @test occursin("# 0.123456789 reste", out) && occursin("\"3.14159265\"", out)
-        @test Ressac.format_synth_text("gain(0.5) |> lpf(1200.25)") == "gain(0.5) |> lpf(1200.25)"   # déjà courts
+        @test Ressac.format_synth_text("  |> lpf(1200.25)") == "  |> lpf(1200.25)"   # déjà courts
     end
 
     @testset "commenter : toutes les lignes, ou décommenter si elles le sont toutes" begin

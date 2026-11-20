@@ -68,19 +68,6 @@ function _close_pane_or_quit!(m::RessacApp)
     return
 end
 
-# Échap en mode normal sur la dernière pane : la première pression
-# prévient, la seconde (< 2 s) quitte.
-function _esc_quit_step!(m::RessacApp)
-    now = time()
-    if now - m.esc_quit_at < 2.0
-        _quit!(m)
-    else
-        m.esc_quit_at = now
-        _push_app_log!(m, "[INFO] Échap encore pour quitter Ressac — :qa quitte tout de suite")
-    end
-    return
-end
-
 function _quit!(m::RessacApp)
     _session_state_save!(m)
     try
@@ -140,8 +127,8 @@ _register_regex!(r"^synth\s+(\w+)$",
 _register_literal!(m -> _write_focused!(m, ""),     "w", "save-synth")
 _register_regex!(r"^w\s+(\S+)$", (m, mt) -> _write_focused!(m, mt.captures[1]))
 # Les sessions, avec les verbes de vim (app_sessions.jl).
-_register_literal!(m -> _session_reload!(m),               "e")
-_register_literal!(m -> _session_reload!(m; force = true), "e!")
+_register_literal!(m -> _reload_focused!(m),               "e")
+_register_literal!(m -> _reload_focused!(m; force = true), "e!")
 _register_regex!(r"^e\s+(\S+)$",  (m, mt) -> _session_open!(m, mt.captures[1]))
 _register_regex!(r"^e!\s+(\S+)$", (m, mt) -> _session_open!(m, mt.captures[1]; force = true))
 _register_literal!(m -> _session_new!(m),               "enew")
@@ -754,6 +741,41 @@ function _write_focused!(m::RessacApp, name::AbstractString)
         _session_write!(m, name)
     end
 end
+# `:e` / `:e!` — le pendant de `:w` : dans le texte d'un son, c'est ce son
+# qu'on relit du disque ; ailleurs, la session.
+_reload_focused!(m::RessacApp; force::Bool = false) =
+    _saves_synth(m) ? _reload_current_synth!(m; force) : _session_reload!(m; force)
+
+"""
+    _reload_current_synth!(m; force = false) -> Bool
+
+Relit du disque le son ouvert. Sans `!`, refuse de laisser des changements
+qui ne sont pas écrits. `u` rend le texte d'avant.
+"""
+function _reload_current_synth!(m::RessacApp; force::Bool = false)
+    tab = _current_synth_tab(m)
+    tab === nothing && return false
+    path = _app_synth_path(tab.name; mode = :dsl)
+    if !isfile(path)
+        _push_app_log!(m, "[INFO] :e — « $(tab.name) » n'a pas encore été écrit (:w l'écrit)")
+        return false
+    end
+    disk = read(path, String)
+    ed = tab.code_editor
+    if TK.text(ed) == disk
+        _push_app_log!(m, "[INFO] :e — « $(tab.name) » est déjà tel qu'il est écrit")
+        return true
+    end
+    if !force
+        _push_app_log!(m, "[WARN] « $(tab.name) » a changé depuis qu'il est écrit — :w d'abord, ou :e! pour laisser ces changements")
+        return false
+    end
+    _edit_text!(ed, disk; row = 1, col = 0)
+    ed.mode = :normal
+    _push_app_log!(m, "[INFO] « $(tab.name) » relu du disque (u rend le texte d'avant)")
+    return true
+end
+
 function _theme_switch(m::RessacApp, mt::RegexMatch)
     name = Symbol(mt.captures[1])
     if _apply_theme!(name)

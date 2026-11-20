@@ -27,7 +27,7 @@ end
 # Les sons que joue un pattern sur un cycle (pour les réécrire dans le texte).
 function _sounds_of(p::Pattern, cyc::Int = 0)
     out = String[]
-    evs = try Base.invokelatest(p, Rational{Int64}(cyc), Rational{Int64}(cyc + 1)) catch; return out end
+    evs = try preview_query(p, cyc, cyc + 1) catch; return out end
     for ev in evs
         v = ev.value
         s = v isa AbstractDict ? get(v, :s, nothing) : (v isa Symbol || v isa AbstractString) ? v : nothing

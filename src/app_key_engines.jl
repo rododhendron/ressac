@@ -221,6 +221,13 @@ end
 # Maj-Tab sautent de $1 en $2.
 function _editor_insert_engine!(m::RessacApp, evt::TK.KeyEvent)
     ed = _active_editor(m)
+    # Une touche maintenue se répète quand elle écrit, efface ou déplace ;
+    # Tab, Entrée et Échap ne partent qu'à la frappe.
+    if evt.action === TK.key_repeat
+        (evt.key in (:backspace, :delete, :left, :right, :up, :down) ||
+         (evt.key === :char && _is_typable(evt.char))) || return true
+        evt = TK.KeyEvent(evt.key, evt.char, TK.key_press)
+    end
     evt.action === TK.key_press || return true
     if m.placeholder_active && evt.key === :tab
         _placeholder_jump!(m, ed, +1); return true
@@ -229,6 +236,7 @@ function _editor_insert_engine!(m::RessacApp, evt::TK.KeyEvent)
         _placeholder_jump!(m, ed, -1); return true
     end
     if evt.key === :tab
+        _latex_expand!(ed) && (m.ghost = ""; return true)      # \\sigma + Tab → σ
         if !isempty(m.ghost) && _accept_ghost!(m)
             _compute_ghost!(m)
             return true
@@ -237,7 +245,8 @@ function _editor_insert_engine!(m::RessacApp, evt::TK.KeyEvent)
             m.ghost = ""
             return true
         end
-        return false                                # Tab sans complétion : à l'éditeur
+        _insert_tab!(ed)                            # Tab sans complétion : des espaces
+        return true
     end
     _reset_completion!(m)
     # Longueur de la ligne avant l'édition, pour que le suivi des trous
@@ -252,6 +261,63 @@ function _editor_insert_engine!(m::RessacApp, evt::TK.KeyEvent)
     return true
 end
 
+
+# Les lettres qu'on n'a pas au clavier, comme dans le REPL de Julia :
+# `\\sigma` puis Tab écrit σ. Les arguments des réservoirs en sont pleins
+# (`σ_noise`, `τ_noise`).
+const _LATEX_SYMBOLS = Dict{String,String}(
+    "alpha" => "α", "beta" => "β", "gamma" => "γ", "delta" => "δ", "epsilon" => "ϵ", "varepsilon" => "ε",
+    "zeta" => "ζ", "eta" => "η", "theta" => "θ", "iota" => "ι", "kappa" => "κ", "lambda" => "λ",
+    "mu" => "μ", "nu" => "ν", "xi" => "ξ", "pi" => "π", "rho" => "ρ", "sigma" => "σ", "tau" => "τ",
+    "upsilon" => "υ", "phi" => "ϕ", "varphi" => "φ", "chi" => "χ", "psi" => "ψ", "omega" => "ω",
+    "Gamma" => "Γ", "Delta" => "Δ", "Theta" => "Θ", "Lambda" => "Λ", "Xi" => "Ξ", "Pi" => "Π",
+    "Sigma" => "Σ", "Phi" => "Φ", "Psi" => "Ψ", "Omega" => "Ω",
+    "infty" => "∞", "pm" => "±", "sqrt" => "√", "partial" => "∂", "nabla" => "∇", "in" => "∈",
+    "le" => "≤", "ge" => "≥", "ne" => "≠", "approx" => "≈", "times" => "×", "div" => "÷", "circ" => "∘",
+    "to" => "→", "cdot" => "⋅",
+)
+
+"""
+    _latex_expand!(ed) -> Bool
+
+Si le texte juste avant le curseur est `\\nom` et que `nom` est une lettre
+connue, le remplace par elle. Un seul `u` l'annule.
+"""
+function _latex_expand!(ed::TK.CodeEditor)
+    1 <= ed.cursor_row <= length(ed.lines) || return false
+    line = ed.lines[ed.cursor_row]
+    col = min(ed.cursor_col, length(line))
+    start = col
+    while start >= 1 && (isletter(line[start]) || isdigit(line[start]))
+        start -= 1
+    end
+    (start >= 1 && line[start] == '\\' && start < col) || return false
+    sym = get(_LATEX_SYMBOLS, String(line[(start + 1):col]), nothing)
+    sym === nothing && return false
+    TK._push_undo!(ed; force = true)
+    ed.last_edit_was_char = false
+    splice!(line, start:col, collect(sym))
+    ed.cursor_col = start - 1 + length(sym)
+    TK._mark_dirty!(ed, ed.cursor_row)
+    return true
+end
+
+# Tab : des espaces jusqu'au prochain taquet (`tab_width` colonnes), jamais
+# un caractère de tabulation. Un seul `u` l'annule.
+function _insert_tab!(ed::TK.CodeEditor)
+    1 <= ed.cursor_row <= length(ed.lines) || return
+    w = max(ed.tab_width, 1)
+    n = w - mod(ed.cursor_col, w)
+    TK._push_undo!(ed; force = true)
+    ed.last_edit_was_char = false
+    line = ed.lines[ed.cursor_row]
+    for _ in 1:n
+        insert!(line, ed.cursor_col + 1, ' ')
+        ed.cursor_col += 1
+    end
+    TK._mark_dirty!(ed, ed.cursor_row)
+    return
+end
 
 # ── L'éditeur lui-même : moteur vim de Tachikoma, puis `.` ───────
 function _editor_engine!(m::RessacApp, evt::TK.KeyEvent)

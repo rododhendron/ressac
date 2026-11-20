@@ -132,6 +132,34 @@ include("route_spectral.jl")
 include("route_pool.jl")
 include("route_rate.jl")
 
+# ── La chauffe ───────────────────────────────────────────────────────
+# Julia compile une fonction à son premier appel : sans ça, le premier
+# réservoir qu'on évalue gèle l'écran (sa construction) puis fait bégayer le
+# son (son premier pas) pendant plusieurs secondes. On fait donc tourner une
+# fois, en fond et en tout petit, chaque réservoir et chaque route.
+function _warmup()
+    for make in (() -> adex(N = 16, steps_per_cycle = 8, σ_noise = 100.0, inhibitory_fraction = 0.25, seed = 1),
+                 () -> reca(N = 16, steps_per_cycle = 8), () -> meanfield(N = 16, steps_per_cycle = 8))
+        try
+            r = make()
+            input = zeros(Float64, length(r))
+            for _ in 1:8; step!(r, input); spikes(r); end
+            for route in (spike_burst, spectral_cloud, pool_burst, rate_voice, modulator)
+                try
+                    p = route(r)
+                    p(0 // 1, 1 // 1)
+                catch
+                end
+            end
+        catch
+        end
+    end
+    return nothing
+end
+
+# Seulement quand on joue (une session est ouverte), et sur un autre fil.
+(Ressac._LIVE_SCHEDULER[] !== nothing && Threads.nthreads() > 1) && Threads.@spawn _warmup()
+
 end # module Reservoir
 
 # JS-style namespace alias so `reservoir.adex(...)` works at top level.

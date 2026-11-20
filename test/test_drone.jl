@@ -57,10 +57,11 @@ const _DR_SRC = "@synth :dronetest (freq=220, cutoff=800, sustain=0.5) saw(:freq
     @test occursin("EnvGen.kr(Env.asr(0.01, 1, release), gate, doneAction: 2)", src)
     @test occursin("gate = 1", src) && occursin("release = 0.1", src)
     @test !occursin("Env.linen", src)
-    # une enveloppe écrite à la main ne libère plus le nœud : la porte s'en charge
+    # une enveloppe de note écrite à la main est retirée : un drone tient le son,
+    # c'est la porte qui l'ouvre et le ferme
     sig2 = Ressac.SynthDSL.env_perc(sig, 0.01, 0.3)
     src2 = Ressac.SynthDSL.build_drone_synth(:zz, sig2; params = (freq = 110,))
-    @test count("doneAction: 2", src2) == 1 && occursin("doneAction: 0", src2)
+    @test count("doneAction: 2", src2) == 1 && !occursin("Env.perc", src2)
     # un release déclaré par le synth est gardé tel quel
     src3 = Ressac.SynthDSL.build_drone_synth(:zz, sig; params = (freq = 110, release = 2.0))
     @test occursin("release = 2.0", src3) && count("release = ", src3) == 1

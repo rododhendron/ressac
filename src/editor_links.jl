@@ -197,7 +197,10 @@ end
 function _in_synth_chain(ed::TK.CodeEditor)
     row = ed.cursor_row
     1 <= row <= length(ed.lines) || return false
-    startswith(lstrip(String(ed.lines[row])), "|>") && return true
+    line = String(ed.lines[row])
+    startswith(lstrip(line), "|>") && return true
+    # La ligne `@synth …` d'un son sans `begin` : sa source y est écrite.
+    (occursin(r"^\s*@synth\b", line) && !occursin(r"\b(begin|do\s+\w+)\s*$", SynthDSL._split_code_comment(line)[1])) && return true
     block = _synth_block_rows([String(l) for l in ed.lines])
     return block !== nothing && block[1] < row < block[2]
 end

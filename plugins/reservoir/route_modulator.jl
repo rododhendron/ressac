@@ -69,7 +69,14 @@ function modulator(r;
     drive_source = _make_drive_source(drive, N, spc)
     input = Vector{Float64}(undef, N)
     last_step = Ref(0)
+    lk = ReentrantLock()
+    last_value = Ref(Float64(actual_scale(read_state(r, actual_kind, neuron))))
+    # Une source à état : une question à la fois, et l'interface ne la fait
+    # pas avancer (elle reçoit la dernière valeur lue).
     sample = (s::Rational, e::Rational) -> begin
+        Ressac.in_preview_query() && return [Event{Float64}(s, e, last_value[])]
+        lock(lk)
+        try
         target = ceil(Int, Float64(e) * spc)
         while last_step[] < target
             cycle_idx = last_step[] ÷ spc
@@ -79,7 +86,11 @@ function modulator(r;
             last_step[] += 1
         end
         v = Float64(actual_scale(read_state(r, actual_kind, neuron)))
-        [Event{Float64}(s, e, v)]
+        last_value[] = v
+        return [Event{Float64}(s, e, v)]
+        finally
+            unlock(lk)
+        end
     end
     # A signal answers any window with one sample: its held query is its query.
     Pattern{Float64}(sample, sample)

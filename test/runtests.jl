@@ -23,6 +23,7 @@ end
     _isolated_include("test_shared.jl")
     _isolated_include("test_leader.jl")
     _isolated_include("test_midi.jl")
+    _isolated_include("test_todo_fixes.jl")
     _isolated_include("test_volet.jl")
     _isolated_include("test_sessions.jl")
     _isolated_include("test_format_comment.jl")

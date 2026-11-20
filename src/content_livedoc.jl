@@ -373,20 +373,18 @@ UGens), then strip a `.method` suffix and try the head. Returns
 function _lookup_livedoc(word::AbstractString)
     isempty(word) && return nothing
     w = String(word)
+    # 0. Demandée depuis le texte d'un son : la fonction du langage des sons,
+    #    même quand un mot des patterns porte le même nom (`saw`, `tri`…).
+    startswith(w, _DSL_PREFIX) && return _dsl_doc(_dsl_bare(w))
     # 1. Plugin / user-contributed docs (last-wins highest priority).
     e = lookup_doc(w)
     e !== nothing && return e.short
     # 2. DSL-specific entries — for things we built ourselves with
     #    no SC counterpart (chan, amp, the @synth macro, etc.).
-    haskey(_DSL_DOCS, w) && return _DSL_DOCS[w]
-    # 3. DSL function → SC UGen mapping. Most DSL helpers are thin
-    #    wrappers around a single UGen; this hop reuses the SC doc
-    #    automatically without hand-writing a description per wrapper.
-    if haskey(_DSL_TO_SCUGEN, w)
-        sc_key = _DSL_TO_SCUGEN[w]
-        doc = get(_SC_UGEN_DOCS, sc_key, nothing)
-        doc !== nothing && return doc
-    end
+    # 3. DSL function → its own signature (what one types in `@synth`),
+    #    the description of the UGen it wraps, and the SC form for reference.
+    d = _dsl_doc(w)
+    d !== nothing && return d
     # 4. Direct SC UGen lookup (when the user writes SinOsc / LPF
     #    verbatim in a Sig string).
     doc = get(_SC_UGEN_DOCS, w, nothing)
@@ -402,6 +400,76 @@ function _lookup_livedoc(word::AbstractString)
         doc !== nothing && return doc
     end
     return nothing
+end
+
+# ── Les fonctions du langage des sons ───────────────────────────────
+# Une fiche demandée depuis le texte d'un son porte ce préfixe : `dsl:saw`
+# est le `saw(freq)` de `@synth`, `saw` le signal des patterns.
+const _DSL_PREFIX = "dsl:"
+_dsl_bare(name::AbstractString) = startswith(name, _DSL_PREFIX) ? String(name[(length(_DSL_PREFIX) + 1):end]) : String(name)
+
+_dsl_function(w::AbstractString) = begin
+    s = Symbol(w)
+    (Base.isidentifier(s) && isdefined(SynthDSL, s) && s in names(SynthDSL)) || return nothing
+    f = getfield(SynthDSL, s)
+    f isa Function ? f : nothing
+end
+
+"""
+    _dsl_signature(name) -> Union{Nothing,String}
+
+Ce qu'on écrit dans un son, lu sur les méthodes de la fonction : ses
+arguments (les facultatifs entre crochets), ses mots-clés. Une fonction qui
+prend le signal en premier s'écrit après un `|>` — c'est le `|>` qui le lui
+donne : `… |> rlpf(cutoff, [q])`.
+"""
+function _dsl_signature(name::AbstractString)
+    f = _dsl_function(name)
+    f === nothing && return nothing
+    best = nothing; shortest = typemax(Int)
+    for mth in methods(f)
+        args = Base.method_argnames(mth)[2:end]
+        any(a -> a === Symbol("") || startswith(String(a), "#"), args) && continue
+        shortest = min(shortest, length(args))
+        if best === nothing || length(args) > length(best[1])
+            types = Base.unwrap_unionall(mth.sig).parameters
+            best = (args, Base.kwarg_decl(mth), length(types) > 1 && types[2] == SynthDSL.SigLike)
+        end
+    end
+    best === nothing && return nothing
+    (args, kws, stage) = best
+    shown = String[]
+    for (i, a) in enumerate(args)
+        (stage && i == 1) && continue
+        push!(shown, i > shortest ? "[$a]" : String(a))
+    end
+    kw = [String(k) for k in kws if !startswith(String(k), "#")]
+    call = "$name($(join(shown, ", "))$(isempty(kw) ? "" : "; " * join(kw, ", ")))"
+    return stage ? "… |> $call" : call
+end
+
+"""
+    _dsl_doc(name) -> Union{Nothing,String}
+
+La fiche d'une fonction du langage des sons : sa signature telle qu'on
+l'écrit dans `@synth`, ce qu'elle fait, et — pour mémoire — l'UGen
+SuperCollider qu'elle habille (dont les arguments ne sont PAS les siens :
+le signal `in` arrive par le `|>`).
+"""
+function _dsl_doc(name::AbstractString)
+    w = String(name)
+    sig = _dsl_signature(w)
+    own = get(_DSL_DOCS, w, nothing)
+    sc = haskey(_DSL_TO_SCUGEN, w) ? get(_SC_UGEN_DOCS, _DSL_TO_SCUGEN[w], nothing) : nothing
+    (sig === nothing && own === nothing && sc === nothing) && return nothing
+    own !== nothing && return own
+    sig === nothing && return sc
+    sc === nothing && return "`$sig` — a function of the sound language (`@synth`)."
+    parts = split(sc, " — "; limit = 2)
+    what = length(parts) == 2 ? String(parts[2]) : String(sc)
+    scsig = length(parts) == 2 ? String(parts[1]) : _DSL_TO_SCUGEN[w]
+    piped = startswith(sig, "…") ? " The signal comes through the `|>`: it is not an argument you write." : ""
+    return "`$sig` — $what\nIn SuperCollider: `$scsig`.$piped"
 end
 
 # ── DSL → SC UGen mapping ───────────────────────────────────────────

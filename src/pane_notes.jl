@@ -62,7 +62,7 @@ function _notes_events(sched, win_a::Rational, win_b::Rational)
     for (slot, pat) in sched.patterns
         for cyc in floor(Int, win_a):ceil(Int, win_b)
             evs = try
-                Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+                preview_query(pat, cyc, cyc + 1)
             catch
                 continue
             end

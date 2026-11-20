@@ -27,10 +27,8 @@ _km_reservoir(m::RessacApp) = _km_normal(m) &&
 scope!(:global, "Partout"; layer = :global)
 bind!(:global, "?", "aide"; group = :help, action = _open_help!)
 bind!(:global, "!", "panic (coupe tout)"; short = "panic", group = :audio, action = _panic!)
-bind!(:global, "Esc", "quitter Ressac (Échap deux fois)"; group = :misc, hint = false,
-      when = m -> _km_normal(m) && !m.visual_active && m.modal === :none && !_PANE_MODE.active &&
-                  !m.pending_leader && !m.placeholder_active,
-      action = _esc_quit_step!)
+# Échap ne quitte jamais Ressac : c'est la touche qu'on frappe sans y penser
+# pour « revenir ». On quitte par :q / :qa.
 bind!(:global, ",", "hush (laisse finir les queues)"; short = "hush", group = :audio,
       when = _km_normal, action = _hush!)
 bind!(:global, "S", "scope suivant"; group = :view, when = _km_normal,
@@ -195,7 +193,7 @@ scope!(:synth, "Pane synth (texte)"; layer = :pane, modes = (:design,))
 # L'atelier (atelier.jl) : sur un maillon, `o` / `O` proposent ce qui peut
 # suivre ou précéder — et le font entendre. Ailleurs, ce sont ceux de vim.
 _km_on_link(m::RessacApp) = _focused_role(m) === :synth && _km_normal_ed(m) &&
-    (l = _link_at(_km_ed(m)); l !== nothing && l.linewise && _in_synth_chain(_km_ed(m)))
+    (l = _link_at(_km_ed(m)); l !== nothing && _in_synth_chain(_km_ed(m)))
 bind!(:synth, "o", "atelier : un maillon après (il s'entend avant d'être gardé)"; short = "maillon après",
       group = :structure, when = _km_on_link, action = m -> _atelier_open!(m, :after))
 bind!(:synth, "O", "atelier : un maillon avant"; group = :structure, hint = false,

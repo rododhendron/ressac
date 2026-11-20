@@ -103,13 +103,14 @@ un son, `U` pose `@dN p"nom*4"` dans les patterns ; depuis l'explorateur,
 | souris   | poser le pointeur sur un mot souligné ouvre sa fiche de glossaire |
 | `Espace` | leader — suivi d'une lettre, insère un snippet (pattern ou maillon DSL dans un synth) |
 | `:`      | la ligne de commande (`:tap`, `:browse`, `:synth wob`…) |
-| `Esc`    | quitter l'insertion ; deux fois en mode normal : quitter Ressac |
+| `Esc`    | revenir : quitter l'insertion, fermer une fenêtre. Ne quitte jamais Ressac |
+| `Tab`    | en insertion : complète le mot ; sinon des espaces jusqu'au taquet. `\sigma` puis `Tab` écrit σ (`\tau` τ, `\alpha` α…) |
 | `e`      | évaluer la ligne courante                               |
 | `E`      | évaluer TOUS les blocs `@dN`                            |
 | `m`      | mute / démute le slot sous le curseur                   |
 | `,`      | hush (arrêt doux, les voix s'éteignent)                 |
 | `!`      | PANIC — coupe toutes les voix SC immédiatement          |
-| `:q`     | quitter                                                 |
+| `:q`     | quitter (`:qa` tout de suite)                           |
 
 La **barre de touches** en bas de l'écran montre toujours les touches
 utiles à l'endroit où tu es (elle change avec la pane focalisée, en
@@ -129,7 +130,8 @@ insertion, après un Espace-leader, dans un modal…).
 - `:import chemin/vers/sample.wav` — ajoute ton audio au registre
 - `:mixer` — vu-mètres par slot, mute / solo / gain
 - `:w nom` / `:e nom` / `:enew` — ranger la session, en ouvrir une autre,
-  repartir d'une vierge (voir `05-cookbook`)
+  repartir d'une vierge (voir `05-cookbook`). Dans le texte d'un son, `:w`
+  écrit ce son et `:e!` le relit du disque (`u` rend le texte d'avant)
 - `:log` — déplie / replie le journal (1, 3, 10 lignes, replié)
 - `:wiki` — cette documentation
 

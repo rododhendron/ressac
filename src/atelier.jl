@@ -94,8 +94,20 @@ function _atelier_open!(m::RessacApp, action::Symbol)
         return false
     end
     if action !== :replace && !link.linewise
-        _push_app_log!(m, "[INFO] plusieurs maillons sur cette ligne — :format en met un par ligne, puis o / O")
-        return false
+        # Plusieurs maillons sur la ligne : elle est d'abord mise à un maillon
+        # par ligne (ce que fait `:format`), et le curseur suit son maillon.
+        k = something(findfirst(l -> l.inner == link.inner, _line_links(ed.lines[row], row)), 1)
+        pieces = _split_links(String(ed.lines[row]))
+        if length(pieces) < 2
+            _push_app_log!(m, "[INFO] plusieurs maillons sur cette ligne — :format en met un par ligne, puis o / O")
+            return false
+        end
+        lines = [String(l) for l in ed.lines]
+        splice!(lines, row, pieces)
+        row += clamp(k, 1, length(pieces)) - 1
+        _edit_text!(ed, join(lines, '\n'); row = row, col = something(findfirst(!isspace, lines[row]), 1) - 1)
+        link = _link_at(ed)
+        link === nothing && return false
     end
     if action === :before && !link.piped
         _push_app_log!(m, "[INFO] rien ne vient avant la source — cim la remplace, o ajoute un maillon après")
@@ -152,6 +164,8 @@ function _atelier_text(st::AtelierState, item::AtelierItem)
         col = first(link.inner) - 1
     else
         new_row = st.action === :after ? row + 1 : row
+        # Sous une ligne `@synth …`, le maillon se range un cran plus loin.
+        occursin(r"^\s*@synth\b", lines[row]) && (indent *= "  ")
         insert!(lines, new_row, indent * "|> " * item.code)
         row = new_row
         col = length(indent) + 3

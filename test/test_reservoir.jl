@@ -840,4 +840,34 @@ include(joinpath(@__DIR__, "helpers.jl"))
         @test :flat in Main.Reservoir.list_layouts()
         @test Main.Reservoir.compute_layout(:flat, 3, 0, 0) ≈ fill(440.0, 3)
     end
+
+    # Le réservoir joue sur le fil du scheduler pendant que l'interface le
+    # regarde (grille, notes, niveaux) : jamais deux pas en même temps, et
+    # regarder ne le fait pas avancer.
+    @testset "routes : interrogées de deux fils à la fois, sans se marcher dessus" begin
+        R = Main.Reservoir
+        for route in (R.spike_burst, R.spectral_cloud, R.pool_burst, R.rate_voice)
+            r = R.adex(N = 16, steps_per_cycle = 40, σ_noise = 600.0, seed = 3)
+            R.record_history!(r, 16)
+            p = Base.invokelatest(route, r) |> Ressac.gain(0.5)
+            n0 = length(r.history)
+            Ressac.preview_query(p, 0, 1)
+            @test length(r.history) == n0                        # regarder : pas un pas
+            failed = Threads.Atomic{Bool}(false)
+            ts = [Threads.@spawn(try
+                      for c in 0:5
+                          isodd(i) ? Base.invokelatest(p, c // 1, (c + 1) // 1) : Ressac.preview_query(p, c, c + 1)
+                      end
+                  catch
+                      failed[] = true
+                  end) for i in 1:4]
+            foreach(wait, ts)
+            @test !failed[]
+        end
+        r = R.adex(N = 8, steps_per_cycle = 40, seed = 3)
+        md = Base.invokelatest(R.modulator, r; neuron = 2)
+        v0 = Ressac.preview_query(md, 0, 1)[1].value
+        @test Ressac.preview_query(md, 3, 4)[1].value == v0      # l'interface reçoit la dernière valeur, sans avancer
+    end
+
 end

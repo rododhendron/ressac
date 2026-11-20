@@ -62,7 +62,7 @@ function _duck_gain(tp::Pattern, t::Rational, floor_v::Float64, rel::Rational)
     c = floor(Int, t)
     last = nothing
     for cyc in (c - 1):c
-        for ev in tp(Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+        for ev in preview_query(tp, cyc, cyc + 1)
             ev.start <= t && (last === nothing || ev.start > last) && (last = ev.start)
         end
     end
@@ -115,7 +115,7 @@ end
 function _onsets_around(p::Pattern, s::Rational, e::Rational)
     out = Rational{Int64}[]
     for cyc in (floor(Int, s) - 1):(ceil(Int, e))
-        for ev in p(Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+        for ev in preview_query(p, cyc, cyc + 1)
             push!(out, ev.start)
         end
     end
@@ -353,7 +353,7 @@ function slot(name::Symbol)
         push!(open_slots, name)
         try
             return Event{Any}[Event{Any}(ev.start, ev.stop, ev.value)
-                              for ev in Base.invokelatest(p, s, e)]
+                              for ev in preview_query(p, s, e)]
         finally
             pop!(open_slots)
         end

@@ -68,6 +68,19 @@ _og_starts(p, a, b) = [ev.start for ev in p(Rational{Int64}(a), Rational{Int64}(
             _key!(app, 'e')
             @test !(:d1 in app.slot_offgrid)
             @test _og_starts(Ressac.pattern_get(sched, :d1), 3, 4) == [3 // 1, 7 // 2]
+            # m / m sur un slot lancé par Entrée : il repart de la frappe, pas
+            # de la grille (sinon son cycle 0 est déjà passé).
+            _key!(app, :enter); @test :d1 in app.slot_offgrid
+            _key!(app, 'm')
+            @test Ressac.pattern_get(sched, :d1) === nothing
+            sched.t_start = time() - 6.3 / sched.cps
+            sched.last_end_cycles = (time() - sched.t_start) * sched.cps + 0.5
+            n1 = length(sched.osc.sent)
+            _key!(app, 'm')
+            again = _og_starts(Ressac.pattern_get(sched, :d1), 6, 8)
+            @test 63 // 10 <= again[1] < 64 // 10 && :d1 in app.slot_offgrid
+            @test length(sched.osc.sent) > n1                           # il s'entend tout de suite
+            _key!(app, 'e')
             # Entrée sur une ligne qui n'est pas un slot : comme e
             Ressac._patterns_editor(app).cursor_row = 2
             _key!(app, :enter)

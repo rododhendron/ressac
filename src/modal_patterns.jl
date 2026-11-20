@@ -122,7 +122,7 @@ function _code_lane(code::AbstractString, w::Int)
         try
             pat = _pattern_of_line(code)
             pat === nothing && return nothing
-            evs = Base.invokelatest(pat, Rational{Int64}(0), Rational{Int64}(1))
+            evs = preview_query(pat, 0, 1)
             _lane_digits!(_lane_cells(evs, 0, w), evs, 0)
         catch
             nothing

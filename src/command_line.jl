@@ -18,13 +18,14 @@ mutable struct CommandLine
     completion_candidates::Vector{String}
     completion_idx::Int                  # 0 = inactive ; 1..N = cycle position
     completion_label::String             # e.g. "verb" — used to inform render
+    completion_cols::Int                 # colonnes de la grille affichée (1 : une liste)
     last_dispatched::String              # the last command that fired (empty otherwise)
     last_dispatched_mode::Symbol         # :command | :search | :none
 end
 
 CommandLine(; history_cap::Int = 200) =
     CommandLine(:idle, Char[], 1, String[], history_cap, 0,
-                String[], 0, "", "", :none)
+                String[], 0, "", 1, "", :none)
 
 # ── Lifecycle ──────────────────────────────────────────────────────
 
@@ -98,6 +99,12 @@ function handle_key!(cl::CommandLine, evt::TK.KeyEvent;
         end
         _reset_completion!(cl)
         cl.history_idx = 0
+        return :consumed
+    elseif completion_active(cl) && evt.key in (:up, :down, :left, :right, :backtab) &&
+           (cl.completion_cols > 1 || evt.key in (:up, :down, :backtab))
+        # Une liste de propositions est ouverte : les flèches s'y promènent
+        # librement (Maj-Tab recule), au lieu de ne pouvoir qu'avancer au Tab.
+        _completion_move!(cl, evt.key)
         return :consumed
     elseif evt.key === :left
         cl.cursor = max(1, cl.cursor - 1)
@@ -190,6 +197,22 @@ function _completion_step!(cl::CommandLine, complete_fn::Function)
     _set_buffer_keep_completion!(cl, cl.completion_candidates[cl.completion_idx])
 end
 
+# Se déplacer dans les propositions : ±1 de gauche à droite (et Maj-Tab),
+# ± une rangée de haut en bas. Aux bords on reste où l'on est, sauf Tab /
+# Maj-Tab qui bouclent.
+function _completion_move!(cl::CommandLine, key::Symbol)
+    n = length(cl.completion_candidates)
+    cols = max(1, cl.completion_cols)
+    i = cl.completion_idx
+    j = key === :backtab ? mod1(i - 1, n) :
+        key === :left ? i - 1 : key === :right ? i + 1 :
+        key === :up ? i - cols : i + cols
+    (1 <= j <= n) || return
+    cl.completion_idx = j
+    _set_buffer_keep_completion!(cl, cl.completion_candidates[j])
+    return
+end
+
 # Like _replace_buffer! but preserves completion state so successive
 # Tab presses cycle through the same candidate list. _replace_buffer!
 # resets completion (good for arrow keys / history nav, bad for Tab).
@@ -204,6 +227,7 @@ end
 function _reset_completion!(cl::CommandLine)
     empty!(cl.completion_candidates)
     cl.completion_idx = 0
+    cl.completion_cols = 1
 end
 
 completion_active(cl::CommandLine) =
@@ -256,9 +280,10 @@ function render_picker!(cl::CommandLine, area::TK.Rect, buf::TK.Buffer)
     cands = cl.completion_candidates
     docs = String[_command_doc(c) for c in cands]
     if all(isempty, docs)
-        _render_candidate_grid!(buf, area, cands, cl.completion_idx; min_cell = 18)
+        cl.completion_cols = _render_candidate_grid!(buf, area, cands, cl.completion_idx; min_cell = 18)
         return
     end
+    cl.completion_cols = 1
     # Des commandes : une par ligne, avec ce qu'elle fait. La fenêtre suit le choix.
     ui = _ui()
     n = length(cands)

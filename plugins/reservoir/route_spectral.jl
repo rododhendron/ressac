@@ -95,7 +95,9 @@ function spectral_cloud(r;
     current_frame = Ref(-1)
     events_by_cycle = Dict{Int, Vector{Event{ControlMap}}}()
 
-    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+    # Une source à état : une question à la fois, et l'interface (`preview`)
+    # ne la fait pas avancer — voir `Ressac.stateful_pattern`.
+    Ressac.stateful_pattern(ControlMap, (s::Rational, e::Rational, preview::Bool) -> begin
         sched = Ressac._LIVE_SCHEDULER[]
         target_total = if sched === nothing
             max(0, ceil(Int, Float64(e) * spc))
@@ -103,7 +105,7 @@ function spectral_cloud(r;
             chunk_t = max(0, ceil(Int, sched.last_end_cycles * spc))
             min(chunk_t, ceil(Int, Float64(e) * spc))
         end
-        while total_steps[] < target_total
+        while !preview && total_steps[] < target_total
             c = total_steps[] ÷ spc
             s_in_c = (total_steps[] % spc) + 1
             frame = min(frames_per_cycle - 1,
@@ -134,7 +136,7 @@ function spectral_cloud(r;
         c_start = floor(Int, Float64(s))
         c_end = max(c_start, ceil(Int, Float64(e)) - 1)
         for k in collect(keys(events_by_cycle))
-            k < c_start && delete!(events_by_cycle, k)
+            (!preview && k < c_start) && delete!(events_by_cycle, k)
         end
         result = Event{ControlMap}[]
         for c in c_start:c_end

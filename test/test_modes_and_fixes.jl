@@ -1,7 +1,7 @@
 include(joinpath(@__DIR__, "helpers.jl"))
 # Les trois modes compartimentés (palette, complétion, aide, pont des
 # commandes), workspaces à neuf (:design! :reset), DESIGN remis en forme,
-# Échap deux fois partout, souris avec onglets, Space dans le synth,
+# Échap qui ne quitte pas, souris avec onglets, Space dans le synth,
 # :todsl, chargement des .jl avec |> en tête de ligne.
 using Test
 using Ressac
@@ -149,7 +149,7 @@ end
     end
 end
 
-@testset "Échap deux fois quitte, depuis n'importe quelle pane" begin
+@testset "Échap ne quitte jamais Ressac, depuis n'importe quelle pane" begin
     oldr = Ressac._WAVE_RENDER[]; olds = Ressac._WAVE_SYNC[]
     Ressac._WAVE_RENDER[] = _MF_STUB; Ressac._WAVE_SYNC[] = true
     try
@@ -157,11 +157,8 @@ end
         _mfex(app, "son")
         (_, sdoc) = Ressac._synth_workspace_parts(app)
         Ressac._focus_pane!(app, sdoc)                         # pas un éditeur, trois panes
-        app.esc_quit_at = 0.0
-        _mfkey(app, :escape)
-        @test !app.quit && occursin("Échap encore pour quitter", app.logs[end])
-        _mfkey(app, :escape)
-        @test app.quit
+        for _ in 1:3; _mfkey(app, :escape); end
+        @test !app.quit
     finally
         Ressac._WAVE_RENDER[] = oldr; Ressac._WAVE_SYNC[] = olds
     end

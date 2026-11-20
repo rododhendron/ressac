@@ -35,7 +35,7 @@ const _COMMAND_DOC_TABLE = Pair{Tuple{Vararg{String}},String}[
     ("alias-rename",)                   => "renommer un alias — :alias-rename k kk",
     # ── Ranger et retrouver ──────────────────────────────────────────
     ("w", "save-synth")                 => "écrire : la session, ou le son ouvert — :w nom pour écrire sous un nom",
-    ("e",)                              => "relire la session du disque — :e nom en ouvre une autre",
+    ("e",)                              => "relire du disque la session, ou le son ouvert — :e nom ouvre une autre session",
     ("e!",)                             => "relire ou ouvrir en laissant ce qui n'est pas écrit",
     ("enew",)                           => "une session neuve",
     ("enew!",)                          => "une session neuve, en laissant ce qui n'est pas écrit",

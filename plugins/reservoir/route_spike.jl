@@ -55,7 +55,9 @@ function spike_burst(r;
     # every chunk that overlaps cycle n).
     total_steps = Ref(0)
     events_by_cycle = Dict{Int, Vector{Event{ControlMap}}}()
-    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+    # Une source à état : une question à la fois, et l'interface (`preview`)
+    # ne la fait pas avancer — voir `Ressac.stateful_pattern`.
+    Ressac.stateful_pattern(ControlMap, (s::Rational, e::Rational, preview::Bool) -> begin
         # The scheduler always queries `pattern(n, n+1)` per integer
         # cycle, so `e` alone doesn't tell us how much of the cycle has
         # elapsed in wall time. Read `scheduler.last_end_cycles` — that's
@@ -70,7 +72,7 @@ function spike_burst(r;
             chunk_target = max(0, ceil(Int, sched.last_end_cycles * spc))
             min(chunk_target, cycle_target)
         end
-        while total_steps[] < target_total
+        while !preview && total_steps[] < target_total
             c = total_steps[] ÷ spc
             s_in_c = (total_steps[] % spc) + 1   # 1-based step in cycle
             drive_source(c, s_in_c, input)
@@ -92,7 +94,7 @@ function spike_burst(r;
         c_start = floor(Int, Float64(s))
         c_end   = max(c_start, ceil(Int, Float64(e)) - 1)
         for k in collect(keys(events_by_cycle))
-            k < c_start && delete!(events_by_cycle, k)
+            (!preview && k < c_start) && delete!(events_by_cycle, k)
         end
         result = Event{ControlMap}[]
         for c in c_start:c_end

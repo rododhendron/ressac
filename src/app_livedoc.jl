@@ -3,7 +3,7 @@
 # pane DOC qui suit le curseur à chaque rendu (`_update_live_doc!`).
 
 function _doc_command!(m::RessacApp, name::AbstractString)
-    entry = lookup_doc(String(name))
+    entry = startswith(name, _DSL_PREFIX) ? nothing : lookup_doc(String(name))
     if entry === nothing
         # Fall back to _lookup_livedoc (covers the _SC_UGEN_DOCS branch
         # for SC UGens that aren't in the plugin doc tree).
@@ -12,7 +12,7 @@ function _doc_command!(m::RessacApp, name::AbstractString)
             _push_app_log!(m, "[WARN] :doc — aucune entrée pour « $name »")
             return false
         end
-        _push_app_log!(m, "[doc] $name — $desc")
+        _push_app_log!(m, "[doc] $(_dsl_bare(name)) — $(first(split(String(desc), '\n')))")
         _show_doc_pane!(m, String(name))
         return true
     end
@@ -77,8 +77,15 @@ function _doc_target_under_cursor(m::RessacApp)
                                synth_info(Symbol(w)) !== nothing ||
                                sample_info(Symbol(w)) !== nothing ||
                                instrument_info(Symbol(w)) !== nothing)
-    known(word) && return String(word)
     encl = _enclosing_call(chars, col)
+    # Dans le texte d'un son, un mot du langage des sons d'abord : `saw` y
+    # est l'oscillateur, pas le signal 0..1 des patterns.
+    if _focused_role(m) === :synth
+        for w in (word, encl)
+            (!isempty(w) && _dsl_doc(String(w)) !== nothing) && return _DSL_PREFIX * String(w)
+        end
+    end
+    known(word) && return String(word)
     known(encl) && return String(encl)
     return ""
 end

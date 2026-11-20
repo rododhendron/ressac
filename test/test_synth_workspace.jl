@@ -45,7 +45,7 @@ const _SW_SRC = "@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rlpf(800, 
             @test sdoc.mode === :explain                 # un son s'ouvre sur son explication
             @test Ressac._focused_role(app) === :synth
             scr = _swscreen(app, tb, frame)
-            @test occursin("SYNTH · sketch", scr)
+            @test occursin("SON · sketch", scr)
             @test occursin("PATTERNS", scr)                                 # les patterns restent à gauche
             @test occursin("doc   explication   graphe", scr)
             @test !occursin("STUDIO", scr) && !occursin("SCULPT", scr)      # plus de studio : le texte est le son
@@ -131,7 +131,7 @@ end
     Ressac._focus_pane!(app, ep); ed.mode = :normal
     ed.cursor_row = 1; ed.cursor_col = length("@synth :sketch (freq=220, sustain=0.5) saw(:freq) |> rl")
     scr = _swscreen(app, tb, frame)
-    @test sdoc.doc.name == "rlpf" && occursin("· rlpf", scr)
+    @test sdoc.doc.name == "dsl:rlpf" && occursin("· rlpf", scr) && occursin("|> rlpf(cutoff, [q])", scr)
 end
 
 @testset "volet du son — sauvé avec la disposition" begin

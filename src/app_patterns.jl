@@ -44,7 +44,8 @@ function _toggle_mute_current_line!(m::RessacApp)
         # would otherwise hang now that the pattern stopped scheduling.
         _kill_voices_for_line!(m, join(lines[root_row:end_row], "\n"))
         _push_app_log!(m, "[INFO] $slot mute")
-    elseif match(_COMMENTED_SLOT_RX_APP, root_line) !== nothing
+    elseif (mt = match(_COMMENTED_SLOT_RX_APP, root_line)) !== nothing
+        slot = Symbol(mt.captures[1])
         # Strip EXACTLY the "# " (or bare "#") we added at mute time.
         # The previous greedy `^\s*#+\s*` regex ate the line's natural
         # indentation on continuation rows like "#     drive=600.0".
@@ -61,8 +62,11 @@ function _toggle_mute_current_line!(m::RessacApp)
         ed.cursor_col = max(0, col - 2)
         # Re-eval so the slot comes back live — `_eval_current_line!`
         # uses the same block detection, so multi-line blocks evaluate
-        # correctly from any cursor row inside them.
-        _eval_current_line!(m)
+        # correctly from any cursor row inside them. Un slot lancé par
+        # `Entrée` (hors de la grille) repart de la même façon : de la
+        # frappe, tout de suite — sinon son cycle 0 est déjà passé et un
+        # son long ne revient qu'à la barre suivante, ou jamais.
+        slot in m.slot_offgrid ? _eval_current_line_now!(m) : _eval_current_line!(m)
     else
         _push_app_log!(m, "[WARN] m : le bloc sous le curseur n'est pas un slot @dN")
     end
@@ -94,6 +98,13 @@ function _kill_voices_for_line!(m::RessacApp, line::AbstractString)
         for tok_match in eachmatch(r"[A-Za-z_]\w*", body)
             push!(names, Symbol(tok_match.match))
         end
+    end
+    # s("mywob") / sound("a b") / @d1 "bd hh" — tout nom de synth ou
+    # d'instrument écrit dans une chaîne : sans ça, couper un slot qui joue
+    # un synth à longue tenue laissait ses notes sonner jusqu'au bout.
+    for mq in eachmatch(r"\"((?:[^\"\\]|\\.)*)\"", line), tok in eachmatch(r"[A-Za-z_]\w*", String(mq.captures[1]))
+        name = Symbol(tok.match)
+        (synth_info(name) !== nothing || instrument_info(name) !== nothing) && push!(names, name)
     end
     # gate(:name, …)  /  pure(:name)  /  :name |> …
     for mn in eachmatch(r":(\w+)", line)

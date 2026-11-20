@@ -135,7 +135,7 @@ end
 `:e` / `:e!` sans nom : relit la session courante depuis le disque.
 """
 function _session_reload!(m::RessacApp; force::Bool = false)
-    isempty(m.session_name) && (_push_app_log!(m, "[INFO] :e <nom> ouvre une session (:sessions pour la liste)"); return false)
+    isempty(m.session_name) && (_push_app_log!(m, "[WARN] :e — cette session n'a pas de nom, donc rien à relire du disque : :w <nom> l'écrit, :e <nom> en ouvre une (:sessions)"); return false)
     return _session_open!(m, m.session_name; force)
 end
 

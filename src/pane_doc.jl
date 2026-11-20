@@ -77,7 +77,7 @@ end
 
 function render!(p::DocPane, area, buf)
     rect = TK.Rect(area.x, area.y, area.width, area.height)
-    title_str = "FICHE" * (isempty(p.name) ? "" : " · $(p.name)") * (p.follow ? "" : " · figée")
+    title_str = "FICHE" * (isempty(p.name) ? "" : " · $(_dsl_bare(p.name))") * (p.follow ? "" : " · figée")
     _render_pane_block_simple!(rect, title_str, buf)
     inner = _inner_rect_simple(rect)
     (inner.height < 1 || inner.width < 4) && return
@@ -103,12 +103,23 @@ function _doc_pane_lines(name::String, width::Int)
                 push!(out, _md_plain(l, TK.tstyle(:text_dim)))
             end
         else
-            push!(out, _md_plain(name, TK.tstyle(:accent, bold = true)))
-            append!(out, _md_wrap(_md_inline(String(desc)), width))
+            push!(out, _md_plain(_dsl_bare(name), TK.tstyle(:accent, bold = true)))
+            startswith(name, _DSL_PREFIX) && push!(out, _md_plain("dans un son (@synth)", TK.tstyle(:text_dim)))
+            for (k, part) in enumerate(split(String(desc), "\n"))
+                k > 1 && push!(out, TK.Span[])
+                append!(out, _md_wrap(_md_inline(String(part)), width))
+            end
         end
         return out
     end
     push!(out, _md_plain(entry.name, TK.tstyle(:accent, bold = true)))
+    # Un paramètre nommé n'est pas une fonction : le dire avant tout, pour
+    # qu'on n'écrive pas `rq(0.3)` en croyant la fiche.
+    if :param in entry.tags
+        how = entry.name in ("begin", "end") ? "mot réservé de Julia — la fonction s'écrit $(entry.name)_(…)" :
+                                               "paramètre d'un son, pas une fonction — set(:$(entry.name), …)"
+        append!(out, [_md_plain(l, TK.tstyle(:warning)) for l in _wrap_text(how, width)])
+    end
     append!(out, _md_wrap(_md_inline(entry.short), width))
     isempty(entry.kwargs) || push!(out, _md_plain("kwargs : " * join(entry.kwargs, ", "), TK.tstyle(:text_dim)))
     if !isempty(entry.examples)

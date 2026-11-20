@@ -61,6 +61,56 @@ struct Pattern{T}
 end
 Pattern{T}(query::Function) where {T} = Pattern{T}(query, nothing)
 
+# ── Regarder un pattern sans le faire avancer ────────────────────────
+# Un pattern est en principe une fonction pure du temps : on peut l'interroger
+# d'où l'on veut. Quelques sources ont un état (un réservoir de neurones
+# avance à chaque question). Deux règles les rendent sûres :
+#   • l'interface (grille, notes, niveaux…) interroge par `preview_query`,
+#     qui lève un drapeau pour la durée de la question ;
+#   • une source à état se construit par `stateful_pattern` : une seule
+#     question à la fois, et une question de l'interface ne la fait jamais
+#     avancer — elle reçoit ce qui est déjà calculé, ou rien si le scheduler
+#     est en train de calculer (elle n'attend pas : l'écran ne gèle pas).
+const _PREVIEW_KEY = :ressac_preview_query
+
+"Vrai pendant une question posée par l'interface (`preview_query`)."
+in_preview_query() = get(task_local_storage(), _PREVIEW_KEY, false) === true
+
+"""
+    preview_query(p, s, e) -> Vector{Event}
+
+Ce que `p` joue de `s` à `e`, demandé par l'interface : les sources à état
+ne bougent pas. C'est la seule façon dont le code d'affichage doit
+interroger un pattern qui joue.
+"""
+preview_query(p, s, e) = task_local_storage(_PREVIEW_KEY, true) do
+    Base.invokelatest(p, Rational{Int64}(s), Rational{Int64}(e))
+end
+
+"""
+    stateful_pattern(T, f) -> Pattern{T}
+
+Un pattern dont la fonction `f(s, e, preview)` garde un état. `f` n'est
+jamais appelée deux fois en même temps ; avec `preview == true` elle ne
+doit rien faire avancer ni rien effacer, seulement rendre ce qu'elle a.
+"""
+function stateful_pattern(::Type{T}, f::Function) where {T}
+    lk = ReentrantLock()
+    Pattern{T}((s::Rational, e::Rational) -> begin
+        preview = in_preview_query()
+        if preview
+            trylock(lk) || return Event{T}[]
+        else
+            lock(lk)
+        end
+        try
+            return f(s, e, preview)
+        finally
+            unlock(lk)
+        end
+    end)
+end
+
 # Jusqu'où `_held` remonte quand un pattern ne sait pas donner sa tenue : un
 # événement plus long que ça, passé par un combinateur qui ne la transmet
 # pas, n'est plus vu après ce délai. Les sources et les transformations de

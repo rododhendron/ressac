@@ -266,8 +266,8 @@ function render!(p::SynthDocPane, area, buf)
         TK.set_string!(buf, x, rect.y, lab, TK.Style(fg = on ? ui.o : ui.d, bg = ui.s2, bold = on, underline = on))
         x += textwidth(lab) + 3
     end
-    if p.mode === :doc && !isempty(p.doc.name) && x + textwidth(p.doc.name) + 3 < rect.x + rect.width
-        TK.set_string!(buf, x, rect.y, "· " * p.doc.name, TK.Style(fg = ui.b, bg = ui.s2))
+    if p.mode === :doc && !isempty(p.doc.name) && x + textwidth(_dsl_bare(p.doc.name)) + 3 < rect.x + rect.width
+        TK.set_string!(buf, x, rect.y, "· " * _dsl_bare(p.doc.name), TK.Style(fg = ui.b, bg = ui.s2))
     end
     inner = _inner_rect_simple(rect)
     (inner.height < 1 || inner.width < 4) && return

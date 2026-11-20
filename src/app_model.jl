@@ -74,7 +74,6 @@ end
     prefix_kind::Symbol          = :none
     prefix_since::Float64        = 0.0
     # Échap sur la dernière pane : deux pressions en moins de 2 s quittent.
-    esc_quit_at::Float64         = 0.0
     # Lines shown by the generic :explain modal (`:explain <name>`).
     explain_lines::Vector{String} = String[]
     listing_lines::Vector{String} = String[]   # modal :listing (listes longues)

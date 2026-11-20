@@ -829,10 +829,13 @@ function build_synth(name::Symbol, sig::Sig;
     code = sig.code
     if gate
         # Variante drone : le nœud tient tant que `gate` vaut 1 et se
-        # libère sur `release` secondes après gate 0. Une enveloppe écrite
-        # à la main garde sa forme mais ne libère plus le nœud (c'est la
-        # porte qui s'en charge), sinon un `sustain` de 0.5 s tuerait le
-        # drone avant qu'on ait touché un knob.
+        # libère sur `release` secondes après gate 0. Une enveloppe de note
+        # écrite à la main (`|> env_perc(…)`, celle qui libère le nœud) est
+        # retirée : un drone TIENT le son pour qu'on le règle, et avec son
+        # enveloppe il s'éteindrait au bout de `sustain` en laissant un nœud
+        # muet. Les enveloppes qui modulent (un filtre, une hauteur) ne
+        # libèrent rien : elles restent.
+        code = _hold_envelopes(code)
         code = replace(code, r"doneAction:\s*2" => "doneAction: 0")
         code = "($code * EnvGen.kr(Env.asr(0.01, 1, release), gate, doneAction: 2))"
         haskey(merged, :gate) || (merged = merge(merged, (gate = 1,)))
@@ -862,6 +865,37 @@ function build_synth(name::Symbol, sig::Sig;
     body = "    OffsetOut.ar(out, DirtPan.ar($code, ~dirt.numChannels, pan));"
     # Les signaux partagés (`shared`) : une variable chacun, déclarée une fois.
     "SynthDef(\\$name, { $param_decl\n$(_shared_decls(code))$body\n}).add;\n"
+end
+
+"""
+    _hold_envelopes(code) -> String
+
+`code` où chaque enveloppe de note — un `EnvGen` qui libère son nœud
+(`doneAction` ≥ 2) — vaut 1 : le son est tenu ouvert. Pour la variante
+drone d'un son.
+"""
+function _hold_envelopes(code::AbstractString)
+    out = IOBuffer()
+    i = firstindex(code)
+    n = lastindex(code)
+    while i <= n
+        r = findnext(r"EnvGen\.(?:kr|ar)\(", code, i)
+        r === nothing && (print(out, SubString(code, i, n)); break)
+        # La parenthèse qui ferme cet appel.
+        depth = 1
+        j = nextind(code, last(r))
+        while j <= n && depth > 0
+            c = code[j]
+            c == '(' ? (depth += 1) : c == ')' ? (depth -= 1) : nothing
+            depth > 0 && (j = nextind(code, j))
+        end
+        j > n && (print(out, SubString(code, i, n)); break)      # pas fermé : on ne touche à rien
+        call = SubString(code, first(r), j)
+        print(out, SubString(code, i, prevind(code, first(r))))
+        print(out, _frees_itself(call) ? "1" : call)
+        i = nextind(code, j)
+    end
+    return String(take!(out))
 end
 
 # La chaîne libère-t-elle son nœud ? (`doneAction: 2` et au-delà ; 0 ne fait

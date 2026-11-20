@@ -80,7 +80,7 @@ function _slot_onsets(m::RessacApp, slot::Symbol, pat, cyc::Int)
     c = get(m.slot_density, slot, nothing)
     (c !== nothing && c[1] == cyc && c[2] == key) && return c[3]
     n = try
-        length(Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1)))
+        length(preview_query(pat, cyc, cyc + 1))
     catch
         0
     end
@@ -185,7 +185,7 @@ function _slot_notes_text(m::RessacApp, slot::Symbol; max_notes::Int = 16)
     pat === nothing && return ""
     cyc = _cycle_index(m.scheduler)
     evs = try
-        Base.invokelatest(pat, Rational{Int64}(cyc), Rational{Int64}(cyc + 1))
+        preview_query(pat, cyc, cyc + 1)
     catch
         return ""
     end

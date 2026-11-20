@@ -63,7 +63,7 @@ _anlast(mock) = Ressac.decode_message(mock.sent[end])
                 @test info.pitch === :freq && info.sustain
                 @test Ressac._synth_title_suffix(tab) == "hauteur freq · durée sustain"
                 scr = _anscreen(app, tb, frame)
-                @test occursin("SYNTH · auditest · hauteur freq · durée sustain", scr)
+                @test occursin("SON · auditest · hauteur freq · durée sustain", scr)
 
                 # T sans note : evalAndPlay sans paire supplémentaire
                 empty!(mock.sent)

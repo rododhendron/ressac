@@ -15,7 +15,7 @@ pas de `using` nécessaire.
 > déclare-la dans `plugin.toml` : `[synths.monsynth] pitch = "midinote"`
 > (ou `"note"`, ou n'importe quelle clé en hertz).
 >
-> Le titre de la pane le montre : `SYNTH · monsynth · hauteur freq ·
+> Le titre de la pane le montre : `SON · monsynth · hauteur freq ·
 > durée sustain`, ou `sans hauteur`. `:note c4` (ou `:note 7`, `:note
 > off`) fixe la note que `T` joue en audition ; sans `:note`, `T` joue
 > les défauts du SynthDef.
@@ -69,10 +69,11 @@ défaut du synth) :
 | `x` / `X` | relâcher ce drone / tous |
 | molette | module l'argument survolé ; clic le focalise |
 
-Une enveloppe écrite à la main (`env_perc`, `env_adsr`…) garde sa forme en
-drone mais ne libère plus le nœud : c'est la porte qui s'en charge. Un son
-percussif s'éteint donc de lui-même — c'est sa nature — tandis qu'un
-`env_adsr(...; gate = :gate)` tient et se relâche proprement.
+Un drone **tient** le son pour qu'on le règle : l'enveloppe de note écrite à
+la main (`|> env_perc(…)`, `|> env_adsr(…)` — celle qui termine la note) est
+retirée de la variante drone, et c'est la porte qui ouvre et ferme le son.
+Une enveloppe qui module autre chose (un filtre, une hauteur) reste. Le son
+joué par un pattern, lui, garde son enveloppe.
 
 Dans un pattern, `drone()` marque un slot : le premier événement crée le nœud,
 les suivants le **modulent** au lieu de déclencher une voix. Le pattern est
@@ -375,8 +376,13 @@ Chaque ligne est alors un maillon qu'on manipule comme une ligne :
   tout droit. `gcc` de nouveau le remet. (`gcj` / `gck` avec la ligne
   voisine, `gcap` tout le paragraphe.)
 - `dd` le retire, `yy` puis `p` le déplace ou le copie dans un autre son.
-- `:format` remet en forme le son ouvert : pipes en tête, nombres à trois
-  décimales au plus. `u` annule.
+- `:format` remet en forme le son ouvert : un maillon par ligne, pipes en
+  tête, nombres à trois décimales au plus. `u` annule. (`o` sur une chaîne
+  écrite en une ligne la met d'abord en forme, puis ouvre l'atelier.)
+- `K` sur un mot donne sa fiche **du langage des sons** : ce qu'on écrit
+  (`… |> rlpf(cutoff, [q])`, les facultatifs entre crochets), puis la forme
+  SuperCollider pour mémoire. Le signal arrive par le `|>` : ce n'est pas un
+  argument qu'on écrit.
 
 Tout son s'édite en DSL. Un `.scd` laissé dans `plugins/user-synths` s'ouvre
 converti (`:w` le range en `.jl`) ; s'il ne se convertit pas en entier,

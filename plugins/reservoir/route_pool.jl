@@ -83,7 +83,9 @@ function pool_burst(r;
     bin_counts = zeros(Int, bins)
     events_by_cycle = Dict{Int, Vector{Event{ControlMap}}}()
 
-    Pattern{ControlMap}((s::Rational, e::Rational) -> begin
+    # Une source à état : une question à la fois, et l'interface (`preview`)
+    # ne la fait pas avancer — voir `Ressac.stateful_pattern`.
+    Ressac.stateful_pattern(ControlMap, (s::Rational, e::Rational, preview::Bool) -> begin
         # Cap integration to the scheduler's current lookahead chunk
         # so the reservoir advances at wall-clock pace, not in one
         # cycle-sized burst. See route_spike for the rationale.
@@ -100,7 +102,7 @@ function pool_burst(r;
         frames_in_target = max(1, ceil(Int, raw_target * frames_per_cycle / spc))
         target_total = max(0,
             round(Int, frames_in_target * spc / frames_per_cycle))
-        while total_steps[] < target_total
+        while !preview && total_steps[] < target_total
             c = total_steps[] ÷ spc
             s_in_c = (total_steps[] % spc) + 1
             frame = min(frames_per_cycle - 1,
@@ -133,7 +135,7 @@ function pool_burst(r;
         c_start = floor(Int, Float64(s))
         c_end = max(c_start, ceil(Int, Float64(e)) - 1)
         for k in collect(keys(events_by_cycle))
-            k < c_start && delete!(events_by_cycle, k)
+            (!preview && k < c_start) && delete!(events_by_cycle, k)
         end
         result = Event{ControlMap}[]
         for c in c_start:c_end

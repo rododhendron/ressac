@@ -204,7 +204,7 @@ end
             @test occursin("@synth :candidat_1", Tachikoma.text(ep.tabs[ep.current_tab].code_editor))
             @test sdoc.mode === :explain && sdoc.genome !== nothing && !isempty(sdoc.explain_lines)
             scr = _bscreen(app, tb, frame)
-            @test occursin("SYNTH · candidat_1", scr) && occursin("explication", scr) && occursin("CHAÎNE", scr)
+            @test occursin("SON · candidat_1", scr) && occursin("explication", scr) && occursin("CHAÎNE", scr)
             @test !occursin("STUDIO", scr)
             # M de nouveau sur le même candidat : le même onglet, pas un de plus
             ntabs = length(ep.tabs)
@@ -320,17 +320,14 @@ end
     @test app2.quit
 end
 
-@testset "Échap — une fois prévient, deux fois quitte ; rien avec plusieurs panes" begin
+@testset "Échap — ne quitte jamais (on quitte par :q / :qa)" begin
     app, tb, frame = _br_app()
-    _bkey(app, :escape)
+    for _ in 1:3; _bkey(app, :escape); end
     @test !app.quit
-    @test occursin("Échap encore", app.logs[end])
-    _bkey(app, :escape)
-    @test app.quit
     app2, _, _ = _br_app()
     _bex(app2, "vsplit log")                                  # depuis n'importe quelle pane
     _bkey(app2, :escape); _bkey(app2, :escape)
-    @test app2.quit
+    @test !app2.quit
     # en insertion, Échap reste « retour au mode normal »
     app3, _, _ = _br_app()
     _bkey(app3, 'i'); _bkey(app3, :escape)

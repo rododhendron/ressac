@@ -934,14 +934,6 @@ Lecture d'une carte :
 | `!` | panic (coupe tout) |
 | `,` | hush (laisse finir les queues) |
 
-**Divers**
-
-| Touche | Action |
-|---|---|
-| `Esc` | quitter Ressac (Échap deux fois) |
-| `:` | commande |
-| `/` | chercher dans le texte (n / N : occurrence suivante / précédente) |
-
 **Vues**
 
 | Touche | Action |
@@ -954,6 +946,13 @@ Lecture d'une carte :
 | `=` | scope : zoom reset |
 | `+` | réservoir : plus rapide |
 | `-` | réservoir : plus lent |
+
+**Divers**
+
+| Touche | Action |
+|---|---|
+| `:` | commande |
+| `/` | chercher dans le texte (n / N : occurrence suivante / précédente) |
 
 **Panes & workspaces**
 
