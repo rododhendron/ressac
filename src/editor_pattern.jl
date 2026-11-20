@@ -164,45 +164,43 @@ end
 """
     _render_visual_selection!(m, rect, buf)
 
-Paint the visual-mode selection (V or v) on top of the editor render.
-:line highlights whole rows [anchor_row..cursor_row]; :char highlights
-character-wise from anchor to cursor in reading order. Background-tinted
-style so the underlying text stays readable.
+La sélection du mode visuel (`V` ou `v`), par-dessus le texte : un fond
+(la surface s3), le texte garde ses couleurs. `:line` prend les lignes
+entières, `:char` va de l'ancre au curseur dans le sens de la lecture.
+Le curseur est repeint en dernier, en orange : c'est le bout de la
+sélection qui bouge, il doit se voir dedans.
 """
 function _render_visual_selection!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     m.visual_active || return
     ed = _active_editor(m)
-    th = TK.theme()
-    sel_style = TK.Style(; fg = th.text_bright, bg = th.secondary, bold = true)
+    p = _ui()
 
     gw = ed.show_line_numbers ?
          ndigits(max(length(ed.lines), 1)) + 1 : 0
     first_row = ed.scroll_offset + 1
     last_row  = first_row + rect.height - 1
 
-    paint_cell = (row, col_in_line, ch) -> begin
-        screen_x = rect.x + gw + col_in_line - 1 - ed.h_scroll
-        screen_x < rect.x + gw && return
-        screen_x >= rect.x + rect.width && return
-        screen_y = rect.y + (row - first_row)
-        TK.set_char!(buf, screen_x, screen_y, ch, sel_style)
+    # La cellule d'écran d'une colonne de texte (1-based), ou `nothing` hors du cadre.
+    cell_xy = (row, col_in_line) -> begin
+        (row < first_row || row > last_row) && return nothing
+        x = rect.x + gw + col_in_line - 1 - ed.h_scroll
+        (x < rect.x + gw || x >= rect.x + rect.width) && return nothing
+        return (x, rect.y + (row - first_row))
+    end
+    paint_cell = (row, col_in_line) -> begin
+        xy = cell_xy(row, col_in_line)
+        xy === nothing || _tint_cell!(buf, xy[1], xy[2], p.s3)
     end
 
     if m.visual_kind === :line
         r1 = min(m.visual_anchor_row, ed.cursor_row)
         r2 = max(m.visual_anchor_row, ed.cursor_row)
         for row in r1:r2
-            (row < first_row || row > last_row) && continue
             row <= length(ed.lines) || continue
-            line_chars = ed.lines[row]
-            # Paint every char of the row + trail spaces up to the rect
-            # right edge so the highlight feels like a full-line block.
-            line_w = max(length(line_chars), 1)
-            visible_w = rect.width - gw + ed.h_scroll
-            paint_w = max(line_w, visible_w)
+            # Toute la ligne, jusqu'au bord droit : un bloc.
+            paint_w = max(length(ed.lines[row]), 1, rect.width - gw + ed.h_scroll)
             for col in 1:paint_w
-                ch = col <= length(line_chars) ? line_chars[col] : ' '
-                paint_cell(row, col, ch)
+                paint_cell(row, col)
             end
         end
     else  # :char
@@ -214,18 +212,27 @@ function _render_visual_selection!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
             r1, c1, r2, c2 = ar, ac, cr, cc
         end
         for row in r1:r2
-            (row < first_row || row > last_row) && continue
             row <= length(ed.lines) || continue
-            line_chars = ed.lines[row]
+            n = length(ed.lines[row])
             col_lo = row == r1 ? c1 + 1 : 1
-            col_hi = row == r2 ? c2 + 1 : length(line_chars)
-            col_hi = min(col_hi, max(length(line_chars), 1))
+            col_hi = min(row == r2 ? c2 + 1 : n, max(n, 1))
             for col in col_lo:col_hi
-                ch = col <= length(line_chars) ? line_chars[col] : ' '
-                paint_cell(row, col, ch)
+                paint_cell(row, col)
             end
         end
     end
+
+    # Le curseur, devant la sélection.
+    row = ed.cursor_row
+    if 1 <= row <= length(ed.lines)
+        xy = cell_xy(row, ed.cursor_col + 1)
+        if xy !== nothing
+            chars = ed.lines[row]
+            ch = ed.cursor_col + 1 <= length(chars) ? chars[ed.cursor_col + 1] : ' '
+            TK.set_char!(buf, xy[1], xy[2], ch, TK.Style(; fg = p.bg, bg = p.o, bold = true))
+        end
+    end
+    return
 end
 
 """

@@ -176,3 +176,24 @@ end
         _key!(app, :escape)
     end
 end
+
+@testset "mode visuel — le curseur se voit dans la sélection" begin
+    for key in ('v', 'V')
+        (app, _) = _new_app()
+        tb = Tachikoma.TestBackend(120, 36)
+        frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 120, 36), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+        ed = Ressac._active_editor(app)
+        Tachikoma.set_text!(ed, "abcdef xyz\nsecond\n")
+        ed.cursor_row = 1; ed.cursor_col = 3
+        p = Ressac._ui()
+        Tachikoma.update!(app, Tachikoma.KeyEvent(key))
+        Tachikoma.update!(app, Tachikoma.KeyEvent('j'))
+        @test app.visual_active
+        buf = _ui_draw(app, frame)
+        (x, y) = _ui_find(buf, "second")
+        sel = _ui_cellat(buf, x + 1, y); cur = _ui_cellat(buf, x + 3, y)
+        @test sel.style.bg == p.s3                    # la sélection : un fond
+        @test cur.char == 'o' && cur.style.bg == p.o  # le curseur : orange, devant
+        @test cur.style.bg != sel.style.bg
+    end
+end

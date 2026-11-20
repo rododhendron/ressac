@@ -276,7 +276,9 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
 
     # ── La ligne du curseur ──────────────────────────────────────────
     cursor_bg = _ui_tint(p.o, 0.15)
-    if body.y <= cursor_y <= bottom && ed.mode === :normal
+    # En mode visuel, la sélection tient lieu de ligne du curseur : deux fonds
+    # de même valeur l'un sur l'autre ne se distinguent pas.
+    if body.y <= cursor_y <= bottom && ed.mode === :normal && !m.visual_active
         for x in signs_x:right
             _tint_cell!(buf, x, cursor_y, cursor_bg)
         end
@@ -363,7 +365,7 @@ _fit(s::AbstractString, room::Int) = textwidth(s) <= room ? String(s) : first(s,
 function _render_cursor_line!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf::TK.Buffer)
     1 <= pane.current_tab <= length(pane.tabs) || return
     ed = pane.tabs[pane.current_tab].code_editor
-    (ed === _patterns_editor(m) || !ed.focused || ed.mode !== :normal || m.modal !== :none) && return
+    (ed === _patterns_editor(m) || !ed.focused || ed.mode !== :normal || m.modal !== :none || m.visual_active) && return
     body = _editor_text_rect(pane, rect)
     y = body.y + (ed.cursor_row - 1 - ed.scroll_offset)
     body.y <= y < body.y + body.height || return
