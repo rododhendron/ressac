@@ -105,3 +105,23 @@ function _drone_pane!(m::RessacApp)
     ed_pane isa PaneImpl && _focus_pane!(m, ed_pane)
     return p
 end
+
+"""
+    _drone_orphans_tick!(m)
+
+À chaque image : un drone tenu depuis un son dont le bloc `@synth` n'est
+plus dans le texte est relâché. (Hors frappe : en train de retaper le nom
+du son, le bloc n'a pas disparu.)
+"""
+function _drone_orphans_tick!(m::RessacApp)
+    isempty(_DRONES) && return
+    ed = _patterns_editor(m)
+    (ed === nothing || ed.mode !== :normal) && return
+    for d in drone_list()
+        d.origin === :editor || continue
+        _sound_block_named(ed.lines, String(d.id)) === nothing || continue
+        drone_stop!(d.id)
+        _push_app_log!(m, "[INFO] drone $(d.id) relâché : son bloc @synth n'est plus dans le texte")
+    end
+    return
+end

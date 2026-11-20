@@ -111,7 +111,11 @@ function _ui_finish!(buf::TK.Buffer)
         c = buf.content[i]; s = c.style
         fg = s.fg; bg = s.bg
         if bg isa TK.NoColor
-            bg = _surface_at(x, y, p.bg)
+            # Dans la zone de l'image (pixel_layer.jl), une cellule sans
+            # fond le reste : c'est par là que l'image se voit.
+            hole = _PIXEL_HOLE[]
+            bg = (hole !== nothing && hole.x <= x < hole.x + hole.width && hole.y <= y < hole.y + hole.height) ?
+                 bg : _surface_at(x, y, p.bg)
         elseif exact && bg isa TK.Color256
             bg = get(_RESSAC_REMAP, bg.code, bg)
         end

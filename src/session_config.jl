@@ -11,6 +11,7 @@ using TOML
     keyboard::Symbol        = :auto     # :auto (détection), :azerty, :qwerty
     marks::Symbol           = :auto     # signes de marge : :auto, :solfege, :transport, :formes
     calm::Bool              = false     # écran immobile : pas de ligne qui s'allume au coup
+    pixels::Bool            = true      # la grille du cycle en pixels derrière le texte (terminal kitty ou compatible)
     hover::Bool             = true      # bulle de glossaire au survol de la souris
     hover_lock_ms::Int      = 3000      # délai avant que la bulle se verrouille
     fps::Int                = 120       # render rate ceiling — higher fps
@@ -62,7 +63,7 @@ function _load_ressac_config!()
     if isfile(path)
         try
             data = TOML.parsefile(path)
-            _overlay_section!(cfg, data, "ui",   (:theme=>Symbol, :fps=>Int, :keyboard=>Symbol, :marks=>Symbol, :calm=>Bool, :hover=>Bool, :hover_lock_ms=>Int))
+            _overlay_section!(cfg, data, "ui",   (:theme=>Symbol, :fps=>Int, :keyboard=>Symbol, :marks=>Symbol, :calm=>Bool, :pixels=>Bool, :hover=>Bool, :hover_lock_ms=>Int))
             _overlay_section!(cfg, data, "input",
                 (:t_hold_initial_ms=>Int, :t_hold_min_ms=>Int,
                  :t_hold_accel=>Float64,

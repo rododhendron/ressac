@@ -116,6 +116,7 @@ include("pane_synthdoc.jl")      # DOC du workspace synth : doc · explication �
 
 # ─── RessacApp TUI — un fichier par responsabilité, tous prennent
 #     un m::RessacApp (le modèle vient donc en premier) ─────────────
+include("pixel_types.jl")        # PixelNote, PixelLane, PixelScene
 include("atelier_types.jl")      # LinkSpan, AtelierItem, AtelierState
 include("slot_state.jl")         # blocs @dN du texte + état de chaque ligne (pur)
 include("app_model.jl")          # RessacApp + accesseurs + workspace par défaut
@@ -134,6 +135,7 @@ include("app_volet.jl")          # l'écran unique : patterns à gauche, volet �
 include("usage.jl")              # ce qui a été joué : classement, voisines, « pas encore essayé »
 include("app_sessions.jl")       # sessions : :w :e :enew, état d'un lancement à l'autre
 include("app_slots.jl")          # l'état des lignes lu sur l'app (scheduler, erreurs, densité)
+include("pixel_layer.jl")        # la grille du cycle en pixels, derrière le texte (kitty)
 include("slot_marks.jl")         # marge en signes, ligne éclairée, piste d'un cycle au bout de la ligne
 include("app_patterns.jl")
 include("synth_format.jl")       # mise en forme d'un texte de son : pipes en tête, nombres courts

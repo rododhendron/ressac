@@ -205,9 +205,12 @@ cellules finissent au bord droit, précédées du nom du slot et d'un filet.
 Large si le texte garde de quoi s'écrire, étroite sinon, absente quand la
 pane est trop petite.
 """
-function _grid_zone(body::TK.Rect)
+function _grid_zone(body::TK.Rect; under_text::Bool = false)
+    # En pixels la grille passe SOUS le texte : elle n'a pas à lui laisser
+    # 44 colonnes, une vingtaine suffit pour qu'un début de ligne se lise.
+    keep = under_text ? 20 : 44
     for w in (_LANE_WIDE, _LANE_NARROW)
-        body.width - (w + _GRID_LABEL + 1) >= 44 && return (body.x + body.width - w, w)
+        body.width - (w + _GRID_LABEL + 1) >= keep && return (body.x + body.width - w, w)
     end
     return nothing
 end
@@ -242,19 +245,27 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     cursor_y = (ed.focused && m.modal === :none) ? body.y + (ed.cursor_row - 1 - ed.scroll_offset) : 0
     text_end(row) = body.x + gw + max(length(ed.lines[row]) - ed.h_scroll, 0)   # première colonne libre après le texte
 
-    zone = m.lanes ? _grid_zone(body) : nothing
+    zone = m.lanes ? _grid_zone(body; under_text = _pixels_on(m)) : nothing
     x0, w = zone === nothing ? (right + 1, 0) : zone
     xr = x0 - _GRID_LABEL - 1                          # le filet de la grille
     beat = max(w ÷ 4, 1)
     zebra(k) = iseven(k ÷ beat) ? p.s1 : TK.NoColor()
     # La ligne du curseur garde son texte entier : si elle arrive sur la
     # grille, c'est la grille qui s'efface sur cette ligne.
-    cursor_long = zone !== nothing && body.y <= cursor_y <= bottom &&
+    # En pixels (pixel_layer.jl), la zone est une image SOUS le texte : rien
+    # ne s'y dessine en cellules, et aucune ligne n'a à céder la place.
+    pix = zone !== nothing && _pixels_on(m)
+    scene = pix ? PixelScene(x0, body.y, w, body.height, PixelLane[],
+                             sched.t_start > 0 ? phase : -1.0,
+                             (ed.mode === :normal && !m.visual_active) ? cursor_y : 0,
+                             m.modal !== :none) : nothing
+    pix && (m.pixel_scene = scene; _PIXEL_HOLE[] = TK.Rect(x0, body.y, w, body.height))
+    cursor_long = !pix && zone !== nothing && body.y <= cursor_y <= bottom &&
                   1 <= ed.cursor_row <= length(ed.lines) && text_end(ed.cursor_row) > xr - 1
 
     # ── Le fond de la grille : un temps sur deux, sur toute la hauteur ──
     if zone !== nothing
-        for y in body.y:bottom
+        for y in (pix ? (1:0) : (body.y:bottom))
             (cursor_long && y == cursor_y) && continue
             _clear_rect!(buf, TK.Rect(xr, y, right - xr + 1, 1))
             TK.set_char!(buf, xr, y, '│', TK.Style(fg = p.x))
@@ -280,7 +291,7 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     # de même valeur l'un sur l'autre ne se distinguent pas.
     if body.y <= cursor_y <= bottom && ed.mode === :normal && !m.visual_active
         cx = _cursor_cell_x(ed, body)
-        for x in signs_x:right
+        for x in signs_x:(pix ? x0 - 1 : right)                     # en pixels, l'image porte la suite du fond
             x == cx || _tint_cell!(buf, x, cursor_y, cursor_bg)     # la cellule du curseur garde son orange
         end
     end
@@ -299,7 +310,7 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
             for r in l.row:l.last_row
                 y = body.y + (r - 1 - ed.scroll_offset)
                 body.y <= y <= bottom || continue
-                for x in signs_x:(whole || zone === nothing ? right : xr - 1)
+                for x in signs_x:(pix ? x0 - 1 : (whole || zone === nothing) ? right : xr - 1)
                     _tint_cell!(buf, x, y, tint)
                 end
             end
@@ -323,6 +334,24 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
             continue
         end
         (cursor_long && y0 == cursor_y) && continue
+        if pix
+            # Le nom de la piste, si le texte de la ligne lui laisse la place.
+            free = text_end(l.row) <= xr
+            free && TK.set_string!(buf, xr + 1, y0, rpad(" " * String(l.slot), _GRID_LABEL),
+                                   TK.Style(fg = color, bg = rowbg === nothing ? TK.NoColor() : rowbg, bold = on_cursor))
+            if l.error !== nothing
+                # L'erreur doit se lire : elle s'écrit sur un fond, par-dessus l'image.
+                x = max(text_end(l.row) + 2, x0)
+                room = right - x + 1
+                room >= 12 && TK.set_string!(buf, x, y0, rpad(_fit(_error_text(l.error), room), room),
+                                             TK.Style(fg = p.r, bg = _ui_tint(p.r, 0.17)))
+                continue
+            end
+            pat = get(playing, l.slot, nothing)
+            (pat === nothing || !(l.state in (:playing, :modified, :muted))) && continue
+            push!(scene.lanes, PixelLane(y0, _pixel_notes(m, l.slot, pat, cyc), l.state, on_cursor, l.held))
+            continue
+        end
         cellbg(k) = rowbg === nothing ? zebra(k) : rowbg
         labelbg = rowbg === nothing ? TK.NoColor() : rowbg
         # Le nom de la piste.
@@ -344,7 +373,7 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     end
 
     # ── La tête de lecture : une colonne qui traverse toute la grille ──
-    if zone !== nothing && sched.t_start > 0
+    if zone !== nothing && !pix && sched.t_start > 0
         hx = x0 + clamp(floor(Int, phase * w), 0, w - 1)
         for y in body.y:bottom
             (cursor_long && y == cursor_y) && continue

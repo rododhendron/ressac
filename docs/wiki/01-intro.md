@@ -29,6 +29,14 @@ Un **son** est un bloc `@synth :nom …` du texte. `gs` sur son nom, ou
 `:synth nom`, l'y amène ; dès que le curseur est dedans, les touches sont
 celles du son (voir plus bas, et `03-synth-dsl`).
 
+Dans kitty (ou un terminal qui parle son protocole graphique : ghostty,
+wezterm), la grille du cycle est une **image, derrière le texte** : les
+temps, une piste par slot avec chaque note à sa longueur et à sa hauteur
+dans la ligne, la tête de lecture qui glisse, et en bas le **rouleau** du
+slot où est le curseur. Une ligne longue passe par-dessus. `:pixels`
+revient à la grille en caractères (et `pixels = false` sous `[ui]` dans
+`ressac.toml`).
+
 Chaque ligne `@dN` dit ce qu'elle fait, sur la ligne elle-même : un signe
 dans la marge, un fond qui s'allume au coup, et à droite du texte sa piste
 dans la **grille du cycle** — une colonne où un temps sur deux a un fond, et

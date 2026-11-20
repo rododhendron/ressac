@@ -91,3 +91,18 @@ Décision de Rodolphe : tout passe dans le pane principal (« sur un petit
   jusqu'à `!` ou `x` dans la MODULATION. La visualisation dans l'éditeur
   (choix : elle suit le curseur ; piste des pixels derrière le texte,
   `TK.render_rgba!` avec `z = -1` dans kitty) n'est pas commencée.
+
+## Le 21, suite : la grille en pixels
+
+- `pixel_layer.jl` : dans kitty, la grille du cycle est une image posée
+  SOUS le texte (z très bas : kitty la dessine sous les cellules qui ont un
+  fond, donc tout ce qui flotte la cache ; `_ui_finish!` laisse sans fond
+  les cellules de la zone, `_PIXEL_HOLE`). Temps, pistes à la note près
+  (longueur, hauteur dans la ligne), tête de lecture au pixel, rouleau du
+  slot du curseur en bas. `_render_slot_marks!` remplit la scène,
+  `_paint_scene` est pure et testée au pixel. `:pixels` bascule ; sans
+  protocole graphique, la grille en caractères reste.
+- **Pas vu dans un vrai terminal** : seule l'image peinte a été regardée
+  (hors terminal). À vérifier dans kitty : que le texte passe bien dessus,
+  que rien ne scintille, que les menus la cachent.
+- Un drone tenu sur un son est relâché quand son bloc quitte le texte.

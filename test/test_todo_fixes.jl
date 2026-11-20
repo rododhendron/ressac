@@ -10,6 +10,16 @@ const _TF_TK = Tachikoma
 
 _tf_key(app, c) = Tachikoma.update!(app, Tachikoma.KeyEvent(c))
 _tf_ex(app, cmd) = (_tf_key(app, ':'); foreach(c -> _tf_key(app, c), cmd); _tf_key(app, :enter))
+# Dans la zone de l'image, les cellules sans texte n'ont pas de fond.
+function tb_bg_free(app, sc)
+    tb = Tachikoma.TestBackend(180, 46)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 180, 46), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    Tachikoma.view(app, frame)
+    cell = tb.buf.content[Tachikoma.buf_index(tb.buf, sc.x + sc.w - 1, sc.y + sc.h - 1)]
+    outside = tb.buf.content[Tachikoma.buf_index(tb.buf, sc.x - 8, sc.y + sc.h - 1)]
+    return cell.style.bg isa Tachikoma.NoColor && !(outside.style.bg isa Tachikoma.NoColor) && length(frame.gfx_regions) == 1
+end
+
 function _tf_app(w = 180, h = 46)
     (app, _) = _new_app()
     tb = Tachikoma.TestBackend(w, h)
@@ -251,6 +261,78 @@ end
     @test app.logs[end] == "› deux lignes" && count(l -> startswith(l, "› "), app.logs) == 2
     spans = Ressac._log_spans(app.logs)
     @test spans[end][2].content == "› deux lignes"
+end
+
+@testset "la grille en pixels : une scène, une image, et rien en cellules dans la zone" begin
+    (app, draw) = _tf_app()
+    old = Ressac._PIXELS_FORCE[]
+    prev = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    try
+        ed = Ressac._patterns_editor(app)
+        Tachikoma.set_text!(ed, "@d1 p\"bd sn\"\n@d2 n(\"0 7\") |> s(\"superpiano\")")
+        _tf_key(app, 'E')
+        sched = app.scheduler
+        sched.t_start = time() - 2.25 / sched.cps                 # un quart de cycle après le début
+        ed.cursor_row = 2
+        Ressac._PIXELS_FORCE[] = false
+        draw()
+        @test app.pixel_scene === nothing && Ressac._PIXEL_HOLE[] === nothing    # sans protocole graphique : les caractères
+        Ressac._PIXELS_FORCE[] = true
+        scr = draw()
+        sc = app.pixel_scene
+        @test sc !== nothing && length(sc.lanes) == 2 && 0 <= sc.phase < 1
+        hole = Ressac._PIXEL_HOLE[]
+        @test hole == Tachikoma.Rect(sc.x, sc.y, sc.w, sc.h)
+        l2 = sc.lanes[2]
+        @test l2.cursor && length(l2.notes) == 2 && l2.notes[1][3] == 60.0 && l2.notes[2][3] == 67.0
+        @test l2.notes[2][1] == 0.5 && l2.notes[2][2] == 1.0       # début et fin dans le cycle
+        @test !any(l -> occursin("█", l), split(scr, "\n")[3:4])    # plus de piste en caractères sur les lignes des slots
+        # la zone garde des cellules SANS fond : c'est par là que l'image se voit
+        @test tb_bg_free(app, sc)
+        # la peinture : pure, vérifiable au pixel
+        c = Ressac._paint_scene(sc, 8, 16)
+        @test (c.w, c.h) == (sc.w * 8, sc.h * 16)
+        p = Ressac._ui()
+        rgb(col) = (col.r, col.g, col.b)
+        @test Ressac._px_at(c, c.w - 2, c.h - 1) == rgb(p.bg)      # dernier temps : le sol
+        @test Ressac._px_at(c, 2, c.h - 1) == rgb(p.s1)            # premier temps : la bande
+        hx = round(Int, sc.phase * c.w)
+        head = Ressac._px_at(c, hx, c.h - 1)
+        @test all(abs(Int(head[i]) - Int(rgb(p.o)[i])) < 45 for i in 1:3)   # la tête de lecture, de la couleur du « maintenant »
+        # la note 7 du slot du curseur, en haut de sa ligne ; la note 0 en bas
+        y = (l2.row - sc.y) * 16
+        @test Ressac._px_at(c, c.w ÷ 2 + 6, y + 3) != Ressac._px_at(c, c.w ÷ 2 + 6, y + 9)
+        # :pixels coupe
+        _tf_ex(app, "pixels"); draw()
+        @test app.pixel_scene === nothing
+    finally
+        Ressac._PIXELS_FORCE[] = old
+        Ressac._PIXEL_HOLE[] = nothing
+        Ressac._LIVE_SCHEDULER[] = prev
+    end
+end
+
+@testset "un drone tenu sur un son est relâché quand son bloc quitte le texte" begin
+    (app, draw) = _tf_app()
+    empty!(Ressac._DRONES)
+    prev = Ressac._LIVE_SCHEDULER[]
+    Ressac._LIVE_SCHEDULER[] = app.scheduler
+    try
+        ed = Ressac._patterns_editor(app)
+        Tachikoma.set_text!(ed, "@d1 p\"bd\"\n\n@synth :tenu (freq=220) saw(:freq)")
+        ed.cursor_row = 3
+        _tf_key(app, 'D'); draw()
+        @test Ressac.drone_get(:tenu) !== nothing
+        ed.mode = :insert; Tachikoma.set_text!(ed, "@d1 p\"bd\""); draw()
+        @test Ressac.drone_get(:tenu) !== nothing                  # en pleine frappe : on ne coupe pas
+        ed.mode = :normal; draw()
+        @test Ressac.drone_get(:tenu) === nothing
+        @test any(l -> occursin("drone tenu relâché", l), app.logs)
+    finally
+        Ressac._LIVE_SCHEDULER[] = prev
+        Ressac.drone_stop_all!()
+    end
 end
 
 end

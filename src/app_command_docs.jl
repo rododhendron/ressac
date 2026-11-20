@@ -87,6 +87,7 @@ const _COMMAND_DOC_TABLE = Pair{Tuple{Vararg{String}},String}[
     ("copylogs", "yanklogs")            => "copier tout le journal dans le presse-papiers",
     ("pistes", "lanes", "inline")       => "montrer ou cacher la grille du cycle",
     ("calme", "calm")                   => "plus rien ne clignote au coup",
+    ("pixels",)                         => "la grille du cycle en pixels derrière le texte, ou en caractères",
     ("zoom",)                           => "la pane qui a le clavier en plein écran",
     ("reset",)                          => "remettre l'écran à plat : les patterns et la fiche",
     ("vsplit",)                         => "une pane à droite — :vsplit log",

@@ -294,7 +294,10 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # Dernier filet, comme pour les touches : Tachikoma relance toute
     # exception sortie de `view`, ce qui ferme la session en plein jeu.
     try
+        m.pixel_scene = nothing
+        _PIXEL_HOLE[] = nothing
         _view!(m, f)
+        _pixel_layer!(m, f)           # la grille en pixels, sous le texte
     catch err
         _push_app_log!(m, "[ERROR] affichage — $(first(sprint(showerror, err), 160))")
     end
@@ -332,6 +335,7 @@ function _view!(m::RessacApp, f::TK.Frame)
     _reserve_index(m.modal) === nothing || (m.reserve_tab = m.modal)
     m.modal === :patterns || _patterns_preview_stop!(m)
     _redefine_tick!(m)                # un son dont on a tiré un nombre
+    _drone_orphans_tick!(m)           # un drone dont le bloc @synth n'est plus dans le texte
     _explore_slot_tick!(m)            # l'explorateur ouvert sur un slot : le candidat joue dans le pattern
     _audio_tick!(m)                   # SuperCollider vient de répondre : rebrancher les sorties choisies
     _update_live_doc!(m)

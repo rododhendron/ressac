@@ -144,6 +144,11 @@ end
     playhead_cache::Dict{Int,Tuple{UInt64,Any}} = Dict{Int,Tuple{UInt64,Any}}()
     # La piste d'un cycle au bout de chaque ligne @dN (slot_marks.jl).
     lanes::Bool = true
+    # La grille en pixels (pixel_layer.jl) : voulue ou non (`:pixels`), la
+    # scène de l'image en cours, et les notes de chaque slot pour le cycle.
+    pixels::Bool = true
+    pixel_scene::Union{Nothing,PixelScene} = nothing
+    pixel_cache::Dict{Symbol,Tuple{Any,Vector{PixelNote}}} = Dict{Symbol,Tuple{Any,Vector{PixelNote}}}()
     lane_cache::Dict{Symbol,Tuple{Any,Vector{Char}}} = Dict{Symbol,Tuple{Any,Vector{Char}}}()
     calm::Bool = false           # `:calme` — rien ne s'allume au coup
     # L'écran unique (app_volet.jl) : le volet ouvert à droite des patterns,

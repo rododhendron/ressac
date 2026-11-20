@@ -316,6 +316,8 @@ end
     try
         names = [:freq, :cutoff, :release]
         defs = Dict(:freq => 220.0, :cutoff => 800.0, :release => 0.1)
+        # Un drone d'éditeur vit tant que son bloc @synth est dans le texte.
+        Tachikoma.set_text!(Ressac._patterns_editor(app), "@synth :mouse (freq=220, cutoff=800, release=0.1) saw(:freq)\n@synth :second (freq=220) saw(:freq)")
         d = Ressac.drone_start!(:mouse, :mouse, :mouse_drone, "", names, defs)
         p = Ressac._place_pane!(app, :drone, Dict{String,Any}())
         @test p isa Ressac.DronePane
