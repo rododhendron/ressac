@@ -343,13 +343,25 @@ vite = base * 2
 @d1 p"hh*4" |> fast(vite)
 ```
 
-Change `base` et réévalue sa ligne (`e`) : Ressac relit tout le texte
-comme un graphe — un bloc dépend d'un autre quand il lit un nom que l'autre
-définit — et réévalue tout ce qui dépend de `base`, de près ou de loin, une
-fois chacun, dans l'ordre des dépendances : `vite`, puis le slot. Les
-fonctions sont redéfinies, un son est redéfini sans être joué, et une ligne
-qui lit son propre nom (`n = n + base`) est rejouée une fois, comme les
-autres. Le journal dit ce qui a été repris.
+Change `base` et réévalue sa ligne (`e`) : `vite` est recalculé, puis le
+slot repart. Ressac lit le texte comme un **calcul pur, de haut en bas** :
+un bloc dépend d'un autre quand il lit un nom que l'autre définit, et `e`
+reprend tout ce qui dépend du bloc évalué, de près ou de loin, une fois
+chacun, dans l'ordre des dépendances. Les fonctions sont redéfinies, un son
+est redéfini sans être joué. Le journal dit ce qui a été repris.
+
+Un nom défini plusieurs fois a autant de versions, et un bloc lit celle
+qui est juste au-dessus de lui :
+
+```
+n = 0
+n = n + base        lit le n du dessus : toujours 0 + base
+```
+
+Quand `n` est repris, c'est toute sa chaîne qui est rejouée depuis `n = 0` :
+évaluer dix fois donne dix fois le même résultat. Un `n = n + 1` sans
+`n = …` au-dessus de lui n'a pas de valeur de départ dans le texte ; la
+cascade ne le rejoue pas, et le dit.
 
 ## Ranger et rappeler des patterns
 

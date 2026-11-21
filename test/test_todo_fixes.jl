@@ -376,7 +376,7 @@ end
     end
 end
 
-@testset "le graphe de calcul : réévaluer a reprend b = a, ce qui dépend de b, et les slots" begin
+@testset "le graphe de calcul : pur, de haut en bas — e reprend tout ce qui dépend du bloc" begin
     _with_live_app() do app, frame
         ed = Ressac._patterns_editor(app)
         Tachikoma.set_text!(ed, join([
@@ -384,28 +384,52 @@ end
             "cg_b = cg_a * 10",
             "cg_f(x) = x + cg_a",
             "cg_c = cg_f(cg_b)",
-            "cg_n = 0",
-            "cg_n = cg_n + 1",
             "cg_k = 1",
             "cg_k = cg_k + cg_a",
             "cg_autre = 5",
             "@d1 p\"bd\" |> fast(cg_c)",
-            "@d2 p\"hh\" |> fast(cg_autre)"], "\n"))
+            "@d2 p\"hh\" |> fast(cg_autre)",
+            "@d3 p\"cp\" |> fast(cg_k)",
+            "cg_seul = cg_seul_avant + cg_a"], "\n"))
+        Core.eval(Main, :(cg_seul_avant = 0; cg_seul = 0))
         _tf_key(app, 'E')
-        @test Core.eval(Main, :cg_c) == 22 && Core.eval(Main, :cg_n) == 1 && Core.eval(Main, :cg_k) == 3
+        @test Core.eval(Main, :cg_c) == 22 && Core.eval(Main, :cg_k) == 3
         d1 = Ressac.pattern_get(app.scheduler, :d1); d2 = Ressac.pattern_get(app.scheduler, :d2)
-        Tachikoma.set_text!(ed, replace(Tachikoma.text(ed), "cg_a = 2" => "cg_a = 3"))
-        ed.cursor_row = 1; empty!(app.logs)
-        _tf_key(app, 'e')
+        set_a(v) = (Tachikoma.set_text!(ed, replace(Tachikoma.text(ed), r"cg_a = \d+" => "cg_a = $v"; count = 1));
+                    ed.cursor_row = 1; empty!(app.logs); _tf_key(app, 'e'))
+        set_a(3)
         @test Core.eval(Main, :cg_b) == 30                      # b = a * 10, repris
         @test Core.eval(Main, :cg_c) == 33                      # par b, et par la fonction qui lit a
-        @test Core.eval(Main, :cg_n) == 1                       # n = n + 1 ne dépend pas de a : pas touché
-        @test Core.eval(Main, :cg_k) == 6                       # k = k + a en dépend : rejoué, une fois
+        @test Core.eval(Main, :cg_k) == 4                       # k = k + a repart de k = 1 : 1 + 3, pas 3 + 3
         @test Ressac.pattern_get(app.scheduler, :d1) !== d1     # le slot qui lit c repart
         @test Ressac.pattern_get(app.scheduler, :d2) === d2     # celui qui n'en dépend pas ne bouge pas
         @test length(Ressac.pattern_get(app.scheduler, :d1)(0 // 1, 1 // 1)) == 33
-        @test any(l -> occursin("cascade : cg_b, cg_f, cg_c, cg_k recalculés · 1 slot ré-évalué", l), app.logs)
+        @test length(Ressac.pattern_get(app.scheduler, :d3)(0 // 1, 1 // 1)) == 4
+        @test any(l -> occursin("cascade :", l) && occursin("cg_f", l) && occursin("3 slot", l) == false && occursin("2 slots", l), app.logs)
+        # pur : la même évaluation, autant de fois qu'on veut, donne le même résultat
+        _tf_key(app, 'e'); _tf_key(app, 'e')
+        @test Core.eval(Main, :cg_k) == 4
+        # e sur la ligne qui se relit : elle aussi repart de sa première valeur
+        ed.cursor_row = 6; _tf_key(app, 'e'); _tf_key(app, 'e')
+        @test Core.eval(Main, :cg_k) == 4
+        # l'ordre du résultat ne dépend pas de l'ordre où l'on a évalué
+        set_a(5)
+        @test Core.eval(Main, :cg_k) == 6 && Core.eval(Main, :cg_c) == 55
     end
+    # un bloc qui se lit lui-même sans valeur de départ : pas rejoué, et c'est dit
+    _with_live_app() do app, frame
+        ed = Ressac._patterns_editor(app)
+        Core.eval(Main, :(cg_z = 10))
+        Tachikoma.set_text!(ed, "cg_y = 1\ncg_z = cg_z + cg_y")
+        ed.cursor_row = 1
+        _tf_key(app, 'e')
+        @test Core.eval(Main, :cg_z) == 10
+        @test any(l -> occursin("cg_z se lit lui-même sans valeur de départ", l), app.logs)
+    end
+    # le plan, à nu : la chaîne d'un nom est rejouée en entier, dans l'ordre
+    (nodes, _) = Ressac._calc_nodes(["n = 0", "a = 1", "n = n + a", "m = n * 2", "n = 7", "q = n"], 2, 2)
+    (order, bad) = Ressac._calc_plan(nodes)
+    @test [nodes[i].row for i in order] == [1, 2, 3, 4, 5] && isempty(bad)     # q lit n = 7, qui ne change pas : pas repris
 end
 
 @testset "des rangées sous les slots : les réglages s'ouvrent sous le bloc qui joue" begin

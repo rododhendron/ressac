@@ -132,3 +132,11 @@ Décision de Rodolphe : tout passe dans le pane principal (« sur un petit
   l'appelle l'est.
 - Toujours pas vu dans kitty par moi : les visuels sous les slots sont
   vérifiés par l'image peinte hors terminal.
+- **Le graphe de calcul est pur** (demande de Rodolphe : « il faut le voir
+  comme un DAG »). `_calc_nodes` / `_calc_plan` / `_calc_run!` : un nom
+  défini plusieurs fois a des versions, un bloc lit celle du dessus, donc
+  pas de boucle ; quand un nom est repris, toute sa chaîne est rejouée
+  depuis sa première définition (`n = n + a` repart de `n = 0`). `e` sur
+  un bloc rejoue d'abord ce qu'il lui faut, puis lui, puis ce qui en
+  dépend. Un bloc qui se lit sans définition au-dessus n'est pas rejoué
+  par la cascade (avertissement).

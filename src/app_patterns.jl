@@ -406,6 +406,14 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
     (start_row, end_row) = _logical_block_range(lines, row)
     block = _join_logical_block(lines[start_row:end_row])
     slot = _slot_of_src(block)
+    # Le graphe de calcul : ce qu'il faut rejouer AVANT ce bloc (la première
+    # valeur d'un nom qu'il relit) et APRÈS (tout ce qui en dépend).
+    (nodes, live) = _calc_nodes(lines, start_row, end_row)
+    (order, impure) = _calc_plan(nodes)
+    k = findfirst(i -> nodes[i].root, order)
+    pre = k === nothing ? Int[] : order[1:(k - 1)]
+    post = k === nothing ? Int[] : order[(k + 1):end]
+    (redone, nslots) = _calc_run!(m, nodes, live, pre)
     try
         ex = Meta.parse(block)
         result = _with_slot_phase(() -> Core.eval(Main, ex), slot === nothing ? nothing : phase)
@@ -414,19 +422,18 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
         _push_app_log!(m, (slot !== nothing && phase !== nothing) ?
             "[INFO] $slot lancé maintenant, hors de la grille — e le recale" : "[INFO] éval ⇒ $rstr")
         _warn_unknown_sounds!(m, [block])
-        # Ce bloc a défini des noms : tout ce qui en dépend dans le texte,
-        # de près ou de loin, est réévalué (voir `_cascade!`).
-        rebound = _names_bound_by(ex)
-        if !isempty(rebound)
-            _cascade!(m, lines, rebound, start_row, end_row)
-            # If the scope is attached to a name we just rebound, re-
-            # resolve the reference so the visualisation tracks the
-            # fresh reservoir instead of the dead one. Pre-computes the
-            # graph layout when applicable.
-            if _APP_SCOPE_RESERVOIR_NAME[] in rebound
-                _refresh_scope_reservoir!(m)
-            end
+        (r2, n2) = _calc_run!(m, nodes, live, post)
+        append!(redone, r2); nslots += n2
+        parts = String[]
+        isempty(redone) || push!(parts, "$(join(redone, ", ")) recalculé$(length(redone) == 1 ? "" : "s")")
+        nslots > 0 && push!(parts, "$nslots slot$(nslots == 1 ? "" : "s") ré-évalué$(nslots == 1 ? "" : "s")")
+        isempty(parts) || _push_app_log!(m, "[INFO] cascade : " * join(parts, " · "))
+        for i in impure
+            _push_app_log!(m, "[WARN] cascade — $(join(nodes[i].names, ", ")) se lit lui-même sans valeur de départ plus haut dans le texte : pas rejoué")
         end
+        # Le scope suit un nom qui vient d'être redéfini (un réservoir neuf).
+        rebound = union(_names_bound_by(ex), (nodes[i].names for i in post)...)
+        _APP_SCOPE_RESERVOIR_NAME[] in rebound && _refresh_scope_reservoir!(m)
     catch err
         hint = _humanize_eval_error(err, block)
         slot === nothing || _slot_failed!(m, slot, block, hint)
@@ -495,65 +502,129 @@ function _top_blocks(lines::AbstractVector)
     return out
 end
 
-"""
-    _cascade!(m, lines, rebound, skip_first, skip_last)
+# ── Le graphe de calcul du texte ─────────────────────────────────────
+#
+# Le texte se lit comme un calcul PUR, de haut en bas. Chaque bloc de
+# premier niveau est un nœud : une définition, une fonction, un slot, un
+# son. Un nom défini plusieurs fois a autant de VERSIONS ; un bloc qui lit
+# `n` lit la version définie juste au-dessus de lui (à défaut, la première
+# plus bas). C'est donc un graphe sans boucle :
+#
+#     n = 0            n₀
+#     n = n + a        n₁ = n₀ + a     ← lit n₀, pas lui-même
+#     @d1 … fast(n)    lit n₁
+#
+# Évaluer un bloc (`e`) reprend tout ce qui en dépend, une fois chacun, dans
+# l'ordre des dépendances. Et pour que le résultat ne dépende pas de ce
+# qu'on a évalué avant, toute la chaîne d'un nom repris est rejouée depuis
+# sa première définition : `n = n + a` repart de `n = 0`, il ne s'ajoute pas
+# à lui-même d'une évaluation à l'autre.
+#
+# Seule entorse possible : un bloc qui lit son propre nom sans qu'aucune
+# définition ne le précède. Il n'a pas de valeur de départ dans le texte ;
+# la cascade ne le rejoue pas et le dit.
 
-Le graphe de calcul du texte. Chaque bloc de premier niveau est un nœud :
-une définition, une fonction, un slot, un son. Un bloc DÉPEND d'un autre
-quand il lit un nom que l'autre définit. Après avoir évalué un bloc (ses
-noms sont dans `rebound`), tout ce qui en dépend — de près ou de loin — est
-réévalué, une fois chacun, dans l'ordre des dépendances (à égalité, celui du
-texte).
+struct CalcNode
+    row::Int
+    src::String
+    ex::Any
+    reads::Any               # ce que le bloc lit (la droite d'une affectation, le corps d'une fonction)
+    kind::Symbol             # :def · :slot · :sound · :other
+    names::Set{Symbol}
+    root::Bool               # le bloc que l'on évalue
+end
 
-Un bloc qui lit le nom qu'il définit (`n = n + a`) est un nœud comme un
-autre : il est rejoué une fois s'il dépend de ce qui a changé. Les fonctions
-sont redéfinies. Un son est redéfini sans être joué ; un slot repart.
-`rebound` reçoit tous les noms repris.
-"""
-function _cascade!(m::RessacApp, lines::AbstractVector, rebound::Set{Symbol},
-                   skip_first::Int, skip_last::Int)
+function _calc_nodes(lines::AbstractVector, root_first::Int, root_last::Int)
     live = Dict(b.row => slot for (slot, b) in _live_blocks(_scan_slot_blocks(lines)[1]))
-    # ── Les nœuds ──
-    nodes = NamedTuple[]
+    nodes = CalcNode[]
     for (a, b, src) in _top_blocks(lines)
-        (b < skip_first || a > skip_last) || continue
+        root = !(b < root_first || a > root_last)
         ex = Meta.parse(src; raise = false)
-        (ex isa Expr && !(ex.head in (:error, :incomplete))) || continue
+        (ex isa Expr && !(ex.head in (:error, :incomplete))) || (root && return (CalcNode[], live); continue)
         kind = occursin(_SOUND_HEAD_RX, src) ? :sound : occursin(r"^\s*@d\d+\b", src) ? :slot : :def
-        (kind === :slot && !haskey(live, a)) && continue           # un slot coupé, ou doublé plus bas
+        (kind === :slot && !haskey(live, a) && !root) && continue      # un slot coupé, ou doublé plus bas
         names = kind === :def ? _names_bound_by(ex) : Set{Symbol}()
-        (kind === :def && isempty(names)) && continue              # `cps!(0.5)` : ne définit rien, n'est pas rejoué
-        # Ce que le bloc LIT : la droite d'une affectation, le corps d'une
-        # fonction — pas le nom qu'il définit, sauf s'il le lit vraiment.
+        (kind === :def && isempty(names)) && (kind = :other)          # `cps!(0.5)` : ne définit rien
+        (kind === :other && !root) && continue
         reads = kind !== :def ? ex : ex.head === :(=) ? ex.args[2] : ex.head === :function ? ex.args[end] :
                 (ex.head in (:const, :global) && ex.args[1] isa Expr && ex.args[1].head === :(=)) ? ex.args[1].args[2] : ex
-        push!(nodes, (row = a, src = src, ex = ex, reads = reads, kind = kind, names = names))
+        push!(nodes, CalcNode(a, src, ex, reads, kind, names, root))
     end
-    # ── Ce qui dépend de ce qui vient de changer, de proche en proche ──
-    hit = falses(length(nodes))
-    changed = copy(rebound)
+    return (nodes, live)
+end
+
+"""
+    _calc_plan(nodes) -> (order, impure)
+
+Ce qu'il faut évaluer, et dans quel ordre, quand on évalue le nœud racine :
+les indices des nœuds (la racine comprise), et ceux qui se lisent eux-mêmes
+sans valeur de départ (non rejoués).
+"""
+function _calc_plan(nodes::Vector{CalcNode})
+    r = findfirst(n -> n.root, nodes)
+    r === nothing && return (Int[], Int[])
+    defs = Dict{Symbol,Vector{Int}}()
+    for (i, n) in enumerate(nodes), x in n.names
+        push!(get!(defs, x, Int[]), i)
+    end
+    # La version de `x` que lit le nœud i : la définition juste au-dessus ;
+    # à défaut la première plus bas ; `0` si le nœud est seul à définir `x`.
+    version(i, x) = begin
+        d = defs[x]
+        k = findlast(<(i), d)
+        k !== nothing ? d[k] : (j = findfirst(>(i), d); j === nothing ? 0 : d[j])
+    end
+    readsof = [Symbol[x for x in keys(defs) if _refs_any(n.reads, Set((x,)))] for n in nodes]
+    impure(i) = any(x -> version(i, x) == 0, readsof[i])
+    # « Sale » : sa valeur peut avoir changé. « À rejouer » : sale, ou une
+    # autre définition d'un nom rejoué (pour repartir de sa première valeur
+    # et finir sur la dernière).
+    dirty = falses(length(nodes)); dirty[r] = true
+    run = falses(length(nodes)); run[r] = true
     grew = true
     while grew
         grew = false
-        for (i, n) in enumerate(nodes)
-            (hit[i] || !_refs_any(n.reads, changed)) && continue
-            hit[i] = true; grew = true
-            union!(changed, n.names)
+        for i in eachindex(nodes)
+            if !dirty[i] && any(x -> (v = version(i, x); v != 0 && dirty[v]), readsof[i])
+                dirty[i] = true; run[i] = true; grew = true
+            end
+            if !run[i] && any(x -> any(j -> run[j], defs[x]), nodes[i].names)
+                run[i] = true; grew = true
+            end
         end
     end
-    idx = findall(hit)
-    isempty(idx) && return
-    # ── L'ordre : un bloc après ceux dont il dépend (Kahn ; le texte départage,
-    #    et tranche une dépendance en rond) ──
-    deps = Dict(i => Set(j for j in idx if j != i && _refs_any(nodes[i].reads, nodes[j].names)) for i in idx)
+    idx = findall(run)
+    bad = [i for i in idx if !nodes[i].root && impure(i)]
+    idx = setdiff(idx, bad)
+    inset = Set(idx)
+    # Les contraintes d'ordre.
+    before = Dict(i => Set{Int}() for i in idx)                    # before[i] : ce qui passe avant i
+    for i in idx
+        for x in readsof[i]                                        # après la version qu'il lit…
+            v = version(i, x)
+            (v != 0 && v != i && v in inset) && push!(before[i], v)
+            d = defs[x]
+            k = findfirst(==(v), d)                                # …et avant la suivante
+            (k !== nothing && k < length(d) && d[k + 1] != i && d[k + 1] in inset) && push!(before[d[k + 1]], i)
+        end
+        for x in nodes[i].names                                    # les définitions d'un nom, dans l'ordre du texte
+            d = defs[x]
+            k = findfirst(==(i), d)
+            (k > 1 && d[k - 1] in inset) && push!(before[i], d[k - 1])
+        end
+    end
     order = Int[]
-    left = copy(idx)
+    left = sort(idx)
     while !isempty(left)
-        k = findfirst(i -> isempty(intersect(deps[i], left)), left)
-        k === nothing && (k = 1)
+        k = findfirst(i -> isempty(intersect(before[i], left)), left)
+        k === nothing && (k = 1)                                   # une ronde (lecture vers le bas) : le texte tranche
         push!(order, left[k]); deleteat!(left, k)
     end
-    # ── Tout est connu : on réévalue ──
+    return (order, bad)
+end
+
+# Rejoue des nœuds (pas la racine). Rend (noms repris, slots relancés).
+function _calc_run!(m::RessacApp, nodes::Vector{CalcNode}, live::Dict, order::Vector{Int})
     redone = String[]; nslots = 0
     for i in order
         n = nodes[i]
@@ -570,12 +641,7 @@ function _cascade!(m::RessacApp, lines::AbstractVector, rebound::Set{Symbol},
             end
         end
     end
-    union!(rebound, changed)
-    parts = String[]
-    isempty(redone) || push!(parts, "$(join(redone, ", ")) recalculé$(length(redone) == 1 ? "" : "s")")
-    nslots > 0 && push!(parts, "$nslots slot$(nslots == 1 ? "" : "s") ré-évalué$(nslots == 1 ? "" : "s")")
-    isempty(parts) || _push_app_log!(m, "[INFO] cascade : " * join(parts, " · "))
-    return
+    return (redone, nslots)
 end
 
 # AST walk: returns true iff `ex` references any symbol in `names`.
