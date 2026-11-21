@@ -307,6 +307,18 @@ même slot le remplace. Pour arrêter un slot, commente-le (`# @d1 ...`)
 et `:e` ré-évalue (les slots mutes sont sautés). Ou `:mute d1` de
 n'importe où.
 
+## Voir un pattern
+
+```
+@d4 n("0 ~ 3 7 ~ 12 7 3") |> s("rezzbass") |> pianoroll()
+@d5 n("<[0,4,7] [5,9,12]>") |> s("softpad") |> pitchwheel()
+```
+
+`pianoroll()` et `pitchwheel()` ne changent rien à ce qui joue : ils
+demandent le visuel du slot, dessiné en grand au bas de la grille (en
+pixels, dans kitty). Sans eux, c'est le rouleau du slot du curseur qui
+s'y montre.
+
 ## Ranger et rappeler des patterns
 
 Un bloc qui sonne bien se range sous un nom, et se rappelle sur

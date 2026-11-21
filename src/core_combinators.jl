@@ -1342,3 +1342,27 @@ function stut(n::Int, feedback::Real, time::Real, p)
     return _stack(layers)
 end
 stut(n::Int, feedback::Real, time::Real) = p -> stut(n, feedback, time, p)
+
+
+# ── Les visuels demandés dans le pattern ─────────────────────────────
+# Comme dans Strudel : on demande son visuel là où on écrit le pattern.
+# Ces fonctions ne changent rien à ce qui joue ; l'interface lit leur nom
+# dans le texte du slot et dessine (pixel_layer.jl).
+
+"""
+    pianoroll()
+    pattern |> pianoroll()
+
+Shows this slot's piano roll in the editor (pixel grid). Leaves the pattern unchanged.
+"""
+pianoroll(p) = _as_pattern(p)
+pianoroll() = p -> pianoroll(p)
+
+"""
+    pitchwheel()
+    pattern |> pitchwheel()
+
+Shows this slot's pitch wheel in the editor (pixel grid). Leaves the pattern unchanged.
+"""
+pitchwheel(p) = _as_pattern(p)
+pitchwheel() = p -> pitchwheel(p)

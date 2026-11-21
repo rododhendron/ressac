@@ -181,6 +181,7 @@ export Event, Pattern, query
 export pure, silence, fast, slow, density, rev, every, gate, geom
 export mask
 export jux, juxBy, off, degrade, degradeBy
+export pianoroll, pitchwheel
 export sometimes, sometimesBy, often, rarely
 export palindrome, iter, iterBack, chunk
 # `run` collides with Base.run (shell-spawn); export as `runp` instead.

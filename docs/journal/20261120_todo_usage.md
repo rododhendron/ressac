@@ -106,3 +106,9 @@ Décision de Rodolphe : tout passe dans le pane principal (« sur un petit
   (hors terminal). À vérifier dans kitty : que le texte passe bien dessus,
   que rien ne scintille, que les menus la cachent.
 - Un drone tenu sur un son est relâché quand son bloc quitte le texte.
+- Retour de Rodolphe : la grille en pixels marche. Corrigé : elle passait
+  par-dessus le menu Espace (une surface déclarée par `_surface!` n'a pas
+  de fond avant `_ui_finish!`, qui le lui refusait dans la zone). Ajouté :
+  `|> pianoroll()` et `|> pitchwheel()` — le visuel se demande dans le
+  pattern, comme dans Strudel (fonctions identité ; l'interface lit leur
+  nom dans le texte qui joue).

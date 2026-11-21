@@ -33,7 +33,10 @@ Dans kitty (ou un terminal qui parle son protocole graphique : ghostty,
 wezterm), la grille du cycle est une **image, derrière le texte** : les
 temps, une piste par slot avec chaque note à sa longueur et à sa hauteur
 dans la ligne, la tête de lecture qui glisse, et en bas le **rouleau** du
-slot où est le curseur. Une ligne longue passe par-dessus. `:pixels`
+slot où est le curseur. Un slot peut demander son visuel dans son
+texte, comme dans Strudel : `|> pianoroll()` garde son rouleau à l'écran
+où que soit le curseur, `|> pitchwheel()` montre sa roue des hauteurs (le
+do en haut, l'accord qui sonne relié). Une ligne longue passe par-dessus. `:pixels`
 revient à la grille en caractères (et `pixels = false` sous `[ui]` dans
 `ressac.toml`).
 

@@ -20,6 +20,17 @@ function tb_bg_free(app, sc)
     return cell.style.bg isa Tachikoma.NoColor && !(outside.style.bg isa Tachikoma.NoColor) && length(frame.gfx_regions) == 1
 end
 
+# Combien de cellules de la zone de l'image sont sans fond (l'image s'y voit).
+function tb_hole_open_cells(app)
+    tb = Tachikoma.TestBackend(180, 46)
+    frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 180, 46), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    Tachikoma.view(app, frame)
+    hole = Ressac._PIXEL_HOLE[]
+    hole === nothing && return -1
+    return count(tb.buf.content[Tachikoma.buf_index(tb.buf, x, y)].style.bg isa Tachikoma.NoColor
+                 for y in hole.y:(hole.y + hole.height - 1), x in hole.x:(hole.x + hole.width - 1))
+end
+
 function _tf_app(w = 180, h = 46)
     (app, _) = _new_app()
     tb = Tachikoma.TestBackend(w, h)
@@ -303,6 +314,27 @@ end
         # la note 7 du slot du curseur, en haut de sa ligne ; la note 0 en bas
         y = (l2.row - sc.y) * 16
         @test Ressac._px_at(c, c.w ÷ 2 + 6, y + 3) != Ressac._px_at(c, c.w ÷ 2 + 6, y + 9)
+        # en grand : le rouleau du slot du curseur, sans rien demander
+        @test [(pn.kind, pn.slot) for pn in sc.panels] == [(:pianoroll, :d2)]
+        lay = Ressac._panel_layout(sc)
+        @test length(lay) == 1 && lay[1][1] + lay[1][2] == sc.h && 4 <= lay[1][2] <= 8
+        # un visuel demandé dans le pattern reste, où que soit le curseur — et ne change pas ce qui joue
+        before = Ressac.pattern_get(sched, :d2)(0 // 1, 1 // 1)
+        Tachikoma.set_text!(ed, "@d1 p\"bd sn\"\n@d2 n(\"0 7\") |> s(\"superpiano\") |> pitchwheel()")
+        _tf_key(app, 'E'); ed.cursor_row = 1; draw()
+        sc = app.pixel_scene
+        @test [(pn.kind, pn.slot, pn.cursor) for pn in sc.panels] == [(:pitchwheel, :d2, false)]
+        after = Ressac.pattern_get(sched, :d2)(0 // 1, 1 // 1)
+        @test [(e.start, e.stop) for e in after] == [(e.start, e.stop) for e in before]
+        c = Ressac._paint_scene(sc, 8, 16)
+        (r0, n) = Ressac._panel_layout(sc)[1]
+        top = (c.w ÷ 2, r0 * 16 + 5)                               # le do, en haut de la roue : une note du cycle
+        @test Ressac._px_at(c, top...) != rgb(p.bg) && Ressac._px_at(c, top...) != rgb(p.s1)
+        # ce qui flotte cache l'image : sous une surface, les cellules de la zone reprennent un fond
+        open_before = tb_hole_open_cells(app)
+        _tf_key(app, ' '); draw()
+        @test 0 <= tb_hole_open_cells(app) < open_before - 100     # le menu Espace prend sa place dans la zone
+        _tf_key(app, :escape)
         # :pixels coupe
         _tf_ex(app, "pixels"); draw()
         @test app.pixel_scene === nothing

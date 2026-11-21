@@ -255,7 +255,7 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     # En pixels (pixel_layer.jl), la zone est une image SOUS le texte : rien
     # ne s'y dessine en cellules, et aucune ligne n'a à céder la place.
     pix = zone !== nothing && _pixels_on(m)
-    scene = pix ? PixelScene(x0, body.y, w, body.height, PixelLane[],
+    scene = pix ? PixelScene(x0, body.y, w, body.height, PixelLane[], PixelPanel[],
                              sched.t_start > 0 ? phase : -1.0,
                              (ed.mode === :normal && !m.visual_active) ? cursor_y : 0,
                              m.modal !== :none) : nothing
@@ -349,7 +349,13 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
             end
             pat = get(playing, l.slot, nothing)
             (pat === nothing || !(l.state in (:playing, :modified, :muted))) && continue
-            push!(scene.lanes, PixelLane(y0, _pixel_notes(m, l.slot, pat, cyc), l.state, on_cursor, l.held))
+            notes = _pixel_notes(m, l.slot, pat, cyc)
+            push!(scene.lanes, PixelLane(y0, notes, l.state, on_cursor, l.held))
+            # En grand : le visuel demandé dans le texte ; à défaut, le
+            # rouleau du slot où est le curseur.
+            view = _slot_view(m, l.slot)
+            view === nothing && on_cursor && any(n -> n[3] !== nothing, notes) && (view = :pianoroll)
+            view === nothing || push!(scene.panels, PixelPanel(view, l.slot, notes, on_cursor))
             continue
         end
         cellbg(k) = rowbg === nothing ? zebra(k) : rowbg
@@ -369,6 +375,18 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
             ch, fg, bold = l.held ? ('━', hit, false) :
                            cells[k + 1] != ' ' ? (cells[k + 1], hit, true) : ('·', p.x, false)
             TK.set_char!(buf, x0 + k, y0, ch, TK.Style(fg = fg, bg = cellbg(k), bold = bold))
+        end
+    end
+
+    # Le nom de chaque visuel en grand, dans la marge de la zone. Les roues
+    # se rangent en bas : la tête de lecture s'arrête au-dessus d'elles.
+    if pix
+        sort!(scene.panels; by = pn -> pn.kind === :pitchwheel, alg = MergeSort)
+        for (pn, (r0, _)) in zip(scene.panels, _panel_layout(scene))
+            y = body.y + r0
+            (y - body.y + ed.scroll_offset + 1 > length(ed.lines)) || continue      # pas sur une ligne de texte
+            TK.set_string!(buf, xr + 1, y, rpad(" " * String(pn.slot), _GRID_LABEL),
+                           TK.Style(fg = pn.cursor ? p.o : p.n))
         end
     end
 

@@ -95,6 +95,9 @@ function _surface_at(x::Int, y::Int, ground::TK.ColorRGB)
     return ground
 end
 
+_on_surface(x::Int, y::Int) =
+    any(((r, _),) -> r.x <= x < r.x + r.width && r.y <= y < r.y + r.height, _UI_SURFACES)
+
 """
     _ui_finish!(buf)
 
@@ -113,9 +116,11 @@ function _ui_finish!(buf::TK.Buffer)
         if bg isa TK.NoColor
             # Dans la zone de l'image (pixel_layer.jl), une cellule sans
             # fond le reste : c'est par là que l'image se voit.
+            # Sauf sous une surface (un menu, une fenêtre) : elle a un fond,
+            # et c'est ce fond qui cache l'image.
             hole = _PIXEL_HOLE[]
-            bg = (hole !== nothing && hole.x <= x < hole.x + hole.width && hole.y <= y < hole.y + hole.height) ?
-                 bg : _surface_at(x, y, p.bg)
+            inhole = hole !== nothing && hole.x <= x < hole.x + hole.width && hole.y <= y < hole.y + hole.height
+            (inhole && !_on_surface(x, y)) || (bg = _surface_at(x, y, p.bg))
         elseif exact && bg isa TK.Color256
             bg = get(_RESSAC_REMAP, bg.code, bg)
         end
