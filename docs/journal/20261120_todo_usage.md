@@ -112,3 +112,23 @@ Décision de Rodolphe : tout passe dans le pane principal (« sur un petit
   `|> pianoroll()` et `|> pitchwheel()` — le visuel se demande dans le
   pattern, comme dans Strudel (fonctions identité ; l'interface lit leur
   nom dans le texte qui joue).
+
+## Le 21, soir : des rangées sous les slots, et le graphe de calcul
+
+- `row_layout.jl` : le texte s'écarte sous un slot qui joue. L'éditeur de
+  Tachikoma dessine serré, `_shift_rows!` descend les lignes ; tout ce qui
+  convertit ligne du texte ⟷ ligne d'écran passe par `_gap_before` /
+  `_text_row_at` (souris, sélection, flash, complétion fantôme, signes).
+  Une rangée pour les réglages du bloc (une réglette par nombre connu), six
+  pour le visuel demandé. `:rangées` referme.
+- Les visuels demandés dans le pattern s'ouvrent sous leur slot, sur la
+  largeur du texte (une image par visuel, devant celle de la grille) :
+  `pianoroll`, `punchcard`, `pitchwheel`, `spiral`, `scope` (la sortie
+  générale ; l'évaluation allume `:scope wave`). Le rouleau du slot du
+  curseur reste au bas de la grille quand il n'a rien demandé.
+- `_cascade_definitions!` : réévaluer une définition reprend celles qui la
+  lisent, de proche en proche, puis les slots. Pas les blocs qui lisent ce
+  qu'ils définissent ; une fonction n'est pas réévaluée mais ce qui
+  l'appelle l'est.
+- Toujours pas vu dans kitty par moi : les visuels sous les slots sont
+  vérifiés par l'image peinte hors terminal.

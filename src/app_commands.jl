@@ -426,6 +426,10 @@ _register_literal!(m -> (m.pixels = !m.pixels;
                           TK.graphics_protocol() == TK.gfx_kitty ? "[INFO] la grille du cycle en pixels, derrière le texte" :
                           "[INFO] la grille en pixels est demandée, mais ce terminal ne parle pas le protocole graphique de kitty : elle reste en caractères")),
     "pixels")
+_register_literal!(m -> (m.inline = !m.inline;
+        _push_app_log!(m, m.inline ? "[INFO] les réglages et les visuels s'ouvrent sous leur slot" :
+                                     "[INFO] plus de rangées sous les slots : le texte reste serré")),
+    "rangées", "rangees", "rows")
 # Patterns rangés — verbes distincts de :save / :load, qui appartiennent
 # déjà aux sessions (un workspace entier, pas un bloc).
 _register_literal!(m -> _save_under_cursor!(m), "save", "keep")

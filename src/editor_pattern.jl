@@ -61,7 +61,8 @@ function _render_playhead!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
         (k < first_row || k > last_row) && delete!(m.playhead_cache, k)
     end
     for i in first_row:last_row
-        screen_row = rect.y + inset_top + (i - 1 - ed.scroll_offset)
+        screen_row = rect.y + inset_top + (i - 1 - ed.scroll_offset) + _gap_before(ed, i)
+        screen_row < rect.y + rect.height - inset_bot || continue
         line_chars = ed.lines[i]
         # Cache key = hash(line content). Cheap to compute and avoids
         # the regex + body split when the line hasn't changed between
@@ -147,8 +148,8 @@ function _render_eval_flash!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     last_row  = first_row + rect.height - 1
     for row in m.eval_flash_rows
         (row < first_row || row > last_row) && continue
-        screen_y = rect.y + (row - first_row)
-        row <= length(ed.lines) || continue
+        screen_y = rect.y + (row - first_row) + _gap_before(ed, row)
+        (row <= length(ed.lines) && screen_y < rect.y + rect.height) || continue
         line_chars = ed.lines[row]
         # Repaint each char on the row in the flash style, preserving
         # the source char. Skip the line-number gutter.
@@ -185,7 +186,8 @@ function _render_visual_selection!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
         (row < first_row || row > last_row) && return nothing
         x = rect.x + gw + col_in_line - 1 - ed.h_scroll
         (x < rect.x + gw || x >= rect.x + rect.width) && return nothing
-        return (x, rect.y + (row - first_row))
+        y = rect.y + (row - first_row) + _gap_before(ed, row)
+        return y < rect.y + rect.height ? (x, y) : nothing
     end
     paint_cell = (row, col_in_line) -> begin
         xy = cell_xy(row, col_in_line)

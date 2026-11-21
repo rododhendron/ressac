@@ -118,8 +118,7 @@ function _ui_finish!(buf::TK.Buffer)
             # fond le reste : c'est par là que l'image se voit.
             # Sauf sous une surface (un menu, une fenêtre) : elle a un fond,
             # et c'est ce fond qui cache l'image.
-            hole = _PIXEL_HOLE[]
-            inhole = hole !== nothing && hole.x <= x < hole.x + hole.width && hole.y <= y < hole.y + hole.height
+            inhole = any(h -> h.x <= x < h.x + h.width && h.y <= y < h.y + h.height, _PIXEL_HOLES)
             (inhole && !_on_surface(x, y)) || (bg = _surface_at(x, y, p.bg))
         elseif exact && bg isa TK.Color256
             bg = get(_RESSAC_REMAP, bg.code, bg)

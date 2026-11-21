@@ -447,7 +447,7 @@ function _render_ghost!(m::RessacApp, rect::TK.Rect, buf::TK.Buffer)
     inset_top = has_block ? 1 : 0
     inset_left = has_block ? 1 : 0
     gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0
-    screen_y = rect.y + inset_top + (m.ghost_row - 1 - ed.scroll_offset)
+    screen_y = rect.y + inset_top + (m.ghost_row - 1 - ed.scroll_offset) + _gap_before(ed, m.ghost_row)
     base_x = rect.x + inset_left + gw + (m.ghost_col - ed.h_scroll)
     (screen_y < rect.y + inset_top || screen_y >= rect.y + rect.height) && return
     for (i, ch) in enumerate(m.ghost)

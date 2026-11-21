@@ -359,8 +359,8 @@ function _screen_to_editor_pos(ed::TK.CodeEditor, rect::TK.Rect, x::Int, y::Int)
     visual_row = y - (rect.y + inset_top)
     visual_col = x - (rect.x + inset_left + gw)
     (visual_row < 0 || visual_col < 0) && return nothing
-    row = ed.scroll_offset + visual_row + 1
-    1 <= row <= length(ed.lines) || return nothing
+    row = _text_row_at(ed, visual_row)             # `nothing` : une rangée ouverte sous un slot
+    (row !== nothing && 1 <= row <= length(ed.lines)) || return nothing
     col = clamp(ed.h_scroll + visual_col, 0, length(ed.lines[row]))
     return (row, col)
 end

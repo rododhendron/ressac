@@ -9,6 +9,6 @@ tags = ["view"]
 
 Shows this slot's piano roll in the editor; the pattern is unchanged.
 
-Asks for a visual where the pattern is written, as in Strudel. The roll is drawn in the pixel grid at the right of the text (kitty graphics protocol): one bar per note at its pitch and length, the sounding note lit, the playhead across. It stays on screen wherever the cursor is.
+Asks for a visual where the pattern is written, as in Strudel. The roll is drawn in pixels under the slot's block, across the text (kitty graphics protocol): one bar per note at its pitch and length, the sounding note lit, the playhead across. It stays on screen wherever the cursor is.
 
-Without it, the roll shown is the one of the slot under the cursor. In a terminal without pixel graphics it draws nothing.
+Without it, the roll of the slot under the cursor is shown at the bottom of the cycle grid. In a terminal without pixel graphics it draws nothing.

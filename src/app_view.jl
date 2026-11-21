@@ -295,7 +295,8 @@ function TK.view(m::RessacApp, f::TK.Frame)
     # exception sortie de `view`, ce qui ferme la session en plein jeu.
     try
         m.pixel_scene = nothing
-        _PIXEL_HOLE[] = nothing
+        empty!(_PIXEL_HOLES)
+        _ROW_GAPS[] = (nothing, Dict{Int,Int}())
         _view!(m, f)
         _pixel_layer!(m, f)           # la grille en pixels, sous le texte
     catch err

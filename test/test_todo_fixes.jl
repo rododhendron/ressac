@@ -25,8 +25,8 @@ function tb_hole_open_cells(app)
     tb = Tachikoma.TestBackend(180, 46)
     frame = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 180, 46), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
     Tachikoma.view(app, frame)
-    hole = Ressac._PIXEL_HOLE[]
-    hole === nothing && return -1
+    isempty(Ressac._PIXEL_HOLES) && return -1
+    hole = Ressac._PIXEL_HOLES[1]
     return count(tb.buf.content[Tachikoma.buf_index(tb.buf, x, y)].style.bg isa Tachikoma.NoColor
                  for y in hole.y:(hole.y + hole.height - 1), x in hole.x:(hole.x + hole.width - 1))
 end
@@ -288,13 +288,12 @@ end
         ed.cursor_row = 2
         Ressac._PIXELS_FORCE[] = false
         draw()
-        @test app.pixel_scene === nothing && Ressac._PIXEL_HOLE[] === nothing    # sans protocole graphique : les caractères
+        @test app.pixel_scene === nothing && isempty(Ressac._PIXEL_HOLES)    # sans protocole graphique : les caractères
         Ressac._PIXELS_FORCE[] = true
         scr = draw()
         sc = app.pixel_scene
         @test sc !== nothing && length(sc.lanes) == 2 && 0 <= sc.phase < 1
-        hole = Ressac._PIXEL_HOLE[]
-        @test hole == Tachikoma.Rect(sc.x, sc.y, sc.w, sc.h)
+        @test Ressac._PIXEL_HOLES[1] == Tachikoma.Rect(sc.x, sc.y, sc.w, sc.h)
         l2 = sc.lanes[2]
         @test l2.cursor && length(l2.notes) == 2 && l2.notes[1][3] == 60.0 && l2.notes[2][3] == 67.0
         @test l2.notes[2][1] == 0.5 && l2.notes[2][2] == 1.0       # début et fin dans le cycle
@@ -323,13 +322,23 @@ end
         Tachikoma.set_text!(ed, "@d1 p\"bd sn\"\n@d2 n(\"0 7\") |> s(\"superpiano\") |> pitchwheel()")
         _tf_key(app, 'E'); ed.cursor_row = 1; draw()
         sc = app.pixel_scene
-        @test [(pn.kind, pn.slot, pn.cursor) for pn in sc.panels] == [(:pitchwheel, :d2, false)]
+        @test isempty(sc.panels)                                   # plus de rouleau du curseur : d1 n'a pas de hauteurs
+        @test [(pn.kind, pn.slot) for (pn, _) in sc.inline] == [(:pitchwheel, :d2)]
+        r = sc.inline[1][2]
         after = Ressac.pattern_get(sched, :d2)(0 // 1, 1 // 1)
         @test [(e.start, e.stop) for e in after] == [(e.start, e.stop) for e in before]
-        c = Ressac._paint_scene(sc, 8, 16)
-        (r0, n) = Ressac._panel_layout(sc)[1]
-        top = (c.w ÷ 2, r0 * 16 + 5)                               # le do, en haut de la roue : une note du cycle
-        @test Ressac._px_at(c, top...) != rgb(p.bg) && Ressac._px_at(c, top...) != rgb(p.s1)
+        # le visuel s'ouvre SOUS son slot, sur la largeur du texte, et pousse la suite
+        lines_scr = split(draw(), "\n")
+        y2 = findfirst(l -> occursin("@d2", l), lines_scr)
+        @test r.y == y2 + 1 && r.height == Ressac._VIEW_ROWS && r.x < sc.x && r.x + r.width == sc.x + sc.w
+        @test r in Ressac._PIXEL_HOLES
+        c = Ressac._paint_inline(sc.inline[1][1], r.width * 8, r.height * 16, 16, sc.phase, false)
+        top = (c.w ÷ 2, 5)                                         # le do, en haut de la roue : une note du cycle
+        @test Ressac._px_at(c, top...) != rgb(p.bg)
+        for kind in (:pianoroll, :punchcard, :spiral, :scope)      # chaque visuel se peint
+            cc = Ressac._paint_inline(Ressac.PixelPanel(kind, :d2, sc.inline[1][1].notes, false), 320, 96, 16, 0.3, false)
+            @test (cc.w, cc.h) == (320, 96) && any(i -> Ressac._px_at(cc, i % 320, i ÷ 320) != rgb(p.bg), 0:(320 * 96 - 1))
+        end
         # ce qui flotte cache l'image : sous une surface, les cellules de la zone reprennent un fond
         open_before = tb_hole_open_cells(app)
         _tf_key(app, ' '); draw()
@@ -340,7 +349,7 @@ end
         @test app.pixel_scene === nothing
     finally
         Ressac._PIXELS_FORCE[] = old
-        Ressac._PIXEL_HOLE[] = nothing
+        empty!(Ressac._PIXEL_HOLES)
         Ressac._LIVE_SCHEDULER[] = prev
     end
 end
@@ -364,6 +373,64 @@ end
     finally
         Ressac._LIVE_SCHEDULER[] = prev
         Ressac.drone_stop_all!()
+    end
+end
+
+@testset "le graphe de calcul : réévaluer a reprend b = a, ce qui dépend de b, et les slots" begin
+    _with_live_app() do app, frame
+        ed = Ressac._patterns_editor(app)
+        Tachikoma.set_text!(ed, join([
+            "cg_a = 2",
+            "cg_b = cg_a * 10",
+            "cg_f(x) = x + cg_a",
+            "cg_c = cg_f(cg_b)",
+            "cg_n = 0",
+            "cg_n = cg_n + 1",
+            "cg_autre = 5",
+            "@d1 p\"bd\" |> fast(cg_c)",
+            "@d2 p\"hh\" |> fast(cg_autre)"], "\n"))
+        _tf_key(app, 'E')
+        @test Core.eval(Main, :cg_c) == 22 && Core.eval(Main, :cg_n) == 1
+        d1 = Ressac.pattern_get(app.scheduler, :d1); d2 = Ressac.pattern_get(app.scheduler, :d2)
+        Tachikoma.set_text!(ed, replace(Tachikoma.text(ed), "cg_a = 2" => "cg_a = 3"))
+        ed.cursor_row = 1; empty!(app.logs)
+        _tf_key(app, 'e')
+        @test Core.eval(Main, :cg_b) == 30                      # b = a * 10, repris
+        @test Core.eval(Main, :cg_c) == 33                      # par b, et par la fonction qui lit a
+        @test Core.eval(Main, :cg_n) == 1                       # n = n + 1 n'est pas rejoué
+        @test Ressac.pattern_get(app.scheduler, :d1) !== d1     # le slot qui lit c repart
+        @test Ressac.pattern_get(app.scheduler, :d2) === d2     # celui qui n'en dépend pas ne bouge pas
+        @test length(Ressac.pattern_get(app.scheduler, :d1)(0 // 1, 1 // 1)) == 33
+        @test any(l -> occursin("cascade : cg_b, cg_c recalculés", l), app.logs)
+    end
+end
+
+@testset "des rangées sous les slots : les réglages s'ouvrent sous le bloc qui joue" begin
+    _with_live_app() do app, frame
+        tb = Tachikoma.TestBackend(140, 30)
+        fr = Tachikoma.Frame(tb.buf, Tachikoma.Rect(1, 1, 140, 30), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+        draw() = (Tachikoma.reset!(tb.buf); Tachikoma.view(app, fr); [rstrip(Tachikoma.row_text(tb, y)) for y in 1:30])
+        ed = Ressac._patterns_editor(app)
+        Tachikoma.set_text!(ed, "@d1 p\"bd sn\" |> gain(0.9) |> lpf(900)\n@d2 n(\"0 7\") |> s(\"superpiano\")\nx = 1")
+        ed.cursor_row = 1; ed.cursor_col = 0
+        rows = draw()
+        y1 = findfirst(l -> occursin("@d1", l), rows)
+        @test occursin("@d2", rows[y1 + 1])                        # rien ne joue : le texte est serré
+        _tf_key(app, 'E'); rows = draw()
+        y1 = findfirst(l -> occursin("@d1", l), rows)
+        @test occursin("╰ gain ", rows[y1 + 1]) && occursin("lpf ", rows[y1 + 1]) && occursin("●", rows[y1 + 1])
+        @test !occursin(r"\d", first(split(rows[y1 + 1], "╰")))       # la rangée n'a pas de numéro de ligne
+        @test occursin("@d2", rows[y1 + 2]) && occursin("x = 1", rows[y1 + 3])   # d2 n'a pas de réglage : pas de rangée
+        @test Ressac._gap_before(ed, 2) == 1 && Ressac._text_row_at(ed, 1) === nothing && Ressac._text_row_at(ed, 2) == 2
+        # les notes d'une mini-notation ne sont pas des réglages
+        @test isempty(Ressac._block_knobs(ed, 2, 2))
+        # un clic sur la rangée ne tombe sur aucune ligne ; sur la ligne d'après, sur la bonne
+        rect = Ressac._focused_editor_rect(app)
+        @test Ressac._screen_to_editor_pos(ed, rect, rect.x + 8, y1 + 1) === nothing
+        @test Ressac._screen_to_editor_pos(ed, rect, rect.x + 8, y1 + 2)[1] == 2
+        # :rangées referme
+        _tf_ex(app, "rangées"); rows = draw()
+        @test occursin("@d2", rows[findfirst(l -> occursin("@d1", l), rows) + 1])
     end
 end
 

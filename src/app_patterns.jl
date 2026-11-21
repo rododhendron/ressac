@@ -419,6 +419,9 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
         # slots pick up the new value. Single-level (no recursive cascade).
         rebound = _names_bound_by(ex)
         if !isempty(rebound)
+            # D'abord ce qui se calcule à partir de ces noms (`b = a`, puis
+            # ce qui dépend de `b`…), puis les slots qui lisent l'un d'eux.
+            _cascade_definitions!(m, lines, rebound, start_row, end_row)
             _cascade_dN_reeval!(m, lines, rebound, start_row, end_row)
             # If the scope is attached to a name we just rebound, re-
             # resolve the reference so the visualisation tracks the
@@ -475,6 +478,80 @@ function _collect_bound_names!(names::Set{Symbol}, ex::Expr)
         end
     end
     return
+end
+
+# Les blocs de premier niveau du texte : (première ligne, dernière, source).
+# Les lignes vides et les commentaires n'en sont pas.
+function _top_blocks(lines::AbstractVector)
+    out = Tuple{Int,Int,String}[]
+    row = 1
+    while row <= length(lines)
+        l = strip(String(lines[row]))
+        if isempty(l) || startswith(l, "#")
+            row += 1
+            continue
+        end
+        (a, b) = _logical_block_range(lines, row)
+        b = max(b, row)
+        push!(out, (a, b, _join_logical_block(lines[a:b])))
+        row = b + 1
+    end
+    return out
+end
+
+"""
+    _cascade_definitions!(m, lines, rebound, skip_first, skip_last)
+
+Le graphe de calcul du texte, suivi à la main : après avoir réévalué `a`,
+toute définition qui LIT un nom qui vient de changer est réévaluée à son
+tour (`b = a`), et ce qu'elle définit s'ajoute à `rebound` — ainsi de suite,
+dans l'ordre du texte, chaque bloc une fois au plus. Les slots sont repris
+ensuite par `_cascade_dN_reeval!`.
+
+Ne sont pas réévalués : un bloc qui lit le nom qu'il définit (`n = n + 1`
+compterait à chaque cascade), les sons (`@synth`), les slots, et les lignes
+qui ne définissent rien (`cps!(0.5)`). Une fonction (`f(x) = a * x`) n'a pas
+besoin de l'être — elle lira `a` à l'appel — mais ce qui l'appelle, si.
+"""
+function _cascade_definitions!(m::RessacApp, lines::AbstractVector, rebound::Set{Symbol},
+                               skip_first::Int, skip_last::Int)
+    blocks = Tuple{Int,Any,Any,Set{Symbol},Bool}[]        # (ligne, expression, ce qu'elle lit, noms définis, est une fonction)
+    for (a, b, src) in _top_blocks(lines)
+        (b < skip_first || a > skip_last) || continue
+        occursin(r"^\s*@", src) && continue                # @dN, @synth : pas des définitions
+        ex = Meta.parse(src; raise = false)
+        (ex isa Expr && !(ex.head in (:error, :incomplete))) || continue
+        names = _names_bound_by(ex)
+        isempty(names) && continue
+        isfn = ex.head === :function || (ex.head === :(=) && ex.args[1] isa Expr && ex.args[1].head === :call)
+        reads = isfn ? ex.args[2] : ex.head === :(=) ? ex.args[2] : ex
+        (!isfn && _refs_any(reads, names)) && continue     # lit ce qu'il définit
+        push!(blocks, (a, ex, reads, names, isfn))
+    end
+    done = Set{Int}()
+    redone = Symbol[]
+    changed = true
+    while changed
+        changed = false
+        for (a, ex, reads, names, isfn) in blocks
+            a in done && continue
+            _refs_any(reads, rebound) || continue
+            push!(done, a)
+            if !isfn
+                try
+                    Core.eval(Main, ex)
+                catch err
+                    _push_app_log!(m, "[ERROR] cascade — $(join(names, ", ")) : $(_humanize_eval_error(err, string(ex)))")
+                    continue
+                end
+                append!(redone, names)
+            end
+            union!(rebound, names)
+            changed = true
+        end
+    end
+    isempty(redone) || _push_app_log!(m, "[INFO] cascade : $(join(redone, ", ")) recalculé$(length(redone) == 1 ? "" : "s")")
+    return redone
 end
 
 # Walk the buffer, find every `@dN ...` block (multi-line aware), and

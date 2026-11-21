@@ -1366,3 +1366,30 @@ Shows this slot's pitch wheel in the editor (pixel grid). Leaves the pattern unc
 """
 pitchwheel(p) = _as_pattern(p)
 pitchwheel() = p -> pitchwheel(p)
+
+"""
+    punchcard()
+    pattern |> punchcard()
+
+Shows this slot as a punch card (one dot per note) under its line. Leaves the pattern unchanged.
+"""
+punchcard(p) = _as_pattern(p)
+punchcard() = p -> punchcard(p)
+
+"""
+    spiral()
+    pattern |> spiral()
+
+Shows this slot's cycle wound into a spiral under its line. Leaves the pattern unchanged.
+"""
+spiral(p) = _as_pattern(p)
+spiral() = p -> spiral(p)
+
+"""
+    scope()
+    pattern |> scope()
+
+Shows the output waveform under this slot's line. Leaves the pattern unchanged.
+"""
+scope(p) = _as_pattern(p)
+scope() = p -> scope(p)

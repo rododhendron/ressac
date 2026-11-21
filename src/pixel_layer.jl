@@ -15,7 +15,7 @@
 #
 # Comment ça tient : l'image a un z si bas que kitty la dessine sous les
 # cellules qui ont un fond. La dernière passe du rendu laisse donc SANS fond
-# les cellules de la zone qui n'en avaient pas (`_PIXEL_HOLE`) — l'image s'y
+# les cellules de la zone qui n'en avaient pas (`_PIXEL_HOLES`) — l'image s'y
 # voit — et tout ce qui flotte (un menu, une complétion, une sélection) la
 # cache naturellement, puisque ça a un fond.
 #
@@ -25,8 +25,10 @@
 
 # Les types de la scène sont dans pixel_types.jl (le modèle de l'app les porte).
 
-# La zone que l'image occupe à cette image-ci (lue par `_ui_finish!`).
-const _PIXEL_HOLE = Ref{Union{Nothing,TK.Rect}}(nothing)
+# Les zones que des images occupent à cette image-ci (lues par `_ui_finish!`).
+const _PIXEL_HOLES = TK.Rect[]
+# La hauteur d'un visuel ouvert sous son slot, en lignes.
+const _VIEW_ROWS = 6
 # Forcer l'état en test : `true` / `false`, ou `nothing` pour demander au terminal.
 const _PIXELS_FORCE = Ref{Union{Nothing,Bool}}(nothing)
 # Sous les cellules qui ont un fond (voir la doc du protocole de kitty).
@@ -64,7 +66,7 @@ function _pixel_notes(m::RessacApp, slot::Symbol, pat, cyc::Int)
 end
 
 # Le visuel qu'un slot demande dans son texte (ce qui joue), ou rien.
-const _VIEW_RX = r"\b(pianoroll|pitchwheel)\s*\("
+const _VIEW_RX = r"\b(pianoroll|punchcard|pitchwheel|spiral|scope)\s*\("
 function _slot_view(m::RessacApp, slot::Symbol)
     src = get(m.slot_evaluated, slot, nothing)
     src === nothing && return nothing
@@ -278,6 +280,121 @@ function _paint_scene(sc::PixelScene, cw::Int, ch::Int)
     return c
 end
 
+# Les temps, pour un visuel qui se lit dans le temps.
+function _paint_beats!(c::PixelCanvas)
+    p = _ui()
+    for b in (0, 2)
+        _px_rect!(c, b * c.w ÷ 4, 0, (b + 1) * c.w ÷ 4 - 1, c.h - 1, p.s1)
+    end
+    return
+end
+
+function _paint_head!(c::PixelCanvas, phase::Float64)
+    phase >= 0 || return
+    p = _ui()
+    hx = clamp(round(Int, phase * c.w), 0, c.w - 1)
+    _px_rect!(c, hx - 4, 0, hx + 4, c.h - 1, p.o, 0.10)
+    _px_rect!(c, hx - 1, 0, hx + 1, c.h - 1, p.o, 0.85)
+    return
+end
+
+# La carte perforée : un point par note, à sa hauteur (ou sur une rangée
+# par son, pour des percussions sans hauteur).
+function _paint_punchcard!(c::PixelCanvas, pn::PixelPanel, phase::Float64)
+    p = _ui()
+    isempty(pn.notes) && return
+    pitched = [n[3] for n in pn.notes if n[3] !== nothing]
+    lo, hi = isempty(pitched) ? (0.0, 0.0) : extrema(pitched)
+    green = TK.color_lerp(p.bg, p.g, 0.75)
+    r = clamp(c.h / 14, 2.5, 6.0)
+    for n in pn.notes
+        t = (n[3] === nothing || hi == lo) ? 0.5 : (n[3] - lo) / (hi - lo)
+        y = c.h - 2r - t * (c.h - 4r)
+        x = n[1] * c.w + r
+        on = phase >= 0 && n[1] <= phase < n[2]
+        _px_rect!(c, round(Int, x), round(Int, y), max(round(Int, x), floor(Int, n[2] * c.w) - 4), round(Int, y), on ? p.o : green, 0.5)
+        _px_disc!(c, x, y, r, on ? p.o : green)
+    end
+    return
+end
+
+# La spirale : le cycle fait un tour, le temps s'enroule vers l'extérieur.
+# Trois tours du même cycle, le plus récent dehors.
+function _paint_spiral!(c::PixelCanvas, pn::PixelPanel, phase::Float64)
+    p = _ui()
+    cx = c.w / 2; cy = c.h / 2
+    R = min(c.w, c.h) / 2 - 4
+    R < 10 && return
+    turns = 3
+    rad(turn, t) = R * (0.25 + 0.75 * (turn + t) / turns)
+    pt(turn, t) = (cx + rad(turn, t) * cosd(360t - 90), cy + rad(turn, t) * sind(360t - 90))
+    for turn in 0:(turns - 1), k in 0:119                         # le fil
+        (x, y) = pt(turn, k / 120)
+        _px_rect!(c, round(Int, x), round(Int, y), round(Int, x), round(Int, y), p.x)
+    end
+    green = TK.color_lerp(p.bg, p.g, 0.75)
+    for turn in 0:(turns - 1), n in pn.notes
+        outer = turn == turns - 1
+        on = outer && phase >= 0 && n[1] <= phase < n[2]
+        col = on ? p.o : green
+        alpha = on ? 1.0 : 0.35 + 0.3 * turn
+        steps = max(2, ceil(Int, (n[2] - n[1]) * 240))
+        for k in 0:steps
+            t = n[1] + (n[2] - n[1]) * 0.92 * k / steps
+            (x, y) = pt(turn, t)
+            _px_disc!(c, x, y, 1.6, col, alpha)
+        end
+    end
+    if phase >= 0                                                  # l'aiguille
+        (x, y) = pt(turns - 1, phase)
+        _px_line!(c, cx, cy, x, y, p.o, 0.7)
+    end
+    return
+end
+
+# L'onde de la sortie (celle de `:scope wave` : la sortie générale, pas ce
+# slot seul).
+function _paint_scope!(c::PixelCanvas)
+    p = _ui()
+    mid = c.h ÷ 2
+    _px_rect!(c, 0, mid, c.w - 1, mid, p.x, 0.7)
+    data = _APP_SCOPE_TYPE[] === :wave ? _APP_SCOPE_DATA[] : Float32[]
+    n = length(data)
+    n >= 2 || return
+    prev = mid
+    for x in 0:(c.w - 1)
+        v = clamp(Float64(data[clamp(1 + (x * (n - 1)) ÷ max(c.w - 1, 1), 1, n)]), -1.0, 1.0)
+        y = round(Int, mid - v * (c.h / 2 - 2))
+        _px_rect!(c, x, min(prev, y), x, max(prev, y), p.b)
+        prev = y
+    end
+    return
+end
+
+"""
+    _paint_inline(panel, w, h, ch, phase) -> PixelCanvas
+
+Le visuel d'un slot, ouvert sous lui : `w` × `h` pixels.
+"""
+function _paint_inline(pn::PixelPanel, w::Int, h::Int, ch::Int, phase::Float64, dim::Bool)
+    p = _ui()
+    c = _canvas(w, h, p.bg)
+    if pn.kind === :pitchwheel
+        _paint_wheel!(c, pn, 0, h, phase)
+    elseif pn.kind === :spiral
+        _paint_spiral!(c, pn, phase)
+    elseif pn.kind === :scope
+        _paint_scope!(c)
+    else
+        _paint_beats!(c)
+        pn.kind === :punchcard ? _paint_punchcard!(c, pn, phase) : _paint_roll!(c, pn, 0, h, ch, phase)
+        _paint_head!(c, phase)
+    end
+    _px_rect!(c, 0, 0, 0, h - 1, p.x)                              # le bord gauche : ça tient au slot du dessus
+    dim && _px_rect!(c, 0, 0, w - 1, h - 1, p.bg, 0.55)
+    return c
+end
+
 """
     _pixel_layer!(m, f)
 
@@ -285,17 +402,25 @@ Après le rendu des cellules : pose l'image de la scène sous le texte.
 """
 function _pixel_layer!(m::RessacApp, f::TK.Frame)
     sc = m.pixel_scene
-    (sc === nothing || sc.w <= 0 || sc.h <= 0) && return
+    sc === nothing && return
     cell = TK.CELL_PX[]
-    cw = max(cell.w, 2); ch = max(cell.h, 4)
-    # Une très grande zone : demi-résolution, kitty l'étire aux cellules.
-    if sc.w * cw * sc.h * ch > 900_000
-        cw = max(cw ÷ 2, 2); ch = max(ch ÷ 2, 4)
-    end
-    c = _paint_scene(sc, cw, ch)
-    data = TK.encode_kitty_rgba(c.data, c.w, c.h; cols = sc.w, rows = sc.h, z = _PIXEL_Z)
-    isempty(data) && return
+    cw0 = max(cell.w, 2); ch0 = max(cell.h, 4)
     # Pas `render_graphics!` : il effacerait le texte de la zone.
-    push!(f.gfx_regions, TK.GraphicsRegion(sc.y, sc.x, sc.w, sc.h, copy(data), TK.gfx_fmt_kitty))
+    place(c, x, y, w, h, z) = begin
+        data = TK.encode_kitty_rgba(c.data, c.w, c.h; cols = w, rows = h, z = z)
+        isempty(data) || push!(f.gfx_regions, TK.GraphicsRegion(y, x, w, h, copy(data), TK.gfx_fmt_kitty))
+    end
+    # Une très grande image : demi-résolution, kitty l'étire aux cellules.
+    scale(w, h) = w * cw0 * h * ch0 > 900_000 ? (max(cw0 ÷ 2, 2), max(ch0 ÷ 2, 4)) : (cw0, ch0)
+    if sc.w > 0 && sc.h > 0
+        (cw, ch) = scale(sc.w, sc.h)
+        place(_paint_scene(sc, cw, ch), sc.x, sc.y, sc.w, sc.h, _PIXEL_Z)
+    end
+    # Les visuels ouverts sous leur slot passent devant la grille.
+    for (pn, r) in sc.inline
+        (r.width > 0 && r.height > 0) || continue
+        (cw, ch) = scale(r.width, r.height)
+        place(_paint_inline(pn, r.width * cw, r.height * ch, ch, sc.phase, sc.dim), r.x, r.y, r.width, r.height, _PIXEL_Z + 1)
+    end
     return
 end

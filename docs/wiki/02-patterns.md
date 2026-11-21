@@ -309,15 +309,44 @@ n'importe où.
 
 ## Voir un pattern
 
+Comme dans Strudel, le visuel se demande là où le pattern s'écrit :
+
 ```
+@d1 p"bd*2 [~ bd] bd ~" |> punchcard()
 @d4 n("0 ~ 3 7 ~ 12 7 3") |> s("rezzbass") |> pianoroll()
 @d5 n("<[0,4,7] [5,9,12]>") |> s("softpad") |> pitchwheel()
 ```
 
-`pianoroll()` et `pitchwheel()` ne changent rien à ce qui joue : ils
-demandent le visuel du slot, dessiné en grand au bas de la grille (en
-pixels, dans kitty). Sans eux, c'est le rouleau du slot du curseur qui
-s'y montre.
+| | |
+|---|---|
+| `pianoroll()` | le rouleau : une barre par note, à sa hauteur et à sa longueur |
+| `punchcard()` | la carte perforée : un point par note |
+| `pitchwheel()` | la roue des hauteurs : le do en haut, l'accord qui sonne relié |
+| `spiral()` | le cycle enroulé : un tour par cycle, l'aiguille où l'on en est |
+| `scope()` | l'onde de la sortie générale (pas de ce slot seul) |
+
+Aucun ne change ce qui joue. Le visuel s'ouvre **sous le slot**, sur la
+largeur du texte, dès que la ligne est évaluée : le texte s'écarte pour
+lui faire six lignes. C'est une image (kitty, ghostty, wezterm) ; ailleurs
+rien ne s'ouvre.
+
+Sous chaque slot qui joue s'ouvre aussi une rangée pour ses **réglages** :
+une réglette par nombre connu (`gain`, `lpf`, `pan`…), celle du curseur
+en orange — `+ - * /` et la molette la tirent. `:rangées` referme tout ça
+et rend le texte serré.
+
+## Des noms qui se suivent
+
+```
+base = 2
+vite = base * 2
+@d1 p"hh*4" |> fast(vite)
+```
+
+Change `base` et réévalue sa ligne (`e`) : `vite` est recalculé, puis le
+slot qui le lit repart — dans l'ordre du texte, de proche en proche. Le
+journal dit ce qui a été repris. Une ligne qui lit le nom qu'elle définit
+(`n = n + 1`) n'est pas rejouée, pour ne pas compter à chaque fois.
 
 ## Ranger et rappeler des patterns
 

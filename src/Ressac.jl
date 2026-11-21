@@ -135,6 +135,7 @@ include("app_volet.jl")          # l'écran unique : patterns à gauche, volet �
 include("usage.jl")              # ce qui a été joué : classement, voisines, « pas encore essayé »
 include("app_sessions.jl")       # sessions : :w :e :enew, état d'un lancement à l'autre
 include("app_slots.jl")          # l'état des lignes lu sur l'app (scheduler, erreurs, densité)
+include("row_layout.jl")         # des rangées sous les slots : réglages, visuels
 include("pixel_layer.jl")        # la grille du cycle en pixels, derrière le texte (kitty)
 include("slot_marks.jl")         # marge en signes, ligne éclairée, piste d'un cycle au bout de la ligne
 include("app_patterns.jl")
@@ -181,7 +182,7 @@ export Event, Pattern, query
 export pure, silence, fast, slow, density, rev, every, gate, geom
 export mask
 export jux, juxBy, off, degrade, degradeBy
-export pianoroll, pitchwheel
+export pianoroll, pitchwheel, punchcard, spiral, scope
 export sometimes, sometimesBy, often, rarely
 export palindrome, iter, iterBack, chunk
 # `run` collides with Base.run (shell-spawn); export as `runp` instead.

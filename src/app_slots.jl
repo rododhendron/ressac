@@ -97,6 +97,8 @@ function _slot_evaluated!(m::RessacApp, slot::Symbol, src::AbstractString; phase
     m.slot_evaluated[slot] = String(src)
     phase === nothing ? delete!(m.slot_offgrid, slot) : (m.slot_offgrid[slot] = phase[1])
     delete!(m.slot_errors, slot)
+    # `|> scope()` : l'onde de la sortie doit arriver pour être dessinée.
+    (occursin(r"\bscope\s*\(", src) && _APP_SCOPE_TYPE[] === :off) && _app_scope_set!(:wave)
     _note_played!(src)
     return nothing
 end

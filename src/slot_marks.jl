@@ -242,7 +242,30 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     right = body.x + body.width - 1
     bottom = body.y + body.height - 1
     calm = m.calm || ressac_config().calm
-    cursor_y = (ed.focused && m.modal === :none) ? body.y + (ed.cursor_row - 1 - ed.scroll_offset) : 0
+    pixon = _pixels_on(m)
+
+    # ── Les rangées ouvertes sous les slots qui jouent ───────────────
+    # Une pour leurs réglages, quelques-unes pour le visuel qu'ils demandent.
+    gaps = Dict{Int,Int}()
+    under = Dict{Symbol,Tuple{Vector{BlockKnob},Union{Nothing,Symbol}}}()
+    if m.inline
+        for l in lines
+            (l.state === :playing || l.state === :modified) || continue
+            knobs = _block_knobs(ed, l.row, l.last_row)
+            view = pixon ? _slot_view(m, l.slot) : nothing
+            n = (isempty(knobs) ? 0 : 1) + (view === nothing ? 0 : _VIEW_ROWS)
+            n > 0 || continue
+            gaps[l.last_row] = n
+            under[l.slot] = (knobs, view)
+        end
+    end
+    _ROW_GAPS[] = (ed, gaps)
+    _shift_rows!(buf, body, ed)
+    rowy(r) = body.y + (r - 1 - ed.scroll_offset) + _gap_before(ed, r)
+    # Le curseur poussé hors de la vue par les rangées : la vue descend.
+    over = rowy(ed.cursor_row) - bottom
+    over > 0 && (ed.scroll_offset += over)
+    cursor_y = (ed.focused && m.modal === :none) ? rowy(ed.cursor_row) : 0
     text_end(row) = body.x + gw + max(length(ed.lines[row]) - ed.h_scroll, 0)   # première colonne libre après le texte
 
     zone = m.lanes ? _grid_zone(body; under_text = _pixels_on(m)) : nothing
@@ -254,12 +277,13 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     # grille, c'est la grille qui s'efface sur cette ligne.
     # En pixels (pixel_layer.jl), la zone est une image SOUS le texte : rien
     # ne s'y dessine en cellules, et aucune ligne n'a à céder la place.
-    pix = zone !== nothing && _pixels_on(m)
-    scene = pix ? PixelScene(x0, body.y, w, body.height, PixelLane[], PixelPanel[],
-                             sched.t_start > 0 ? phase : -1.0,
-                             (ed.mode === :normal && !m.visual_active) ? cursor_y : 0,
-                             m.modal !== :none) : nothing
-    pix && (m.pixel_scene = scene; _PIXEL_HOLE[] = TK.Rect(x0, body.y, w, body.height))
+    pix = zone !== nothing && pixon
+    scene = pixon ? PixelScene(x0, body.y, w, body.height, PixelLane[], PixelPanel[], Tuple{PixelPanel,TK.Rect}[],
+                               sched.t_start > 0 ? phase : -1.0,
+                               (ed.mode === :normal && !m.visual_active) ? cursor_y : 0,
+                               m.modal !== :none) : nothing
+    pixon && (m.pixel_scene = scene)
+    pix && push!(_PIXEL_HOLES, TK.Rect(x0, body.y, w, body.height))
     cursor_long = !pix && zone !== nothing && body.y <= cursor_y <= bottom &&
                   1 <= ed.cursor_row <= length(ed.lines) && text_end(ed.cursor_row) > xr - 1
 
@@ -297,7 +321,7 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
     end
 
     for l in lines
-        y0 = body.y + (l.row - 1 - ed.scroll_offset)
+        y0 = rowy(l.row)
         on_cursor = cursor_y != 0 && l.row <= ed.cursor_row <= l.last_row
         # Le fond du bloc : rouge pour une erreur, vert pour un texte modifié,
         # un éclat au coup pour une ligne qui joue.
@@ -308,10 +332,37 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
         if tint !== nothing && !on_cursor
             whole = l.state !== :playing              # l'éclat ne couvre que le texte : la grille garde ses temps
             for r in l.row:l.last_row
-                y = body.y + (r - 1 - ed.scroll_offset)
+                y = rowy(r)
                 body.y <= y <= bottom || continue
                 for x in signs_x:(pix ? x0 - 1 : (whole || zone === nothing) ? right : xr - 1)
                     _tint_cell!(buf, x, y, tint)
+                end
+            end
+        end
+        # Sous le bloc : ses réglages, puis son visuel.
+        if haskey(under, l.slot)
+            (knobs, view) = under[l.slot]
+            yk = rowy(l.last_row) + 1
+            if !isempty(knobs) && body.y <= yk <= bottom
+                x = body.x + gw + 2
+                TK.set_string!(buf, x - 2, yk, "╰ ", TK.Style(fg = p.x))
+                for k in knobs
+                    txt = _knob_row_text(k)
+                    x + textwidth(txt) - 1 <= right || break
+                    here = ed.focused && ed.cursor_row == k[5] && k[6] <= ed.cursor_col <= k[7]
+                    TK.set_string!(buf, x, yk, txt, TK.Style(fg = here ? p.o : p.n, bold = here))
+                    x += textwidth(txt) + 3
+                end
+            end
+            if view !== nothing
+                yv = yk + (isempty(knobs) ? 0 : 1)
+                h = min(_VIEW_ROWS, bottom - yv + 1)
+                if yv >= body.y && h >= 3
+                    r = TK.Rect(body.x + gw + 1, yv, right - (body.x + gw + 1) + 1, h)
+                    pat = get(playing, l.slot, nothing)
+                    notes = pat === nothing ? PixelNote[] : _pixel_notes(m, l.slot, pat, cyc)
+                    push!(scene.inline, (PixelPanel(view, l.slot, notes, on_cursor), r))
+                    push!(_PIXEL_HOLES, r)
                 end
             end
         end
@@ -353,9 +404,10 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
             push!(scene.lanes, PixelLane(y0, notes, l.state, on_cursor, l.held))
             # En grand : le visuel demandé dans le texte ; à défaut, le
             # rouleau du slot où est le curseur.
-            view = _slot_view(m, l.slot)
-            view === nothing && on_cursor && any(n -> n[3] !== nothing, notes) && (view = :pianoroll)
-            view === nothing || push!(scene.panels, PixelPanel(view, l.slot, notes, on_cursor))
+            # En grand, au bas de la grille : le rouleau du slot du curseur,
+            # quand il n'a pas demandé son propre visuel (dessiné sous lui).
+            (on_cursor && !(m.inline && _slot_view(m, l.slot) !== nothing) && any(n -> n[3] !== nothing, notes)) &&
+                push!(scene.panels, PixelPanel(:pianoroll, l.slot, notes, true))
             continue
         end
         cellbg(k) = rowbg === nothing ? zebra(k) : rowbg
@@ -378,13 +430,11 @@ function _render_slot_marks!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf:
         end
     end
 
-    # Le nom de chaque visuel en grand, dans la marge de la zone. Les roues
-    # se rangent en bas : la tête de lecture s'arrête au-dessus d'elles.
+    # Le nom du visuel en grand, dans la marge de la zone.
     if pix
-        sort!(scene.panels; by = pn -> pn.kind === :pitchwheel, alg = MergeSort)
         for (pn, (r0, _)) in zip(scene.panels, _panel_layout(scene))
             y = body.y + r0
-            (y - body.y + ed.scroll_offset + 1 > length(ed.lines)) || continue      # pas sur une ligne de texte
+            _text_row_at(ed, r0) === nothing || _text_row_at(ed, r0) > length(ed.lines) || continue      # pas sur une ligne de texte
             TK.set_string!(buf, xr + 1, y, rpad(" " * String(pn.slot), _GRID_LABEL),
                            TK.Style(fg = pn.cursor ? p.o : p.n))
         end
@@ -423,7 +473,7 @@ function _render_cursor_line!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf
     ed = pane.tabs[pane.current_tab].code_editor
     (ed === _patterns_editor(m) || !ed.focused || ed.mode !== :normal || m.modal !== :none || m.visual_active) && return
     body = _editor_text_rect(pane, rect)
-    y = body.y + (ed.cursor_row - 1 - ed.scroll_offset)
+    y = body.y + (ed.cursor_row - 1 - ed.scroll_offset) + _gap_before(ed, ed.cursor_row)
     body.y <= y < body.y + body.height || return
     bg = _ui_tint(_ui().o, 0.15)
     cx = _cursor_cell_x(ed, body)
@@ -503,8 +553,10 @@ function _render_knob!(m::RessacApp, pane::EditorPane, rect::TK.Rect, buf::TK.Bu
     (ed.focused && ed.mode === :normal && m.modal === :none) || return
     knob = _knob_at(m, ed)
     knob === nothing && return
+    # Le bloc a sa rangée de réglages dessous : la réglette y est déjà.
+    (b = _logical_block_range(ed.lines, ed.cursor_row); haskey(_ROW_GAPS[][2], b[2]) && _ROW_GAPS[][1] === ed) && return
     body = _editor_text_rect(pane, rect)
-    y = body.y + (ed.cursor_row - 1 - ed.scroll_offset)
+    y = body.y + (ed.cursor_row - 1 - ed.scroll_offset) + _gap_before(ed, ed.cursor_row)
     body.y <= y < body.y + body.height || return
     text = _knob_text(knob...)
     gw = ed.show_line_numbers ? ndigits(max(length(ed.lines), 1)) + 1 : 0

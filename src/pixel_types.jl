@@ -15,7 +15,7 @@ end
 
 # Un visuel en grand, en bas de la zone : le rouleau ou la roue d'un slot.
 struct PixelPanel
-    kind::Symbol             # :pianoroll · :pitchwheel
+    kind::Symbol             # :pianoroll · :punchcard · :pitchwheel · :spiral · :scope
     slot::Symbol
     notes::Vector{PixelNote}
     cursor::Bool
@@ -24,7 +24,8 @@ end
 mutable struct PixelScene
     x::Int; y::Int; w::Int; h::Int     # la zone, en cellules
     lanes::Vector{PixelLane}
-    panels::Vector{PixelPanel}
+    panels::Vector{PixelPanel}         # au bas de la grille (le rouleau du slot du curseur)
+    inline::Vector{Tuple{PixelPanel,TK.Rect}}   # sous leur slot, sur la largeur du texte
     phase::Float64                     # où en est le cycle (0..1) ; < 0 : l'horloge n'a pas démarré
     cursor_row::Int                    # la ligne d'écran du curseur (0 : aucune)
     dim::Bool                          # quelque chose flotte par-dessus : l'image s'éteint avec le reste
