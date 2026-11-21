@@ -414,15 +414,11 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
         _push_app_log!(m, (slot !== nothing && phase !== nothing) ?
             "[INFO] $slot lancé maintenant, hors de la grille — e le recale" : "[INFO] éval ⇒ $rstr")
         _warn_unknown_sounds!(m, [block])
-        # Cascade: if this eval rebound any top-level names, sweep the
-        # buffer for `@dN` blocks that reference them and re-eval, so the
-        # slots pick up the new value. Single-level (no recursive cascade).
+        # Ce bloc a défini des noms : tout ce qui en dépend dans le texte,
+        # de près ou de loin, est réévalué (voir `_cascade!`).
         rebound = _names_bound_by(ex)
         if !isempty(rebound)
-            # D'abord ce qui se calcule à partir de ces noms (`b = a`, puis
-            # ce qui dépend de `b`…), puis les slots qui lisent l'un d'eux.
-            _cascade_definitions!(m, lines, rebound, start_row, end_row)
-            _cascade_dN_reeval!(m, lines, rebound, start_row, end_row)
+            _cascade!(m, lines, rebound, start_row, end_row)
             # If the scope is attached to a name we just rebound, re-
             # resolve the reference so the visualisation tracks the
             # fresh reservoir instead of the dead one. Pre-computes the
@@ -500,77 +496,85 @@ function _top_blocks(lines::AbstractVector)
 end
 
 """
-    _cascade_definitions!(m, lines, rebound, skip_first, skip_last)
+    _cascade!(m, lines, rebound, skip_first, skip_last)
 
-Le graphe de calcul du texte, suivi à la main : après avoir réévalué `a`,
-toute définition qui LIT un nom qui vient de changer est réévaluée à son
-tour (`b = a`), et ce qu'elle définit s'ajoute à `rebound` — ainsi de suite,
-dans l'ordre du texte, chaque bloc une fois au plus. Les slots sont repris
-ensuite par `_cascade_dN_reeval!`.
+Le graphe de calcul du texte. Chaque bloc de premier niveau est un nœud :
+une définition, une fonction, un slot, un son. Un bloc DÉPEND d'un autre
+quand il lit un nom que l'autre définit. Après avoir évalué un bloc (ses
+noms sont dans `rebound`), tout ce qui en dépend — de près ou de loin — est
+réévalué, une fois chacun, dans l'ordre des dépendances (à égalité, celui du
+texte).
 
-Ne sont pas réévalués : un bloc qui lit le nom qu'il définit (`n = n + 1`
-compterait à chaque cascade), les sons (`@synth`), les slots, et les lignes
-qui ne définissent rien (`cps!(0.5)`). Une fonction (`f(x) = a * x`) n'a pas
-besoin de l'être — elle lira `a` à l'appel — mais ce qui l'appelle, si.
+Un bloc qui lit le nom qu'il définit (`n = n + a`) est un nœud comme un
+autre : il est rejoué une fois s'il dépend de ce qui a changé. Les fonctions
+sont redéfinies. Un son est redéfini sans être joué ; un slot repart.
+`rebound` reçoit tous les noms repris.
 """
-function _cascade_definitions!(m::RessacApp, lines::AbstractVector, rebound::Set{Symbol},
-                               skip_first::Int, skip_last::Int)
-    blocks = Tuple{Int,Any,Any,Set{Symbol},Bool}[]        # (ligne, expression, ce qu'elle lit, noms définis, est une fonction)
+function _cascade!(m::RessacApp, lines::AbstractVector, rebound::Set{Symbol},
+                   skip_first::Int, skip_last::Int)
+    live = Dict(b.row => slot for (slot, b) in _live_blocks(_scan_slot_blocks(lines)[1]))
+    # ── Les nœuds ──
+    nodes = NamedTuple[]
     for (a, b, src) in _top_blocks(lines)
         (b < skip_first || a > skip_last) || continue
-        occursin(r"^\s*@", src) && continue                # @dN, @synth : pas des définitions
         ex = Meta.parse(src; raise = false)
         (ex isa Expr && !(ex.head in (:error, :incomplete))) || continue
-        names = _names_bound_by(ex)
-        isempty(names) && continue
-        isfn = ex.head === :function || (ex.head === :(=) && ex.args[1] isa Expr && ex.args[1].head === :call)
-        reads = isfn ? ex.args[2] : ex.head === :(=) ? ex.args[2] : ex
-        (!isfn && _refs_any(reads, names)) && continue     # lit ce qu'il définit
-        push!(blocks, (a, ex, reads, names, isfn))
+        kind = occursin(_SOUND_HEAD_RX, src) ? :sound : occursin(r"^\s*@d\d+\b", src) ? :slot : :def
+        (kind === :slot && !haskey(live, a)) && continue           # un slot coupé, ou doublé plus bas
+        names = kind === :def ? _names_bound_by(ex) : Set{Symbol}()
+        (kind === :def && isempty(names)) && continue              # `cps!(0.5)` : ne définit rien, n'est pas rejoué
+        # Ce que le bloc LIT : la droite d'une affectation, le corps d'une
+        # fonction — pas le nom qu'il définit, sauf s'il le lit vraiment.
+        reads = kind !== :def ? ex : ex.head === :(=) ? ex.args[2] : ex.head === :function ? ex.args[end] :
+                (ex.head in (:const, :global) && ex.args[1] isa Expr && ex.args[1].head === :(=)) ? ex.args[1].args[2] : ex
+        push!(nodes, (row = a, src = src, ex = ex, reads = reads, kind = kind, names = names))
     end
-    done = Set{Int}()
-    redone = Symbol[]
-    changed = true
-    while changed
-        changed = false
-        for (a, ex, reads, names, isfn) in blocks
-            a in done && continue
-            _refs_any(reads, rebound) || continue
-            push!(done, a)
-            if !isfn
-                try
-                    Core.eval(Main, ex)
-                catch err
-                    _push_app_log!(m, "[ERROR] cascade — $(join(names, ", ")) : $(_humanize_eval_error(err, string(ex)))")
-                    continue
-                end
-                append!(redone, names)
-            end
-            union!(rebound, names)
-            changed = true
+    # ── Ce qui dépend de ce qui vient de changer, de proche en proche ──
+    hit = falses(length(nodes))
+    changed = copy(rebound)
+    grew = true
+    while grew
+        grew = false
+        for (i, n) in enumerate(nodes)
+            (hit[i] || !_refs_any(n.reads, changed)) && continue
+            hit[i] = true; grew = true
+            union!(changed, n.names)
         end
     end
-    isempty(redone) || _push_app_log!(m, "[INFO] cascade : $(join(redone, ", ")) recalculé$(length(redone) == 1 ? "" : "s")")
-    return redone
-end
-
-# Walk the buffer, find every `@dN ...` block (multi-line aware), and
-# re-eval those whose AST references any of `rebound`. The block being
-# eval'd (rows in `skip_first..skip_last`) is excluded.
-function _cascade_dN_reeval!(m::RessacApp, lines::Vector,
-                              rebound::Set{Symbol},
-                              skip_first::Int, skip_last::Int)
-    n_cascade = 0
-    for (slot, b) in _live_blocks(_scan_slot_blocks(lines)[1])
-        # Le bloc qu'on vient d'évaluer ne rejoue pas une seconde fois.
-        (b.last_row < skip_first || b.row > skip_last) || continue
-        ex = Meta.parse(b.src; raise = false)
-        (ex isa Expr && ex.head in (:error, :incomplete)) && continue
-        _refs_any(ex, rebound) || continue
-        _eval_slot_block!(m, slot, b.src) && (n_cascade += 1)
+    idx = findall(hit)
+    isempty(idx) && return
+    # ── L'ordre : un bloc après ceux dont il dépend (Kahn ; le texte départage,
+    #    et tranche une dépendance en rond) ──
+    deps = Dict(i => Set(j for j in idx if j != i && _refs_any(nodes[i].reads, nodes[j].names)) for i in idx)
+    order = Int[]
+    left = copy(idx)
+    while !isempty(left)
+        k = findfirst(i -> isempty(intersect(deps[i], left)), left)
+        k === nothing && (k = 1)
+        push!(order, left[k]); deleteat!(left, k)
     end
-    n_cascade > 0 &&
-        _push_app_log!(m, "[INFO] cascade : $n_cascade slot$(n_cascade == 1 ? "" : "s") ré-évalué$(n_cascade == 1 ? "" : "s")")
+    # ── Tout est connu : on réévalue ──
+    redone = String[]; nslots = 0
+    for i in order
+        n = nodes[i]
+        if n.kind === :slot
+            _eval_slot_block!(m, live[n.row], n.src) && (nslots += 1)
+        elseif n.kind === :sound
+            _install_sound_text!(m, n.src) && push!(redone, String(match(_SOUND_HEAD_RX, n.src).captures[1]))
+        else
+            try
+                Core.eval(Main, n.ex)
+                append!(redone, String.(collect(n.names)))
+            catch err
+                _push_app_log!(m, "[ERROR] cascade — $(join(n.names, ", ")) : $(_humanize_eval_error(err, n.src))")
+            end
+        end
+    end
+    union!(rebound, changed)
+    parts = String[]
+    isempty(redone) || push!(parts, "$(join(redone, ", ")) recalculé$(length(redone) == 1 ? "" : "s")")
+    nslots > 0 && push!(parts, "$nslots slot$(nslots == 1 ? "" : "s") ré-évalué$(nslots == 1 ? "" : "s")")
+    isempty(parts) || _push_app_log!(m, "[INFO] cascade : " * join(parts, " · "))
     return
 end
 

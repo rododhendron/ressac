@@ -386,22 +386,25 @@ end
             "cg_c = cg_f(cg_b)",
             "cg_n = 0",
             "cg_n = cg_n + 1",
+            "cg_k = 1",
+            "cg_k = cg_k + cg_a",
             "cg_autre = 5",
             "@d1 p\"bd\" |> fast(cg_c)",
             "@d2 p\"hh\" |> fast(cg_autre)"], "\n"))
         _tf_key(app, 'E')
-        @test Core.eval(Main, :cg_c) == 22 && Core.eval(Main, :cg_n) == 1
+        @test Core.eval(Main, :cg_c) == 22 && Core.eval(Main, :cg_n) == 1 && Core.eval(Main, :cg_k) == 3
         d1 = Ressac.pattern_get(app.scheduler, :d1); d2 = Ressac.pattern_get(app.scheduler, :d2)
         Tachikoma.set_text!(ed, replace(Tachikoma.text(ed), "cg_a = 2" => "cg_a = 3"))
         ed.cursor_row = 1; empty!(app.logs)
         _tf_key(app, 'e')
         @test Core.eval(Main, :cg_b) == 30                      # b = a * 10, repris
         @test Core.eval(Main, :cg_c) == 33                      # par b, et par la fonction qui lit a
-        @test Core.eval(Main, :cg_n) == 1                       # n = n + 1 n'est pas rejoué
+        @test Core.eval(Main, :cg_n) == 1                       # n = n + 1 ne dépend pas de a : pas touché
+        @test Core.eval(Main, :cg_k) == 6                       # k = k + a en dépend : rejoué, une fois
         @test Ressac.pattern_get(app.scheduler, :d1) !== d1     # le slot qui lit c repart
         @test Ressac.pattern_get(app.scheduler, :d2) === d2     # celui qui n'en dépend pas ne bouge pas
         @test length(Ressac.pattern_get(app.scheduler, :d1)(0 // 1, 1 // 1)) == 33
-        @test any(l -> occursin("cascade : cg_b, cg_c recalculés", l), app.logs)
+        @test any(l -> occursin("cascade : cg_b, cg_f, cg_c, cg_k recalculés · 1 slot ré-évalué", l), app.logs)
     end
 end
 

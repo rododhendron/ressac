@@ -343,10 +343,13 @@ vite = base * 2
 @d1 p"hh*4" |> fast(vite)
 ```
 
-Change `base` et réévalue sa ligne (`e`) : `vite` est recalculé, puis le
-slot qui le lit repart — dans l'ordre du texte, de proche en proche. Le
-journal dit ce qui a été repris. Une ligne qui lit le nom qu'elle définit
-(`n = n + 1`) n'est pas rejouée, pour ne pas compter à chaque fois.
+Change `base` et réévalue sa ligne (`e`) : Ressac relit tout le texte
+comme un graphe — un bloc dépend d'un autre quand il lit un nom que l'autre
+définit — et réévalue tout ce qui dépend de `base`, de près ou de loin, une
+fois chacun, dans l'ordre des dépendances : `vite`, puis le slot. Les
+fonctions sont redéfinies, un son est redéfini sans être joué, et une ligne
+qui lit son propre nom (`n = n + base`) est rejouée une fois, comme les
+autres. Le journal dit ce qui a été repris.
 
 ## Ranger et rappeler des patterns
 
