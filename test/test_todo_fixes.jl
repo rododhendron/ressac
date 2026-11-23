@@ -416,15 +416,24 @@ end
         set_a(5)
         @test Core.eval(Main, :cg_k) == 6 && Core.eval(Main, :cg_c) == 55
     end
-    # un bloc qui se lit lui-même sans valeur de départ : pas rejoué, et c'est dit
+    # un bloc qui se lit lui-même sans définition au-dessus n'a pas de graphe : il ne s'évalue pas
     _with_live_app() do app, frame
         ed = Ressac._patterns_editor(app)
         Core.eval(Main, :(cg_z = 10))
-        Tachikoma.set_text!(ed, "cg_y = 1\ncg_z = cg_z + cg_y")
-        ed.cursor_row = 1
-        _tf_key(app, 'e')
-        @test Core.eval(Main, :cg_z) == 10
-        @test any(l -> occursin("cg_z se lit lui-même sans valeur de départ", l), app.logs)
+        Tachikoma.set_text!(ed, "cg_y = 1\ncg_z = cg_z + cg_y\n@d1 p\"bd\" |> fast(cg_y)")
+        refused(logs) = any(l -> occursin("[ERROR]", l) && occursin("cg_z se lit lui-même", l) && occursin("écris d'abord `cg_z = …`", l), logs)
+        ed.cursor_row = 2; _tf_key(app, 'e')                      # e, directement dessus
+        @test Core.eval(Main, :cg_z) == 10 && refused(app.logs)
+        empty!(app.logs); ed.cursor_row = 1; _tf_key(app, 'e')    # par la cascade
+        @test Core.eval(Main, :cg_z) == 10 && refused(app.logs)
+        @test Ressac.pattern_get(app.scheduler, :d1) !== nothing  # le reste du graphe, lui, est repris
+        empty!(app.logs); _tf_key(app, 'E')                       # E
+        @test Core.eval(Main, :cg_z) == 10 && refused(app.logs)
+        # avec sa définition au-dessus, tout passe
+        Tachikoma.set_text!(ed, "cg_y = 1\ncg_z = 5\ncg_z = cg_z + cg_y")
+        empty!(app.logs); _tf_key(app, 'E')
+        @test Core.eval(Main, :cg_z) == 6 && !refused(app.logs)
+        ed.cursor_row = 3; _tf_key(app, 'e'); @test Core.eval(Main, :cg_z) == 6
     end
     # le plan, à nu : la chaîne d'un nom est rejouée en entier, dans l'ordre
     (nodes, _) = Ressac._calc_nodes(["n = 0", "a = 1", "n = n + a", "m = n * 2", "n = 7", "q = n"], 2, 2)

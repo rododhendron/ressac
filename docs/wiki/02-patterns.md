@@ -360,8 +360,9 @@ n = n + base        lit le n du dessus : toujours 0 + base
 
 Quand `n` est repris, c'est toute sa chaîne qui est rejouée depuis `n = 0` :
 évaluer dix fois donne dix fois le même résultat. Un `n = n + 1` sans
-`n = …` au-dessus de lui n'a pas de valeur de départ dans le texte ; la
-cascade ne le rejoue pas, et le dit.
+`n = …` au-dessus de lui n'a pas de valeur de départ dans le texte : il
+n'entre pas dans le graphe, et Ressac refuse de l'évaluer (`e`, `E` ou par
+cascade) en disant quoi écrire au-dessus.
 
 ## Ranger et rappeler des patterns
 

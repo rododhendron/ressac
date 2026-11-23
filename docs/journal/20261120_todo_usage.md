@@ -140,3 +140,4 @@ Décision de Rodolphe : tout passe dans le pane principal (« sur un petit
   un bloc rejoue d'abord ce qu'il lui faut, puis lui, puis ce qui en
   dépend. Un bloc qui se lit sans définition au-dessus n'est pas rejoué
   par la cascade (avertissement).
+- Un bloc qui se lit lui-même sans définition au-dessus ne s'évalue plus du tout (`e`, `E`, cascade) : pas de graphe, pas d'évaluation — l'erreur dit quoi écrire.

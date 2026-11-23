@@ -304,9 +304,21 @@ function _eval_pattern_blocks!(m::RessacApp, target)
     ok_slots = Symbol[]
     defs = 0
     if target === :all
+        seen = Set{Symbol}()
         for src in prelude
             try
-                Core.eval(Main, Meta.parse(src))
+                ex = Meta.parse(src)
+                # Le même refus que pour `e` : un nom qui se lit lui-même
+                # sans définition au-dessus n'a pas de valeur de départ.
+                names = ex isa Expr ? _names_bound_by(ex) : Set{Symbol}()
+                orphan = [x for x in names if !(x in seen) && _refs_any(_calc_reads(ex), Set((x,)))]
+                if !isempty(orphan)
+                    err += 1
+                    _push_app_log!(m, "[ERROR] éval : $(_impure_message(orphan))")
+                    continue
+                end
+                Core.eval(Main, ex)
+                union!(seen, names)
                 defs += 1
             catch e
                 err += 1
@@ -410,6 +422,12 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
     # valeur d'un nom qu'il relit) et APRÈS (tout ce qui en dépend).
     (nodes, live) = _calc_nodes(lines, start_row, end_row)
     (order, impure) = _calc_plan(nodes)
+    r = findfirst(n -> n.root, nodes)
+    if r !== nothing && r in impure
+        hint = _impure_message(nodes[r].names)
+        _push_app_log!(m, "[ERROR] éval : $hint")
+        return
+    end
     k = findfirst(i -> nodes[i].root, order)
     pre = k === nothing ? Int[] : order[1:(k - 1)]
     post = k === nothing ? Int[] : order[(k + 1):end]
@@ -429,7 +447,7 @@ function _eval_current_line!(m::RessacApp; phase = nothing)
         nslots > 0 && push!(parts, "$nslots slot$(nslots == 1 ? "" : "s") ré-évalué$(nslots == 1 ? "" : "s")")
         isempty(parts) || _push_app_log!(m, "[INFO] cascade : " * join(parts, " · "))
         for i in impure
-            _push_app_log!(m, "[WARN] cascade — $(join(nodes[i].names, ", ")) se lit lui-même sans valeur de départ plus haut dans le texte : pas rejoué")
+            _push_app_log!(m, "[ERROR] cascade — $(_impure_message(nodes[i].names))")
         end
         # Le scope suit un nom qui vient d'être redéfini (un réservoir neuf).
         rebound = union(_names_bound_by(ex), (nodes[i].names for i in post)...)
@@ -520,9 +538,10 @@ end
 # sa première définition : `n = n + a` repart de `n = 0`, il ne s'ajoute pas
 # à lui-même d'une évaluation à l'autre.
 #
-# Seule entorse possible : un bloc qui lit son propre nom sans qu'aucune
-# définition ne le précède. Il n'a pas de valeur de départ dans le texte ;
-# la cascade ne le rejoue pas et le dit.
+# Ce qui n'entre pas dans ce graphe ne s'évalue pas : un bloc qui lit son
+# propre nom sans qu'aucune définition ne le précède n'a pas de valeur de
+# départ dans le texte. `e`, `E` et la cascade le refusent, et disent quoi
+# écrire.
 
 struct CalcNode
     row::Int
@@ -533,6 +552,16 @@ struct CalcNode
     names::Set{Symbol}
     root::Bool               # le bloc que l'on évalue
 end
+
+# Ce qu'une définition LIT : la droite d'une affectation, le corps d'une
+# fonction — pas le nom qu'elle définit, sauf si elle le lit vraiment.
+_calc_reads(ex::Expr) =
+    ex.head === :(=) ? ex.args[2] : ex.head === :function ? ex.args[end] :
+    (ex.head in (:const, :global) && ex.args[1] isa Expr && ex.args[1].head === :(=)) ? ex.args[1].args[2] : ex
+
+# Le refus : un calcul qui n'a pas de point de départ dans le texte.
+_impure_message(names) =
+    "$(join(names, ", ")) se lit lui-même, et rien ne le définit plus haut dans le texte — écris d'abord `$(first(names)) = …` au-dessus"
 
 function _calc_nodes(lines::AbstractVector, root_first::Int, root_last::Int)
     live = Dict(b.row => slot for (slot, b) in _live_blocks(_scan_slot_blocks(lines)[1]))
@@ -546,9 +575,7 @@ function _calc_nodes(lines::AbstractVector, root_first::Int, root_last::Int)
         names = kind === :def ? _names_bound_by(ex) : Set{Symbol}()
         (kind === :def && isempty(names)) && (kind = :other)          # `cps!(0.5)` : ne définit rien
         (kind === :other && !root) && continue
-        reads = kind !== :def ? ex : ex.head === :(=) ? ex.args[2] : ex.head === :function ? ex.args[end] :
-                (ex.head in (:const, :global) && ex.args[1] isa Expr && ex.args[1].head === :(=)) ? ex.args[1].args[2] : ex
-        push!(nodes, CalcNode(a, src, ex, reads, kind, names, root))
+        push!(nodes, CalcNode(a, src, ex, kind === :def ? _calc_reads(ex) : ex, kind, names, root))
     end
     return (nodes, live)
 end
@@ -558,7 +585,7 @@ end
 
 Ce qu'il faut évaluer, et dans quel ordre, quand on évalue le nœud racine :
 les indices des nœuds (la racine comprise), et ceux qui se lisent eux-mêmes
-sans valeur de départ (non rejoués).
+sans valeur de départ — ceux-là ne s'évaluent pas, la racine comprise.
 """
 function _calc_plan(nodes::Vector{CalcNode})
     r = findfirst(n -> n.root, nodes)
@@ -594,7 +621,7 @@ function _calc_plan(nodes::Vector{CalcNode})
         end
     end
     idx = findall(run)
-    bad = [i for i in idx if !nodes[i].root && impure(i)]
+    bad = [i for i in idx if impure(i)]
     idx = setdiff(idx, bad)
     inset = Set(idx)
     # Les contraintes d'ordre.
